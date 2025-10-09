@@ -1,0 +1,918 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Pressable, SafeAreaView, TextInput, Image, Modal, FlatList, Animated, Easing } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import AdminDataService from '../../services/AdminDataService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AdminBottomNavBar from '../../components/AdminBottomNavBar';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { theme as themeStyle } from '../../theme';
+import { useTheme } from '../../contexts/ThemeContext';
+import { formatDate, timeAgo } from '../../utils/dateUtils';
+
+type RootStackParamList = {
+  GetStarted: undefined;
+  SignIn: undefined;
+  CreateAccount: undefined;
+  SchoolUpdates: undefined;
+  AIChat: undefined;
+  UserSettings: undefined;
+  Calendar: undefined;
+  AdminDashboard: undefined;
+  AdminAIChat: undefined;
+  AdminSettings: undefined;
+  AdminCalendar: undefined;
+  PostUpdate: undefined;
+  ManagePosts: undefined;
+};
+
+const AdminDashboard = () => {
+  const insets = useSafeAreaInsets();
+  const { isDarkMode, theme } = useTheme();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const scrollRef = useRef<ScrollView>(null);
+  const [activeFilter, setActiveFilter] = useState<'week' | 'month' | 'semester'>('week');
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [notificationCount, setNotificationCount] = useState(0);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [activePreviewIndex, setActivePreviewIndex] = useState(0);
+  const [previewUpdate, setPreviewUpdate] = useState<{ title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean } | null>(null);
+  const previewImages = React.useMemo(() => {
+    const imgs = previewUpdate?.images || [];
+    return imgs
+      .filter(Boolean)
+      .map(u => (typeof u === 'string' ? u.trim() : ''))
+      .filter(u => u.length > 0 && (u.startsWith('http://') || u.startsWith('https://') || u.startsWith('content:')));
+  }, [previewUpdate]);
+  type DashboardUpdate = { title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean };
+  type DashboardData = { totalUpdates: number; pinned: number; urgent: number; recentUpdates: DashboardUpdate[] };
+  const [dashboardData, setDashboardData] = useState<DashboardData>({
+    totalUpdates: 0,
+    pinned: 0,
+    urgent: 0,
+    recentUpdates: [],
+  });
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
+
+
+  // Note: awaiting real data; dashboardData can be set from API by filter
+
+  // Filter updates based on search query
+  const filteredUpdates = dashboardData.recentUpdates.filter(update =>
+    update.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    update.tag.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleFilterChange = (filter: 'week' | 'month' | 'semester') => {
+    setActiveFilter(filter);
+    setSearchQuery(''); // Clear search when filter changes
+  };
+
+  // Placeholder: fetch dashboard data when filter changes
+  useEffect(() => {
+    let isCancelled = false;
+    const fetchDashboard = async () => {
+      try {
+        setIsLoadingDashboard(true);
+        setDashboardError(null);
+        const json: DashboardData = await AdminDataService.getDashboard();
+        if (!isCancelled) setDashboardData(json);
+      } catch (e: any) {
+        if (!isCancelled) setDashboardError(e?.message || 'Failed to load');
+      } finally {
+        if (!isCancelled) setIsLoadingDashboard(false);
+      }
+    };
+    fetchDashboard();
+    return () => { isCancelled = true; };
+  }, [activeFilter]);
+
+  const handleSearchPress = () => {
+    setIsSearchVisible(!isSearchVisible);
+    if (isSearchVisible) {
+      setSearchQuery(''); // Clear search when closing
+    }
+  };
+
+  const handleNotificationPress = () => {
+    // TODO: Implement notifications functionality
+    console.log('Notifications pressed');
+    setNotificationCount(0); // Clear notifications when pressed
+  };
+
+  const handleUpdatePress = (update: { title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean }) => {
+    // Open preview modal for all updates
+    setPreviewUpdate(update);
+    setActivePreviewIndex(0);
+    setIsPreviewOpen(true);
+  };
+
+  // Minimal shimmer component for skeletons
+  const Shimmer = ({ height, borderRadius }: { height: number; borderRadius: number }) => {
+    const translateX = React.useRef(new Animated.Value(-100)).current;
+    useEffect(() => {
+      const loop = Animated.loop(
+        Animated.timing(translateX, {
+          toValue: 300,
+          duration: 1200,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        })
+      );
+      loop.start();
+      return () => loop.stop();
+    }, [translateX]);
+    return (
+      <View style={{ height, borderRadius, overflow: 'hidden', backgroundColor: theme.colors.surface }}>
+        <Animated.View style={{
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: 120,
+          transform: [{ translateX }],
+        }}>
+          <LinearGradient
+            colors={isDarkMode ? ["rgba(255,255,255,0)", "rgba(255,255,255,0.1)", "rgba(255,255,255,0)"] : ["rgba(255,255,255,0)", "rgba(255,255,255,0.6)", "rgba(255,255,255,0)"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={{ flex: 1 }}
+          />
+        </Animated.View>
+      </View>
+    );
+  };
+
+  return (
+    <View style={[styles.container, {
+      backgroundColor: theme.colors.background,
+      paddingTop: insets.top,
+      paddingBottom: 0, // Remove bottom padding since AdminBottomNavBar now handles it
+      paddingLeft: insets.left,
+      paddingRight: insets.right,
+    }]}>
+      <StatusBar
+        backgroundColor={theme.colors.primary}
+        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        translucent={false}
+      />
+
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
+        <View style={styles.headerLeft}>
+        <Text style={styles.headerTitle}>DOrSU Connect</Text>
+        </View>
+        <View style={styles.headerRight}>
+          <Pressable style={styles.headerButton} onPress={handleNotificationPress}>
+            <Ionicons name="notifications-outline" size={24} color="white" />
+            {notificationCount > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>{notificationCount}</Text>
+              </View>
+            )}
+          </Pressable>
+          <Pressable style={styles.headerButton} onPress={handleSearchPress}>
+            <Ionicons name={isSearchVisible ? "close-outline" : "search-outline"} size={24} color="white" />
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Search Bar */}
+      {isSearchVisible && (
+        <View style={[styles.searchContainer, { backgroundColor: theme.colors.background, borderBottomColor: theme.colors.border }]}>
+          <View style={[styles.searchInputContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <Ionicons name="search" size={20} color={theme.colors.textMuted} style={styles.searchIcon} />
+            <TextInput
+              style={[styles.searchInput, { color: theme.colors.text }]}
+              placeholder="Search updates..."
+              placeholderTextColor={theme.colors.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus={true}
+            />
+            {searchQuery.length > 0 && (
+              <Pressable onPress={() => setSearchQuery('')} style={styles.clearButton}>
+                <Ionicons name="close-circle" size={20} color={theme.colors.textMuted} />
+              </Pressable>
+            )}
+          </View>
+        </View>
+      )}
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Welcome Section */}
+        <View style={styles.welcomeSection}>
+          <View style={styles.welcomeText}>
+            <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>Welcome back, Admin</Text>
+            <Text style={[styles.welcomeSubtitle, { color: theme.colors.textMuted }]}>Here's a quick overview of today</Text>
+          </View>
+          <Pressable style={styles.newUpdateButton} onPress={() => navigation.navigate('PostUpdate')}>
+            <Ionicons name="add" size={20} color="white" />
+            <Text style={styles.newUpdateText}>New Update</Text>
+          </Pressable>
+        </View>
+
+        {/* Time Period Filters */}
+        <View style={styles.filtersContainer}>
+          <Pressable 
+            style={[styles.filterPill, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, activeFilter === 'week' && { backgroundColor: theme.colors.accent, borderColor: 'transparent' }]} 
+            onPress={() => handleFilterChange('week')}
+          >
+            <Text style={[styles.filterPillText, { color: theme.colors.text }, activeFilter === 'week' && { color: '#fff' }]}>Week</Text>
+          </Pressable>
+          <Pressable 
+            style={[styles.filterPill, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, activeFilter === 'month' && { backgroundColor: theme.colors.accent, borderColor: 'transparent' }]} 
+            onPress={() => handleFilterChange('month')}
+          >
+            <Text style={[styles.filterPillText, { color: theme.colors.text }, activeFilter === 'month' && { color: '#fff' }]}>Month</Text>
+          </Pressable>
+          <Pressable 
+            style={[styles.filterPill, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, activeFilter === 'semester' && { backgroundColor: theme.colors.accent, borderColor: 'transparent' }]} 
+            onPress={() => handleFilterChange('semester')}
+          >
+            <Text style={[styles.filterPillText, { color: theme.colors.text }, activeFilter === 'semester' && { color: '#fff' }]}>Semester</Text>
+          </Pressable>
+        </View>
+
+        {/* Stats Grid */}
+        <View style={styles.statsGrid}>
+          <View style={[styles.statCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <View style={[styles.statIconContainer, { backgroundColor: isDarkMode ? '#1E3A8A' : '#E0F2FE' }]}>
+              <Ionicons name="bar-chart" size={24} color={isDarkMode ? '#60A5FA' : '#0284C7'} />
+            </View>
+            <Text style={[styles.statNumber, { color: isDarkMode ? '#60A5FA' : '#0284C7' }]}>{dashboardData.totalUpdates}</Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Total Updates</Text>
+          </View>
+          
+          <View style={[styles.statCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <View style={[styles.statIconContainer, { backgroundColor: isDarkMode ? '#92400E' : '#FEF3C7' }]}>
+              <Ionicons name="pin" size={24} color={isDarkMode ? '#FBBF24' : '#D97706'} />
+            </View>
+            <Text style={[styles.statNumber, { color: isDarkMode ? '#FBBF24' : '#D97706' }]}>{dashboardData.pinned}</Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Pinned</Text>
+          </View>
+          
+          <View style={[styles.statCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <View style={[styles.statIconContainer, { backgroundColor: isDarkMode ? '#991B1B' : '#FEE2E2' }]}>
+              <Ionicons name="alert-circle" size={24} color={isDarkMode ? '#F87171' : '#DC2626'} />
+            </View>
+            <Text style={[styles.statNumber, { color: isDarkMode ? '#F87171' : '#DC2626' }]}>{dashboardData.urgent}</Text>
+            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Urgent</Text>
+          </View>
+        </View>
+
+        {/* Recent Updates */}
+        <View style={[styles.recentUpdatesSection, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Recent Updates</Text>
+          {dashboardError && (
+            <Text style={{ color: '#DC2626', marginBottom: 8, fontSize: 12, fontWeight: '600' }}>{dashboardError}</Text>
+          )}
+          {isLoadingDashboard && (
+            <View style={{ gap: 8 }}>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <View key={`skeleton-${i}`} style={[styles.updateCard, styles.cardShadow]}>
+                  <Shimmer height={44} borderRadius={10} />
+                </View>
+              ))}
+            </View>
+          )}
+          
+          {!isLoadingDashboard && filteredUpdates.length === 0 && !dashboardError && (
+            <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+              <Ionicons name="document-text-outline" size={40} color="#CBD5E1" />
+            <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>No updates yet</Text>
+              <Pressable style={styles.emptyCtaBtn} onPress={() => navigation.navigate('PostUpdate')}>
+                <LinearGradient colors={[theme.colors.primary, '#1F2937']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.emptyCtaGradient}>
+                  <Ionicons name="add" size={16} color="#fff" />
+                  <Text style={styles.emptyCtaText}>Create first update</Text>
+                </LinearGradient>
+              </Pressable>
+            </View>
+          )}
+
+          {!isLoadingDashboard && filteredUpdates.map((update, index) => (
+            <Pressable key={index} style={[styles.updateCard, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={() => handleUpdatePress(update)}>
+              <View style={styles.updateContent}>
+                <Text style={[styles.updateTitle, { color: theme.colors.text }]}>{update.title}</Text>
+                <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
+              </View>
+              <View style={[styles.updateTag, { backgroundColor: getTagColor(update.tag) }]}>
+                <Text style={[styles.updateTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+      </ScrollView>
+      
+      {/* Preview Modal */}
+      <Modal visible={isPreviewOpen} transparent animationType="fade" onRequestClose={() => setIsPreviewOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.previewCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <View style={styles.previewHeader}>
+              <View style={styles.previewHeaderLeft}>
+                <View style={[styles.tagChip, { backgroundColor: getTagColor(previewUpdate?.tag || '') }]}> 
+                  <Ionicons name={previewUpdate?.tag?.toLowerCase() === 'announcement' ? 'megaphone' : previewUpdate?.tag?.toLowerCase() === 'academic' ? 'school' : previewUpdate?.tag?.toLowerCase() === 'event' ? 'calendar' : 'pricetag-outline'} size={14} color={getTagTextColor(previewUpdate?.tag || '')} />
+                  <Text style={[styles.tagChipText, { color: getTagTextColor(previewUpdate?.tag || '') }]}>{previewUpdate?.tag}</Text>
+                </View>
+                <Text style={[styles.previewMetaInline, { color: theme.colors.textMuted }]}>{timeAgo(previewUpdate?.date)}</Text>
+              </View>
+              <Pressable onPress={() => setIsPreviewOpen(false)} style={styles.previewCloseBtn}>
+                <Ionicons name="close" size={20} color={theme.colors.textMuted} />
+              </Pressable>
+            </View>
+            <View style={{ position: 'relative' }}>
+              {previewImages.length > 0 ? (
+                <View style={[styles.previewCarouselWrap, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                  <FlatList
+                    data={previewImages}
+                    keyExtractor={(uri, idx) => uri + idx}
+                    horizontal
+                    pagingEnabled
+                    showsHorizontalScrollIndicator={false}
+                    onMomentumScrollEnd={(e) => {
+                      const index = Math.round(e.nativeEvent.contentOffset.x / e.nativeEvent.layoutMeasurement.width);
+                      setActivePreviewIndex(index);
+                    }}
+                    renderItem={({ item }) => (
+                      <View style={styles.previewImagePressable}>
+                        <Image source={{ uri: item }} style={styles.previewImage} resizeMode="cover" onError={() => { /* swallow */ }} />
+                        <LinearGradient colors={["rgba(0,0,0,0.0)", "rgba(0,0,0,0.25)"]} style={styles.previewImageGradient} />
+                      </View>
+                    )}
+                  />
+                  {previewImages.length > 1 && (
+                    <View style={styles.carouselDots}>
+                      {previewImages.map((_, i) => (
+                        <View key={i} style={[styles.carouselDot, { backgroundColor: theme.colors.textMuted }, i === activePreviewIndex && { backgroundColor: '#ffffff', opacity: 1 }]} />
+                      ))}
+                    </View>
+                  )}
+                </View>
+              ) : previewUpdate?.image ? (
+                <View style={[styles.previewCarouselWrap, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                  <View style={styles.previewImagePressable}>
+                    <Image source={{ uri: (previewUpdate.image || '').trim() }} style={styles.previewImage} resizeMode="cover" onError={() => { /* swallow */ }} />
+                    <LinearGradient colors={["rgba(0,0,0,0.0)", "rgba(0,0,0,0.25)"]} style={styles.previewImageGradient} />
+                  </View>
+                </View>
+              ) : (
+                <View style={[styles.previewImagePlaceholder, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                  <Ionicons name="image-outline" size={28} color={theme.colors.textMuted} />
+                  <Text style={[styles.previewImagePlaceholderText, { color: theme.colors.textMuted }]}>No image</Text>
+                </View>
+              )}
+              {previewUpdate?.pinned && (
+                <View style={styles.pinnedRibbon}>
+                  <Ionicons name="pin" size={12} color="#fff" />
+                  <Text style={styles.pinnedRibbonText}>Pinned</Text>
+                </View>
+              )}
+          </View>
+            <View style={[styles.previewDivider, { backgroundColor: theme.colors.border }]} />
+            <View style={styles.previewBody}>
+              <Text style={[styles.previewUpdateTitle, { color: theme.colors.text }]}>{previewUpdate?.title}</Text>
+              <View style={styles.previewMetaRow}>
+                <View style={styles.previewMetaItem}>
+                  <Ionicons name="calendar-outline" size={14} color={theme.colors.textMuted} />
+                  <Text style={[styles.previewMetaText, { color: theme.colors.textMuted }]}>{previewUpdate?.date}</Text>
+                </View>
+              </View>
+              {!!previewUpdate?.description && (
+                <Text style={[styles.previewUpdateDescription, { color: theme.colors.text }]} numberOfLines={5}>
+                  {previewUpdate?.description}
+                </Text>
+              )}
+            </View>
+            <View style={styles.previewActions}>
+              <Pressable style={[styles.previewSecondaryBtn, styles.previewButtonShadow, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={() => setIsPreviewOpen(false)} android_ripple={{ color: '#00000012' }}>
+                <Text style={[styles.previewSecondaryText, { color: theme.colors.text }]}>Close</Text>
+              </Pressable>
+              <Pressable style={[styles.previewPrimaryBtn, styles.previewButtonShadow]} onPress={() => {
+                setIsPreviewOpen(false);
+                navigation.navigate('ManagePosts');
+              }} android_ripple={{ color: 'rgba(255,255,255,0.2)' }}>
+                <LinearGradient
+                  colors={["#2A2E37", "#1F2937"]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.previewPrimaryGradient}
+                >
+                  <Ionicons name="open-outline" size={16} color="#fff" />
+                  <Text style={styles.previewPrimaryText}>Open in Manage Posts</Text>
+                </LinearGradient>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Fullscreen viewer removed per request */}
+
+      <AdminBottomNavBar
+        activeTab="dashboard"
+        onDashboardPress={() => navigation.navigate('AdminDashboard')}
+        onChatPress={() => navigation.navigate('AdminAIChat')}
+        onAddPress={() => { /* future: open create flow */ }}
+        onCalendarPress={() => navigation.navigate('AdminCalendar')}
+        onSettingsPress={() => navigation.navigate('AdminSettings')}
+        onPostUpdatePress={() => {
+          navigation.navigate('PostUpdate');
+        }}
+        onManagePostPress={() => {
+          navigation.navigate('ManagePosts');
+        }}
+      />
+    </View>
+  );
+};
+
+// Helper functions for tag colors
+const getTagColor = (tag: string) => {
+  switch (tag.toLowerCase()) {
+    case 'announcement':
+      return '#E8F0FF';
+    case 'academic':
+      return '#F0F9FF';
+    case 'event':
+      return '#FEF3C7';
+    case 'service':
+      return '#ECFDF5';
+    case 'infrastructure':
+      return '#FEF2F2';
+    default:
+      return '#E8F0FF';
+  }
+};
+
+const getTagTextColor = (tag: string) => {
+  switch (tag.toLowerCase()) {
+    case 'announcement':
+      return '#1A3E7A';
+    case 'academic':
+      return '#0369A1';
+    case 'event':
+      return '#D97706';
+    case 'service':
+      return '#059669';
+    case 'infrastructure':
+      return '#DC2626';
+    default:
+      return '#1A3E7A';
+  }
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: themeStyle.colors.surfaceAlt,
+  },
+  header: {
+    backgroundColor: themeStyle.colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    marginBottom: 6,
+  },
+  headerLeft: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    color: '#fff',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  headerButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginLeft: 4,
+    position: 'relative', // Added for notification badge positioning
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    backgroundColor: '#FF4444',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'white',
+  },
+  notificationBadgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 20,
+  },
+  welcomeSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  welcomeText: {
+    flex: 1,
+  },
+  welcomeTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  welcomeSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  newUpdateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: themeStyle.colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    gap: 6,
+  },
+  newUpdateText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  filtersContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  filterPill: {
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  filterPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+  },
+  statCard: {
+    flex: 1,
+    borderWidth: 0,
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.09,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  statIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  statNumber: {
+    fontSize: 26,
+    fontWeight: '800',
+  },
+  statLabel: {
+    fontSize: 12,
+  },
+  recentUpdatesSection: {
+    borderWidth: 0,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  updateCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  cardShadow: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  updateContent: {
+    flex: 1,
+  },
+  updateTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  updateDate: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  updateTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#E8F0FF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  updateTagText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#1A3E7A',
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+  },
+  clearButton: {
+    padding: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  previewCard: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  previewHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  tagChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  previewMetaInline: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  previewTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#111',
+  },
+  previewCloseBtn: {
+    padding: 6,
+    borderRadius: 10,
+  },
+  previewImagePlaceholder: {
+    width: '100%',
+    height: 160,
+    borderRadius: 12,
+    marginBottom: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1,
+  },
+  previewImagePlaceholderText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  previewBody: {
+    marginBottom: 16,
+  },
+  previewDivider: {
+    height: 1,
+    marginVertical: 8,
+  },
+  previewUpdateTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  previewMetaRow: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+  previewMetaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  previewMetaText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  previewUpdateDescription: {
+    marginTop: 12,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  previewActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  previewSecondaryBtn: {
+    flex: 1,
+    borderWidth: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  previewSecondaryText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  previewPrimaryBtn: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    paddingVertical: 0,
+    borderRadius: 8,
+  },
+  previewPrimaryGradient: {
+    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  previewButtonShadow: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  previewPrimaryText: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: '700',
+  },
+  pinnedRibbon: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: themeStyle.colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  pinnedRibbonText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  previewCarouselWrap: {
+    width: '100%',
+    height: 180,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+  },
+  previewImagePressable: {
+    width: '100%',
+    height: '100%',
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  previewImageGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 60,
+  },
+  carouselDots: {
+    position: 'absolute',
+    bottom: 8,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  carouselDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    opacity: 0.6,
+  },
+  emptyCtaBtn: {
+    marginTop: 10,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  emptyCtaGradient: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  emptyCtaText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  // fullscreen viewer styles removed
+});
+
+export default AdminDashboard;

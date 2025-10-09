@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "DORSUCONNECT",
+    "slug": "DORSUCONNECT",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+  "supportsTablet": true,
+  "requireFullScreen": false,
+  "bundleIdentifier": "com.dorsuconnect.app"
+    },
+    "android": {
+      "package": "com.dorsuconnect.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1F2937"
+      },
+      "edgeToEdgeEnabled": false,
+      "statusBarColor": "#black",
+      "statusBarStyle": "transparent",
+      "softwareKeyboardLayoutMode": "pan",
+      "windowSoftInputMode": "adjustResize"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "f03ea52c-0053-4a88-a21c-9202c8560009"
+      }
+    }
+  }
+}

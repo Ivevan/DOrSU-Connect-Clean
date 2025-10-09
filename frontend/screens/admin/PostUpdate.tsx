@@ -24,6 +24,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as DocumentPicker from 'expo-document-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
+import PreviewModal from '../../modals/PreviewModal';
 
 type RootStackParamList = {
   AdminDashboard: undefined;
@@ -66,7 +67,6 @@ const PostUpdate: React.FC = () => {
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
   const [isPublishAlertOpen, setIsPublishAlertOpen] = useState(false);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
-  const [activePreviewIndex, setActivePreviewIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
 
   // Inline, dependency-free date data
@@ -565,69 +565,26 @@ const PostUpdate: React.FC = () => {
           </View>
         </Modal>
 
-        {/* Preview Modal (matching AdminDashboard) */}
-        <Modal visible={isPreviewModalOpen} transparent animationType="fade" onRequestClose={() => setIsPreviewModalOpen(false)}>
-          <View style={styles.modalOverlay}>
-            <View style={[styles.previewCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-              <View style={styles.previewHeader}>
-                <Text style={[styles.previewTitle, { color: theme.colors.text }]}>Post Preview</Text>
-                <TouchableOpacity onPress={() => setIsPreviewModalOpen(false)} style={styles.previewCloseBtn}>
-                  <Ionicons name="close" size={20} color={theme.colors.textMuted} />
-                </TouchableOpacity>
-              </View>
-              {/* Chips row */}
-              <View style={styles.previewChipsRow}>
-                {pinToTop && (
-                  <View style={styles.previewPinnedTag}>
-                    <Ionicons name="pin" size={10} color="#fff" />
-                    <Text style={styles.previewPinnedText}>Pinned</Text>
-                  </View>
-                )}
-                <View style={[styles.tagChip, { backgroundColor: getTagColor(category) }]}> 
-                  <Ionicons name={category.toLowerCase() === 'announcement' ? 'megaphone' : category.toLowerCase() === 'academic' ? 'school' : category.toLowerCase() === 'event' ? 'calendar' : 'pricetag-outline'} size={12} color={getTagTextColor(category)} />
-                  <Text style={[styles.tagChipText, { color: getTagTextColor(category) }]}>{category}</Text>
-                </View>
-                <Text style={styles.previewMetaInline}>{timeAgo(date)}</Text>
-              </View>
-
-              <View style={[styles.previewDivider, { backgroundColor: theme.colors.border }]} />
-
-              {/* Content card */}
-              <View style={[styles.previewSectionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                <Text style={[styles.previewUpdateTitle, { color: theme.colors.text }]}>{title || 'Your post title will appear here'}</Text>
-                <View style={styles.previewKpiRow}>
-                  <View style={[styles.previewKpi, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
-                    <Ionicons name="calendar-outline" size={14} color={theme.colors.textMuted} />
-                    <Text style={[styles.previewKpiText, { color: theme.colors.text }]}>{date || new Date().toLocaleDateString()}</Text>
-                  </View>
-                  {markAsUrgent && (
-                    <View style={[styles.previewKpi, { backgroundColor: '#FEF2F2', borderColor: '#FECACA' }]}>
-                      <Ionicons name="alert-circle" size={14} color="#DC2626" />
-                      <Text style={[styles.previewKpiText, { color: '#B91C1C' }]}>Urgent</Text>
-                    </View>
-                  )}
-                </View>
-                {!!description && (
-                  <Text style={[styles.previewPostDescription, { color: theme.colors.text }]} numberOfLines={8}>
-                    {description}
-                  </Text>
-                )}
-              </View>
-              <View style={styles.previewActions}>
-                <TouchableOpacity style={[styles.previewBackBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={() => setIsPreviewModalOpen(false)}>
-                  <Text style={[styles.previewBackText, { color: theme.colors.text }]}>Close</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.previewPublishBtn} onPress={() => {
-                  setIsPreviewModalOpen(false);
-                  handlePublish();
-                }}>
-                  <Ionicons name="checkmark" size={16} color="#fff" />
-                  <Text style={styles.previewPublishText}>Publish</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
+        {/* Preview Modal */}
+        <PreviewModal
+          visible={isPreviewModalOpen}
+          update={{
+            title: title || 'Your post title will appear here',
+            date: date || new Date().toLocaleDateString(),
+            tag: category,
+            description: description,
+            pinned: pinToTop
+          }}
+          onClose={() => setIsPreviewModalOpen(false)}
+          customAction={{
+            label: 'Publish',
+            icon: 'checkmark',
+            onPress: () => {
+              setIsPreviewModalOpen(false);
+              handlePublish();
+            }
+          }}
+        />
 
         {/* Description Field */}
         <View style={styles.inputContainer}>

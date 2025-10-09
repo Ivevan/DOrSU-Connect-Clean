@@ -19,12 +19,18 @@ interface PreviewModalProps {
   visible: boolean;
   update: PreviewUpdate | null;
   onClose: () => void;
+  customAction?: {
+    label: string;
+    onPress: () => void;
+    icon?: string;
+  };
 }
 
 const PreviewModal: React.FC<PreviewModalProps> = ({
   visible,
   update,
   onClose,
+  customAction,
 }) => {
   const { theme } = useTheme();
 
@@ -108,6 +114,12 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
             <Pressable style={[styles.previewSecondaryBtn, styles.previewButtonShadow, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={onClose} android_ripple={{ color: '#00000012' }}>
               <Text style={[styles.previewSecondaryText, { color: theme.colors.text }]}>Close</Text>
             </Pressable>
+            {customAction && (
+              <Pressable style={[styles.previewPrimaryBtn, styles.previewButtonShadow, { backgroundColor: theme.colors.accent }]} onPress={customAction.onPress} android_ripple={{ color: 'rgba(255,255,255,0.2)' }}>
+                {customAction.icon && <Ionicons name={customAction.icon as any} size={16} color="#fff" />}
+                <Text style={styles.previewPrimaryText}>{customAction.label}</Text>
+              </Pressable>
+            )}
           </View>
         </View>
       </View>
@@ -230,6 +242,21 @@ const styles = StyleSheet.create({
   previewSecondaryText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  previewPrimaryBtn: {
+    flex: 1,
+    borderWidth: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  previewPrimaryText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
   },
   previewButtonShadow: {
     shadowColor: '#000',

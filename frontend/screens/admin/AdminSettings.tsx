@@ -1,12 +1,13 @@
 import * as React from 'react';
 import { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Switch, Alert, Animated, Modal } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Switch, Alert, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/AdminBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { useTheme } from '../../contexts/ThemeContext'; 
+import { useTheme } from '../../contexts/ThemeContext';
+import LogoutModal from '../../modals/LogoutModal'; 
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -279,36 +280,12 @@ const AdminSettings = () => {
         onManagePostPress={() => navigation.navigate('ManagePosts')}
       />
 
-      <Modal visible={isLogoutOpen} transparent animationType="none" onRequestClose={closeLogout}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={styles.overlayTouch} activeOpacity={1} onPress={closeLogout} />
-          <Animated.View style={[styles.sheet, { 
-            backgroundColor: theme.colors.card,
-            transform: [{ translateY: sheetY }] 
-          }]}>
-            <View style={[styles.sheetHandle, { backgroundColor: theme.colors.border }]} />
-            <View style={styles.sheetHeaderRow}>
-              <View style={[styles.sheetIconCircle, { backgroundColor: theme.colors.chipBg }]}>
-                <Ionicons name="log-out-outline" size={20} color={theme.colors.accent} />
-              </View>
-              <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>Logout</Text>
-            </View>
-            <Text style={[styles.sheetMessage, { color: theme.colors.textMuted }]}>Are you sure you want to logout of DOrSU Connect?</Text>
-            <View style={styles.sheetActions}>
-              <TouchableOpacity style={[styles.actionBtn, styles.actionSecondary, { 
-                backgroundColor: theme.colors.surface, 
-                borderColor: theme.colors.border 
-              }]} onPress={closeLogout}>
-                <Text style={[styles.actionSecondaryText, { color: theme.colors.text }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.actionBtn, styles.actionPrimary, { backgroundColor: theme.colors.accent }]} onPress={confirmLogout}>
-                <Text style={[styles.actionPrimaryText, { color: theme.colors.surface }]}>Logout</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={{ height: insets.bottom }} />
-          </Animated.View>
-        </View>
-      </Modal>
+      <LogoutModal
+        visible={isLogoutOpen}
+        onClose={closeLogout}
+        onConfirm={confirmLogout}
+        sheetY={sheetY}
+      />
     </View>
   );
 };
@@ -366,87 +343,6 @@ const styles = StyleSheet.create({
   logoutText: {
     fontSize: 14,
     fontWeight: '600',
-  },
-  modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.35)'
-  },
-  overlayTouch: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  sheet: {
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  sheetHandle: {
-    alignSelf: 'center',
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    marginBottom: 8,
-  },
-  sheetHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  sheetIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sheetTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  sheetMessage: {
-    fontSize: 13,
-    marginBottom: 12,
-  },
-  sheetActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  actionBtn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  actionSecondary: {
-    borderWidth: 1,
-  },
-  actionSecondaryText: {
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  actionPrimary: {
-    // backgroundColor will be set dynamically
-  },
-  actionPrimaryText: {
-    fontWeight: '700',
-    fontSize: 13,
   },
   scrollContent: {
     paddingHorizontal: 12,

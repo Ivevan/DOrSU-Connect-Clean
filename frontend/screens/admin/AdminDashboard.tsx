@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Pressable, SafeAreaView, TextInput, Image, Modal, FlatList, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Pressable, SafeAreaView, TextInput, Image, FlatList, Animated, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AdminDataService from '../../services/AdminDataService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,6 +10,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { theme as themeStyle } from '../../theme';
 import { useTheme } from '../../contexts/ThemeContext';
 import { formatDate, timeAgo } from '../../utils/dateUtils';
+import PreviewModal from '../../modals/PreviewModal';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -37,15 +38,7 @@ const AdminDashboard = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [notificationCount, setNotificationCount] = useState(0);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [activePreviewIndex, setActivePreviewIndex] = useState(0);
   const [previewUpdate, setPreviewUpdate] = useState<{ title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean } | null>(null);
-  const previewImages = React.useMemo(() => {
-    const imgs = previewUpdate?.images || [];
-    return imgs
-      .filter(Boolean)
-      .map(u => (typeof u === 'string' ? u.trim() : ''))
-      .filter(u => u.length > 0 && (u.startsWith('http://') || u.startsWith('https://') || u.startsWith('content:')));
-  }, [previewUpdate]);
   type DashboardUpdate = { title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean };
   type DashboardData = { totalUpdates: number; pinned: number; urgent: number; recentUpdates: DashboardUpdate[] };
   const [dashboardData, setDashboardData] = useState<DashboardData>({
@@ -308,106 +301,11 @@ const AdminDashboard = () => {
       </ScrollView>
       
       {/* Preview Modal */}
-      <Modal visible={isPreviewOpen} transparent animationType="fade" onRequestClose={() => setIsPreviewOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.previewCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={styles.previewHeader}>
-              <View style={styles.previewHeaderLeft}>
-                <View style={[styles.tagChip, { backgroundColor: getTagColor(previewUpdate?.tag || '') }]}> 
-                  <Ionicons name={previewUpdate?.tag?.toLowerCase() === 'announcement' ? 'megaphone' : previewUpdate?.tag?.toLowerCase() === 'academic' ? 'school' : previewUpdate?.tag?.toLowerCase() === 'event' ? 'calendar' : 'pricetag-outline'} size={14} color={getTagTextColor(previewUpdate?.tag || '')} />
-                  <Text style={[styles.tagChipText, { color: getTagTextColor(previewUpdate?.tag || '') }]}>{previewUpdate?.tag}</Text>
-                </View>
-                <Text style={[styles.previewMetaInline, { color: theme.colors.textMuted }]}>{timeAgo(previewUpdate?.date)}</Text>
-              </View>
-              <Pressable onPress={() => setIsPreviewOpen(false)} style={styles.previewCloseBtn}>
-                <Ionicons name="close" size={20} color={theme.colors.textMuted} />
-              </Pressable>
-            </View>
-            <View style={{ position: 'relative' }}>
-              {previewImages.length > 0 ? (
-                <View style={[styles.previewCarouselWrap, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                  <FlatList
-                    data={previewImages}
-                    keyExtractor={(uri, idx) => uri + idx}
-                    horizontal
-                    pagingEnabled
-                    showsHorizontalScrollIndicator={false}
-                    onMomentumScrollEnd={(e) => {
-                      const index = Math.round(e.nativeEvent.contentOffset.x / e.nativeEvent.layoutMeasurement.width);
-                      setActivePreviewIndex(index);
-                    }}
-                    renderItem={({ item }) => (
-                      <View style={styles.previewImagePressable}>
-                        <Image source={{ uri: item }} style={styles.previewImage} resizeMode="cover" onError={() => { /* swallow */ }} />
-                        <LinearGradient colors={["rgba(0,0,0,0.0)", "rgba(0,0,0,0.25)"]} style={styles.previewImageGradient} />
-                      </View>
-                    )}
-                  />
-                  {previewImages.length > 1 && (
-                    <View style={styles.carouselDots}>
-                      {previewImages.map((_, i) => (
-                        <View key={i} style={[styles.carouselDot, { backgroundColor: theme.colors.textMuted }, i === activePreviewIndex && { backgroundColor: '#ffffff', opacity: 1 }]} />
-                      ))}
-                    </View>
-                  )}
-                </View>
-              ) : previewUpdate?.image ? (
-                <View style={[styles.previewCarouselWrap, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                  <View style={styles.previewImagePressable}>
-                    <Image source={{ uri: (previewUpdate.image || '').trim() }} style={styles.previewImage} resizeMode="cover" onError={() => { /* swallow */ }} />
-                    <LinearGradient colors={["rgba(0,0,0,0.0)", "rgba(0,0,0,0.25)"]} style={styles.previewImageGradient} />
-                  </View>
-                </View>
-              ) : (
-                <View style={[styles.previewImagePlaceholder, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                  <Ionicons name="image-outline" size={28} color={theme.colors.textMuted} />
-                  <Text style={[styles.previewImagePlaceholderText, { color: theme.colors.textMuted }]}>No image</Text>
-                </View>
-              )}
-              {previewUpdate?.pinned && (
-                <View style={styles.pinnedRibbon}>
-                  <Ionicons name="pin" size={12} color="#fff" />
-                  <Text style={styles.pinnedRibbonText}>Pinned</Text>
-                </View>
-              )}
-          </View>
-            <View style={[styles.previewDivider, { backgroundColor: theme.colors.border }]} />
-            <View style={styles.previewBody}>
-              <Text style={[styles.previewUpdateTitle, { color: theme.colors.text }]}>{previewUpdate?.title}</Text>
-              <View style={styles.previewMetaRow}>
-                <View style={styles.previewMetaItem}>
-                  <Ionicons name="calendar-outline" size={14} color={theme.colors.textMuted} />
-                  <Text style={[styles.previewMetaText, { color: theme.colors.textMuted }]}>{previewUpdate?.date}</Text>
-                </View>
-              </View>
-              {!!previewUpdate?.description && (
-                <Text style={[styles.previewUpdateDescription, { color: theme.colors.text }]} numberOfLines={5}>
-                  {previewUpdate?.description}
-                </Text>
-              )}
-            </View>
-            <View style={styles.previewActions}>
-              <Pressable style={[styles.previewSecondaryBtn, styles.previewButtonShadow, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={() => setIsPreviewOpen(false)} android_ripple={{ color: '#00000012' }}>
-                <Text style={[styles.previewSecondaryText, { color: theme.colors.text }]}>Close</Text>
-              </Pressable>
-              <Pressable style={[styles.previewPrimaryBtn, styles.previewButtonShadow]} onPress={() => {
-                setIsPreviewOpen(false);
-                navigation.navigate('ManagePosts');
-              }} android_ripple={{ color: 'rgba(255,255,255,0.2)' }}>
-                <LinearGradient
-                  colors={["#2A2E37", "#1F2937"]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.previewPrimaryGradient}
-                >
-                  <Ionicons name="open-outline" size={16} color="#fff" />
-                  <Text style={styles.previewPrimaryText}>Open in Manage Posts</Text>
-                </LinearGradient>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <PreviewModal
+        visible={isPreviewOpen}
+        update={previewUpdate}
+        onClose={() => setIsPreviewOpen(false)}
+      />
 
       {/* Fullscreen viewer removed per request */}
 

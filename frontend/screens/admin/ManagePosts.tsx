@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import AdminDataService from '../../services/AdminDataService';
 import {
@@ -12,11 +12,15 @@ import {
   Alert,
   Modal,
   Pressable,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ConfirmationModal from '../../modals/ConfirmationModal';
+import OptionsModal from '../../modals/OptionsModal';
+import InfoModal from '../../modals/InfoModal';
 
 type RootStackParamList = {
   AdminDashboard: undefined;
@@ -72,6 +76,10 @@ const ManagePosts: React.FC = () => {
   const [isDeleteSuccessOpen, setIsDeleteSuccessOpen] = useState(false);
   const [isRefreshSuccessOpen, setIsRefreshSuccessOpen] = useState(false);
   const [actionPost, setActionPost] = useState<Post | null>(null);
+  
+  // Animation values for confirmation modals
+  const pinSheetY = useRef(new Animated.Value(300)).current;
+  const deleteSheetY = useRef(new Animated.Value(300)).current;
   
   // Inline, dependency-free date data
   const months = useMemo(() => [
@@ -215,6 +223,15 @@ const ManagePosts: React.FC = () => {
     setActionPost(post);
     setIsPinConfirmOpen(true);
     setIsMoreOptionsOpen(false);
+    setTimeout(() => {
+      Animated.timing(pinSheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    }, 0);
+  };
+
+  const closePinConfirm = () => {
+    Animated.timing(pinSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
+      setIsPinConfirmOpen(false);
+    });
   };
 
   const openDeleteConfirm = (postId: string) => {
@@ -222,6 +239,15 @@ const ManagePosts: React.FC = () => {
     setActionPost(post);
     setIsDeleteConfirmOpen(true);
     setIsMoreOptionsOpen(false);
+    setTimeout(() => {
+      Animated.timing(deleteSheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    }, 0);
+  };
+
+  const closeDeleteConfirm = () => {
+    Animated.timing(deleteSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
+      setIsDeleteConfirmOpen(false);
+    });
   };
 
   const handleDeletePost = async (postId: string) => {
@@ -613,219 +639,133 @@ const ManagePosts: React.FC = () => {
       </ScrollView>
 
       {/* More Options Modal */}
-      <Modal visible={isMoreOptionsOpen} transparent animationType="fade" onRequestClose={closeMoreOptionsModal}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} activeOpacity={1} onPress={closeMoreOptionsModal} />
-          <View style={[styles.optionsCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={[styles.optionsTitle, { color: theme.colors.text }]}>Post Actions</Text>
-              <TouchableOpacity onPress={closeMoreOptionsModal} style={styles.modalCloseBtn}>
-                <Ionicons name="close" size={20} color={theme.colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-            {activePostForOptions && (
-              <View style={styles.optionsPostHeader}>
-                <Text style={[styles.optionsPostTitle, { color: theme.colors.text }]} numberOfLines={2}>{activePostForOptions.title}</Text>
-                <View style={styles.optionsChipsRow}>
-                  {activePostForOptions.isPinned && (
-                    <View style={styles.pinnedTag}><Text style={styles.pinnedText}>Pinned</Text></View>
-                  )}
-                  <View style={styles.categoryTag}><Text style={styles.categoryTagText}>{activePostForOptions.category}</Text></View>
-                </View>
-              </View>
-            )}
-
-            <View style={styles.optionsList}>
-              <Pressable 
-                style={({ pressed }) => [styles.optionsRowEnhanced, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, pressed && styles.optionsRowPressed]}
-                android_ripple={{ color: theme.colors.border }}
-                onPress={() => {
-                  if (activePostForOptions) {
-                    closeMoreOptionsModal();
-                    handleEditPost(activePostForOptions.id);
-                  }
-                }}
-              >
-                <View style={[styles.optionIconWrap, { backgroundColor: '#E8F0FF' }]}> 
-                  <Ionicons name="pencil" size={18} color="#1A3E7A" />
-                </View>
-                <View style={styles.optionTextWrap}>
-                  <Text style={[styles.optionsRowTitle, { color: theme.colors.text }]}>Edit</Text>
-                  <Text style={[styles.optionsRowSub, { color: theme.colors.textMuted }]}>Open full editor</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
-              </Pressable>
-
-              <Pressable 
-                style={({ pressed }) => [styles.optionsRowEnhanced, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, pressed && styles.optionsRowPressed]}
-                android_ripple={{ color: theme.colors.border }}
-                onPress={() => {
-                  if (activePostForOptions) {
-                    openPinConfirm(activePostForOptions.id);
-                  }
-                }}
-              >
-                <View style={[styles.optionIconWrap, { backgroundColor: '#E8F0FF' }]}> 
-                  <Ionicons name="pin" size={18} color="#1A3E7A" />
-                </View>
-                <View style={styles.optionTextWrap}>
-                  <Text style={[styles.optionsRowTitle, { color: theme.colors.text }]}>{activePostForOptions?.isPinned ? 'Unpin' : 'Pin'}</Text>
-                  <Text style={[styles.optionsRowSub, { color: theme.colors.textMuted }]}>{activePostForOptions?.isPinned ? 'Remove from top' : 'Keep at the top'}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
-              </Pressable>
-
-              <Pressable 
-                style={({ pressed }) => [styles.optionsRowEnhancedDestructive, pressed && styles.optionsRowPressedDestructive]}
-                android_ripple={{ color: '#FECACA' }}
-                onPress={() => {
-                  if (activePostForOptions) {
-                    openDeleteConfirm(activePostForOptions.id);
-                  }
-                }}
-              >
-                <View style={[styles.optionIconWrap, { backgroundColor: '#FEE2E2' }]}> 
-                  <Ionicons name="trash" size={18} color="#DC2626" />
-                </View>
-                <View style={styles.optionTextWrap}>
-                  <Text style={[styles.optionsRowTitle, { color: '#DC2626' }]}>Delete</Text>
-                  <Text style={[styles.optionsRowSub, { color: '#DC2626' }]}>This action cannot be undone</Text>
-                </View>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <OptionsModal
+        visible={isMoreOptionsOpen}
+        onClose={closeMoreOptionsModal}
+        title="Post Actions"
+        subtitle={activePostForOptions ? activePostForOptions.title : ''}
+        options={[
+          {
+            id: 'edit',
+            label: 'Edit Post',
+            icon: 'create-outline',
+            iconColor: '#059669'
+          },
+          {
+            id: 'pin',
+            label: activePostForOptions?.isPinned ? 'Unpin Post' : 'Pin Post',
+            icon: activePostForOptions?.isPinned ? 'pin' : 'pin-outline',
+            iconColor: '#1A3E7A'
+          },
+          {
+            id: 'delete',
+            label: 'Delete Post',
+            icon: 'trash',
+            iconColor: '#DC2626',
+            destructive: true
+          }
+        ]}
+        onOptionSelect={(optionId) => {
+          if (activePostForOptions) {
+            switch (optionId) {
+              case 'edit':
+                closeMoreOptionsModal();
+                handleEditPost(activePostForOptions.id);
+                break;
+              case 'pin':
+                openPinConfirm(activePostForOptions.id);
+                break;
+              case 'delete':
+                openDeleteConfirm(activePostForOptions.id);
+                break;
+            }
+          }
+        }}
+      />
 
       {/* Pin Confirm Modal */}
-      <Modal visible={isPinConfirmOpen} transparent animationType="fade" onRequestClose={() => setIsPinConfirmOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} activeOpacity={1} onPress={() => setIsPinConfirmOpen(false)} />
-          <View style={[styles.confirmCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={styles.confirmIconWrapInfo}>
-              <Ionicons name={actionPost?.isPinned ? 'pin' : 'pin-outline'} size={22} color="#1D4ED8" />
-            </View>
-            <Text style={[styles.confirmTitle, { color: theme.colors.text }]}>{actionPost?.isPinned ? 'Unpin post?' : 'Pin post?'}</Text>
-            <Text style={[styles.confirmSubtitle, { color: theme.colors.textMuted }]} numberOfLines={2}>
-              {actionPost?.title}
-            </Text>
-            <View style={styles.confirmActionsRow}>
-              <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={() => setIsPinConfirmOpen(false)}>
-                <Text style={[styles.cancelText, { color: theme.colors.text }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.primaryBtn, { backgroundColor: theme.colors.primary }]}
-                onPress={() => {
-                  if (actionPost) {
-                    handleTogglePin(actionPost.id);
-                  }
-                  setIsPinConfirmOpen(false);
-                }}
-              >
-                <Text style={styles.primaryText}>{actionPost?.isPinned ? 'Unpin' : 'Pin'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <ConfirmationModal
+        visible={isPinConfirmOpen}
+        onClose={closePinConfirm}
+        onConfirm={() => {
+          if (actionPost) {
+            handleTogglePin(actionPost.id);
+          }
+          closePinConfirm();
+        }}
+        title={actionPost?.isPinned ? 'Unpin post?' : 'Pin post?'}
+        message={actionPost?.title || ''}
+        confirmText={actionPost?.isPinned ? 'Unpin' : 'Pin'}
+        icon={actionPost?.isPinned ? 'pin' : 'pin-outline'}
+        iconColor="#1D4ED8"
+        sheetY={pinSheetY}
+      />
 
       {/* Delete Confirm Modal */}
-      <Modal visible={isDeleteConfirmOpen} transparent animationType="fade" onRequestClose={() => setIsDeleteConfirmOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} activeOpacity={1} onPress={() => setIsDeleteConfirmOpen(false)} />
-          <View style={[styles.confirmCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={styles.confirmIconWrapDanger}>
-              <Ionicons name="trash" size={22} color="#DC2626" />
-            </View>
-            <Text style={[styles.confirmTitle, { color: theme.colors.text }]}>Delete post?</Text>
-            <Text style={[styles.confirmSubtitle, { color: theme.colors.textMuted }]} numberOfLines={2}>{actionPost?.title}</Text>
-            <Text style={[styles.confirmHint, { color: '#DC2626' }]}>This action cannot be undone.</Text>
-            <View style={styles.confirmActionsRow}>
-              <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={() => setIsDeleteConfirmOpen(false)}>
-                <Text style={[styles.cancelText, { color: theme.colors.text }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.dangerBtn}
-                onPress={() => {
-                  if (actionPost) {
-                    // reuse existing handler
-                    setIsDeleteConfirmOpen(false);
-                    // Perform deletion and then show success modal
-                    setTimeout(() => {
-                      handleDeletePost(actionPost.id);
-                      setIsDeleteSuccessOpen(true);
-                    }, 50);
-                  }
-                }}
-              >
-                <Text style={styles.dangerText}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <ConfirmationModal
+        visible={isDeleteConfirmOpen}
+        onClose={closeDeleteConfirm}
+        onConfirm={() => {
+          if (actionPost) {
+            closeDeleteConfirm();
+            setTimeout(() => {
+              handleDeletePost(actionPost.id);
+              setIsDeleteSuccessOpen(true);
+            }, 50);
+          }
+        }}
+        title="Delete post?"
+        message={actionPost?.title || ''}
+        confirmText="Delete"
+        icon="trash"
+        iconColor="#DC2626"
+        confirmButtonColor="#DC2626"
+        sheetY={deleteSheetY}
+      />
 
       {/* Delete Success Modal */}
-      <Modal visible={isDeleteSuccessOpen} transparent animationType="fade" onRequestClose={() => setIsDeleteSuccessOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} activeOpacity={1} onPress={() => setIsDeleteSuccessOpen(false)} />
-          <View style={[styles.successCardEnhanced, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={styles.successIconWrapEnhanced}>
-              <View style={styles.successIconInner}>
-                <Ionicons name="checkmark" size={24} color="#fff" />
-              </View>
-              <View style={styles.successIconRing} />
-            </View>
-            <Text style={[styles.successTitleEnhanced, { color: theme.colors.text }]}>Successfully Deleted!</Text>
-            <Text style={[styles.successSubtitleEnhanced, { color: theme.colors.textMuted }]}>The post has been removed from your posts list.</Text>
-            <View style={styles.successDetails}>
-              <View style={styles.successDetailRow}>
-                <Ionicons name="time-outline" size={14} color={theme.colors.textMuted} />
-                <Text style={[styles.successDetailText, { color: theme.colors.textMuted }]}>Action completed at {new Date().toLocaleTimeString()}</Text>
-              </View>
-              <View style={styles.successDetailRow}>
-                <Ionicons name="information-circle-outline" size={14} color={theme.colors.textMuted} />
-                <Text style={[styles.successDetailText, { color: theme.colors.textMuted }]}>You can create a new post anytime</Text>
-              </View>
-            </View>
-            <TouchableOpacity style={styles.successBtnEnhanced} onPress={() => setIsDeleteSuccessOpen(false)}>
-              <Ionicons name="checkmark" size={16} color="#fff" />
-              <Text style={styles.successBtnTextEnhanced}>Got it!</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <InfoModal
+        visible={isDeleteSuccessOpen}
+        onClose={() => setIsDeleteSuccessOpen(false)}
+        title="Successfully Deleted!"
+        subtitle="The post has been removed from your posts list."
+        cards={[
+          {
+            icon: 'time-outline',
+            iconColor: '#059669',
+            iconBgColor: '#ECFDF5',
+            text: `Action completed at ${new Date().toLocaleTimeString()}`
+          },
+          {
+            icon: 'information-circle-outline',
+            iconColor: '#059669',
+            iconBgColor: '#ECFDF5',
+            text: 'You can create a new post anytime'
+          }
+        ]}
+      />
 
       {/* Refresh Success Modal */}
-      <Modal visible={isRefreshSuccessOpen} transparent animationType="fade" onRequestClose={() => setIsRefreshSuccessOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} activeOpacity={1} onPress={() => setIsRefreshSuccessOpen(false)} />
-          <View style={[styles.refreshSuccessCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={styles.refreshIconWrap}>
-              <View style={styles.refreshIconInner}>
-                <Ionicons name="refresh" size={24} color="#fff" />
-              </View>
-              <View style={styles.refreshIconRing} />
-            </View>
-            <Text style={[styles.refreshTitle, { color: theme.colors.text }]}>Posts Refreshed!</Text>
-            <Text style={[styles.refreshSubtitle, { color: theme.colors.textMuted }]}>Your posts list has been updated successfully.</Text>
-            <View style={styles.refreshDetails}>
-              <View style={styles.refreshDetailRow}>
-                <Ionicons name="time-outline" size={14} color={theme.colors.textMuted} />
-                <Text style={[styles.refreshDetailText, { color: theme.colors.textMuted }]}>Refreshed at {new Date().toLocaleTimeString()}</Text>
-              </View>
-              <View style={styles.refreshDetailRow}>
-                <Ionicons name="checkmark-circle-outline" size={14} color={theme.colors.textMuted} />
-                <Text style={[styles.refreshDetailText, { color: theme.colors.textMuted }]}>All posts are now up to date</Text>
-              </View>
-            </View>
-            <TouchableOpacity style={styles.refreshBtn} onPress={() => setIsRefreshSuccessOpen(false)}>
-              <Ionicons name="checkmark" size={16} color="#fff" />
-              <Text style={styles.refreshBtnText}>Perfect!</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <InfoModal
+        visible={isRefreshSuccessOpen}
+        onClose={() => setIsRefreshSuccessOpen(false)}
+        title="Posts Refreshed!"
+        subtitle="Your posts list has been updated successfully."
+        cards={[
+          {
+            icon: 'time-outline',
+            iconColor: '#059669',
+            iconBgColor: '#ECFDF5',
+            text: `Refreshed at ${new Date().toLocaleTimeString()}`
+          },
+          {
+            icon: 'checkmark-circle-outline',
+            iconColor: '#059669',
+            iconBgColor: '#ECFDF5',
+            text: 'All posts are now up to date'
+          }
+        ]}
+      />
       {/* Removed Edit Modal (redundant) */}
       {/* Category Menu Modal */}
       <Modal visible={isCategoryOpen} transparent animationType="fade" onRequestClose={closeCategoryMenu}>

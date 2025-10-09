@@ -1,11 +1,12 @@
 import React from 'react';
-import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Modal, Pressable } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, TextInput, ScrollView, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/AdminBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
+import InfoModal from '../../modals/InfoModal';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -65,43 +66,33 @@ const AdminAIChat = () => {
         </View>
       </View>
       {/* Info Modal */}
-      <Modal visible={isInfoOpen} transparent animationType="fade" onRequestClose={() => setIsInfoOpen(false)}>
-        <View style={styles.infoModalOverlay}>
-          <View style={[styles.infoCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={styles.infoHeader}>
-              <Text style={[styles.infoTitle, { color: theme.colors.text }]}>About DOrSU AI</Text>
-              <Pressable onPress={() => setIsInfoOpen(false)} style={styles.infoCloseBtn} accessibilityLabel="Close info">
-                <Ionicons name="close" size={20} color={theme.colors.textMuted} />
-              </Pressable>
-            </View>
-            <Text style={[styles.infoBodyText, { color: theme.colors.textMuted }]}>DOrSU AI can help you:</Text>
-            <View style={styles.infoCards}>
-              <View style={[styles.infoCardBox, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
-                <View style={[styles.infoCardIconWrap, { backgroundColor: '#E0F2FE', borderColor: '#BAE6FD' }]}>
-                  <Ionicons name="megaphone" size={18} color="#0284C7" />
-                </View>
-                <Text style={[styles.infoCardText, { color: theme.colors.text }]}>Draft announcements and events faster</Text>
-              </View>
-              <View style={[styles.infoCardBox, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
-                <View style={[styles.infoCardIconWrap, { backgroundColor: '#E0E7FF', borderColor: '#C7D2FE' }]}>
-                  <Ionicons name="document-text" size={18} color="#4F46E5" />
-                </View>
-                <Text style={[styles.infoCardText, { color: theme.colors.text }]}>Summarize long updates into key points</Text>
-              </View>
-              <View style={[styles.infoCardBox, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
-                <View style={[styles.infoCardIconWrap, { backgroundColor: '#ECFDF5', borderColor: '#BBF7D0' }]}>
-                  <Ionicons name="help-circle" size={18} color="#059669" />
-                </View>
-                <Text style={[styles.infoCardText, { color: theme.colors.text }]}>Answer common student questions</Text>
-              </View>
-            </View>
-            <View style={[styles.infoNote, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
-              <Ionicons name="shield-checkmark-outline" size={16} color={theme.colors.textMuted} />
-              <Text style={[styles.infoNoteText, { color: theme.colors.textMuted }]}>Avoid sharing sensitive or personal data.</Text>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <InfoModal
+        visible={isInfoOpen}
+        onClose={() => setIsInfoOpen(false)}
+        title="About DOrSU AI"
+        subtitle="DOrSU AI can help you:"
+        cards={[
+          {
+            icon: 'megaphone',
+            iconColor: '#0284C7',
+            iconBgColor: '#E0F2FE',
+            text: 'Draft announcements and events faster'
+          },
+          {
+            icon: 'document-text',
+            iconColor: '#4F46E5',
+            iconBgColor: '#E0E7FF',
+            text: 'Summarize long updates into key points'
+          },
+          {
+            icon: 'help-circle',
+            iconColor: '#059669',
+            iconBgColor: '#ECFDF5',
+            text: 'Answer common student questions'
+          }
+        ]}
+        description="Avoid sharing sensitive or personal data."
+      />
       {/* Content */}
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         <View style={styles.centerIconContainer}>

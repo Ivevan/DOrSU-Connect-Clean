@@ -37,9 +37,6 @@
       "eas": {
         "projectId": "f03ea52c-0053-4a88-a21c-9202c8560009"
       }
-    },
-    "plugins": [
-      "react-native-gesture-handler"
-    ]
+    }
   }
 }

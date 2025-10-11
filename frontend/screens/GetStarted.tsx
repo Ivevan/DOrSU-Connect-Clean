@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Platform, StatusBar } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Platform, StatusBar, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import React from 'react';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
@@ -35,7 +35,7 @@ const GetStarted = () => {
       <View style={styles.content}>
         {/* Logo Section */}
         <View style={styles.topSection}>
-          <View style={styles.logoPlaceholder} />
+          <Image source={require('../../assets/DOrSU.png')} style={styles.logoImage} />
           <Text style={styles.title}>DOrSU CONNECT</Text>
           <Text style={styles.subtitle}>Your Academic AI Assistant</Text>
           <Text style={styles.aiText}>AI Powered</Text>
@@ -98,12 +98,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: -height * 0.1, // Adjust for better centering
   },
-  logoPlaceholder: {
+  logoImage: {
     width: width * 0.35,
     height: width * 0.35,
-    backgroundColor: theme.colors.border,
     borderRadius: theme.radii.md,
     marginBottom: theme.spacing(2.5),
+    resizeMode: 'contain',
   },
   title: {
     fontSize: 28,

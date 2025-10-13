@@ -31,11 +31,9 @@ const SplashScreen = () => {
   // Animation values
   const logoScale = useRef(new Animated.Value(0)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
-  const titleOpacity = useRef(new Animated.Value(0)).current;
-  const titleTranslateY = useRef(new Animated.Value(30)).current;
-  const subtitleOpacity = useRef(new Animated.Value(0)).current;
-  const subtitleTranslateY = useRef(new Animated.Value(20)).current;
   const backgroundOpacity = useRef(new Animated.Value(0)).current;
+  const loadingBarWidth = useRef(new Animated.Value(0)).current;
+  const loadingOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     // Start the animation sequence
@@ -52,56 +50,37 @@ const SplashScreen = () => {
         Animated.timing(logoOpacity, {
           toValue: 1,
           duration: 800,
-          delay: 200,
+          delay: 300,
           useNativeDriver: true,
         }),
         Animated.spring(logoScale, {
           toValue: 1,
-          delay: 200,
+          delay: 300,
           tension: 50,
           friction: 8,
           useNativeDriver: true,
         }),
-      ]).start();
+      ]).start(() => {
+        // Start loading bar animation after logo appears
+        Animated.parallel([
+          Animated.timing(loadingOpacity, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+          Animated.timing(loadingBarWidth, {
+            toValue: 1,
+            duration: 2000,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+          }),
+        ]).start();
+      });
 
-      // Title animation
-      Animated.parallel([
-        Animated.timing(titleOpacity, {
-          toValue: 1,
-          duration: 600,
-          delay: 600,
-          useNativeDriver: true,
-        }),
-        Animated.timing(titleTranslateY, {
-          toValue: 0,
-          duration: 600,
-          delay: 600,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]).start();
-
-      // Subtitle animation
-      Animated.parallel([
-        Animated.timing(subtitleOpacity, {
-          toValue: 1,
-          duration: 500,
-          delay: 800,
-          useNativeDriver: true,
-        }),
-        Animated.timing(subtitleTranslateY, {
-          toValue: 0,
-          duration: 500,
-          delay: 800,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]).start();
-
-      // Navigate to GetStarted after animation completes
+      // Navigate to GetStarted after loading completes
       setTimeout(() => {
         navigation.replace('GetStarted');
-      }, 2500);
+      }, 3500);
     };
 
     startAnimations();
@@ -151,31 +130,28 @@ const SplashScreen = () => {
           </Animated.View>
         </View>
 
-        {/* Title */}
+        {/* Loading Bar */}
         <Animated.View
           style={[
-            styles.titleContainer,
+            styles.loadingContainer,
             {
-              opacity: titleOpacity,
-              transform: [{ translateY: titleTranslateY }],
+              opacity: loadingOpacity,
             },
           ]}
         >
-          <Text style={styles.title}>DOrSU CONNECT</Text>
-        </Animated.View>
-
-        {/* Subtitle */}
-        <Animated.View
-          style={[
-            styles.subtitleContainer,
-            {
-              opacity: subtitleOpacity,
-              transform: [{ translateY: subtitleTranslateY }],
-            },
-          ]}
-        >
-          <Text style={styles.subtitle}>Your Academic AI Assistant</Text>
-          <Text style={styles.aiText}>AI Powered • Connected • Smart</Text>
+          <View style={styles.loadingBarBackground}>
+            <Animated.View
+              style={[
+                styles.loadingBar,
+                {
+                  width: loadingBarWidth.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0%', '100%'],
+                  }),
+                },
+              ]}
+            />
+          </View>
         </Animated.View>
 
       </View>
@@ -219,37 +195,21 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  titleContainer: {
+  loadingContainer: {
     alignItems: 'center',
-    marginBottom: theme.spacing(4),
+    marginTop: theme.spacing(6),
   },
-  title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 2,
-    textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
+  loadingBarBackground: {
+    width: width * 0.6,
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 2,
+    overflow: 'hidden',
   },
-  subtitleContainer: {
-    alignItems: 'center',
-  },
-  subtitle: {
-    fontSize: 18,
-    color: '#E5E7EB',
-    textAlign: 'center',
-    marginBottom: theme.spacing(1),
-    fontWeight: '500',
-    letterSpacing: 0.5,
-  },
-  aiText: {
-    fontSize: 14,
-    color: '#9CA3AF',
-    textAlign: 'center',
-    fontWeight: '400',
-    letterSpacing: 1,
+  loadingBar: {
+    height: '100%',
+    backgroundColor: '#2196F3',
+    borderRadius: 2,
   },
 });
 

@@ -448,7 +448,9 @@ const SignIn = () => {
                 accessibilityLabel="Username or Email"
               />
             </Animated.View>
-            {errors.email ? <Text style={styles.errorText}>{errors.email}</Text> : null}
+            <View style={styles.errorContainer}>
+              {errors.email ? <Text style={styles.errorText}>{errors.email}</Text> : null}
+            </View>
             
             <Animated.View style={[
               styles.inputWrapper,
@@ -508,7 +510,9 @@ const SignIn = () => {
                 />
               </TouchableOpacity>
             </Animated.View>
-            {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
+            <View style={styles.errorContainer}>
+              {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
+            </View>
             <TouchableOpacity 
               style={styles.forgotPassword}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -777,8 +781,8 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing(1),
   },
   logoImage: {
-    width: width * 0.14,
-    height: width * 0.14,
+    width: width * 0.28,
+    height: width * 0.28,
     marginBottom: theme.spacing(2),
     resizeMode: 'contain',
     shadowColor: '#1F2937',
@@ -788,18 +792,24 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   welcomeText: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 32,
+    fontWeight: '800',
     color: theme.colors.text,
-    marginBottom: 4,
+    marginBottom: 6,
     textAlign: 'center',
-    letterSpacing: 0.5,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    textShadowColor: 'rgba(0, 0, 0, 0.05)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   signInText: {
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: '500',
     color: theme.colors.textMuted,
     textAlign: 'center',
     letterSpacing: 0.3,
+    marginBottom: theme.spacing(1),
   },
   formContainer: {
     width: '100%',
@@ -807,18 +817,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   bottomSection: {
-    marginTop: theme.spacing(3),
-    paddingBottom: theme.spacing(2),
+    marginTop: theme.spacing(2),
+    paddingBottom: theme.spacing(1),
   },
   inputContainer: {
-    marginBottom: theme.spacing(3),
+    marginBottom: theme.spacing(2),
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radii.md,
-    marginBottom: theme.spacing(2),
+    marginBottom: theme.spacing(1.5),
     paddingHorizontal: theme.spacing(2),
     ...theme.shadow1,
     borderWidth: 1,
@@ -838,12 +848,18 @@ const styles = StyleSheet.create({
     padding: theme.spacing(1),
     marginLeft: theme.spacing(1),
   },
+  errorContainer: {
+    height: 20, // Reduced height for tighter spacing
+    justifyContent: 'center',
+    marginTop: 1,
+    marginBottom: theme.spacing(0.5),
+  },
   errorText: {
     color: '#EF4444',
-    fontSize: 14,
-    marginTop: 4,
-    marginBottom: theme.spacing(1),
+    fontSize: 12,
+    fontWeight: '500',
     marginLeft: theme.spacing(1),
+    lineHeight: 14,
   },
   generalErrorContainer: {
     flexDirection: 'row',
@@ -863,6 +879,7 @@ const styles = StyleSheet.create({
   },
   forgotPassword: {
     alignSelf: 'flex-end',
+    marginTop: theme.spacing(1),
   },
   forgotPasswordText: {
     color: '#2196F3',

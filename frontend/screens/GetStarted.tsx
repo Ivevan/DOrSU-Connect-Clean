@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Platform, StatusBar, Image, Animated } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Platform, StatusBar, Image, Animated, Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import React, { useRef } from 'react';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
@@ -35,6 +35,42 @@ const GetStarted = () => {
   const techFloat1 = useRef(new Animated.Value(0)).current;
   const techFloat2 = useRef(new Animated.Value(0)).current;
   const techFloat3 = useRef(new Animated.Value(0)).current;
+  
+  // Screen transition animations
+  const screenOpacity = useRef(new Animated.Value(0)).current;
+  const contentTranslateY = useRef(new Animated.Value(50)).current;
+  const backgroundOpacity = useRef(new Animated.Value(0)).current;
+
+  // Start screen transition animation on mount
+  React.useEffect(() => {
+    const startScreenTransition = () => {
+      // Background fade in
+      Animated.timing(backgroundOpacity, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }).start();
+
+      // Screen content fade in and slide up
+      Animated.parallel([
+        Animated.timing(screenOpacity, {
+          toValue: 1,
+          duration: 1000,
+          delay: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(contentTranslateY, {
+          toValue: 0,
+          duration: 1000,
+          delay: 200,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    };
+
+    startScreenTransition();
+  }, []);
 
   // Start floating animation on mount
   React.useEffect(() => {
@@ -216,15 +252,17 @@ const GetStarted = () => {
       />
       
       {/* Gradient Background */}
-      <LinearGradient
-        colors={['#F8FAFC', '#F1F5F9', '#E2E8F0']}
-        style={styles.gradientBackground}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
+      <Animated.View style={[styles.gradientBackgroundContainer, { opacity: backgroundOpacity }]}>
+        <LinearGradient
+          colors={['#F8FAFC', '#F1F5F9', '#E2E8F0']}
+          style={styles.gradientBackground}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+        />
+      </Animated.View>
       
       {/* Tech Overlay Pattern */}
-      <View style={styles.techOverlay}>
+      <Animated.View style={[styles.techOverlay, { opacity: backgroundOpacity }]}>
         {/* Circuit-like lines */}
         <View style={styles.techLine1} />
         <View style={styles.techLine2} />
@@ -286,9 +324,15 @@ const GetStarted = () => {
             }]
           }
         ]} />
-      </View>
+      </Animated.View>
       
-      <View style={styles.content}>
+      <Animated.View style={[
+        styles.content,
+        {
+          opacity: screenOpacity,
+          transform: [{ translateY: contentTranslateY }],
+        },
+      ]}>
         {/* Logo Section */}
         <View style={styles.topSection}>
           <TouchableOpacity 
@@ -483,7 +527,7 @@ const GetStarted = () => {
             Empowering Minds • Connecting Futures
           </Text>
         </View>
-      </View>
+      </Animated.View>
     </View>
   );
 };
@@ -493,12 +537,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.surfaceAlt,
   },
-  gradientBackground: {
+  gradientBackgroundContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
+  },
+  gradientBackground: {
+    flex: 1,
   },
   techOverlay: {
     position: 'absolute',

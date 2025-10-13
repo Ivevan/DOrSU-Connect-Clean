@@ -4,6 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useTheme } from '../contexts/ThemeContext';
 
+import SplashScreen from '../screens/SplashScreen';
 import GetStarted from '../screens/GetStarted';
 import SignIn from '../screens/SignIn';
 import CreateAccount from '../screens/CreateAccount';
@@ -43,9 +44,13 @@ const AppNavigator = () => {
   return (
     <NavigationContainer>
       <Stack.Navigator 
-        initialRouteName="GetStarted"
+        initialRouteName="SplashScreen"
         screenOptions={screenOptions}
       >
+        <Stack.Screen 
+          name="SplashScreen" 
+          component={SplashScreen}
+        />
         <Stack.Screen 
           name="GetStarted" 
           component={GetStarted}

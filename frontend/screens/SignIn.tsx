@@ -40,6 +40,10 @@ const SignIn = () => {
   const emailFocus = useRef(new Animated.Value(0)).current;
   const passwordFocus = useRef(new Animated.Value(0)).current;
   const loadingRotation = useRef(new Animated.Value(0)).current;
+  
+  // Vibration animation states
+  const emailVibration = useRef(new Animated.Value(0)).current;
+  const passwordVibration = useRef(new Animated.Value(0)).current;
   const techFloat1 = useRef(new Animated.Value(0)).current;
   const techFloat2 = useRef(new Animated.Value(0)).current;
   const techFloat3 = useRef(new Animated.Value(0)).current;
@@ -208,6 +212,43 @@ const SignIn = () => {
     ]).start(callback);
   };
 
+  // Function to trigger vibration animation
+  const triggerVibrationAnimation = (field: 'email' | 'password') => {
+    const vibrationRef = field === 'email' ? emailVibration : passwordVibration;
+    
+    // Phone vibration
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    
+    // Container vibration animation
+    Animated.sequence([
+      Animated.timing(vibrationRef, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(vibrationRef, {
+        toValue: -1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(vibrationRef, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(vibrationRef, {
+        toValue: -1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(vibrationRef, {
+        toValue: 0,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
   // Function to handle sign in button press
   const handleSignIn = async () => {
     // Clear previous errors
@@ -220,17 +261,21 @@ const SignIn = () => {
     if (!email.trim()) {
       newErrors.email = 'Email is required';
       hasErrors = true;
+      triggerVibrationAnimation('email');
     } else if (!/\S+@\S+\.\S+/.test(email)) {
       newErrors.email = 'Please enter a valid email';
       hasErrors = true;
+      triggerVibrationAnimation('email');
     }
     
     if (!password.trim()) {
       newErrors.password = 'Password is required';
       hasErrors = true;
+      triggerVibrationAnimation('password');
     } else if (password.length < 6) {
       newErrors.password = 'Password must be at least 6 characters';
       hasErrors = true;
+      triggerVibrationAnimation('password');
     }
     
     if (hasErrors) {
@@ -256,9 +301,26 @@ const SignIn = () => {
     setTimeout(() => {
       setIsLoading(false);
       loadingRotation.stopAnimation();
-      // For demo purposes, always navigate to SchoolUpdates
-      // In real app, handle authentication response here
-      navigation.navigate('SchoolUpdates');
+      
+      // Simulate authentication failure for demo
+      // In real app, check actual authentication response here
+      const isAuthenticated = Math.random() > 0.3; // 70% success rate for demo
+      
+      if (!isAuthenticated) {
+        // Wrong credentials - trigger vibration and show error
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setErrors(prev => ({ 
+          ...prev, 
+          general: 'Invalid email or password. Please try again.' 
+        }));
+        
+        // Trigger vibration for both fields
+        triggerVibrationAnimation('email');
+        setTimeout(() => triggerVibrationAnimation('password'), 200);
+      } else {
+        // Success - navigate to next screen
+        navigation.navigate('SchoolUpdates');
+      }
     }, 2000);
   };
   const KeyboardWrapper = Platform.OS === 'ios' ? KeyboardAvoidingView : View;
@@ -274,7 +336,7 @@ const SignIn = () => {
       <KeyboardWrapper 
         style={styles.keyboardAvoidingView}
         {...keyboardProps}
-      >
+    >
       <StatusBar
         backgroundColor="transparent"
         barStyle="dark-content"
@@ -487,16 +549,16 @@ const SignIn = () => {
                       })
                     }]
                   }]} />
-                </View>
+            </View>
               </Animated.View>
             </TouchableOpacity>
             <Text style={styles.welcomeText}>Welcome Back</Text>
             <Text style={styles.signInText}>Sign in to your account</Text>
-          </View>
+        </View>
 
-          {/* Form Section */}
-          <View style={styles.formContainer}>
-            <View style={styles.inputContainer}>
+        {/* Form Section */}
+        <View style={styles.formContainer}>
+          <View style={styles.inputContainer}>
             <Animated.View style={[
               styles.inputWrapper,
               {
@@ -508,6 +570,12 @@ const SignIn = () => {
                   inputRange: [0, 1],
                   outputRange: [0.1, 0.2],
                 }),
+                transform: [{
+                  translateX: emailVibration.interpolate({
+                    inputRange: [-1, 0, 1],
+                    outputRange: [-8, 0, 8],
+                  })
+                }]
               }
             ]}>
               <MaterialIcons 
@@ -516,10 +584,10 @@ const SignIn = () => {
                 color={errors.email ? '#EF4444' : '#666'} 
                 style={styles.inputIcon} 
               />
-              <TextInput
-                style={styles.input}
+            <TextInput
+              style={styles.input}
                 placeholder="Username or Email"
-                placeholderTextColor="#666"
+              placeholderTextColor="#666"
                 autoCapitalize="none"
                 autoCorrect={false}
                 value={email}
@@ -559,6 +627,12 @@ const SignIn = () => {
                   inputRange: [0, 1],
                   outputRange: [0.1, 0.2],
                 }),
+                transform: [{
+                  translateX: passwordVibration.interpolate({
+                    inputRange: [-1, 0, 1],
+                    outputRange: [-8, 0, 8],
+                  })
+                }]
               }
             ]}>
               <MaterialIcons 
@@ -566,11 +640,11 @@ const SignIn = () => {
                 size={20} 
                 color={errors.password ? '#EF4444' : '#666'} 
                 style={styles.inputIcon} 
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Password"
-                placeholderTextColor="#666"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              placeholderTextColor="#666"
                 secureTextEntry={!showPassword}
                 value={password}
                 onChangeText={(text) => {
@@ -626,7 +700,7 @@ const SignIn = () => {
           ) : null}
           
           <Animated.View style={{ transform: [{ scale: signInButtonScale }] }}>
-            <TouchableOpacity 
+          <TouchableOpacity 
               style={[styles.signInButton, isLoading && styles.signInButtonDisabled]}
               onPress={() => handleButtonPress(signInButtonScale, handleSignIn)}
               disabled={isLoading}
@@ -662,29 +736,29 @@ const SignIn = () => {
                 ) : (
                   <>
                     <MaterialIcons name="login" size={24} color="white" style={styles.buttonIcon} />
-                    <Text style={styles.signInButtonText}>Sign In</Text>
+            <Text style={styles.signInButtonText}>Sign In</Text>
                   </>
                 )}
               </LinearGradient>
-            </TouchableOpacity>
+          </TouchableOpacity>
           </Animated.View>
 
           </View>
-          
+
           {/* Bottom Section - Always Accessible */}
           <View style={styles.bottomSection}>
-            <View style={styles.signUpContainer}>
-              <Text style={styles.signUpText}>Don't have an account? </Text>
-              <TouchableOpacity 
-                onPress={() => navigation.navigate('CreateAccount')}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          <View style={styles.signUpContainer}>
+            <Text style={styles.signUpText}>Don't have an account? </Text>
+            <TouchableOpacity 
+              onPress={() => navigation.navigate('CreateAccount')}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 accessibilityRole="button"
                 accessibilityLabel="Create new account"
-              >
-                <Text style={styles.signUpLink}>Sign Up</Text>
-              </TouchableOpacity>
-            </View>
+            >
+              <Text style={styles.signUpLink}>Sign Up</Text>
+            </TouchableOpacity>
           </View>
+        </View>
         </Animated.View>
       </ScrollView>
       </KeyboardWrapper>
@@ -990,16 +1064,16 @@ const styles = StyleSheet.create({
     marginLeft: theme.spacing(1),
   },
   errorContainer: {
-    height: 20, // Reduced height for tighter spacing
+    height: 20, // Fixed height to prevent layout shifts
     justifyContent: 'center',
-    marginTop: 1,
+    marginTop: 2,
     marginBottom: theme.spacing(0.5),
+    paddingHorizontal: theme.spacing(2),
   },
   errorText: {
     color: '#EF4444',
     fontSize: 12,
     fontWeight: '500',
-    marginLeft: theme.spacing(1),
     lineHeight: 14,
   },
   generalErrorContainer: {

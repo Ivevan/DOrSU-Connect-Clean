@@ -31,9 +31,6 @@ const SignIn = () => {
   const techFloat3 = useRef(new Animated.Value(0)).current;
   const techFloat4 = useRef(new Animated.Value(0)).current;
   const techFloat5 = useRef(new Animated.Value(0)).current;
-  const techFloat6 = useRef(new Animated.Value(0)).current;
-  const techFloat7 = useRef(new Animated.Value(0)).current;
-  const techFloat8 = useRef(new Animated.Value(0)).current;
   
   // Screen transition animations
   const screenOpacity = useRef(new Animated.Value(0)).current;
@@ -121,7 +118,7 @@ const SignIn = () => {
         ])
       ).start();
 
-      // Additional floating elements
+      // Simplified floating elements - only 2 additional
       Animated.loop(
         Animated.sequence([
           Animated.timing(techFloat4, {
@@ -153,54 +150,6 @@ const SignIn = () => {
           }),
         ])
       ).start();
-
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(techFloat6, {
-            toValue: 1,
-            duration: 3600,
-            delay: 2500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(techFloat6, {
-            toValue: 0,
-            duration: 3600,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(techFloat7, {
-            toValue: 1,
-            duration: 4800,
-            delay: 800,
-            useNativeDriver: true,
-          }),
-          Animated.timing(techFloat7, {
-            toValue: 0,
-            duration: 4800,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(techFloat8, {
-            toValue: 1,
-            duration: 3200,
-            delay: 1800,
-            useNativeDriver: true,
-          }),
-          Animated.timing(techFloat8, {
-            toValue: 0,
-            duration: 3200,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
     };
     startTechAnimations();
   }, []);
@@ -222,10 +171,6 @@ const SignIn = () => {
         useNativeDriver: true,
       }),
     ]).start(callback);
-  };
-
-  const handleClose = () => {
-    navigation.navigate('GetStarted');
   };
 
   // Function to handle sign in button press
@@ -320,25 +265,25 @@ const SignIn = () => {
           }
         ]} />
         
-        {/* Additional floating tech elements */}
+        {/* Simplified floating tech elements - only 2 additional */}
         <Animated.View style={[
           styles.techFloatElement4,
           {
             opacity: techFloat4.interpolate({
               inputRange: [0, 1],
-              outputRange: [0.3, 0.7],
+              outputRange: [0.2, 0.5],
             }),
             transform: [
               {
                 translateY: techFloat4.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0, -20],
+                  outputRange: [0, -15],
                 })
               },
               {
                 translateX: techFloat4.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0, 8],
+                  outputRange: [0, 6],
                 })
               }
             ]
@@ -350,97 +295,13 @@ const SignIn = () => {
           {
             opacity: techFloat5.interpolate({
               inputRange: [0, 1],
-              outputRange: [0.4, 0.8],
+              outputRange: [0.3, 0.6],
             }),
             transform: [
               {
                 scale: techFloat5.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0.5, 1.2],
-                })
-              },
-              {
-                translateX: techFloat5.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -15],
-                })
-              }
-            ]
-          }
-        ]} />
-        
-        <Animated.View style={[
-          styles.techFloatElement6,
-          {
-            opacity: techFloat6.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.5, 0.9],
-            }),
-            transform: [
-              {
-                translateY: techFloat6.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 18],
-                })
-              },
-              {
-                rotate: techFloat6.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['0deg', '180deg'],
-                })
-              }
-            ]
-          }
-        ]} />
-        
-        <Animated.View style={[
-          styles.techFloatElement7,
-          {
-            opacity: techFloat7.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.3, 0.6],
-            }),
-            transform: [
-              {
-                translateX: techFloat7.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -10],
-                })
-              },
-              {
-                scale: techFloat7.interpolate({
-                  inputRange: [0, 1],
                   outputRange: [0.8, 1.1],
-                })
-              }
-            ]
-          }
-        ]} />
-        
-        <Animated.View style={[
-          styles.techFloatElement8,
-          {
-            opacity: techFloat8.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.4, 0.8],
-            }),
-            transform: [
-              {
-                translateY: techFloat8.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -12],
-                })
-              },
-              {
-                translateX: techFloat8.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 6],
-                })
-              },
-              {
-                rotate: techFloat8.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['0deg', '90deg'],
                 })
               }
             ]
@@ -455,34 +316,37 @@ const SignIn = () => {
           transform: [{ translateY: contentTranslateY }],
         },
       ]}>
-        {/* Logo and Title Section */}
-        <View style={styles.topSection}>
-          <View style={styles.logoContainer}>
-            <Image source={require('../../assets/DOrSU.png')} style={styles.logoImage} />
-            <Text style={styles.title}>DOrSU Connect</Text>
-            <Text style={styles.subtitle}>Your Academic AI Assistant</Text>
-          </View>
-
-          <View style={styles.welcomeSection}>
+        {/* Header Section - Simplified */}
+        <View style={styles.headerSection}>
+          <Image source={require('../../assets/DOrSU.png')} style={styles.logoImage} />
             <Text style={styles.welcomeText}>Welcome Back</Text>
-            <Text style={styles.signInText}>Sign in to continue</Text>
-          </View>
+          <Text style={styles.signInText}>Sign in to your account</Text>
         </View>
 
         {/* Form Section */}
         <View style={styles.formContainer}>
           <View style={styles.inputContainer}>
+            <View style={styles.inputWrapper}>
+              <MaterialIcons name="person" size={20} color="#666" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
-              placeholder="Username"
+                placeholder="Username or Email"
               placeholderTextColor="#666"
+                autoCapitalize="none"
+                autoCorrect={false}
+                accessibilityLabel="Username or Email"
             />
+            </View>
+            <View style={styles.inputWrapper}>
+              <MaterialIcons name="lock" size={20} color="#666" style={styles.inputIcon} />
             <TextInput
               style={styles.input}
               placeholder="Password"
               placeholderTextColor="#666"
               secureTextEntry
+                accessibilityLabel="Password"
             />
+            </View>
             <TouchableOpacity 
               style={styles.forgotPassword}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -492,8 +356,8 @@ const SignIn = () => {
           </View>
 
           <Animated.View style={{ transform: [{ scale: signInButtonScale }] }}>
-            <TouchableOpacity 
-              style={styles.signInButton}
+          <TouchableOpacity 
+            style={styles.signInButton}
               onPress={() => handleButtonPress(signInButtonScale, handleSignIn)}
               accessibilityRole="button"
               accessibilityLabel="Sign in"
@@ -508,9 +372,9 @@ const SignIn = () => {
                 end={{ x: 1, y: 1 }}
               >
                 <MaterialIcons name="login" size={24} color="white" style={styles.buttonIcon} />
-                <Text style={styles.signInButtonText}>Sign In</Text>
+            <Text style={styles.signInButtonText}>Sign In</Text>
               </LinearGradient>
-            </TouchableOpacity>
+          </TouchableOpacity>
           </Animated.View>
 
           <View style={styles.signUpContainer}>
@@ -518,6 +382,8 @@ const SignIn = () => {
             <TouchableOpacity 
               onPress={() => navigation.navigate('CreateAccount')}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Create new account"
             >
               <Text style={styles.signUpLink}>Sign Up</Text>
             </TouchableOpacity>
@@ -689,50 +555,21 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: '#2196F3',
   },
-  techFloatElement6: {
-    position: 'absolute',
-    top: '15%',
-    right: '45%',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#2196F3',
-  },
-  techFloatElement7: {
-    position: 'absolute',
-    bottom: '20%',
-    right: '40%',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#2196F3',
-  },
-  techFloatElement8: {
-    position: 'absolute',
-    top: '55%',
-    left: '45%',
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
-    backgroundColor: '#2196F3',
-  },
   content: {
     flex: 1,
     paddingHorizontal: theme.spacing(2.5),
     paddingTop: Platform.OS === 'android' ? theme.spacing(1) : theme.spacing(5.5),
     paddingBottom: Platform.OS === 'android' ? theme.spacing(2.5) : theme.spacing(4.25),
   },
-  topSection: {
-    marginTop: theme.spacing(2.5),
-  },
-  logoContainer: {
+  headerSection: {
     alignItems: 'center',
-    marginBottom: theme.spacing(5),
+    marginBottom: theme.spacing(4),
+    marginTop: theme.spacing(3),
   },
   logoImage: {
-    width: width * 0.2,
-    height: width * 0.2,
-    marginBottom: theme.spacing(2),
+    width: width * 0.16,
+    height: width * 0.16,
+    marginBottom: theme.spacing(3),
     resizeMode: 'contain',
     shadowColor: '#1F2937',
     shadowOffset: { width: 0, height: 4 },
@@ -740,35 +577,16 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: theme.colors.text,
-    marginBottom: 4,
-    textAlign: 'center',
-    letterSpacing: 0.5,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: theme.colors.textMuted,
-    textAlign: 'center',
-    letterSpacing: 0.3,
-  },
-  welcomeSection: {
-    alignItems: 'center',
-    marginBottom: theme.spacing(5),
-    marginTop: theme.spacing(2.5),
-  },
   welcomeText: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '700',
     color: theme.colors.text,
-    marginBottom: 8,
+    marginBottom: 6,
     textAlign: 'center',
     letterSpacing: 0.5,
   },
   signInText: {
-    fontSize: 17,
+    fontSize: 16,
     color: theme.colors.textMuted,
     textAlign: 'center',
     letterSpacing: 0.3,
@@ -779,15 +597,26 @@ const styles = StyleSheet.create({
   inputContainer: {
     marginBottom: theme.spacing(3),
   },
-  input: {
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: theme.colors.surface,
-    paddingVertical: theme.spacing(2),
-    paddingHorizontal: theme.spacing(2),
     borderRadius: theme.radii.md,
     marginBottom: theme.spacing(2),
-    fontSize: 16,
+    paddingHorizontal: theme.spacing(2),
     ...theme.shadow1,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  inputIcon: {
+    marginRight: theme.spacing(1.5),
+  },
+  input: {
+    flex: 1,
+    paddingVertical: theme.spacing(2),
+    fontSize: 16,
     fontWeight: '500',
+    color: theme.colors.text,
   },
   forgotPassword: {
     alignSelf: 'flex-end',

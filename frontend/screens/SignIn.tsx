@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, Dimensions, Platform, StatusBar, Image, Animated, Easing } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, Dimensions, Platform, StatusBar, Image, Animated, Easing, KeyboardAvoidingView, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import React, { useRef } from 'react';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -26,6 +26,18 @@ const SignIn = () => {
   // Animation values
   const signInButtonScale = useRef(new Animated.Value(1)).current;
   const logoScale = useRef(new Animated.Value(1)).current;
+  
+  // Form state management
+  const [email, setEmail] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [errors, setErrors] = React.useState({ email: '', password: '', general: '' });
+  
+  // Input focus states
+  const emailFocus = useRef(new Animated.Value(0)).current;
+  const passwordFocus = useRef(new Animated.Value(0)).current;
+  const loadingRotation = useRef(new Animated.Value(0)).current;
   const techFloat1 = useRef(new Animated.Value(0)).current;
   const techFloat2 = useRef(new Animated.Value(0)).current;
   const techFloat3 = useRef(new Animated.Value(0)).current;
@@ -174,16 +186,68 @@ const SignIn = () => {
   };
 
   // Function to handle sign in button press
-  const handleSignIn = () => {
-    navigation.navigate('SchoolUpdates');
+  const handleSignIn = async () => {
+    // Clear previous errors
+    setErrors({ email: '', password: '', general: '' });
+    
+    // Basic validation
+    let hasErrors = false;
+    const newErrors = { email: '', password: '', general: '' };
+    
+    if (!email.trim()) {
+      newErrors.email = 'Email is required';
+      hasErrors = true;
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+      newErrors.email = 'Please enter a valid email';
+      hasErrors = true;
+    }
+    
+    if (!password.trim()) {
+      newErrors.password = 'Password is required';
+      hasErrors = true;
+    } else if (password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
+      hasErrors = true;
+    }
+    
+    if (hasErrors) {
+      setErrors(newErrors);
+      return;
+    }
+    
+    setIsLoading(true);
+    
+    // Start loading spinner animation
+    const startLoadingAnimation = () => {
+      Animated.loop(
+        Animated.timing(loadingRotation, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        })
+      ).start();
+    };
+    startLoadingAnimation();
+    
+    // Simulate API call
+    setTimeout(() => {
+      setIsLoading(false);
+      loadingRotation.stopAnimation();
+      // For demo purposes, always navigate to SchoolUpdates
+      // In real app, handle authentication response here
+      navigation.navigate('SchoolUpdates');
+    }, 2000);
   };
   return (
-    <View style={[styles.container, {
-      paddingTop: insets.top,
-      paddingBottom: insets.bottom,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    }]}
+    <KeyboardAvoidingView 
+      style={[styles.container, {
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom,
+        paddingLeft: insets.left,
+        paddingRight: insets.right,
+      }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
       <StatusBar
         backgroundColor="transparent"
@@ -309,13 +373,18 @@ const SignIn = () => {
         ]} />
       </Animated.View>
       
-      <Animated.View style={[
-        styles.content,
-        {
-          opacity: screenOpacity,
-          transform: [{ translateY: contentTranslateY }],
-        },
-      ]}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <Animated.View style={[
+          styles.content,
+          {
+            opacity: screenOpacity,
+            transform: [{ translateY: contentTranslateY }],
+          },
+        ]}>
         {/* Header Section - Simplified */}
         <View style={styles.headerSection}>
           <Image source={require('../../assets/DOrSU.png')} style={styles.logoImage} />
@@ -326,27 +395,114 @@ const SignIn = () => {
         {/* Form Section */}
         <View style={styles.formContainer}>
           <View style={styles.inputContainer}>
-            <View style={styles.inputWrapper}>
-              <MaterialIcons name="person" size={20} color="#666" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
+            <Animated.View style={[
+              styles.inputWrapper,
+              {
+                borderColor: emailFocus.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [errors.email ? '#EF4444' : 'rgba(0, 0, 0, 0.05)', errors.email ? '#EF4444' : '#2196F3'],
+                }),
+                shadowOpacity: emailFocus.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.1, 0.2],
+                }),
+              }
+            ]}>
+              <MaterialIcons 
+                name="person" 
+                size={20} 
+                color={errors.email ? '#EF4444' : '#666'} 
+                style={styles.inputIcon} 
+              />
+              <TextInput
+                style={styles.input}
                 placeholder="Username or Email"
-              placeholderTextColor="#666"
+                placeholderTextColor="#666"
                 autoCapitalize="none"
                 autoCorrect={false}
+                value={email}
+                onChangeText={(text) => {
+                  setEmail(text);
+                  if (errors.email) setErrors(prev => ({ ...prev, email: '' }));
+                }}
+                onFocus={() => {
+                  Animated.timing(emailFocus, {
+                    toValue: 1,
+                    duration: 200,
+                    useNativeDriver: false,
+                  }).start();
+                }}
+                onBlur={() => {
+                  Animated.timing(emailFocus, {
+                    toValue: 0,
+                    duration: 200,
+                    useNativeDriver: false,
+                  }).start();
+                }}
                 accessibilityLabel="Username or Email"
-            />
-            </View>
-            <View style={styles.inputWrapper}>
-              <MaterialIcons name="lock" size={20} color="#666" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              placeholderTextColor="#666"
-              secureTextEntry
+              />
+            </Animated.View>
+            {errors.email ? <Text style={styles.errorText}>{errors.email}</Text> : null}
+            
+            <Animated.View style={[
+              styles.inputWrapper,
+              {
+                borderColor: passwordFocus.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [errors.password ? '#EF4444' : 'rgba(0, 0, 0, 0.05)', errors.password ? '#EF4444' : '#2196F3'],
+                }),
+                shadowOpacity: passwordFocus.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.1, 0.2],
+                }),
+              }
+            ]}>
+              <MaterialIcons 
+                name="lock" 
+                size={20} 
+                color={errors.password ? '#EF4444' : '#666'} 
+                style={styles.inputIcon} 
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Password"
+                placeholderTextColor="#666"
+                secureTextEntry={!showPassword}
+                value={password}
+                onChangeText={(text) => {
+                  setPassword(text);
+                  if (errors.password) setErrors(prev => ({ ...prev, password: '' }));
+                }}
+                onFocus={() => {
+                  Animated.timing(passwordFocus, {
+                    toValue: 1,
+                    duration: 200,
+                    useNativeDriver: false,
+                  }).start();
+                }}
+                onBlur={() => {
+                  Animated.timing(passwordFocus, {
+                    toValue: 0,
+                    duration: 200,
+                    useNativeDriver: false,
+                  }).start();
+                }}
                 accessibilityLabel="Password"
-            />
-            </View>
+              />
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                style={styles.passwordToggle}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+              >
+                <MaterialIcons 
+                  name={showPassword ? "visibility-off" : "visibility"} 
+                  size={20} 
+                  color="#666" 
+                />
+              </TouchableOpacity>
+            </Animated.View>
+            {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
             <TouchableOpacity 
               style={styles.forgotPassword}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -355,26 +511,56 @@ const SignIn = () => {
             </TouchableOpacity>
           </View>
 
+          {/* General Error Message */}
+          {errors.general ? (
+            <View style={styles.generalErrorContainer}>
+              <MaterialIcons name="error-outline" size={20} color="#EF4444" />
+              <Text style={styles.generalErrorText}>{errors.general}</Text>
+            </View>
+          ) : null}
+          
           <Animated.View style={{ transform: [{ scale: signInButtonScale }] }}>
-          <TouchableOpacity 
-            style={styles.signInButton}
+            <TouchableOpacity 
+              style={[styles.signInButton, isLoading && styles.signInButtonDisabled]}
               onPress={() => handleButtonPress(signInButtonScale, handleSignIn)}
+              disabled={isLoading}
               accessibilityRole="button"
-              accessibilityLabel="Sign in"
+              accessibilityLabel={isLoading ? "Signing in..." : "Sign in"}
               accessibilityHint="Double tap to sign in to your DOrSU Connect account"
-              accessibilityState={{ disabled: false }}
+              accessibilityState={{ disabled: isLoading }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <LinearGradient
-                colors={['#1F2937', '#374151']}
+                colors={isLoading ? ['#6B7280', '#9CA3AF'] : ['#1F2937', '#374151']}
                 style={styles.signInButtonGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                <MaterialIcons name="login" size={24} color="white" style={styles.buttonIcon} />
-            <Text style={styles.signInButtonText}>Sign In</Text>
+                {isLoading ? (
+                  <>
+                    <Animated.View style={[
+                      styles.loadingSpinner,
+                      {
+                        transform: [{
+                          rotate: loadingRotation.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: ['0deg', '360deg'],
+                          })
+                        }]
+                      }
+                    ]}>
+                      <MaterialIcons name="refresh" size={24} color="white" />
+                    </Animated.View>
+                    <Text style={styles.signInButtonText}>Signing In...</Text>
+                  </>
+                ) : (
+                  <>
+                    <MaterialIcons name="login" size={24} color="white" style={styles.buttonIcon} />
+                    <Text style={styles.signInButtonText}>Sign In</Text>
+                  </>
+                )}
               </LinearGradient>
-          </TouchableOpacity>
+            </TouchableOpacity>
           </Animated.View>
 
           <View style={styles.signUpContainer}>
@@ -389,8 +575,9 @@ const SignIn = () => {
             </TouchableOpacity>
           </View>
         </View>
-      </Animated.View>
-    </View>
+        </Animated.View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -555,6 +742,9 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: '#2196F3',
   },
+  scrollContent: {
+    flexGrow: 1,
+  },
   content: {
     flex: 1,
     paddingHorizontal: theme.spacing(2.5),
@@ -618,13 +808,41 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: theme.colors.text,
   },
+  passwordToggle: {
+    padding: theme.spacing(1),
+    marginLeft: theme.spacing(1),
+  },
+  errorText: {
+    color: '#EF4444',
+    fontSize: 14,
+    marginTop: 4,
+    marginBottom: theme.spacing(1),
+    marginLeft: theme.spacing(1),
+  },
+  generalErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    padding: theme.spacing(2),
+    borderRadius: theme.radii.md,
+    marginBottom: theme.spacing(2),
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  generalErrorText: {
+    color: '#EF4444',
+    fontSize: 14,
+    marginLeft: theme.spacing(1),
+    flex: 1,
+  },
   forgotPassword: {
     alignSelf: 'flex-end',
   },
   forgotPasswordText: {
-    color: theme.colors.text,
-    fontSize: 14,
+    color: '#2196F3',
+    fontSize: 15,
     fontWeight: '600',
+    textDecorationLine: 'underline',
   },
   signInButton: {
     borderRadius: theme.radii.lg,
@@ -637,6 +855,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  signInButtonDisabled: {
+    opacity: 0.7,
   },
   signInButtonGradient: {
     paddingVertical: theme.spacing(2.5),
@@ -657,6 +878,10 @@ const styles = StyleSheet.create({
   },
   buttonIcon: {
     marginRight: theme.spacing(1),
+  },
+  loadingSpinner: {
+    marginRight: theme.spacing(1),
+    transform: [{ rotate: '0deg' }],
   },
   signUpContainer: {
     flexDirection: 'row',

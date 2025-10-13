@@ -4,11 +4,11 @@
     "slug": "DORSUCONNECT",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/DOrSU.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/DOrSU.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -21,7 +21,7 @@
       "package": "com.dorsuconnect.app",
       "versionCode": 1,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/DOrSU.png",
         "backgroundColor": "#1F2937"
       },
       "edgeToEdgeEnabled": false,
@@ -31,7 +31,7 @@
       "windowSoftInputMode": "adjustResize"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/DOrSU.png"
     },
     "extra": {
       "eas": {

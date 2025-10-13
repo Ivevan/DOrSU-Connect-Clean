@@ -37,7 +37,13 @@ const GetStarted = () => {
       <View style={styles.content}>
         {/* Logo Section */}
         <View style={styles.topSection}>
-          <Image source={require('../../assets/DOrSU.png')} style={styles.logoImage} />
+          <TouchableOpacity 
+            onPress={() => navigation.navigate('AdminDashboard')}
+            activeOpacity={0.7}
+            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+          >
+            <Image source={require('../../assets/DOrSU.png')} style={styles.logoImage} />
+          </TouchableOpacity>
           <Text style={styles.title}>DOrSU CONNECT</Text>
           <Text style={styles.subtitle}>Your Academic AI Assistant</Text>
           <Text style={styles.aiText}>AI Powered</Text>
@@ -65,14 +71,6 @@ const GetStarted = () => {
             >
               <MaterialIcons name="login" size={24} color="white" style={styles.buttonIcon} />
               <Text style={styles.darkButtonText}>Log in</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.darkButton} 
-              onPress={() => navigation.navigate('AdminDashboard')}
-            >
-              <MaterialCommunityIcons name="shield-account" size={24} color="white" style={styles.buttonIcon} />
-              <Text style={styles.darkButtonText}>Admin (Temp)</Text>
             </TouchableOpacity>
           </View>
           

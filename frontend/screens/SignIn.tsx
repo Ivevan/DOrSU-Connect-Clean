@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, Dimensions, Platform, StatusBar } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, Dimensions, Platform, StatusBar, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import React from 'react';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -47,9 +47,7 @@ const SignIn = () => {
         {/* Logo and Title Section */}
         <View style={styles.topSection}>
           <View style={styles.logoContainer}>
-            <View style={styles.logoPlaceholder}>
-              {/* Logo will be placed here */}
-            </View>
+            <Image source={require('../../assets/DOrSU.png')} style={styles.logoImage} />
             <Text style={styles.title}>DOrSU Connect</Text>
             <Text style={styles.subtitle}>Your Academic AI Assistant</Text>
           </View>
@@ -122,15 +120,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: theme.spacing(5),
   },
-  logoPlaceholder: {
+  logoImage: {
     width: width * 0.2,
     height: width * 0.2,
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radii.md,
     marginBottom: theme.spacing(2),
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...theme.shadow1,
+    resizeMode: 'contain',
+    shadowColor: '#1F2937',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
   },
   title: {
     fontSize: 24,

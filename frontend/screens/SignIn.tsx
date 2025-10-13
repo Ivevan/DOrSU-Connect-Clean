@@ -259,21 +259,21 @@ const SignIn = () => {
     const newErrors = { email: '', password: '', general: '' };
     
     if (!email.trim()) {
-      newErrors.email = 'Email is required';
+      newErrors.email = 'Try again with a valid email';
       hasErrors = true;
       triggerVibrationAnimation('email');
     } else if (!/\S+@\S+\.\S+/.test(email)) {
-      newErrors.email = 'Please enter a valid email';
+      newErrors.email = 'Try again with a valid email';
       hasErrors = true;
       triggerVibrationAnimation('email');
     }
     
     if (!password.trim()) {
-      newErrors.password = 'Password is required';
+      newErrors.password = 'Try again with a valid password';
       hasErrors = true;
       triggerVibrationAnimation('password');
     } else if (password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+      newErrors.password = 'Try again with a valid password';
       hasErrors = true;
       triggerVibrationAnimation('password');
     }
@@ -319,7 +319,7 @@ const SignIn = () => {
         setTimeout(() => triggerVibrationAnimation('password'), 200);
       } else {
         // Success - navigate to next screen
-        navigation.navigate('SchoolUpdates');
+    navigation.navigate('SchoolUpdates');
       }
     }, 2000);
   };
@@ -595,25 +595,32 @@ const SignIn = () => {
                   setEmail(text);
                   if (errors.email) setErrors(prev => ({ ...prev, email: '' }));
                 }}
-                onFocus={() => {
-                  Animated.timing(emailFocus, {
-                    toValue: 1,
-                    duration: 200,
-                    useNativeDriver: false,
-                  }).start();
-                }}
-                onBlur={() => {
-                  Animated.timing(emailFocus, {
-                    toValue: 0,
-                    duration: 200,
-                    useNativeDriver: false,
-                  }).start();
-                }}
+                   onFocus={() => {
+                     Animated.timing(emailFocus, {
+                       toValue: 1,
+                       duration: 200,
+                       useNativeDriver: true,
+                     }).start();
+                   }}
+                   onBlur={() => {
+                     Animated.timing(emailFocus, {
+                       toValue: 0,
+                       duration: 200,
+                       useNativeDriver: true,
+                     }).start();
+                   }}
                 accessibilityLabel="Username or Email"
               />
             </Animated.View>
             <View style={styles.errorContainer}>
-              {errors.email ? <Text style={styles.errorText}>{errors.email}</Text> : null}
+              {errors.email ? (
+                <View style={styles.errorMessageContainer}>
+                  <View style={styles.errorIcon}>
+                    <Text style={styles.errorIconText}>!</Text>
+                  </View>
+                  <Text style={styles.errorText}>{errors.email}</Text>
+                </View>
+              ) : null}
             </View>
             
             <Animated.View style={[
@@ -651,20 +658,20 @@ const SignIn = () => {
                   setPassword(text);
                   if (errors.password) setErrors(prev => ({ ...prev, password: '' }));
                 }}
-                onFocus={() => {
-                  Animated.timing(passwordFocus, {
-                    toValue: 1,
-                    duration: 200,
-                    useNativeDriver: false,
-                  }).start();
-                }}
-                onBlur={() => {
-                  Animated.timing(passwordFocus, {
-                    toValue: 0,
-                    duration: 200,
-                    useNativeDriver: false,
-                  }).start();
-                }}
+                   onFocus={() => {
+                     Animated.timing(passwordFocus, {
+                       toValue: 1,
+                       duration: 200,
+                       useNativeDriver: true,
+                     }).start();
+                   }}
+                   onBlur={() => {
+                     Animated.timing(passwordFocus, {
+                       toValue: 0,
+                       duration: 200,
+                       useNativeDriver: true,
+                     }).start();
+                   }}
                 accessibilityLabel="Password"
               />
               <TouchableOpacity
@@ -681,7 +688,14 @@ const SignIn = () => {
               </TouchableOpacity>
             </Animated.View>
             <View style={styles.errorContainer}>
-              {errors.password ? <Text style={styles.errorText}>{errors.password}</Text> : null}
+              {errors.password ? (
+                <View style={styles.errorMessageContainer}>
+                  <View style={styles.errorIcon}>
+                    <Text style={styles.errorIconText}>!</Text>
+                  </View>
+                  <Text style={styles.errorText}>{errors.password}</Text>
+                </View>
+              ) : null}
             </View>
             <TouchableOpacity 
               style={styles.forgotPassword}
@@ -1043,7 +1057,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radii.md,
-    marginBottom: theme.spacing(1.5),
+    marginBottom: 0, // Remove bottom margin to bring error closer
     paddingHorizontal: theme.spacing(2),
     ...theme.shadow1,
     borderWidth: 1,
@@ -1066,15 +1080,35 @@ const styles = StyleSheet.create({
   errorContainer: {
     height: 20, // Fixed height to prevent layout shifts
     justifyContent: 'center',
-    marginTop: 2,
-    marginBottom: theme.spacing(0.5),
+    marginTop: 1, // Negative margin to move error UP closer to input
+    marginBottom: theme.spacing(1.5), // Add spacing below error for next element
     paddingHorizontal: theme.spacing(2),
+  },
+  errorMessageContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  errorIcon: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: theme.spacing(1),
+  },
+  errorIconText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+    textAlign: 'center',
   },
   errorText: {
     color: '#EF4444',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '500',
-    lineHeight: 14,
+    lineHeight: 16,
+    flex: 1,
   },
   generalErrorContainer: {
     flexDirection: 'row',
@@ -1097,7 +1131,7 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing(1),
   },
   forgotPasswordText: {
-    color: '#2196F3',
+    color: 'black',
     fontSize: 15,
     fontWeight: '600',
     textDecorationLine: 'underline',

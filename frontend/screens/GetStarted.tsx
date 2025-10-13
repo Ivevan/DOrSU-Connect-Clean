@@ -4,12 +4,13 @@ import React from 'react';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { theme } from '../theme';
+import { lightTheme as theme } from '../theme';
 
 type RootStackParamList = {
   GetStarted: undefined;
   SignIn: undefined;
   CreateAccount: undefined;
+  AdminDashboard: undefined;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'GetStarted'>;
@@ -31,6 +32,7 @@ const GetStarted = () => {
         backgroundColor="transparent"
         barStyle="dark-content"
         translucent={true}
+        animated={true}
       />
       <View style={styles.content}>
         {/* Logo Section */}
@@ -101,7 +103,6 @@ const styles = StyleSheet.create({
   logoImage: {
     width: width * 0.35,
     height: width * 0.35,
-    borderRadius: theme.radii.md,
     marginBottom: theme.spacing(2.5),
     resizeMode: 'contain',
   },

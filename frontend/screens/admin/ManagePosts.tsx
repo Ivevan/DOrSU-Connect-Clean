@@ -360,7 +360,7 @@ const ManagePosts: React.FC = () => {
       paddingLeft: insets.left,
       paddingRight: insets.right,
     }]}>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.background }] }>

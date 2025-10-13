@@ -149,7 +149,7 @@ const AdminDashboard = () => {
     }]}>
       <StatusBar
         backgroundColor={theme.colors.primary}
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        barStyle="light-content"
         translucent={false}
       />
 

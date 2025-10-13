@@ -35,6 +35,11 @@ const GetStarted = () => {
   const techFloat1 = useRef(new Animated.Value(0)).current;
   const techFloat2 = useRef(new Animated.Value(0)).current;
   const techFloat3 = useRef(new Animated.Value(0)).current;
+  const techFloat4 = useRef(new Animated.Value(0)).current;
+  const techFloat5 = useRef(new Animated.Value(0)).current;
+  const techFloat6 = useRef(new Animated.Value(0)).current;
+  const techFloat7 = useRef(new Animated.Value(0)).current;
+  const techFloat8 = useRef(new Animated.Value(0)).current;
   
   // Screen transition animations
   const screenOpacity = useRef(new Animated.Value(0)).current;
@@ -136,6 +141,87 @@ const GetStarted = () => {
           Animated.timing(techFloat3, {
             toValue: 0,
             duration: 4500,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      // Additional floating elements
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(techFloat4, {
+            toValue: 1,
+            duration: 3800,
+            delay: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(techFloat4, {
+            toValue: 0,
+            duration: 3800,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(techFloat5, {
+            toValue: 1,
+            duration: 4200,
+            delay: 1500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(techFloat5, {
+            toValue: 0,
+            duration: 4200,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(techFloat6, {
+            toValue: 1,
+            duration: 3600,
+            delay: 2500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(techFloat6, {
+            toValue: 0,
+            duration: 3600,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(techFloat7, {
+            toValue: 1,
+            duration: 4800,
+            delay: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(techFloat7, {
+            toValue: 0,
+            duration: 4800,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(techFloat8, {
+            toValue: 1,
+            duration: 3200,
+            delay: 1800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(techFloat8, {
+            toValue: 0,
+            duration: 3200,
             useNativeDriver: true,
           }),
         ])
@@ -322,6 +408,133 @@ const GetStarted = () => {
                 outputRange: [0.7, 1.3],
               })
             }]
+          }
+        ]} />
+        
+        {/* Additional floating tech elements */}
+        <Animated.View style={[
+          styles.techFloatElement4,
+          {
+            opacity: techFloat4.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.3, 0.7],
+            }),
+            transform: [
+              {
+                translateY: techFloat4.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, -20],
+                })
+              },
+              {
+                translateX: techFloat4.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 8],
+                })
+              }
+            ]
+          }
+        ]} />
+        
+        <Animated.View style={[
+          styles.techFloatElement5,
+          {
+            opacity: techFloat5.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.4, 0.8],
+            }),
+            transform: [
+              {
+                scale: techFloat5.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.5, 1.2],
+                })
+              },
+              {
+                translateX: techFloat5.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, -15],
+                })
+              }
+            ]
+          }
+        ]} />
+        
+        <Animated.View style={[
+          styles.techFloatElement6,
+          {
+            opacity: techFloat6.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.5, 0.9],
+            }),
+            transform: [
+              {
+                translateY: techFloat6.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 18],
+                })
+              },
+              {
+                rotate: techFloat6.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ['0deg', '180deg'],
+                })
+              }
+            ]
+          }
+        ]} />
+        
+        <Animated.View style={[
+          styles.techFloatElement7,
+          {
+            opacity: techFloat7.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.3, 0.6],
+            }),
+            transform: [
+              {
+                translateX: techFloat7.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, -10],
+                })
+              },
+              {
+                scale: techFloat7.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.8, 1.1],
+                })
+              }
+            ]
+          }
+        ]} />
+        
+        <Animated.View style={[
+          styles.techFloatElement8,
+          {
+            opacity: techFloat8.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.4, 0.8],
+            }),
+            transform: [
+              {
+                translateY: techFloat8.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, -12],
+                })
+              },
+              {
+                translateX: techFloat8.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 6],
+                })
+              },
+              {
+                rotate: techFloat8.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ['0deg', '90deg'],
+                })
+              }
+            ]
           }
         ]} />
       </Animated.View>
@@ -686,6 +899,51 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 7,
+    backgroundColor: '#2196F3',
+  },
+  techFloatElement4: {
+    position: 'absolute',
+    top: '40%',
+    right: '25%',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#2196F3',
+  },
+  techFloatElement5: {
+    position: 'absolute',
+    top: '70%',
+    left: '25%',
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#2196F3',
+  },
+  techFloatElement6: {
+    position: 'absolute',
+    top: '15%',
+    right: '45%',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#2196F3',
+  },
+  techFloatElement7: {
+    position: 'absolute',
+    bottom: '20%',
+    right: '40%',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#2196F3',
+  },
+  techFloatElement8: {
+    position: 'absolute',
+    top: '55%',
+    left: '45%',
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
     backgroundColor: '#2196F3',
   },
   content: {

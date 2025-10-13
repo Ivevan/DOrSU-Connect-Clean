@@ -26,6 +26,8 @@ const SignIn = () => {
   // Animation values
   const signInButtonScale = useRef(new Animated.Value(1)).current;
   const logoScale = useRef(new Animated.Value(1)).current;
+  const logoGlow = useRef(new Animated.Value(0)).current;
+  const floatingAnimation = useRef(new Animated.Value(0)).current;
   
   // Form state management
   const [email, setEmail] = React.useState('');
@@ -78,6 +80,27 @@ const SignIn = () => {
     };
 
     startScreenTransition();
+  }, []);
+
+  // Start floating animation on mount
+  React.useEffect(() => {
+    const startFloatingAnimation = () => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(floatingAnimation, {
+            toValue: 1,
+            duration: 3000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(floatingAnimation, {
+            toValue: 0,
+            duration: 3000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    };
+    startFloatingAnimation();
   }, []);
 
   // Start floating animation on mount
@@ -393,7 +416,80 @@ const SignIn = () => {
         ]}>
           {/* Header Section - Simplified */}
           <View style={styles.headerSection}>
-            <Image source={require('../../assets/DOrSU.png')} style={styles.logoImage} />
+            <TouchableOpacity 
+              onPress={() => {
+                // Add haptic feedback for logo press
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }}
+              activeOpacity={1}
+              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+              accessibilityRole="button"
+              accessibilityLabel="DOrSU Connect logo"
+              accessibilityHint="Tap to see logo animation"
+              accessibilityState={{ disabled: false }}
+            >
+              <Animated.View style={{
+                transform: [
+                  { scale: logoScale },
+                  { 
+                    translateY: floatingAnimation.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -8],
+                    })
+                  }
+                ],
+              }}>
+                {/* Glow Effect */}
+                <Animated.View style={[
+                  styles.logoGlow,
+                  {
+                    opacity: logoGlow,
+                  },
+                ]} />
+                
+                <Image source={require('../../assets/DOrSU.png')} style={styles.logoImage} />
+                
+                {/* Animated sparkles around logo */}
+                <View style={styles.sparkleContainer}>
+                  <Animated.View style={[styles.sparkle, styles.sparkle1, {
+                    opacity: floatingAnimation.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [0.3, 0.8, 0.3],
+                    }),
+                    transform: [{
+                      scale: floatingAnimation.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [0.8, 1.2, 0.8],
+                      })
+                    }]
+                  }]} />
+                  <Animated.View style={[styles.sparkle, styles.sparkle2, {
+                    opacity: floatingAnimation.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [0.5, 1, 0.5],
+                    }),
+                    transform: [{
+                      scale: floatingAnimation.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [1, 0.8, 1],
+                      })
+                    }]
+                  }]} />
+                  <Animated.View style={[styles.sparkle, styles.sparkle3, {
+                    opacity: floatingAnimation.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [0.4, 0.9, 0.4],
+                    }),
+                    transform: [{
+                      scale: floatingAnimation.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [0.9, 1.1, 0.9],
+                      })
+                    }]
+                  }]} />
+                </View>
+              </Animated.View>
+            </TouchableOpacity>
             <Text style={styles.welcomeText}>Welcome Back</Text>
             <Text style={styles.signInText}>Sign in to your account</Text>
           </View>
@@ -790,6 +886,51 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 8,
+  },
+  logoGlow: {
+    position: 'absolute',
+    width: width * 0.32,
+    height: width * 0.32,
+    borderRadius: width * 0.16,
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#2196F3',
+    shadowColor: '#2196F3',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 15,
+    elevation: 12,
+    top: -width * 0.02,
+    left: -width * 0.02,
+  },
+  sparkleContainer: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+  },
+  sparkle: {
+    position: 'absolute',
+    width: 6,
+    height: 6,
+    backgroundColor: '#2196F3',
+    borderRadius: 3,
+    shadowColor: '#2196F3',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  sparkle1: {
+    top: '15%',
+    right: '10%',
+  },
+  sparkle2: {
+    bottom: '20%',
+    left: '8%',
+  },
+  sparkle3: {
+    top: '60%',
+    right: '5%',
   },
   welcomeText: {
     fontSize: 32,

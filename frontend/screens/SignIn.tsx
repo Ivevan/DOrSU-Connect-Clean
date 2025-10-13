@@ -238,17 +238,20 @@ const SignIn = () => {
       navigation.navigate('SchoolUpdates');
     }, 2000);
   };
+  const KeyboardWrapper = Platform.OS === 'ios' ? KeyboardAvoidingView : View;
+  const keyboardProps = Platform.OS === 'ios' ? { behavior: 'padding' as const, keyboardVerticalOffset: 0 } : {};
+
   return (
-    <KeyboardAvoidingView 
-      style={[styles.container, {
-        paddingTop: insets.top,
-        paddingBottom: insets.bottom,
-        paddingLeft: insets.left,
-        paddingRight: insets.right,
-      }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-    >
+    <View style={[styles.container, {
+      paddingTop: insets.top,
+      paddingBottom: insets.bottom,
+      paddingLeft: insets.left,
+      paddingRight: insets.right,
+    }]}>
+      <KeyboardWrapper 
+        style={styles.keyboardAvoidingView}
+        {...keyboardProps}
+      >
       <StatusBar
         backgroundColor="transparent"
         barStyle="dark-content"
@@ -377,6 +380,9 @@ const SignIn = () => {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        bounces={Platform.OS === 'ios'}
+        keyboardDismissMode="interactive"
+        style={styles.scrollView}
       >
         <Animated.View style={[
           styles.content,
@@ -385,16 +391,16 @@ const SignIn = () => {
             transform: [{ translateY: contentTranslateY }],
           },
         ]}>
-        {/* Header Section - Simplified */}
-        <View style={styles.headerSection}>
-          <Image source={require('../../assets/DOrSU.png')} style={styles.logoImage} />
+          {/* Header Section - Simplified */}
+          <View style={styles.headerSection}>
+            <Image source={require('../../assets/DOrSU.png')} style={styles.logoImage} />
             <Text style={styles.welcomeText}>Welcome Back</Text>
-          <Text style={styles.signInText}>Sign in to your account</Text>
-        </View>
+            <Text style={styles.signInText}>Sign in to your account</Text>
+          </View>
 
-        {/* Form Section */}
-        <View style={styles.formContainer}>
-          <View style={styles.inputContainer}>
+          {/* Form Section */}
+          <View style={styles.formContainer}>
+            <View style={styles.inputContainer}>
             <Animated.View style={[
               styles.inputWrapper,
               {
@@ -563,21 +569,26 @@ const SignIn = () => {
             </TouchableOpacity>
           </Animated.View>
 
-          <View style={styles.signUpContainer}>
-            <Text style={styles.signUpText}>Don't have an account? </Text>
-            <TouchableOpacity 
-              onPress={() => navigation.navigate('CreateAccount')}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityRole="button"
-              accessibilityLabel="Create new account"
-            >
-              <Text style={styles.signUpLink}>Sign Up</Text>
-            </TouchableOpacity>
           </View>
-        </View>
+          
+          {/* Bottom Section - Always Accessible */}
+          <View style={styles.bottomSection}>
+            <View style={styles.signUpContainer}>
+              <Text style={styles.signUpText}>Don't have an account? </Text>
+              <TouchableOpacity 
+                onPress={() => navigation.navigate('CreateAccount')}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel="Create new account"
+              >
+                <Text style={styles.signUpLink}>Sign Up</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </Animated.View>
       </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardWrapper>
+    </View>
   );
 };
 
@@ -585,6 +596,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.surfaceAlt,
+  },
+  keyboardAvoidingView: {
+    flex: 1,
   },
   gradientBackgroundContainer: {
     position: 'absolute',
@@ -742,24 +756,30 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: '#2196F3',
   },
+  scrollView: {
+    flex: 1,
+  },
   scrollContent: {
     flexGrow: 1,
+    justifyContent: 'space-between',
+    paddingBottom: Platform.OS === 'android' ? 20 : 0, // Small padding for Android
   },
   content: {
     flex: 1,
     paddingHorizontal: theme.spacing(2.5),
-    paddingTop: Platform.OS === 'android' ? theme.spacing(1) : theme.spacing(5.5),
-    paddingBottom: Platform.OS === 'android' ? theme.spacing(2.5) : theme.spacing(4.25),
+    paddingTop: Platform.OS === 'android' ? theme.spacing(1) : theme.spacing(3),
+    paddingBottom: Platform.OS === 'android' ? theme.spacing(2) : theme.spacing(4),
+    justifyContent: 'space-between',
   },
   headerSection: {
     alignItems: 'center',
-    marginBottom: theme.spacing(4),
-    marginTop: theme.spacing(3),
+    marginBottom: theme.spacing(2),
+    marginTop: theme.spacing(1),
   },
   logoImage: {
-    width: width * 0.16,
-    height: width * 0.16,
-    marginBottom: theme.spacing(3),
+    width: width * 0.14,
+    height: width * 0.14,
+    marginBottom: theme.spacing(2),
     resizeMode: 'contain',
     shadowColor: '#1F2937',
     shadowOffset: { width: 0, height: 4 },
@@ -768,10 +788,10 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   welcomeText: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: '700',
     color: theme.colors.text,
-    marginBottom: 6,
+    marginBottom: 4,
     textAlign: 'center',
     letterSpacing: 0.5,
   },
@@ -783,6 +803,12 @@ const styles = StyleSheet.create({
   },
   formContainer: {
     width: '100%',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  bottomSection: {
+    marginTop: theme.spacing(3),
+    paddingBottom: theme.spacing(2),
   },
   inputContainer: {
     marginBottom: theme.spacing(3),

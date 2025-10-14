@@ -2,11 +2,11 @@ import * as React from 'react';
 import { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, ScrollView, Switch, Alert, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import UserBottomNavBar from '../../components/UserBottomNavBar';
+import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { theme } from '../../theme';
+import { theme } from '../../config/theme';
 import { useTheme } from '../../contexts/ThemeContext';
 import LogoutModal from '../../modals/LogoutModal';
 

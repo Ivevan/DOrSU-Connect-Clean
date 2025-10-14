@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Animated, Dimensions, Modal, Easing, AccessibilityInfo } from 'react-native';
 import { PanGestureHandler, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AdminBottomNavBar from '../../components/AdminBottomNavBar';
+import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import AdminDataService from '../../services/AdminDataService';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';

@@ -6,7 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { theme } from '../theme';
+import { theme } from '../../config/theme';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -509,7 +509,7 @@ const SignIn = () => {
                   },
                 ]} />
                 
-                <Image source={require('../../assets/DOrSU.png')} style={styles.logoImage} />
+                <Image source={require('../../../../assets/DOrSU.png')} style={styles.logoImage} />
                 
                 {/* Animated sparkles around logo */}
                 <View style={styles.sparkleContainer}>

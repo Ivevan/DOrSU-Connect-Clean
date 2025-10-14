@@ -2,10 +2,10 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import AppNavigator from './frontend/navigation/AppNavigator';
-import { ThemeProvider } from './frontend/contexts/ThemeContext';
-import { useTheme } from './frontend/contexts/ThemeContext';
-// import ThemeSwitchOverlay from './frontend/components/ThemeSwitchOverlay'; // Commented out because the module cannot be found
+import AppNavigator from './frontend/src/navigation/AppNavigator';
+import { ThemeProvider } from './frontend/src/contexts/ThemeContext';
+import { useTheme } from './frontend/src/contexts/ThemeContext';
+// import ThemeSwitchOverlay from './frontend/src/components/common/ThemeSwitchOverlay'; // Commented out because the module cannot be found
 
 const Root = () => {
   const { isDarkMode } = useTheme();

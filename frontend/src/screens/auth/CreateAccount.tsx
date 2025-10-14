@@ -4,7 +4,7 @@ import React from 'react';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { theme } from '../theme';
+import { theme } from '../../config/theme';
 
 type RootStackParamList = {
   GetStarted: undefined;

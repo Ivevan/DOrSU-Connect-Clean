@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
 import { useColorScheme, Platform } from 'react-native';
-import { Theme, getTheme } from '../theme';
+import { Theme, getTheme } from '../config/theme';
 
 interface ThemeContextType {
   isDarkMode: boolean;

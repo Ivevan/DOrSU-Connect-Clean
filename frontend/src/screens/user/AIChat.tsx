@@ -1,12 +1,12 @@
 import React from 'react';
-import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, TextInput, ScrollView, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Modal, Pressable } from 'react-native';
+import { theme } from '../../config/theme';
+import { useTheme } from '../../contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AdminBottomNavBar from '../../components/AdminBottomNavBar';
+import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { useTheme } from '../../contexts/ThemeContext';
-import InfoModal from '../../modals/InfoModal';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -16,46 +16,39 @@ type RootStackParamList = {
   AIChat: undefined;
   UserSettings: undefined;
   Calendar: undefined;
-  AdminDashboard: undefined;
-  AdminAIChat: undefined;
-  AdminCalendar: undefined;
-  AdminSettings: undefined;
-  PostUpdate: undefined;
-  ManagePosts: undefined;
 };
 
 const SUGGESTIONS = [
-  'Review pending announcements',
-  'Draft a new update',
-  'Schedule an event',
-  'Show recent student queries',
-  'Help with policy wording'
+  'How do I apply for a scholarship?',
+  'Where is the library located?',
+  'What\'s the enrollment schedule?',
+  'How do I access my student portal?',
+  'How do I reset my password?'
 ];
 
-const AdminAIChat = () => {
+const AIChat = () => {
   const insets = useSafeAreaInsets();
+  const { isDarkMode, theme: t } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { isDarkMode, theme } = useTheme();
   const { width } = useWindowDimensions();
   const isWide = width > 600;
   const [isInfoOpen, setIsInfoOpen] = React.useState(false);
 
   return (
     <View style={[styles.container, {
-      backgroundColor: theme.colors.background,
+      backgroundColor: t.colors.background,
       paddingTop: insets.top,
-      paddingBottom: 0, // Remove bottom padding since AdminBottomNavBar now handles it
+      paddingBottom: 0, // Remove bottom padding since UserBottomNavBar handles it
       paddingLeft: insets.left,
       paddingRight: insets.right,
-    }]}
-    >
+    }]}>
       <StatusBar
-        backgroundColor={theme.colors.primary}
-        barStyle={isDarkMode ? "light-content" : "light-content"}
+        backgroundColor={t.colors.primary}
+        barStyle={'light-content'}
         translucent={false}
       />
-      {/* Header (match AdminDashboard layout; keep info button) */}
-      <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: t.colors.primary }]}>
         <View style={styles.headerLeft}>
           <Text style={styles.headerTitle}>DOrSU AI</Text>
         </View>
@@ -66,40 +59,55 @@ const AdminAIChat = () => {
         </View>
       </View>
       {/* Info Modal */}
-      <InfoModal
-        visible={isInfoOpen}
-        onClose={() => setIsInfoOpen(false)}
-        title="About DOrSU AI"
-        subtitle="DOrSU AI can help you:"
-        cards={[
-          {
-            icon: 'megaphone',
-            iconColor: '#0284C7',
-            iconBgColor: '#E0F2FE',
-            text: 'Draft announcements and events faster'
-          },
-          {
-            icon: 'document-text',
-            iconColor: '#4F46E5',
-            iconBgColor: '#E0E7FF',
-            text: 'Summarize long updates into key points'
-          },
-          {
-            icon: 'help-circle',
-            iconColor: '#059669',
-            iconBgColor: '#ECFDF5',
-            text: 'Answer common student questions'
-          }
-        ]}
-        description="Avoid sharing sensitive or personal data."
-      />
-      {/* Content */}
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        <View style={styles.centerIconContainer}>
-          <MaterialIcons name="support-agent" size={80} color={theme.colors.textMuted} style={styles.centerIcon} />
+      <Modal visible={isInfoOpen} transparent animationType="fade" onRequestClose={() => setIsInfoOpen(false)}>
+        <View style={styles.infoModalOverlay}>
+          <View style={[styles.infoCard, { backgroundColor: t.colors.card, borderColor: t.colors.border }]}>
+            <View style={styles.infoHeader}>
+              <Text style={[styles.infoTitle, { color: t.colors.text }]}>About DOrSU AI</Text>
+              <Pressable onPress={() => setIsInfoOpen(false)} style={styles.infoCloseBtn} accessibilityLabel="Close info">
+                <Ionicons name="close" size={20} color={t.colors.textMuted} />
+              </Pressable>
+            </View>
+            <Text style={[styles.infoBodyText, { color: t.colors.textMuted }]}>DOrSU AI can help you:</Text>
+            <View style={styles.infoCards}>
+              <View style={[styles.infoCardBox, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
+                <View style={[styles.infoCardIconWrap, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
+                  <Ionicons name="help-circle" size={18} color={t.colors.primary} />
+                </View>
+                <Text style={[styles.infoCardText, { color: t.colors.text }]}>Answer questions about enrollment and policies</Text>
+              </View>
+              <View style={[styles.infoCardBox, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
+                <View style={[styles.infoCardIconWrap, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
+                  <Ionicons name="location" size={18} color={t.colors.primary} />
+                </View>
+                <Text style={[styles.infoCardText, { color: t.colors.text }]}>Find campus locations and facilities</Text>
+              </View>
+              <View style={[styles.infoCardBox, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
+                <View style={[styles.infoCardIconWrap, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
+                  <Ionicons name="school" size={18} color={t.colors.primary} />
+                </View>
+                <Text style={[styles.infoCardText, { color: t.colors.text }]}>Get information about academic programs</Text>
+              </View>
+            </View>
+            <View style={[styles.infoNote, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
+              <Ionicons name="shield-checkmark-outline" size={16} color={t.colors.textMuted} />
+              <Text style={[styles.infoNoteText, { color: t.colors.textMuted }]}>Avoid sharing sensitive or personal data.</Text>
+            </View>
+          </View>
         </View>
-        <Text style={[styles.askTitle, { color: theme.colors.text }]}>Ask DOrSU AI anything</Text>
-        <Text style={[styles.disclaimer, { color: theme.colors.textMuted }]}>Responses are generated by AI and may be inaccurate.</Text>
+      </Modal>
+      {/* Main Content */}
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent} 
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* AI Assistant Section */}
+        <View style={styles.centerIconContainer}>
+          <MaterialIcons name="support-agent" size={80} color={t.colors.textMuted} style={styles.centerIcon} />
+        </View>
+        <Text style={[styles.askTitle, { color: t.colors.text }]}>Ask DOrSU AI anything</Text>
+        <Text style={[styles.disclaimer, { color: t.colors.textMuted }]}>Responses are generated by AI and may be inaccurate.</Text>
       </ScrollView>
 
       {/* Suggestions */}
@@ -107,39 +115,29 @@ const AdminAIChat = () => {
         {[SUGGESTIONS[0], SUGGESTIONS[1], SUGGESTIONS[2]].map((txt, idx) => (
           <TouchableOpacity
             key={idx}
-            style={[styles.promptCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }, isWide && { maxWidth: 640 }]}
+            style={[styles.promptCard, { backgroundColor: t.colors.card, borderColor: t.colors.border }, isWide && { maxWidth: 640 }]}
             activeOpacity={0.9}
           >
-            <View style={[styles.promptIconWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
-              <Ionicons name="reorder-three" size={16} color={theme.colors.accent} />
+            <View style={[styles.promptIconWrap, { backgroundColor: t.colors.surfaceAlt }]}>
+              <Ionicons name="reorder-three" size={16} color={t.colors.accent} />
             </View>
-            <Text style={[styles.promptCardText, { color: theme.colors.text }]}>{txt}</Text>
+            <Text style={[styles.promptCardText, { color: t.colors.text }]}>{txt}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
       {/* Message Input Bar */}
-      <View style={[styles.inputBar, { backgroundColor: theme.colors.background, borderTopColor: theme.colors.border }]}>
+      <View style={[styles.inputBar, { backgroundColor: t.colors.background, borderTopColor: t.colors.border }]}>
         <TextInput
-          style={[styles.input, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.text }]}
+          style={[styles.input, { backgroundColor: t.colors.surface, borderColor: t.colors.border, color: t.colors.text }]}
           placeholder="Type a message to DOrSU AI"
-          placeholderTextColor={theme.colors.textMuted}
+          placeholderTextColor={t.colors.textMuted}
         />
-        <TouchableOpacity style={[styles.sendBtn, { backgroundColor: theme.colors.primary }]}>
+        <TouchableOpacity style={[styles.sendBtn, { backgroundColor: t.colors.primary }]}>
           <Ionicons name="arrow-up" size={18} color="#fff" />
         </TouchableOpacity>
       </View>
-
-      <AdminBottomNavBar
-        activeTab="chat"
-        onDashboardPress={() => navigation.navigate('AdminDashboard')}
-        onChatPress={() => navigation.navigate('AdminAIChat')}
-        onCalendarPress={() => navigation.navigate('AdminCalendar')}
-        onSettingsPress={() => navigation.navigate('AdminSettings')}  
-        onAddPress={() => {}}
-        onPostUpdatePress={() => navigation.navigate('PostUpdate')}
-        onManagePostPress={() => navigation.navigate('ManagePosts')}
-      />
+      <UserBottomNavBar />
     </View>
   );
 };
@@ -147,6 +145,7 @@ const AdminAIChat = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: theme.colors.surfaceAlt,
   },
   header: {
     flexDirection: 'row',
@@ -168,10 +167,7 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     flexDirection: 'row',
-    gap: 10,
-  },
-  headerIcon: {
-    padding: 4,
+    justifyContent: 'flex-end',
   },
   headerButton: {
     padding: 8,
@@ -204,11 +200,13 @@ const styles = StyleSheet.create({
   askTitle: {
     fontSize: 18,
     fontWeight: '600',
+    color: theme.colors.text,
     textAlign: 'center',
     marginBottom: 6,
   },
   disclaimer: {
     fontSize: 12,
+    color: theme.colors.textMuted,
     textAlign: 'center',
     marginBottom: 20,
   },
@@ -222,11 +220,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     width: '100%',
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
     paddingVertical: 12,
     paddingHorizontal: 14,
     marginBottom: 8,
     borderWidth: 1,
+    borderColor: theme.colors.border,
     shadowColor: '#000',
     shadowOpacity: 0.06,
     shadowRadius: 6,
@@ -237,34 +237,41 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
+    backgroundColor: '#E8F0FF',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
   promptCardText: {
     flex: 1,
+    color: theme.colors.text,
     fontSize: 14,
     fontWeight: '700',
   },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: theme.colors.surfaceAlt,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
   },
   input: {
     flex: 1,
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 8,
     fontSize: 15,
     marginRight: 8,
     borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   sendBtn: {
     paddingVertical: 10,
     paddingHorizontal: 12,
+    backgroundColor: theme.colors.primary,
     borderRadius: 14,
   },
   infoModalOverlay: {
@@ -277,8 +284,10 @@ const styles = StyleSheet.create({
   infoCard: {
     width: '100%',
     maxWidth: 440,
+    backgroundColor: theme.colors.surface,
     borderRadius: 16,
     borderWidth: 1,
+    borderColor: theme.colors.border,
     padding: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -295,6 +304,7 @@ const styles = StyleSheet.create({
   infoTitle: {
     fontSize: 16,
     fontWeight: '800',
+    color: theme.colors.text,
   },
   infoCloseBtn: {
     padding: 6,
@@ -304,6 +314,7 @@ const styles = StyleSheet.create({
   },
   infoBodyText: {
     fontSize: 14,
+    color: theme.colors.textMuted,
     marginBottom: 10,
     lineHeight: 20,
     letterSpacing: 0.2,
@@ -321,7 +332,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 12,
+    backgroundColor: theme.colors.surfaceAlt,
     borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   infoCardIconWrap: {
     width: 28,
@@ -331,10 +344,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#E8F0FF',
     borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   infoCardText: {
     flex: 1,
     fontSize: 13,
+    color: theme.colors.text,
     fontWeight: '600',
   },
   infoNote: {
@@ -356,4 +371,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default AdminAIChat;
+export default AIChat; 

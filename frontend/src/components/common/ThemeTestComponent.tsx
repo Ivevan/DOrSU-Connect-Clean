@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useTheme } from '../contexts/ThemeContext';
-import { getTheme } from '../theme';
+import { useTheme } from '../../contexts/ThemeContext';
+import { getTheme } from '../../config/theme';
 
 const ThemeTestComponent = () => {
   const { isDarkMode, toggleTheme } = useTheme();

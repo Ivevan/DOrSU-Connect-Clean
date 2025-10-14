@@ -3,11 +3,11 @@ import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Pressa
 import { LinearGradient } from 'expo-linear-gradient';
 import AdminDataService from '../../services/AdminDataService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AdminBottomNavBar from '../../components/AdminBottomNavBar';
+import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { theme as themeStyle } from '../../theme';
+import { theme as themeStyle } from '../../config/theme';
 import { useTheme } from '../../contexts/ThemeContext';
 import { formatDate, timeAgo } from '../../utils/dateUtils';
 import PreviewModal from '../../modals/PreviewModal';
@@ -39,6 +39,7 @@ const AdminDashboard = () => {
   const [notificationCount, setNotificationCount] = useState(0);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewUpdate, setPreviewUpdate] = useState<{ title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean } | null>(null);
+  const [activePreviewIndex, setActivePreviewIndex] = useState(0);
   type DashboardUpdate = { title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean };
   type DashboardData = { totalUpdates: number; pinned: number; urgent: number; recentUpdates: DashboardUpdate[] };
   const [dashboardData, setDashboardData] = useState<DashboardData>({

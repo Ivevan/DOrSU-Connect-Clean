@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
-import { lightTheme as theme } from '../theme';
+import { lightTheme as theme } from '../../config/theme';
 
 const { width, height } = Dimensions.get('window');
 
@@ -460,7 +460,7 @@ const SplashScreen = () => {
             ]}
           >
             <Image
-              source={require('../../assets/DOrSU.png')}
+              source={require('../../../../assets/DOrSU.png')}
               style={styles.logoImage as any}
               resizeMode="contain"
             />

@@ -4,12 +4,12 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useTheme } from '../contexts/ThemeContext';
 
-import SplashScreen from '../screens/SplashScreen';
-import GetStarted from '../screens/GetStarted';
-import SignIn from '../screens/SignIn';
-import CreateAccount from '../screens/CreateAccount';
+import SplashScreen from '../screens/auth/SplashScreen';
+import GetStarted from '../screens/auth/GetStarted';
+import SignIn from '../screens/auth/SignIn';
+import CreateAccount from '../screens/auth/CreateAccount';
 import SchoolUpdates from '../screens/user/SchoolUpdates';
-import AIChat from '../screens/AIChat';
+import AIChat from '../screens/user/AIChat';
 import UserSettings from '../screens/user/UserSettings';
 import Calendar from '../screens/user/Calendar';
 import AdminDashboard from '../screens/admin/AdminDashboard';

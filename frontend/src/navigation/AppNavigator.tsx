@@ -18,6 +18,9 @@ import AdminSettings from '../screens/admin/AdminSettings';
 import AdminCalendar from '../screens/admin/AdminCalendar';
 import PostUpdate from '../screens/admin/PostUpdate';
 import ManagePosts from '../screens/admin/ManagePosts';
+import HelpCenterScreen from '../screens/admin/HelpCenterScreen';
+import ContactSupportScreen from '../screens/admin/ContactSupportScreen';
+import AboutScreen from '../screens/admin/AboutScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -97,6 +100,9 @@ const AppNavigator = () => {
         />
         <Stack.Screen name="PostUpdate" component={PostUpdate} />
         <Stack.Screen name="ManagePosts" component={ManagePosts} />
+        <Stack.Screen name="HelpCenter" component={HelpCenterScreen} />
+        <Stack.Screen name="ContactSupport" component={ContactSupportScreen} />
+        <Stack.Screen name="About" component={AboutScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

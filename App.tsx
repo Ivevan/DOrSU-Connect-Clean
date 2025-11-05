@@ -9,6 +9,7 @@ import { useTheme } from './frontend/src/contexts/ThemeContext';
 
 const Root = () => {
   const { isDarkMode } = useTheme();
+  
   return (
     <>
       <AppNavigator />

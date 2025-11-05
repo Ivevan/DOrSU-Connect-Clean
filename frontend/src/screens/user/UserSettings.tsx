@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, ScrollView, Switch, Alert, Animated } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, ScrollView, Switch, Alert, Animated, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
@@ -9,6 +9,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { theme } from '../../config/theme';
 import { useTheme } from '../../contexts/ThemeContext';
 import LogoutModal from '../../modals/LogoutModal';
+import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -31,6 +32,14 @@ const UserSettings = () => {
   const [darkMode, setDarkMode] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [autoBackupEnabled, setAutoBackupEnabled] = useState(true);
+  
+  // User state from Firebase Auth
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  
+  // Get user display name and email
+  const userName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
+  const userEmail = currentUser?.email || 'No email';
+  const userPhoto = currentUser?.photoURL || null;
 
   // Animation values for smooth entrance
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -57,6 +66,19 @@ const UserSettings = () => {
         useNativeDriver: true,
       }),
     ]).start();
+    
+    // Get current user
+    const user = getCurrentUser();
+    setCurrentUser(user);
+    
+    // Listen for auth state changes
+    const unsubscribe = onAuthStateChange((user) => {
+      setCurrentUser(user);
+    });
+    
+    return () => {
+      unsubscribe();
+    };
   }, []);
   
   // Function to handle logout
@@ -133,10 +155,17 @@ const UserSettings = () => {
           ]}
         >
           <View style={styles.profileAvatar}>
-            <Ionicons name="person" size={32} color={t.colors.textMuted} />
+            {userPhoto ? (
+              <Image 
+                source={{ uri: userPhoto }} 
+                style={styles.profileAvatarImage}
+              />
+            ) : (
+              <Ionicons name="person" size={32} color={t.colors.textMuted} />
+            )}
           </View>
-          <Text style={[styles.profileName, { color: t.colors.text }]}>Juan Dela Cruz</Text>
-          <Text style={[styles.profileEmail, { color: t.colors.textMuted }]}>juan_delacruz@mail.com</Text>
+          <Text style={[styles.profileName, { color: t.colors.text }]}>{userName}</Text>
+          <Text style={[styles.profileEmail, { color: t.colors.textMuted }]}>{userEmail}</Text>
         </Animated.View>
 
         {/* Settings Categories */}
@@ -385,6 +414,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: theme.spacing(1),
+    overflow: 'hidden',
+  },
+  profileAvatarImage: {
+    width: '100%',
+    height: '100%',
   },
   profileName: {
     fontSize: 16,

@@ -80,6 +80,33 @@ const ManagePosts: React.FC = () => {
   // Animation values for confirmation modals
   const pinSheetY = useRef(new Animated.Value(300)).current;
   const deleteSheetY = useRef(new Animated.Value(300)).current;
+
+  // Animation values for smooth entrance
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+
+  useEffect(() => {
+    // Entrance animation for Manage Posts - Slide from bottom with scale
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 80,
+        friction: 6,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
   
   // Inline, dependency-free date data
   const months = useMemo(() => [
@@ -392,9 +419,21 @@ const ManagePosts: React.FC = () => {
         bounces={true}
       >
 
-
         {/* Filter Posts Section */}
-        <View style={[styles.filterContainer, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+        <Animated.View 
+          style={[
+            styles.filterContainer,
+            {
+              backgroundColor: theme.colors.card,
+              borderColor: theme.colors.border,
+              opacity: fadeAnim,
+              transform: [
+                { translateY: slideAnim },
+                { scale: scaleAnim }
+              ]
+            }
+          ]}
+        >
           <View style={styles.filterHeaderRow}>
             <Text style={[styles.filterTitle, { color: theme.colors.text }]}>Filter Posts</Text>
             <View style={styles.filterActions}>
@@ -537,10 +576,21 @@ const ManagePosts: React.FC = () => {
               )}
             </TouchableOpacity>
           </View>
-        </View>
+        </Animated.View>
 
         {/* Posts List */}
-        <View style={styles.postsContainer}>
+        <Animated.View 
+          style={[
+            styles.postsContainer,
+            {
+              opacity: fadeAnim,
+              transform: [
+                { translateY: slideAnim },
+                { scale: scaleAnim }
+              ]
+            }
+          ]}
+        >
           <Text style={[styles.postsTitle, { color: theme.colors.text }]}>Posts ({sortedPosts.length})</Text>
           
           {isLoading ? (
@@ -635,7 +685,7 @@ const ManagePosts: React.FC = () => {
               </View>
             ))
           )}
-        </View>
+        </Animated.View>
       </ScrollView>
 
       {/* More Options Modal */}

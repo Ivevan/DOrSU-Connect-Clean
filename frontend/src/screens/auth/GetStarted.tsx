@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Platform, StatusBar, Image, Animated, Easing } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Platform, StatusBar, Image, Animated, Easing, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import React, { useRef } from 'react';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
@@ -7,6 +7,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { lightTheme as theme } from '../../config/theme';
+import { signInWithGoogle, getGoogleSignInErrorMessage } from '../../services/authService';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -27,10 +28,13 @@ const GetStarted = () => {
   const logoScale = useRef(new Animated.Value(1)).current;
   const logoGlow = useRef(new Animated.Value(0)).current;
   const emailButtonScale = useRef(new Animated.Value(1)).current;
+  const googleButtonScale = useRef(new Animated.Value(1)).current;
   const signUpButtonScale = useRef(new Animated.Value(1)).current;
   const signInButtonScale = useRef(new Animated.Value(1)).current;
   const emailLoadingOpacity = useRef(new Animated.Value(0)).current;
+  const googleLoadingOpacity = useRef(new Animated.Value(0)).current;
   const [isEmailLoading, setIsEmailLoading] = React.useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
   const floatingAnimation = useRef(new Animated.Value(0)).current;
   const techFloat1 = useRef(new Animated.Value(0)).current;
   const techFloat2 = useRef(new Animated.Value(0)).current;
@@ -268,40 +272,63 @@ const GetStarted = () => {
   const handleEmailPress = () => {
     // Haptic feedback for email button press
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    navigation.navigate('CreateAccount');
+  };
+
+  // Handle Google Sign-In
+  const handleGoogleSignIn = async () => {
+    setIsGoogleLoading(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
-    setIsEmailLoading(true);
     Animated.parallel([
-      Animated.timing(emailButtonScale, {
+      Animated.timing(googleButtonScale, {
         toValue: 0.98,
         duration: 100,
         useNativeDriver: true,
       }),
-      Animated.timing(emailLoadingOpacity, {
+      Animated.timing(googleLoadingOpacity, {
         toValue: 1,
         duration: 200,
         useNativeDriver: true,
       }),
     ]).start();
 
-    // Simulate loading for 2 seconds
-    setTimeout(() => {
-      setIsEmailLoading(false);
-      // Success haptic feedback when loading completes
+    try {
+      const user = await signInWithGoogle();
+      
+      // Success
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
+      // Navigate based on user role or default screen
+      // TODO: You can check user.uid or other properties to determine if admin or user
+      navigation.navigate('SchoolUpdates');
+    } catch (error: any) {
+      console.error('Google Sign-In Error:', error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      
+      const errorMessage = getGoogleSignInErrorMessage(error);
+      
+      // Show alert for better visibility
+      Alert.alert(
+        'Sign-In Failed',
+        errorMessage,
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsGoogleLoading(false);
       Animated.parallel([
-        Animated.timing(emailButtonScale, {
+        Animated.timing(googleButtonScale, {
           toValue: 1,
           duration: 100,
           useNativeDriver: true,
         }),
-        Animated.timing(emailLoadingOpacity, {
+        Animated.timing(googleLoadingOpacity, {
           toValue: 0,
           duration: 200,
           useNativeDriver: true,
         }),
       ]).start();
-    }, 2000);
+    }
   };
 
   const handleButtonPress = (scaleRef: Animated.Value, callback: () => void) => {
@@ -642,15 +669,51 @@ const GetStarted = () => {
         {/* Buttons Section */}
         <View style={styles.buttonsSection}>
           <View style={styles.buttonContainer}>
+            {/* Google Sign-In Button */}
+            <Animated.View style={{ transform: [{ scale: googleButtonScale }] }}>
+              <TouchableOpacity 
+                style={styles.googleButton} 
+                onPress={handleGoogleSignIn}
+                disabled={isGoogleLoading || isEmailLoading}
+                accessibilityRole="button"
+                accessibilityLabel="Sign in with Google"
+                accessibilityHint="Double tap to sign in with your Google account"
+                accessibilityState={{ disabled: isGoogleLoading || isEmailLoading }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <LinearGradient
+                  colors={isGoogleLoading ? ['#E5E7EB', '#D1D5DB'] : ['#FFFFFF', '#F8FAFC']}
+                  style={styles.buttonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  {!isGoogleLoading ? (
+                    <>
+                      <MaterialIcons name="login" size={24} color="#4285F4" style={styles.buttonIcon} />
+                      <Text style={styles.googleButtonText}>Continue with Google</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Animated.View style={{ opacity: googleLoadingOpacity }}>
+                        <MaterialIcons name="refresh" size={24} color="#4285F4" style={styles.buttonIcon} />
+                      </Animated.View>
+                      <Text style={styles.googleButtonText}>Signing in...</Text>
+                    </>
+                  )}
+                </LinearGradient>
+              </TouchableOpacity>
+            </Animated.View>
+
+            {/* Email Button */}
             <Animated.View style={{ transform: [{ scale: emailButtonScale }] }}>
               <TouchableOpacity 
                 style={styles.emailButton} 
                 onPress={handleEmailPress}
-                disabled={isEmailLoading}
+                disabled={isGoogleLoading || isEmailLoading}
                 accessibilityRole="button"
-                accessibilityLabel="Quick start with email"
-                accessibilityHint="Double tap to quickly set up your account with email"
-                accessibilityState={{ disabled: isEmailLoading }}
+                accessibilityLabel="Create account with email"
+                accessibilityHint="Double tap to create a new account with your email"
+                accessibilityState={{ disabled: isGoogleLoading || isEmailLoading }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <LinearGradient
@@ -659,19 +722,8 @@ const GetStarted = () => {
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                 >
-                  {!isEmailLoading ? (
-                    <>
-                      <MaterialCommunityIcons name="email-fast" size={24} color="black" style={styles.buttonIcon} />
-                      <Text style={styles.emailButtonText}>Quick Start with Email</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Animated.View style={{ opacity: emailLoadingOpacity }}>
-                        <MaterialCommunityIcons name="loading" size={24} color="black" style={styles.buttonIcon} />
-                      </Animated.View>
-                      <Text style={styles.emailButtonText}>Setting up your account...</Text>
-                    </>
-                  )}
+                  <MaterialCommunityIcons name="email-fast" size={24} color="black" style={styles.buttonIcon} />
+                  <Text style={styles.emailButtonText}>Create Account with Email</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </Animated.View>
@@ -1031,6 +1083,17 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: theme.spacing(1.5), // Reduced gap for tighter button spacing
   },
+  googleButton: {
+    borderRadius: theme.radii.lg,
+    alignItems: 'center',
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    ...theme.shadow2,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 0, 0, 0.05)',
+  },
   emailButton: {
     borderRadius: theme.radii.lg,
     alignItems: 'center',
@@ -1051,6 +1114,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: theme.radii.lg,
     minHeight: 56, // Reduced height for more compact buttons
+  },
+  googleButtonText: {
+    color: theme.colors.text,
+    fontSize: 17,
+    fontWeight: '600',
+    marginLeft: theme.spacing(1.5),
+    letterSpacing: 0.3,
   },
   emailButtonText: {
     color: theme.colors.text,

@@ -7,7 +7,8 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
-import LogoutModal from '../../modals/LogoutModal'; 
+import LogoutModal from '../../modals/LogoutModal';
+import ProfileSettingsModal from '../../modals/ProfileSettingsModal'; 
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -23,6 +24,9 @@ type RootStackParamList = {
   AdminCalendar: undefined;
   PostUpdate: undefined;
   ManagePosts: undefined;
+  About: undefined;
+  ContactSupport: undefined;
+  HelpCenter: undefined;
 };
 
 const AdminSettings = () => {
@@ -32,8 +36,8 @@ const AdminSettings = () => {
   
   // State for various settings
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [autoBackupEnabled, setAutoBackupEnabled] = useState(true);
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
+  const [isProfileSettingsOpen, setIsProfileSettingsOpen] = useState(false);
 
   // Animation values for smooth entrance
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -63,6 +67,7 @@ const AdminSettings = () => {
   }, []);
 
   const sheetY = useRef(new Animated.Value(300)).current;
+  const profileSettingsSheetY = useRef(new Animated.Value(300)).current;
 
   const openLogout = () => {
     setIsLogoutOpen(true);
@@ -81,6 +86,20 @@ const AdminSettings = () => {
   const confirmLogout = () => {
     closeLogout();
     navigation.navigate('GetStarted');
+  };
+
+  const openProfileSettings = () => {
+    setIsProfileSettingsOpen(true);
+    // Wait for modal mount then animate
+    setTimeout(() => {
+      Animated.timing(profileSettingsSheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    }, 0);
+  };
+
+  const closeProfileSettings = () => {
+    Animated.timing(profileSettingsSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
+      setIsProfileSettingsOpen(false);
+    });
   };
 
 
@@ -107,18 +126,13 @@ const AdminSettings = () => {
         borderBottomRightRadius: 16,
       }]}>
         <View style={styles.headerLeft}>
-          <View style={styles.headerTextContainer}>
-            <Text style={[styles.headerTitle, { color: '#fff' }]}>Settings</Text>
-            <Text style={[styles.headerSubtitle, { color: 'rgba(255, 255, 255, 0.8)' }]}>DOrSU Connect</Text>
-          </View>
+          <Text style={[styles.headerTitle, { color: '#fff' }]}>Settings</Text>
         </View>
-        <TouchableOpacity onPress={openLogout} style={[styles.logoutButton, { 
-          backgroundColor: 'rgba(255, 255, 255, 0.15)',
-          borderRadius: 8,
-        }]}>
-          <Ionicons name="log-out-outline" size={20} color="#FFFFFF" />
-          <Text style={[styles.logoutText, { color: '#FFFFFF' }]}>Logout</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.headerButton} onPress={openLogout}>
+            <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -160,7 +174,10 @@ const AdminSettings = () => {
           <View style={[styles.sectionCard, { backgroundColor: theme.colors.card }]}>
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Account</Text>
             
-            <TouchableOpacity style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}>
+            <TouchableOpacity 
+              style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}
+              onPress={openProfileSettings}
+            >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: theme.colors.chipBg }]}>
                   <Ionicons name="person-outline" size={20} color={theme.colors.accent} />
@@ -200,7 +217,7 @@ const AdminSettings = () => {
               />
             </View>
 
-            <View style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}>
+            <View style={styles.settingItemLast}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: theme.colors.chipBg }]}>
                   <Ionicons name="notifications-outline" size={20} color={theme.colors.accent} />
@@ -214,21 +231,6 @@ const AdminSettings = () => {
                 thumbColor={notificationsEnabled ? theme.colors.surface : theme.colors.surface}
               />
             </View>
-
-            <View style={styles.settingItemLast}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.chipBg }]}>
-                  <Ionicons name="cloud-upload-outline" size={20} color={theme.colors.accent} />
-                </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Auto Backup</Text>
-              </View>
-              <Switch
-                value={autoBackupEnabled}
-                onValueChange={setAutoBackupEnabled}
-                trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
-                thumbColor={autoBackupEnabled ? theme.colors.surface : theme.colors.surface}
-              />
-            </View>
           </View>
 
 
@@ -236,7 +238,10 @@ const AdminSettings = () => {
           <View style={[styles.sectionCard, { backgroundColor: theme.colors.card }]}>
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Support</Text>
             
-            <TouchableOpacity style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}>
+            <TouchableOpacity 
+              style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}
+              onPress={() => navigation.navigate('HelpCenter')}
+            >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: theme.colors.chipBg }]}>
                   <Ionicons name="help-circle-outline" size={20} color={theme.colors.accent} />
@@ -246,7 +251,10 @@ const AdminSettings = () => {
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}>
+            <TouchableOpacity 
+              style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}
+              onPress={() => navigation.navigate('ContactSupport')}
+            >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: theme.colors.chipBg }]}>
                   <Ionicons name="mail-outline" size={20} color={theme.colors.accent} />
@@ -256,7 +264,7 @@ const AdminSettings = () => {
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.settingItemLast}>
+            <TouchableOpacity style={styles.settingItemLast} onPress={() => navigation.navigate('About')}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: theme.colors.chipBg }]}>
                   <Ionicons name="information-circle-outline" size={20} color={theme.colors.accent} />
@@ -266,6 +274,7 @@ const AdminSettings = () => {
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
           </View>
+
         </Animated.View>
       </ScrollView>
 
@@ -286,6 +295,12 @@ const AdminSettings = () => {
         onConfirm={confirmLogout}
         sheetY={sheetY}
       />
+
+      <ProfileSettingsModal
+        visible={isProfileSettingsOpen}
+        onClose={closeProfileSettings}
+        sheetY={profileSettingsSheetY}
+      />
     </View>
   );
 };
@@ -295,22 +310,30 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 6,
-    marginBottom: 8,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+    marginBottom: 6,
   },
   headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
     flex: 1,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  headerButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginLeft: 4,
   },
   headerIconContainer: {
     width: 40,
@@ -321,33 +344,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 16,
   },
-  headerTextContainer: {
-    flex: 1,
-  },
   headerTitle: {
     fontSize: 20,
     fontWeight: '800',
     letterSpacing: 0.2,
   },
-  headerSubtitle: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 6,
-  },
-  logoutText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
   scrollContent: {
     paddingHorizontal: 12,
     paddingTop: 16,
-    paddingBottom: 120,
+    paddingBottom: 32,
   },
   profileSection: {
     alignItems: 'center',

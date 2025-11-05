@@ -1,6 +1,5 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Animated, Dimensions, Modal, Easing, AccessibilityInfo } from 'react-native';
-import { PanGestureHandler, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import AdminDataService from '../../services/AdminDataService';
@@ -29,8 +28,6 @@ type RootStackParamList = {
 };
 
 // Constants
-const CALENDAR_HEIGHT = 280;
-const MINIMIZED_HEIGHT = 120;
 const WEEK_DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -127,19 +124,19 @@ const AdminCalendar = () => {
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   
   // Calendar state
-  const translateY = useRef(new Animated.Value(0)).current;
-  const [isMinimized, setIsMinimized] = useState(true);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [showAllEvents, setShowAllEvents] = useState(false);
   
   // Animation values
-  const calendarHeightAnim = useRef(new Animated.Value(MINIMIZED_HEIGHT)).current;
-  const calendarOpacityAnim = useRef(new Animated.Value(0.7)).current;
-  const dragHandleRotationAnim = useRef(new Animated.Value(0)).current;
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
   const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
   const listAnim = useRef(new Animated.Value(0)).current;
   const dotScale = useRef(new Animated.Value(0.8)).current;
+
+  // Entrance animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
 
   // Data from AdminDataService
@@ -161,6 +158,28 @@ const AdminCalendar = () => {
     };
     load();
     return () => { cancelled = true; };
+  }, []);
+
+  // Entrance animation for Calendar - Slide from bottom with scale
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 80,
+        friction: 6,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
 
 
@@ -216,8 +235,6 @@ const AdminCalendar = () => {
     });
   };
 
-  const days = getDaysInMonth(currentMonth);
-
   // Helper functions
   const getEventsForDate = (date: Date) => {
     const key = formatDateKey(date);
@@ -253,6 +270,8 @@ const AdminCalendar = () => {
     }
     return posts.map(transformPostToEvent);
   };
+
+  const days = getDaysInMonth(currentMonth);
 
   const transformPostToEvent = (p: any) => ({
     id: p.id,
@@ -353,84 +372,6 @@ const AdminCalendar = () => {
   };
 
 
-  // Drag gesture handlers
-  const onGestureEvent = Animated.event(
-    [{ nativeEvent: { translationY: translateY } }],
-    { useNativeDriver: true }
-  );
-
-  const onHandlerStateChange = (event: any) => {
-    if (event.nativeEvent.state === 5) { // END state
-      const { translationY, velocityY } = event.nativeEvent;
-      
-      if (velocityY > 0) { // Dragging down - expand
-        if (translationY > 50 || velocityY > 500) {
-          expandCalendar();
-        } else {
-          minimizeCalendar();
-        }
-      } else { // Dragging up - minimize
-        if (translationY < -50 || velocityY < -500) {
-          minimizeCalendar();
-        } else {
-          expandCalendar();
-        }
-      }
-    }
-  };
-
-  const minimizeCalendar = () => {
-    setIsMinimized(true);
-    
-    // Animate calendar collapse
-    Animated.parallel([
-      Animated.timing(calendarHeightAnim, {
-        toValue: MINIMIZED_HEIGHT,
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-      Animated.timing(calendarOpacityAnim, {
-        toValue: 0.7,
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-      Animated.timing(dragHandleRotationAnim, {
-        toValue: 0,
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-    ]).start();
-  };
-
-  const expandCalendar = () => {
-    setIsMinimized(false);
-    
-    // Animate calendar expansion
-    Animated.parallel([
-      Animated.timing(calendarHeightAnim, {
-        toValue: CALENDAR_HEIGHT,
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-      Animated.timing(calendarOpacityAnim, {
-        toValue: 1,
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-      Animated.timing(dragHandleRotationAnim, {
-        toValue: 1,
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-    ]).start();
-  };
-
   React.useEffect(() => {
     listAnim.setValue(0);
     Animated.timing(listAnim, {
@@ -447,7 +388,6 @@ const AdminCalendar = () => {
   }, [showAllEvents, selectedDate, posts]);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
     <View style={[styles.container, {
       backgroundColor: theme.colors.background,
       paddingTop: insets.top,
@@ -464,21 +404,8 @@ const AdminCalendar = () => {
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
           <View style={styles.headerLeft}>
-        <TouchableOpacity
-              style={styles.monthSelectorButton}
-              onPress={openMonthPicker}
-              activeOpacity={0.7}
-          accessibilityRole="button"
-              accessibilityLabel="Open month picker"
-              accessibilityHint="Opens a modal to select a month"
-            >
-              <View style={styles.monthSelectorContent}>
-                <Ionicons name="calendar" size={20} color="white" />
-                <Text style={styles.headerTitle}>{getMonthName(currentMonth)}</Text>
-                <Ionicons name="chevron-down" size={16} color="white" />
-              </View>
-        </TouchableOpacity>
-      </View>
+            <Text style={styles.headerTitle}>School Calendar</Text>
+          </View>
           <View style={styles.headerRight}>
             <View style={styles.headerSpacer} />
             <View style={styles.headerSpacer} />
@@ -488,16 +415,44 @@ const AdminCalendar = () => {
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
         {/* Calendar Card - Fixed below header */}
-        <Animated.View style={[
-          styles.calendarCard,
-          {
-            backgroundColor: theme.colors.card,
-            height: calendarHeightAnim,
-            opacity: calendarOpacityAnim,
-          }
-        ]}>
+        {/* Outer wrapper for entrance animation (transform/opacity only) */}
+        <Animated.View 
+          style={{
+            opacity: fadeAnim,
+            transform: [
+              { translateY: slideAnim },
+              { scale: scaleAnim }
+            ]
+          }}
+        >
+          {/* Calendar Card */}
+          <View style={[
+            styles.calendarCard,
+            {
+              backgroundColor: theme.colors.card,
+            }
+          ]}>
 
-          
+          {/* Month selector at top of calendar */}
+          <View style={[styles.calendarMonthHeader, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+            <TouchableOpacity
+              style={styles.monthSelectorButton}
+              onPress={openMonthPicker}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Open month picker"
+              accessibilityHint="Opens a modal to select a month"
+            >
+              <View style={styles.monthSelectorContent}>
+                <Ionicons name="calendar" size={18} color={theme.colors.text} />
+                <Text style={[styles.monthHeaderText, { color: theme.colors.text }]}>
+                  {getMonthName(currentMonth)} {currentMonth.getFullYear()}
+                </Text>
+                <Ionicons name="chevron-down" size={14} color={theme.colors.textMuted} />
+              </View>
+            </TouchableOpacity>
+          </View>
+
           {/* Week day headers */}
           <View style={[styles.weekHeader, { backgroundColor: theme.colors.card }]}>
             {WEEK_DAYS.map((day, index) => (
@@ -514,44 +469,15 @@ const AdminCalendar = () => {
 
           {/* Calendar Grid */}
           <View style={styles.calendarGrid}>
-            {isMinimized ? (
-              // Show only the week of the selected date
-              getWeekDaysFor(selectedDate || new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1)).map((date, index) => {
-                const day = date.getDate();
-                const isCurrentDay = isToday(date);
-                const isSelectedDay = isSelected(date);
-                return renderCalendarDay(date, day, isCurrentDay, !!isSelectedDay, index);
-              })
-            ) : (
-              // Show full month when expanded
-              days.map((day, index) => {
-                const currentDate = day ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day) : null;
-                const isCurrentDay = currentDate ? isToday(currentDate) : false;
-                const isSelectedDay = currentDate ? isSelected(currentDate) : false;
-                return renderCalendarDay(currentDate || new Date(), day, isCurrentDay, !!isSelectedDay, index);
-              })
-            )}
+            {/* Show full month */}
+            {getDaysInMonth(currentMonth).map((day, index) => {
+              const currentDate = day ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day) : null;
+              const isCurrentDay = currentDate ? isToday(currentDate) : false;
+              const isSelectedDay = currentDate ? isSelected(currentDate) : false;
+              return renderCalendarDay(currentDate || new Date(), day, isCurrentDay, !!isSelectedDay, index);
+            })}
           </View>
-
-          {/* Calendar Dropdown Indicator */}
-          <TouchableOpacity 
-            style={[styles.calendarDropdownIndicator, { backgroundColor: theme.colors.surfaceAlt, borderTopColor: theme.colors.border }]}
-            onPress={isMinimized ? expandCalendar : minimizeCalendar}
-            activeOpacity={0.7}
-          >
-            <Animated.View style={[
-              styles.dragHandle,
-              { backgroundColor: theme.colors.border },
-              {
-                transform: [{
-                  rotate: dragHandleRotationAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0deg', '180deg'],
-                  })
-                }]
-              }
-            ]} />
-          </TouchableOpacity>
+          </View>
         </Animated.View>
 
         {/* Month Picker Modal */}
@@ -612,7 +538,19 @@ const AdminCalendar = () => {
 
 
         {/* Events Section */}
-        <View style={[styles.eventsSection, { backgroundColor: theme.colors.card }]}>
+        <Animated.View 
+          style={[
+            styles.eventsSection,
+            {
+              backgroundColor: theme.colors.card,
+              opacity: fadeAnim,
+              transform: [
+                { translateY: slideAnim },
+                { scale: scaleAnim }
+              ]
+            }
+          ]}
+        >
           <View style={styles.eventsHeader}>
             <View style={styles.eventsHeaderLeft}>
               <View style={[styles.eventsIconWrap, { borderColor: theme.colors.border }]}>
@@ -639,20 +577,15 @@ const AdminCalendar = () => {
               </TouchableOpacity>
             </View>
           </View>
-          <View style={styles.eventsSubtitleRowEnhanced}>
-            <Text style={[styles.eventsSubtitle, { color: theme.colors.textMuted }]} numberOfLines={1}>
-              {showAllEvents
-                ? 'All dates'
-                : selectedDate
-                  ? formatDate(selectedDate)
-                  : 'All dates'} — {getFilteredEvents().length} {getFilteredEvents().length === 1 ? 'event' : 'events'}
-            </Text>
-            {false && isMinimized && (
-              <Text style={styles.monthHelperText}>
-                {currentMonth.toLocaleDateString('en-US', { month: 'long' })} • {getMonthEventCount(currentMonth)} events
-              </Text>
-            )}
-          </View>
+           <View style={styles.eventsSubtitleRowEnhanced}>
+             <Text style={[styles.eventsSubtitle, { color: theme.colors.textMuted }]} numberOfLines={1}>
+               {showAllEvents
+                 ? 'All dates'
+                 : selectedDate
+                   ? formatDate(selectedDate)
+                   : 'All dates'} — {getFilteredEvents().length} {getFilteredEvents().length === 1 ? 'event' : 'events'}
+             </Text>
+           </View>
           <LinearGradient colors={[theme.colors.border, 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ height: 1, marginBottom: 10 }} />
 
           {getFilteredEvents().length === 0 && !isLoadingPosts && (
@@ -789,7 +722,7 @@ const AdminCalendar = () => {
             ))}
             </Animated.View>
           )}
-        </View>
+        </Animated.View>
       </ScrollView>
 
       <AdminBottomNavBar
@@ -803,7 +736,6 @@ const AdminCalendar = () => {
         onManagePostPress={() => navigation.navigate('ManagePosts')}
       />
     </View>
-    </GestureHandlerRootView>
   );
 };
 
@@ -859,6 +791,12 @@ const styles = StyleSheet.create({
     elevation: 2,
     overflow: 'hidden',
   },
+  calendarMonthHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    justifyContent: 'center',
+  },
   monthSelectorButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -869,16 +807,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  calendarDropdownIndicator: {
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderTopWidth: 1,
-  },
-  dragHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
+  monthHeaderText: {
+    fontSize: 16,
+    fontWeight: '700',
   },
   modalOverlay: {
     flex: 1,

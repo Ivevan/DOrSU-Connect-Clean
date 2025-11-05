@@ -38,7 +38,8 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   }, []);
 
   // Optional user preference override: 'light' | 'dark' | null (follow system)
-  const [userPreference, setUserPreference] = useState<null | 'light' | 'dark'>(null);
+  // Default to 'light' mode on app launch
+  const [userPreference, setUserPreference] = useState<null | 'light' | 'dark'>('light');
 
   // Compute effective mode
   const isDarkMode = useMemo(() => {

@@ -1,4 +1,4 @@
- import React, { useState, useMemo } from 'react';
+ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   Vibration,
   Image,
   FlatList,
+  Animated,
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -68,6 +69,33 @@ const PostUpdate: React.FC = () => {
   const [isPublishAlertOpen, setIsPublishAlertOpen] = useState(false);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+
+  // Animation values for smooth entrance
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+
+  useEffect(() => {
+    // Entrance animation for Post Update - Slide from bottom with scale
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 80,
+        friction: 6,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   // Inline, dependency-free date data
   const months = useMemo(() => [
@@ -372,7 +400,18 @@ const PostUpdate: React.FC = () => {
         showsVerticalScrollIndicator={true}
         bounces={true}
       >
-        <View style={styles.contentInner}>
+        <Animated.View 
+          style={[
+            styles.contentInner,
+            {
+              opacity: fadeAnim,
+              transform: [
+                { translateY: slideAnim },
+                { scale: scaleAnim }
+              ]
+            }
+          ]}
+        >
         
         {/* Title Field */}
         <View style={styles.inputContainer}>
@@ -684,7 +723,7 @@ const PostUpdate: React.FC = () => {
           {/* Schedule for later removed */}
         </View>
 
-        </View>
+        </Animated.View>
       </ScrollView>
 
       {/* Footer with Action Buttons */}

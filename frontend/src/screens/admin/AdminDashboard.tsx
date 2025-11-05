@@ -51,6 +51,32 @@ const AdminDashboard = () => {
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
 
+  // Animation values for smooth entrance
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+
+  useEffect(() => {
+    // Entrance animation for Dashboard - Slide from bottom with scale
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 80,
+        friction: 6,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   // Note: awaiting real data; dashboardData can be set from API by filter
 
@@ -198,7 +224,18 @@ const AdminDashboard = () => {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Welcome Section */}
-        <View style={styles.welcomeSection}>
+        <Animated.View 
+          style={[
+            styles.welcomeSection,
+            {
+              opacity: fadeAnim,
+              transform: [
+                { translateY: slideAnim },
+                { scale: scaleAnim }
+              ]
+            }
+          ]}
+        >
           <View style={styles.welcomeText}>
             <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>Welcome back, Admin</Text>
             <Text style={[styles.welcomeSubtitle, { color: theme.colors.textMuted }]}>Here's a quick overview of today</Text>
@@ -207,10 +244,21 @@ const AdminDashboard = () => {
             <Ionicons name="add" size={20} color="white" />
             <Text style={styles.newUpdateText}>New Update</Text>
           </Pressable>
-        </View>
+        </Animated.View>
 
         {/* Time Period Filters */}
-        <View style={styles.filtersContainer}>
+        <Animated.View 
+          style={[
+            styles.filtersContainer,
+            {
+              opacity: fadeAnim,
+              transform: [
+                { translateY: slideAnim },
+                { scale: scaleAnim }
+              ]
+            }
+          ]}
+        >
           <Pressable 
             style={[styles.filterPill, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, activeFilter === 'week' && { backgroundColor: theme.colors.accent, borderColor: 'transparent' }]} 
             onPress={() => handleFilterChange('week')}
@@ -229,10 +277,21 @@ const AdminDashboard = () => {
           >
             <Text style={[styles.filterPillText, { color: theme.colors.text }, activeFilter === 'semester' && { color: '#fff' }]}>Semester</Text>
           </Pressable>
-        </View>
+        </Animated.View>
 
         {/* Stats Grid */}
-        <View style={styles.statsGrid}>
+        <Animated.View 
+          style={[
+            styles.statsGrid,
+            {
+              opacity: fadeAnim,
+              transform: [
+                { translateY: slideAnim },
+                { scale: scaleAnim }
+              ]
+            }
+          ]}
+        >
           <View style={[styles.statCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
             <View style={[styles.statIconContainer, { backgroundColor: isDarkMode ? '#1E3A8A' : '#E0F2FE' }]}>
               <Ionicons name="bar-chart" size={24} color={isDarkMode ? '#60A5FA' : '#0284C7'} />
@@ -256,10 +315,23 @@ const AdminDashboard = () => {
             <Text style={[styles.statNumber, { color: isDarkMode ? '#F87171' : '#DC2626' }]}>{dashboardData.urgent}</Text>
             <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Urgent</Text>
           </View>
-        </View>
+        </Animated.View>
 
         {/* Recent Updates */}
-        <View style={[styles.recentUpdatesSection, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+        <Animated.View 
+          style={[
+            styles.recentUpdatesSection,
+            {
+              backgroundColor: theme.colors.card,
+              borderColor: theme.colors.border,
+              opacity: fadeAnim,
+              transform: [
+                { translateY: slideAnim },
+                { scale: scaleAnim }
+              ]
+            }
+          ]}
+        >
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Recent Updates</Text>
           {dashboardError && (
             <Text style={{ color: '#DC2626', marginBottom: 8, fontSize: 12, fontWeight: '600' }}>{dashboardError}</Text>
@@ -298,7 +370,7 @@ const AdminDashboard = () => {
               </View>
             </Pressable>
           ))}
-        </View>
+        </Animated.View>
       </ScrollView>
       
       {/* Preview Modal */}

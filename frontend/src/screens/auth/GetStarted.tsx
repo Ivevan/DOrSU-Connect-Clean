@@ -27,13 +27,10 @@ const GetStarted = () => {
   // Animation values
   const logoScale = useRef(new Animated.Value(1)).current;
   const logoGlow = useRef(new Animated.Value(0)).current;
-  const emailButtonScale = useRef(new Animated.Value(1)).current;
   const googleButtonScale = useRef(new Animated.Value(1)).current;
   const signUpButtonScale = useRef(new Animated.Value(1)).current;
   const signInButtonScale = useRef(new Animated.Value(1)).current;
-  const emailLoadingOpacity = useRef(new Animated.Value(0)).current;
   const googleLoadingOpacity = useRef(new Animated.Value(0)).current;
-  const [isEmailLoading, setIsEmailLoading] = React.useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
   const floatingAnimation = useRef(new Animated.Value(0)).current;
   const techFloat1 = useRef(new Animated.Value(0)).current;
@@ -267,12 +264,6 @@ const GetStarted = () => {
     ]).start(() => {
       navigation.navigate('AdminDashboard');
     });
-  };
-
-  const handleEmailPress = () => {
-    // Haptic feedback for email button press
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate('CreateAccount');
   };
 
   // Handle Google Sign-In
@@ -674,11 +665,11 @@ const GetStarted = () => {
               <TouchableOpacity 
                 style={styles.googleButton} 
                 onPress={handleGoogleSignIn}
-                disabled={isGoogleLoading || isEmailLoading}
+                disabled={isGoogleLoading}
                 accessibilityRole="button"
                 accessibilityLabel="Sign in with Google"
                 accessibilityHint="Double tap to sign in with your Google account"
-                accessibilityState={{ disabled: isGoogleLoading || isEmailLoading }}
+                accessibilityState={{ disabled: isGoogleLoading }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <LinearGradient
@@ -689,41 +680,17 @@ const GetStarted = () => {
                 >
                   {!isGoogleLoading ? (
                     <>
-                      <MaterialIcons name="login" size={24} color="#4285F4" style={styles.buttonIcon} />
+                      <MaterialCommunityIcons name="google" size={24} color="#4285F4" style={styles.buttonIcon} />
                       <Text style={styles.googleButtonText}>Continue with Google</Text>
                     </>
                   ) : (
                     <>
                       <Animated.View style={{ opacity: googleLoadingOpacity }}>
-                        <MaterialIcons name="refresh" size={24} color="#4285F4" style={styles.buttonIcon} />
+                        <MaterialCommunityIcons name="google" size={24} color="#4285F4" style={styles.buttonIcon} />
                       </Animated.View>
                       <Text style={styles.googleButtonText}>Signing in...</Text>
                     </>
                   )}
-                </LinearGradient>
-              </TouchableOpacity>
-            </Animated.View>
-
-            {/* Email Button */}
-            <Animated.View style={{ transform: [{ scale: emailButtonScale }] }}>
-              <TouchableOpacity 
-                style={styles.emailButton} 
-                onPress={handleEmailPress}
-                disabled={isGoogleLoading || isEmailLoading}
-                accessibilityRole="button"
-                accessibilityLabel="Create account with email"
-                accessibilityHint="Double tap to create a new account with your email"
-                accessibilityState={{ disabled: isGoogleLoading || isEmailLoading }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <LinearGradient
-                  colors={['#FFFFFF', '#F8FAFC']}
-                  style={styles.buttonGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <MaterialCommunityIcons name="email-fast" size={24} color="black" style={styles.buttonIcon} />
-                  <Text style={styles.emailButtonText}>Create Account with Email</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </Animated.View>

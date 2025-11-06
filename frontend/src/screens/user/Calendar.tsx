@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Alert, Pressable, Image, Animated, Dimensions, Easing, SectionList, AccessibilityInfo } from 'react-native';
-import { PanGestureHandler, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
@@ -30,26 +30,22 @@ const CalendarScreen = () => {
   const { isDarkMode, theme: t } = useTheme();
   const scrollRef = useRef<ScrollView>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [isCalendarExpanded, setIsCalendarExpanded] = useState(true);
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date()); // Default to today
   
-  // Draggable calendar state
-  const translateY = useRef(new Animated.Value(0)).current;
-  const [isMinimized, setIsMinimized] = useState(true); // Start minimized
+  // Calendar state
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [showAllEvents, setShowAllEvents] = useState(false);
-  const { height: screenHeight } = Dimensions.get('window');
-  const CALENDAR_HEIGHT = 280; // Full calendar height - more compact
-  const MINIMIZED_HEIGHT = 120; // Minimized to show only current week
   
   // Animation values
-  const calendarHeightAnim = useRef(new Animated.Value(MINIMIZED_HEIGHT)).current;
-  const calendarOpacityAnim = useRef(new Animated.Value(0.7)).current;
-  const dragHandleRotationAnim = useRef(new Animated.Value(0)).current;
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
   const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
   const listAnim = useRef(new Animated.Value(0)).current;
   const dotScale = useRef(new Animated.Value(0.8)).current;
+
+  // Entrance animation values
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
   const formatEventTitle = (raw?: string) => {
     const title = String(raw || '').trim();
@@ -177,44 +173,92 @@ const CalendarScreen = () => {
     return selectedDate && date.toDateString() === selectedDate.toDateString();
   };
 
+  const renderCalendarDay = (date: Date, day: number | null, isCurrentDay: boolean, isSelectedDay: boolean, key: number) => {
+    if (!day) return <View key={key} style={[styles.emptyDay, { borderRightColor: t.colors.border, borderBottomColor: t.colors.border }]} />;
+    
+    const eventsForDay = getEventsForDate(date);
+    
+    return (
+      <TouchableOpacity 
+        key={key}
+        style={[styles.calendarDay, { borderRightColor: t.colors.border, borderBottomColor: t.colors.border }]}
+        onPress={() => { setSelectedDate(date); Haptics.selectionAsync(); }}
+      >
+        <View style={styles.dayContent}>
+          <View style={[
+            styles.dayNumberContainer,
+            isCurrentDay && styles.todayContainer,
+            isSelectedDay && [styles.selectedContainer, { borderColor: t.colors.accent }]
+          ]}>
+            <Text
+              accessibilityRole="button"
+              accessibilityLabel={`Select ${date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`}
+              accessibilityHint="Selects this date to view events"
+              style={[
+                styles.dayNumber,
+                { color: t.colors.text },
+                isCurrentDay && styles.todayText,
+                isSelectedDay && styles.selectedText
+              ]}
+            >
+              {day}
+            </Text>
+          </View>
+          {eventsForDay.length > 0 && (
+            <View style={styles.eventIndicators}>
+              {eventsForDay.slice(0, 3).map((event, eventIndex) => (
+                <Animated.View 
+                  key={eventIndex} 
+                  style={[styles.eventDot, { backgroundColor: event.color, transform: [{ scale: dotScale }] }]} 
+                />
+              ))}
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   const getFilteredEvents = () => {
     if (selectedDate && !showAllEvents) {
       return getEventsForDate(selectedDate);
     }
-    return posts.map(p => ({
-      id: p.id,
-      title: p.title,
-      dateKey: parseAnyDateToKey(p.isoDate || p.date),
-      time: '',
-      type: p.category || 'Announcement',
-      color: categoryToColors(p.category).dot,
-      chip: categoryToColors(p.category),
-      isPinned: !!p.isPinned,
-      isUrgent: !!p.isUrgent,
-    }));
+    return posts.map(transformPostToEvent);
   };
 
-  const getWeekDaysFor = (referenceDate: Date) => {
-    const ref = new Date(referenceDate);
-    const currentDay = ref.getDay();
-    const startOfWeek = new Date(ref);
-    startOfWeek.setDate(ref.getDate() - currentDay);
-    const weekDays: Date[] = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(startOfWeek);
-      d.setDate(startOfWeek.getDate() + i);
-      weekDays.push(d);
-    }
-    return weekDays;
-  };
+  const transformPostToEvent = (p: any) => ({
+    id: p.id,
+    title: p.title,
+    dateKey: parseAnyDateToKey(p.isoDate || p.date),
+    time: '',
+    type: p.category || 'Announcement',
+    color: categoryToColors(p.category).dot,
+    chip: categoryToColors(p.category),
+    isPinned: !!p.isPinned,
+    isUrgent: !!p.isUrgent,
+  });
 
-  const goToPreviousMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  const getAllEventsGrouped = () => {
+    const all = posts.map(p => ({
+      ...transformPostToEvent(p),
+      dateObj: (() => { 
+        const k = parseAnyDateToKey(p.isoDate || p.date); 
+        return k ? new Date(k) : new Date(); 
+      })(),
+    })).filter(e => !!e.dateKey);
+    
+    const groupedMap = new Map();
+    all.forEach(e => {
+      const key = e.dateKey;
+      if (!groupedMap.has(key)) groupedMap.set(key, []);
+      groupedMap.get(key).push(e);
+    });
+    
+    return Array.from(groupedMap.entries())
+      .sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime())
+      .map(([key, items]) => ({ key, items: items as any[] }));
   };
-
-  const goToNextMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
-  };
+  const groupedEvents = React.useMemo(() => getAllEventsGrouped(), [posts]);
 
   const selectMonth = (monthIndex: number) => {
     const newMonth = new Date(currentMonth.getFullYear(), monthIndex, 1);
@@ -266,83 +310,28 @@ const CalendarScreen = () => {
     ];
   };
 
-  // Drag gesture handlers
-  const onGestureEvent = Animated.event(
-    [{ nativeEvent: { translationY: translateY } }],
-    { useNativeDriver: true }
-  );
 
-  const onHandlerStateChange = (event: any) => {
-    if (event.nativeEvent.state === 5) { // END state
-      const { translationY, velocityY } = event.nativeEvent;
-      
-      if (velocityY > 0) { // Dragging down - expand
-        if (translationY > 50 || velocityY > 500) {
-          expandCalendar();
-        } else {
-          minimizeCalendar();
-        }
-      } else { // Dragging up - minimize
-        if (translationY < -50 || velocityY < -500) {
-          minimizeCalendar();
-        } else {
-          expandCalendar();
-        }
-      }
-    }
-  };
-
-  const minimizeCalendar = () => {
-    setIsMinimized(true);
-    
-    // Animate calendar collapse
+  // Entrance animation for Calendar - Slide from bottom with scale
+  React.useEffect(() => {
     Animated.parallel([
-      Animated.timing(calendarHeightAnim, {
-        toValue: MINIMIZED_HEIGHT,
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
       }),
-      Animated.timing(calendarOpacityAnim, {
-        toValue: 0.7,
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-      Animated.timing(dragHandleRotationAnim, {
+      Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
+        duration: 350,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 80,
+        friction: 6,
+        useNativeDriver: true,
       }),
     ]).start();
-  };
-
-  const expandCalendar = () => {
-    setIsMinimized(false);
-    
-    // Animate calendar expansion
-    Animated.parallel([
-      Animated.timing(calendarHeightAnim, {
-        toValue: CALENDAR_HEIGHT,
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-      Animated.timing(calendarOpacityAnim, {
-        toValue: 1,
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-      Animated.timing(dragHandleRotationAnim, {
-        toValue: 1,
-        duration: 300,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
-    ]).start();
-  };
+  }, []);
 
   React.useEffect(() => {
     listAnim.setValue(0);
@@ -372,29 +361,16 @@ const CalendarScreen = () => {
       paddingRight: insets.right,
     }]}>
       <StatusBar
-          backgroundColor={t.colors.primary}
-          barStyle={'light-content'}
-        translucent={false}
+        backgroundColor={t.colors.primary}
+        barStyle={isDarkMode ? "light-content" : "light-content"}
+        translucent={true}
       />
 
       {/* Header */}
       <View style={[styles.header, { backgroundColor: t.colors.primary }]}>
           <View style={styles.headerLeft}>
-        <TouchableOpacity
-              style={styles.monthSelectorButton}
-              onPress={openMonthPicker}
-              activeOpacity={0.7}
-          accessibilityRole="button"
-              accessibilityLabel="Open month picker"
-              accessibilityHint="Opens a modal to select a month"
-            >
-              <View style={styles.monthSelectorContent}>
-                <Ionicons name="calendar" size={20} color="white" />
-                <Text style={styles.headerTitle}>{getMonthName(currentMonth)}</Text>
-                <Ionicons name="chevron-down" size={16} color="white" />
-              </View>
-        </TouchableOpacity>
-      </View>
+            <Text style={styles.headerTitle}>School Calendar</Text>
+          </View>
           <View style={styles.headerRight}>
             <View style={styles.headerSpacer} />
             <View style={styles.headerSpacer} />
@@ -404,16 +380,44 @@ const CalendarScreen = () => {
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
         {/* Calendar Card - Fixed below header */}
-        <Animated.View style={[
-          styles.calendarCard,
-          {
-            height: calendarHeightAnim,
-            opacity: calendarOpacityAnim,
-            backgroundColor: t.colors.card
-          }
-        ]}>
+        {/* Outer wrapper for entrance animation (transform/opacity only) */}
+        <Animated.View 
+          style={{
+            opacity: fadeAnim,
+            transform: [
+              { translateY: slideAnim },
+              { scale: scaleAnim }
+            ]
+          }}
+        >
+          {/* Calendar Card */}
+          <View style={[
+            styles.calendarCard,
+            {
+              backgroundColor: t.colors.card,
+            }
+          ]}>
 
-          
+          {/* Month selector at top of calendar */}
+          <View style={[styles.calendarMonthHeader, { backgroundColor: t.colors.card, borderBottomColor: t.colors.border }]}>
+            <TouchableOpacity
+              style={styles.monthSelectorButton}
+              onPress={openMonthPicker}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Open month picker"
+              accessibilityHint="Opens a modal to select a month"
+            >
+              <View style={styles.monthSelectorContent}>
+                <Ionicons name="calendar" size={18} color={t.colors.text} />
+                <Text style={[styles.monthHeaderText, { color: t.colors.text }]}>
+                  {getMonthName(currentMonth)} {currentMonth.getFullYear()}
+                </Text>
+                <Ionicons name="chevron-down" size={14} color={t.colors.textMuted} />
+              </View>
+            </TouchableOpacity>
+          </View>
+
           {/* Week day headers */}
           <View style={[styles.weekHeader, { backgroundColor: t.colors.card }]}>
             {weekDays.map((day, index) => (
@@ -430,128 +434,15 @@ const CalendarScreen = () => {
 
           {/* Calendar Grid */}
           <View style={styles.calendarGrid}>
-            {isMinimized ? (
-              // Show only the week of the selected date (or first day of currentMonth)
-              getWeekDaysFor(selectedDate || new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1)).map((date, index) => {
-                const day = date.getDate();
-                const eventsForDay = getEventsForDate(date);
-                const isCurrentDay = isToday(date);
-                const isSelectedDay = isSelected(date);
-                
-                return (
-                  <TouchableOpacity 
-                    key={index} 
-                    style={[styles.calendarDay, { borderColor: t.colors.border }]}
-                    onPress={() => { setSelectedDate(date); Haptics.selectionAsync(); }}
-                  >
-                  <View style={styles.dayContent}>
-                      <View style={[
-                        styles.dayNumberContainer,
-                        isCurrentDay && styles.todayContainer,
-                        isSelectedDay && [styles.selectedContainer, { borderColor: t.colors.accent }]
-                      ]}>
-                        <Text
-                          accessibilityRole="button"
-                          accessibilityLabel={`Select ${date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`}
-                          accessibilityHint="Selects this date to view events"
-                          style={[
-                          styles.dayNumber,
-                          { color: t.colors.text },
-                          isCurrentDay && styles.todayText,
-                          isSelectedDay && [styles.selectedText, { color: t.colors.accent }]
-                        ]}>
-                          {day}
-                        </Text>
-                      </View>
-                      {/* Event indicators */}
-                      {eventsForDay.length > 0 && (
-                        <View style={styles.eventIndicators}>
-                          {eventsForDay.slice(0, 3).map((event, eventIndex) => (
-                            <Animated.View 
-                              key={eventIndex} 
-                              style={[styles.eventDot, { backgroundColor: event.color, transform: [{ scale: dotScale }] }]} 
-                            />
-                          ))}
-                      </View>
-                    )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })
-            ) : (
-              // Show full month when expanded
-              days.map((day, index) => {
-                const currentDate = day ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day) : null;
-                const eventsForDay = currentDate ? getEventsForDate(currentDate) : [];
-                const isCurrentDay = currentDate ? isToday(currentDate) : false;
-                const isSelectedDay = currentDate ? isSelected(currentDate) : false;
-                
-                return (
-                  <TouchableOpacity 
-                    key={index} 
-                    style={[styles.calendarDay, { borderColor: t.colors.border }]}
-                    onPress={() => { if (currentDate) { setSelectedDate(currentDate); Haptics.selectionAsync(); } }}
-                  >
-                    {day ? (
-                      <View style={styles.dayContent}>
-                        <View style={[
-                          styles.dayNumberContainer,
-                          isCurrentDay && styles.todayContainer,
-                          isSelectedDay && [styles.selectedContainer, { borderColor: t.colors.accent }]
-                        ]}>
-                          <Text
-                            accessibilityRole="button"
-                            accessibilityLabel={`Select ${currentDate?.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`}
-                            accessibilityHint="Selects this date to view events"
-                            style={[
-                            styles.dayNumber,
-                            { color: t.colors.text },
-                            isCurrentDay && styles.todayText,
-                            isSelectedDay && [styles.selectedText, { color: t.colors.accent }]
-                          ]}>
-                            {day}
-                          </Text>
-                        </View>
-                        {/* Event indicators */}
-                        {eventsForDay.length > 0 && (
-                          <View style={styles.eventIndicators}>
-                            {eventsForDay.slice(0, 3).map((event, eventIndex) => (
-                              <Animated.View 
-                                key={eventIndex} 
-                                style={[styles.eventDot, { backgroundColor: event.color, transform: [{ scale: dotScale }] }]} 
-                              />
-                            ))}
-                      </View>
-                    )}
-                  </View>
-                ) : (
-                  <View style={[styles.emptyDay, { borderRightColor: t.colors.border, borderBottomColor: t.colors.border }]} />
-                )}
-                  </TouchableOpacity>
-                );
-              })
-                )}
-              </View>
-
-          {/* Calendar Dropdown Indicator */}
-          <TouchableOpacity 
-            style={[styles.calendarDropdownIndicator, { backgroundColor: t.colors.surfaceAlt, borderTopColor: t.colors.border }]}
-            onPress={isMinimized ? expandCalendar : minimizeCalendar}
-            activeOpacity={0.7}
-          >
-            <Animated.View style={[
-              styles.dragHandle,
-              { backgroundColor: t.colors.border },
-              {
-                transform: [{
-                  rotate: dragHandleRotationAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0deg', '180deg'],
-                  })
-                }]
-              }
-            ]} />
-          </TouchableOpacity>
+            {/* Show full month */}
+            {getDaysInMonth(currentMonth).map((day, index) => {
+              const currentDate = day ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day) : null;
+              const isCurrentDay = currentDate ? isToday(currentDate) : false;
+              const isSelectedDay = currentDate ? isSelected(currentDate) : false;
+              return renderCalendarDay(currentDate || new Date(), day, isCurrentDay, !!isSelectedDay, index);
+            })}
+          </View>
+          </View>
         </Animated.View>
 
         {/* Month Picker Modal */}
@@ -565,30 +456,42 @@ const CalendarScreen = () => {
         />
 
         {/* Events Section */}
-        <View style={[styles.eventsSection, { backgroundColor: t.colors.card }]}>
+        <Animated.View 
+          style={[
+            styles.eventsSection,
+            {
+              backgroundColor: t.colors.card,
+              opacity: fadeAnim,
+              transform: [
+                { translateY: slideAnim },
+                { scale: scaleAnim }
+              ]
+            }
+          ]}
+        >
           <View style={styles.eventsHeader}>
             <View style={styles.eventsHeaderLeft}>
-              <View style={[styles.eventsIconWrap, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
+              <View style={[styles.eventsIconWrap, { borderColor: t.colors.border }]}>
                 <Ionicons name="calendar-outline" size={14} color={t.colors.accent} />
         </View>
               <Text style={[styles.eventsTitle, { color: t.colors.text }]}>Events</Text>
             </View>
-            <View style={[styles.segmentedToggle, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
+            <View style={[styles.segmentedToggle, { backgroundColor: t.colors.card, borderColor: t.colors.border }]}>
               <TouchableOpacity
-                style={[styles.segmentItem, !showAllEvents && [styles.segmentItemActive, { backgroundColor: t.colors.surfaceAlt }]]}
+                style={[styles.segmentItem, !showAllEvents && styles.segmentItemActive]}
                 onPress={() => { setShowAllEvents(false); AccessibilityInfo.announceForAccessibility?.('Switched to Day view'); Haptics.selectionAsync(); }}
                 accessibilityRole="button"
                 accessibilityLabel="Day view"
               >
-                <Text style={[styles.segmentText, { color: t.colors.textMuted }, !showAllEvents && [styles.segmentTextActive, { color: t.colors.accent }]]}>Day</Text>
+                <Text style={[styles.segmentText, { color: t.colors.textMuted }, !showAllEvents && styles.segmentTextActive]}>Day</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.segmentItem, showAllEvents && [styles.segmentItemActive, { backgroundColor: t.colors.surfaceAlt }]]}
+                style={[styles.segmentItem, showAllEvents && styles.segmentItemActive]}
                 onPress={() => { setShowAllEvents(true); AccessibilityInfo.announceForAccessibility?.('Switched to All events'); Haptics.selectionAsync(); }}
                 accessibilityRole="button"
                 accessibilityLabel="All events"
               >
-                <Text style={[styles.segmentText, { color: t.colors.textMuted }, showAllEvents && [styles.segmentTextActive, { color: t.colors.accent }]]}>All</Text>
+                <Text style={[styles.segmentText, { color: t.colors.textMuted }, showAllEvents && styles.segmentTextActive]}>All</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -604,22 +507,22 @@ const CalendarScreen = () => {
           <LinearGradient colors={[t.colors.border, 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ height: 1, marginBottom: 10 }} />
 
           {getFilteredEvents().length === 0 && !isLoadingPosts && (
-            <View style={[styles.emptyStateCard, { backgroundColor: t.colors.card, borderColor: t.colors.border }]}>
-              <View style={[styles.emptyStateIconWrap, { backgroundColor: t.colors.surfaceAlt }]}>
-                <Ionicons name="calendar-outline" size={20} color={t.colors.accent} />
+            <View style={[styles.emptyStateCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
+              <View style={styles.emptyStateIconWrap}>
+                <Ionicons name="calendar-outline" size={20} color="#6366F1" />
               </View>
               <Text style={[styles.emptyStateTitle, { color: t.colors.text }]}>No events yet</Text>
               <Text style={[styles.emptyStateSubtitle, { color: t.colors.textMuted }]}>
                 {showAllEvents
-                  ? 'No events scheduled at this time.'
+                  ? 'Create your first event or announcement.'
                   : `No events for ${selectedDate ? formatDate(selectedDate) : 'this day'}`}
               </Text>
             </View>
           )}
 
           {isLoadingPosts && (
-            <View style={[styles.emptyStateCard, { paddingVertical: 16, overflow: 'hidden', backgroundColor: t.colors.card, borderColor: t.colors.border }]}>
-              <LinearGradient colors={[t.colors.surfaceAlt, isDarkMode ? '#111827' : '#fafafa']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ ...StyleSheet.absoluteFillObject, opacity: 0.6 }} />
+            <View style={[styles.emptyStateCard, { paddingVertical: 16, overflow: 'hidden' }]}>
+              <LinearGradient colors={[t.colors.surfaceAlt, '#fafafa']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ ...StyleSheet.absoluteFillObject, opacity: 0.6 }} />
               <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>Loading…</Text>
             </View>
           )}
@@ -629,7 +532,7 @@ const CalendarScreen = () => {
             {getFilteredEvents().map((event: any) => (
             <TouchableOpacity
               key={event.id}
-              style={[styles.eventCard, { backgroundColor: t.colors.card, borderColor: t.colors.border }]}
+              style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
               onPress={() => {/* User can only view events, not edit */}}
               accessibilityRole="button"
               accessibilityLabel={`View event ${event.title}`}
@@ -676,10 +579,15 @@ const CalendarScreen = () => {
 
           {showAllEvents && (
             <Animated.View style={{ opacity: listAnim, transform: [{ translateY: listAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
-            {getFilteredEvents().map((event: any) => (
+            {groupedEvents.map(group => (
+            <View key={group.key} style={styles.groupContainer}>
+              <Text style={[styles.groupHeaderText, { color: t.colors.textMuted }]}>
+                {formatCalendarDate(new Date(group.key))}
+              </Text>
+              {group.items.map((event: any) => (
             <TouchableOpacity
                   key={event.id}
-                  style={[styles.eventCard, { backgroundColor: t.colors.card, borderColor: t.colors.border }]}
+                  style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
                   onPress={() => {/* User can only view events, not edit */}}
                   accessibilityRole="button"
                   accessibilityLabel={`View event ${event.title}`}
@@ -721,9 +629,11 @@ const CalendarScreen = () => {
                   </View>
                 </TouchableOpacity>
               ))}
+            </View>
+            ))}
             </Animated.View>
           )}
-        </View>
+        </Animated.View>
       </ScrollView>
 
       <UserBottomNavBar />
@@ -774,14 +684,23 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 120,
+    paddingBottom: 32,
   },
   calendarCard: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radii.lg,
+    borderRadius: 16,
     marginBottom: 16,
-    ...theme.shadow1,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
     overflow: 'hidden',
+  },
+  calendarMonthHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    justifyContent: 'center',
   },
   monthSelectorButton: {
     flexDirection: 'row',
@@ -793,19 +712,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  calendarDropdownIndicator: {
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: theme.colors.surfaceAlt,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-  },
-  dragHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: theme.colors.border,
-    borderRadius: 2,
+  monthHeaderText: {
+    fontSize: 16,
+    fontWeight: '700',
   },
   weekHeader: {
     flexDirection: 'row',
@@ -886,11 +795,14 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surfaceAlt,
   },
   eventsSection: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radii.lg,
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 16,
-    ...theme.shadow1,
+    marginBottom: 0,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   emptyStateCard: {
     alignItems: 'center',
@@ -966,9 +878,7 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: theme.colors.border,
   },
   eventsTitle: {
     fontSize: 18,
@@ -1055,6 +965,14 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: theme.colors.border,
     marginVertical: 6,
+  },
+  groupContainer: {
+    marginBottom: 12,
+  },
+  groupHeaderText: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 6,
   },
 });
 

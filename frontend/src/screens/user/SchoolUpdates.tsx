@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, StatusBar, Platform, TextInput, ScrollView, Pressable, Image, FlatList, Animated, InteractionManager, Easing } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, Platform, TextInput, ScrollView, Pressable, Image, FlatList, Animated, InteractionManager, Easing, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
@@ -11,6 +11,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import AdminDataService from '../../services/AdminDataService';
 import { formatDate, timeAgo } from '../../utils/dateUtils';
 import PreviewModal from '../../modals/PreviewModal';
+import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -28,7 +29,6 @@ const SchoolUpdates = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [activeFilter, setActiveFilter] = useState<'All' | UpdateCategory>('All');
   const [query, setQuery] = useState('');
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -39,6 +39,10 @@ const SchoolUpdates = () => {
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const searchRef = useRef<TextInput>(null);
+
+  // Auth state
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const userName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
 
   // Animation values for smooth entrance
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -65,11 +69,23 @@ const SchoolUpdates = () => {
     return () => handle.cancel();
   }, []);
 
+  // Load current user and subscribe to auth changes
+  useEffect(() => {
+    const user = getCurrentUser();
+    setCurrentUser(user);
+    const unsubscribe = onAuthStateChange((u) => setCurrentUser(u));
+    return () => unsubscribe();
+  }, []);
+
   const handleSearchPress = () => {
     setIsSearchVisible(!isSearchVisible);
     if (isSearchVisible) {
       setQuery(''); // Clear search when closing
     }
+  };
+
+  const handleNotificationsPress = () => {
+    Alert.alert('Notifications', 'Notifications feature coming soon.');
   };
 
   const handleUpdatePress = (update: { title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean }) => {
@@ -120,12 +136,17 @@ const SchoolUpdates = () => {
 
   const filtered = useMemo(() => {
     return updates.filter(u => {
-      const byFilter = activeFilter === 'All' ? true : u.category === activeFilter;
       const q = query.trim().toLowerCase();
       const byQuery = q.length === 0 || u.title.toLowerCase().includes(q) || u.body.toLowerCase().includes(q);
-      return byFilter && byQuery;
+      return byQuery;
     });
-  }, [updates, activeFilter, query]);
+  }, [updates, query]);
+
+  // Today's events (category Event occurring today)
+  const todaysEvents = useMemo(() => {
+    const today = formatDate(new Date());
+    return updates.filter(u => u.category === 'Event' && u.date === today);
+  }, [updates]);
 
   return (
     <View style={[styles.container, {
@@ -147,6 +168,9 @@ const SchoolUpdates = () => {
           <Text style={styles.headerTitle}>School Updates</Text>
         </View>
         <View style={styles.headerRight}>
+          <Pressable style={styles.headerButton} onPress={handleNotificationsPress} accessibilityLabel="Notifications">
+            <Ionicons name="notifications-outline" size={24} color="white" />
+          </Pressable>
           <Pressable style={styles.headerButton} onPress={handleSearchPress}>
             <Ionicons name={isSearchVisible ? "close-outline" : "search-outline"} size={24} color="white" />
           </Pressable>
@@ -187,70 +211,37 @@ const SchoolUpdates = () => {
           {/* Welcome Section */}
           <View style={styles.welcomeSection}>
           <View style={styles.welcomeText}>
-            <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>Latest Updates</Text>
-            <Text style={[styles.welcomeSubtitle, { color: theme.colors.textMuted }]}>Stay informed with the latest news</Text>
+            <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>Hello {userName}, I’m DOrSU AI</Text>
+            <Text style={[styles.welcomeSubtitle, { color: theme.colors.textMuted }]}>Here are your latest campus updates tailored for you</Text>
           </View>
         </View>
 
-        {/* Time Period Filters */}
-        <View style={styles.filtersContainer}>
-          <Pressable 
-            style={[styles.filterPill, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, activeFilter === 'All' && { backgroundColor: theme.colors.accent, borderColor: 'transparent' }]} 
-            onPress={() => setActiveFilter('All')}
-          >
-            <Text style={[styles.filterPillText, { color: theme.colors.text }, activeFilter === 'All' && { color: '#fff' }]}>All</Text>
-          </Pressable>
-          <Pressable 
-            style={[styles.filterPill, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, activeFilter === 'Announcement' && { backgroundColor: theme.colors.accent, borderColor: 'transparent' }]} 
-            onPress={() => setActiveFilter('Announcement')}
-          >
-            <Text style={[styles.filterPillText, { color: theme.colors.text }, activeFilter === 'Announcement' && { color: '#fff' }]}>Announcement</Text>
-          </Pressable>
-          <Pressable 
-            style={[styles.filterPill, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, activeFilter === 'Event' && { backgroundColor: theme.colors.accent, borderColor: 'transparent' }]} 
-            onPress={() => setActiveFilter('Event')}
-          >
-            <Text style={[styles.filterPillText, { color: theme.colors.text }, activeFilter === 'Event' && { color: '#fff' }]}>Event</Text>
-          </Pressable>
-          <Pressable 
-            style={[styles.filterPill, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, activeFilter === 'Academic' && { backgroundColor: theme.colors.accent, borderColor: 'transparent' }]} 
-            onPress={() => setActiveFilter('Academic')}
-          >
-            <Text style={[styles.filterPillText, { color: theme.colors.text }, activeFilter === 'Academic' && { color: '#fff' }]}>Academic</Text>
-          </Pressable>
-        </View>
+        {/* Filters removed */}
 
-        {/* Stats Grid */}
-        <View style={styles.statsGrid}>
-          <View style={[styles.statCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={[styles.statIconContainer, { backgroundColor: isDarkMode ? '#1E3A8A' : '#E0F2FE' }]}>
-              <Ionicons name="document-text" size={24} color={isDarkMode ? '#60A5FA' : '#0284C7'} />
+        {/* Totals removed */}
+
+        {/* Today's Events */}
+        <View style={[styles.recentUpdatesSection, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}> 
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Today's Events</Text>
+
+          {!isLoading && !error && todaysEvents.length === 0 && (
+            <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+              <Ionicons name="calendar-outline" size={28} color={theme.colors.textMuted} />
+              <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>No events today</Text>
             </View>
-            <Text style={[styles.statNumber, { color: isDarkMode ? '#60A5FA' : '#0284C7' }]}>
-              {isLoading ? '...' : updates.length}
-            </Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Total Updates</Text>
-          </View>
-          
-          <View style={[styles.statCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={[styles.statIconContainer, { backgroundColor: isDarkMode ? '#92400E' : '#FEF3C7' }]}>
-              <Ionicons name="pin" size={24} color={isDarkMode ? '#FBBF24' : '#D97706'} />
-            </View>
-            <Text style={[styles.statNumber, { color: isDarkMode ? '#FBBF24' : '#D97706' }]}>
-              {isLoading ? '...' : updates.filter(u => u.pinned).length}
-            </Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Pinned</Text>
-          </View>
-          
-          <View style={[styles.statCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={[styles.statIconContainer, { backgroundColor: isDarkMode ? '#991B1B' : '#FEE2E2' }]}>
-              <Ionicons name="alert-circle" size={24} color={isDarkMode ? '#F87171' : '#DC2626'} />
-            </View>
-            <Text style={[styles.statNumber, { color: isDarkMode ? '#F87171' : '#DC2626' }]}>
-              {isLoading ? '...' : updates.filter(u => u.urgent).length}
-            </Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Urgent</Text>
-          </View>
+          )}
+
+          {!isLoading && !error && todaysEvents.map((update, index) => (
+            <Pressable key={index} style={[styles.updateCard, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={() => handleUpdatePress(update)}>
+              <View style={styles.updateContent}>
+                <Text style={[styles.updateTitle, { color: theme.colors.text }]}>{update.title}</Text>
+                <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
+              </View>
+              <View style={[styles.updateTag, { backgroundColor: getTagColor(update.tag) }]}>
+                <Text style={[styles.updateTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
+              </View>
+            </Pressable>
+          ))}
         </View>
 
         {/* Recent Updates */}

@@ -1,5 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Alert, Pressable, Image, Animated, Dimensions, Easing, SectionList, AccessibilityInfo, InteractionManager } from 'react-native';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
@@ -25,11 +28,15 @@ type RootStackParamList = {
 };
 
 const CalendarScreen = () => {
+  dayjs.extend(utc);
+  dayjs.extend(timezone);
+  const PH_TZ = 'Asia/Manila';
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { isDarkMode, theme: t } = useTheme();
   const scrollRef = useRef<ScrollView>(null);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const initialNow = new Date();
+  const [currentMonth, setCurrentMonth] = useState(new Date(Date.UTC(initialNow.getFullYear(), initialNow.getMonth(), 1)));
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date()); // Default to today
   
   // Calendar state
@@ -120,14 +127,13 @@ const CalendarScreen = () => {
   };
 
   const getDaysInMonth = (date: Date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0=Sun..6=Sat
+    const start = dayjs.utc(date).tz(PH_TZ).startOf('month');
+    const daysInMonth = start.daysInMonth();
+    const firstDayOfMonth = start.day(); // 0=Sun..6=Sat in PH tz
     
-    const days = [];
+    const days: Array<number | null> = [];
     
-    // Add empty cells so that calendar grid starts on Sunday
+    // Add leading empty cells so week starts on Sunday
     for (let i = 0; i < firstDayOfMonth; i++) {
       days.push(null);
     }
@@ -137,15 +143,18 @@ const CalendarScreen = () => {
       days.push(i);
     }
     
+    // Add trailing empty cells so total cells is multiple of 7 (complete rows)
+    const remainder = days.length % 7;
+    if (remainder !== 0) {
+      const toAdd = 7 - remainder;
+      for (let i = 0; i < toAdd; i++) days.push(null);
+    }
+    
     return days;
   };
 
   const getMonthName = (date: Date) => {
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    return months[date.getMonth()];
+    return dayjs.utc(date).tz(PH_TZ).format('MMMM');
   };
 
   const getEventsForDate = React.useCallback((date: Date) => {
@@ -163,30 +172,69 @@ const CalendarScreen = () => {
       .filter(e => e.dateKey === key);
   }, [posts]);
 
+  // Robust PH date-key comparison (avoids off-by-one no matter device tz)
+  const getPHDateKey = (d: Date) => {
+    try {
+      const dtf = new Intl.DateTimeFormat('en-PH', {
+        timeZone: PH_TZ,
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+      });
+      const parts = dtf.formatToParts(d);
+      const y = Number(parts.find(p => p.type === 'year')?.value);
+      const m = Number(parts.find(p => p.type === 'month')?.value) - 1;
+      const day = Number(parts.find(p => p.type === 'day')?.value);
+      return Date.UTC(y, m, day);
+    } catch {
+      return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+  };
+
   const isToday = (date: Date) => {
-    const today = new Date();
-    return date.toDateString() === today.toDateString();
+    return getPHDateKey(date) === getPHDateKey(new Date());
   };
 
   const isSelected = (date: Date) => {
-    return selectedDate && date.toDateString() === selectedDate.toDateString();
+    return selectedDate ? getPHDateKey(date) === getPHDateKey(selectedDate) : false;
   };
 
   const renderCalendarDay = (date: Date, day: number | null, isCurrentDay: boolean, isSelectedDay: boolean, key: number) => {
-    if (!day) return <View key={key} style={[styles.emptyDay, { borderRightColor: t.colors.border, borderBottomColor: t.colors.border }]} />;
+    if (!day) return (
+      <View
+        key={key}
+        style={[
+          styles.calendarDay,
+          styles.emptyDay,
+          {
+            borderRightColor: t.colors.border,
+            borderBottomColor: t.colors.border,
+            borderRightWidth: (key % 7) === 6 ? 0 : StyleSheet.hairlineWidth,
+          },
+        ]}
+      />
+    );
     
     const eventsForDay = getEventsForDate(date);
     
     return (
       <TouchableOpacity 
         key={key}
-        style={[styles.calendarDay, { borderRightColor: t.colors.border, borderBottomColor: t.colors.border }]}
+        style={[
+          styles.calendarDay,
+          { 
+            borderRightColor: t.colors.border, 
+            borderBottomColor: t.colors.border,
+            borderRightWidth: (key % 7) === 6 ? 0 : StyleSheet.hairlineWidth
+          }
+        ]}
         onPress={() => { setSelectedDate(date); Haptics.selectionAsync(); }}
       >
         <View style={styles.dayContent}>
           <View style={[
             styles.dayNumberContainer,
             isCurrentDay && styles.todayContainer,
+            isCurrentDay && { backgroundColor: t.colors.accent },
             isSelectedDay && [styles.selectedContainer, { borderColor: t.colors.accent }]
           ]}>
             <Text
@@ -260,10 +308,10 @@ const CalendarScreen = () => {
   const groupedEvents = React.useMemo(() => getAllEventsGrouped(), [posts]);
 
   const selectMonth = (monthIndex: number) => {
-    const newMonth = new Date(currentMonth.getFullYear(), monthIndex, 1);
+    const newMonth = new Date(Date.UTC(currentMonth.getUTCFullYear(), monthIndex, 1));
     setCurrentMonth(newMonth);
     // Ensure the selected date moves into the chosen month so the week view reflects it
-    setSelectedDate(new Date(newMonth.getFullYear(), newMonth.getMonth(), 1));
+    setSelectedDate(new Date(Date.UTC(newMonth.getUTCFullYear(), newMonth.getUTCMonth(), 1)));
     closeMonthPicker();
   };
 

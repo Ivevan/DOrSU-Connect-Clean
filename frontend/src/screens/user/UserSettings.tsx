@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, ScrollView, Switch, Alert, Animated, Image } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, ScrollView, Switch, Alert, Animated, Image, InteractionManager, Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
@@ -45,29 +45,26 @@ const UserSettings = () => {
 
   // Animation values for smooth entrance
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
 
   useEffect(() => {
-    // Unique entrance animation for Settings - Slide from bottom with scale
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 80,
-        friction: 6,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    // Optimized entrance animation - delay until interactions complete
+    const handle = InteractionManager.runAfterInteractions(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
     
     // Get current user
     const user = getCurrentUser();
@@ -79,6 +76,7 @@ const UserSettings = () => {
     });
     
     return () => {
+      handle.cancel();
       unsubscribe();
     };
   }, []);
@@ -140,8 +138,7 @@ const UserSettings = () => {
             {
               opacity: fadeAnim,
               transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
+                { translateY: slideAnim }
               ],
               backgroundColor: t.colors.card
             }
@@ -180,8 +177,7 @@ const UserSettings = () => {
             {
               opacity: fadeAnim,
               transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
+                { translateY: slideAnim }
               ]
             }
           ]}

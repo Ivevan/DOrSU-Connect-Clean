@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, StatusBar, Platform, TextInput, ScrollView, Pressable, Image, FlatList } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, Platform, TextInput, ScrollView, Pressable, Image, FlatList, Animated, InteractionManager, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
@@ -40,6 +40,30 @@ const SchoolUpdates = () => {
   const scrollRef = useRef<ScrollView>(null);
   const searchRef = useRef<TextInput>(null);
 
+  // Animation values for smooth entrance
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
+
+  useEffect(() => {
+    // Optimized entrance animation - delay until interactions complete
+    const handle = InteractionManager.runAfterInteractions(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+    return () => handle.cancel();
+  }, []);
 
   const handleSearchPress = () => {
     setIsSearchVisible(!isSearchVisible);
@@ -152,8 +176,16 @@ const SchoolUpdates = () => {
       )}
 
       <ScrollView ref={scrollRef} style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Welcome Section */}
-        <View style={styles.welcomeSection}>
+        <Animated.View
+          style={{
+            opacity: fadeAnim,
+            transform: [
+              { translateY: slideAnim }
+            ],
+          }}
+        >
+          {/* Welcome Section */}
+          <View style={styles.welcomeSection}>
           <View style={styles.welcomeText}>
             <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>Latest Updates</Text>
             <Text style={[styles.welcomeSubtitle, { color: theme.colors.textMuted }]}>Stay informed with the latest news</Text>
@@ -258,6 +290,7 @@ const SchoolUpdates = () => {
             </Pressable>
           ))}
         </View>
+        </Animated.View>
       </ScrollView>
       
       {/* Preview Modal */}

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Alert, Pressable, Image, Animated, Dimensions, Easing, SectionList, AccessibilityInfo } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Alert, Pressable, Image, Animated, Dimensions, Easing, SectionList, AccessibilityInfo, InteractionManager } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
@@ -44,8 +44,7 @@ const CalendarScreen = () => {
 
   // Entrance animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
 
   const formatEventTitle = (raw?: string) => {
     const title = String(raw || '').trim();
@@ -149,7 +148,7 @@ const CalendarScreen = () => {
     return months[date.getMonth()];
   };
 
-  const getEventsForDate = (date: Date) => {
+  const getEventsForDate = React.useCallback((date: Date) => {
     const key = formatDateKey(date);
     return posts
       .map(p => ({
@@ -162,7 +161,7 @@ const CalendarScreen = () => {
         chip: categoryToColors(p.category),
       }))
       .filter(e => e.dateKey === key);
-  };
+  }, [posts]);
 
   const isToday = (date: Date) => {
     const today = new Date();
@@ -219,12 +218,12 @@ const CalendarScreen = () => {
     );
   };
 
-  const getFilteredEvents = () => {
+  const filteredEvents = React.useMemo(() => {
     if (selectedDate && !showAllEvents) {
       return getEventsForDate(selectedDate);
     }
     return posts.map(transformPostToEvent);
-  };
+  }, [selectedDate, showAllEvents, posts, getEventsForDate]);
 
   const transformPostToEvent = (p: any) => ({
     id: p.id,
@@ -311,45 +310,50 @@ const CalendarScreen = () => {
   };
 
 
-  // Entrance animation for Calendar - Slide from bottom with scale
+  // Optimized entrance animation for Calendar - delay until interactions complete
   React.useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 80,
-        friction: 6,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    const handle = InteractionManager.runAfterInteractions(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+    return () => handle.cancel();
   }, []);
 
   React.useEffect(() => {
-    listAnim.setValue(0);
-    Animated.timing(listAnim, {
-      toValue: 1,
-      duration: 180,
-      useNativeDriver: true,
-    }).start();
-    dotScale.setValue(0.8);
-    Animated.spring(dotScale, {
-      toValue: 1,
-      friction: 6,
-      useNativeDriver: true,
-    }).start();
+    // Optimized list animation - delay until interactions complete
+    const handle = InteractionManager.runAfterInteractions(() => {
+      listAnim.setValue(0);
+      Animated.timing(listAnim, {
+        toValue: 1,
+        duration: 200,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+      dotScale.setValue(0.8);
+      Animated.timing(dotScale, {
+        toValue: 1,
+        duration: 200,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+    });
+    return () => handle.cancel();
   }, [showAllEvents, selectedDate, posts]);
 
-  const days = getDaysInMonth(currentMonth);
-  const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S']; // Sunday -> Saturday
+  const days = React.useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
+  const weekDays = React.useMemo(() => ['S', 'M', 'T', 'W', 'T', 'F', 'S'], []); // Sunday -> Saturday
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -385,8 +389,7 @@ const CalendarScreen = () => {
           style={{
             opacity: fadeAnim,
             transform: [
-              { translateY: slideAnim },
-              { scale: scaleAnim }
+              { translateY: slideAnim }
             ]
           }}
         >
@@ -463,8 +466,7 @@ const CalendarScreen = () => {
               backgroundColor: t.colors.card,
               opacity: fadeAnim,
               transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
+                { translateY: slideAnim }
               ]
             }
           ]}
@@ -501,12 +503,12 @@ const CalendarScreen = () => {
                 ? 'All dates'
                 : selectedDate
                   ? formatDate(selectedDate)
-                  : 'All dates'} — {getFilteredEvents().length} {getFilteredEvents().length === 1 ? 'event' : 'events'}
+                  : 'All dates'} — {filteredEvents.length} {filteredEvents.length === 1 ? 'event' : 'events'}
             </Text>
           </View>
           <LinearGradient colors={[t.colors.border, 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ height: 1, marginBottom: 10 }} />
 
-          {getFilteredEvents().length === 0 && !isLoadingPosts && (
+          {filteredEvents.length === 0 && !isLoadingPosts && (
             <View style={[styles.emptyStateCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
               <View style={styles.emptyStateIconWrap}>
                 <Ionicons name="calendar-outline" size={20} color="#6366F1" />
@@ -529,7 +531,7 @@ const CalendarScreen = () => {
 
           {!showAllEvents && (
             <Animated.View style={{ opacity: listAnim, transform: [{ translateY: listAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
-            {getFilteredEvents().map((event: any) => (
+            {filteredEvents.map((event: any) => (
             <TouchableOpacity
               key={event.id}
               style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}

@@ -28,10 +28,7 @@ const UserSettings = () => {
   const scrollRef = useRef<ScrollView>(null);
   
   // State for various settings
-  // Dark mode now controlled globally via ThemeContext
-  const [darkMode, setDarkMode] = useState(false);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [autoBackupEnabled, setAutoBackupEnabled] = useState(true);
+  const [language, setLanguage] = useState('English');
   
   // User state from Firebase Auth
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -131,9 +128,6 @@ const UserSettings = () => {
           <Text style={[styles.headerTitle, { color: '#fff' }]}>Settings</Text>
         </View>
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.headerButton} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -152,18 +146,30 @@ const UserSettings = () => {
             }
           ]}
         >
-          <View style={styles.profileAvatar}>
-            {userPhoto ? (
-              <Image 
-                source={{ uri: userPhoto }} 
-                style={styles.profileAvatarImage}
-              />
-            ) : (
-              <Ionicons name="person" size={32} color={t.colors.textMuted} />
-            )}
+          <View style={styles.profileAvatarContainer}>
+            <View style={[styles.profileAvatar, { backgroundColor: t.colors.primary + '20' }]}>
+              {userPhoto ? (
+                <Image 
+                  source={{ uri: userPhoto }} 
+                  style={styles.profileAvatarImage}
+                />
+              ) : (
+                <View style={styles.profileAvatarPlaceholder}>
+                  <Ionicons name="person" size={40} color={t.colors.primary} />
+                </View>
+              )}
+            </View>
+            <View style={[styles.profileBadge, { backgroundColor: '#10B981' }]}>
+              <Ionicons name="checkmark" size={12} color="#FFFFFF" />
+            </View>
           </View>
-          <Text style={[styles.profileName, { color: t.colors.text }]}>{userName}</Text>
-          <Text style={[styles.profileEmail, { color: t.colors.textMuted }]}>{userEmail}</Text>
+          <View style={styles.profileInfo}>
+            <Text style={[styles.profileName, { color: t.colors.text }]}>{userName}</Text>
+            <View style={styles.profileEmailContainer}>
+              <Ionicons name="mail-outline" size={14} color={t.colors.textMuted} />
+              <Text style={[styles.profileEmail, { color: t.colors.textMuted }]}>{userEmail}</Text>
+            </View>
+          </View>
         </Animated.View>
 
         {/* Settings Categories */}
@@ -179,11 +185,11 @@ const UserSettings = () => {
             }
           ]}
         >
-          {/* App Settings */}
+          {/* General Section */}
           <View style={[styles.sectionCard, { backgroundColor: t.colors.card }]}>
-            <Text style={[styles.sectionTitle, { color: t.colors.text }]}>App Settings</Text>
+            <Text style={[styles.sectionTitle, { color: t.colors.text }]}>General</Text>
             
-            <View style={styles.settingItem}>
+            <View style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                   <Ionicons name="moon-outline" size={20} color={t.colors.accent} />
@@ -198,42 +204,40 @@ const UserSettings = () => {
               />
             </View>
 
-            <View style={styles.settingItem}>
-              <View style={styles.settingLeft}>
-                  <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="notifications-outline" size={20} color={t.colors.accent} />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Notifications</Text>
-              </View>
-              <Switch
-                value={notificationsEnabled}
-                onValueChange={setNotificationsEnabled}
-                trackColor={{ false: t.colors.border, true: t.colors.accent }}
-                thumbColor={t.colors.surface}
-              />
-            </View>
-
-            <View style={styles.settingItemLast}>
+            <TouchableOpacity style={styles.settingItemLast}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="cloud-upload-outline" size={20} color={t.colors.accent} />
+                  <Ionicons name="language-outline" size={20} color={t.colors.accent} />
                 </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Auto Backup</Text>
+                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Language</Text>
               </View>
-              <Switch
-                value={autoBackupEnabled}
-                onValueChange={setAutoBackupEnabled}
-                trackColor={{ false: t.colors.border, true: t.colors.accent }}
-                thumbColor={t.colors.surface}
-              />
-            </View>
+              <View style={styles.settingRight}>
+                <Text style={[styles.settingValue, { color: t.colors.textMuted }]}>{language}</Text>
+                <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+              </View>
+            </TouchableOpacity>
           </View>
 
-          {/* Support */}
+          {/* Email Section */}
           <View style={[styles.sectionCard, { backgroundColor: t.colors.card }]}>
-            <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Support</Text>
+            <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Email</Text>
             
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity style={styles.settingItemLast}>
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
+                  <Ionicons name="mail-outline" size={20} color={t.colors.accent} />
+                </View>
+                <Text style={[styles.settingTitle, { color: t.colors.text }]}>{userEmail}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+
+          {/* About Section */}
+          <View style={[styles.sectionCard, { backgroundColor: t.colors.card }]}>
+            <Text style={[styles.sectionTitle, { color: t.colors.text }]}>About</Text>
+            
+            <TouchableOpacity style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                   <Ionicons name="help-circle-outline" size={20} color={t.colors.accent} />
@@ -243,26 +247,62 @@ const UserSettings = () => {
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.settingItem}>
+            <TouchableOpacity style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="mail-outline" size={20} color={t.colors.accent} />
+                  <Ionicons name="document-text-outline" size={20} color={t.colors.accent} />
                 </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Contact Support</Text>
+                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Terms of Use</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.settingItemLast}>
+            <TouchableOpacity style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
+                  <Ionicons name="shield-checkmark-outline" size={20} color={t.colors.accent} />
+                </View>
+                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Privacy Policy</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
+                  <Ionicons name="document-outline" size={20} color={t.colors.accent} />
+                </View>
+                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Licenses</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+            </TouchableOpacity>
+
+            <View style={styles.settingItemLast}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                   <Ionicons name="information-circle-outline" size={20} color={t.colors.accent} />
                 </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>About</Text>
+                <Text style={[styles.settingTitle, { color: t.colors.text }]}>DOrSU Connect</Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-            </TouchableOpacity>
+              <Text style={[styles.settingValue, { color: t.colors.textMuted }]}>v1.0.0</Text>
+            </View>
           </View>
+
+          {/* Sign Out Button */}
+          <TouchableOpacity 
+            style={[
+              styles.signOutButton, 
+              { 
+                backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)',
+                borderColor: isDarkMode ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.2)',
+              }
+            ]}
+            onPress={handleLogout}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="log-out-outline" size={22} color="#EF4444" />
+            <Text style={[styles.signOutText, { color: '#EF4444' }]}>Sign out</Text>
+          </TouchableOpacity>
         </Animated.View>
       </ScrollView>
 
@@ -317,39 +357,90 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: theme.spacing(1.5),
     paddingTop: theme.spacing(2),
-    paddingBottom: theme.spacing(15),
+    paddingBottom: theme.spacing(2),
   },
   profileSection: {
+    flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radii.md,
-    padding: theme.spacing(2),
+    padding: theme.spacing(2.5),
     marginBottom: theme.spacing(2),
-    ...theme.shadow1,
+    gap: theme.spacing(2),
   },
-  profileAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: theme.colors.surfaceAlt,
+  profileAvatarContainer: {
+    position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: theme.spacing(1),
+    backgroundColor: 'transparent',
+  },
+  profileAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
     overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: theme.colors.primary + '30',
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   profileAvatarImage: {
     width: '100%',
     height: '100%',
   },
+  profileAvatarPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+  profileBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: theme.colors.surface,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  profileInfo: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
   profileName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
     color: theme.colors.text,
-    marginBottom: 2,
+    marginBottom: theme.spacing(0.5),
+    letterSpacing: 0.2,
+  },
+  profileEmailContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   profileEmail: {
-    fontSize: 13,
+    fontSize: 14,
     color: theme.colors.textMuted,
+    fontWeight: '400',
   },
   settingsContainer: {
     gap: theme.spacing(1.5),
@@ -397,6 +488,32 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: theme.colors.text,
+  },
+  settingRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  settingValue: {
+    fontSize: 14,
+    fontWeight: '400',
+  },
+  signOutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: theme.spacing(2.5),
+    paddingHorizontal: theme.spacing(3),
+    borderRadius: theme.radii.md,
+    marginTop: theme.spacing(2),
+    marginBottom: 0,
+    gap: theme.spacing(1.5),
+    borderWidth: 1,
+  },
+  signOutText: {
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
 });
 

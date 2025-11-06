@@ -6,6 +6,7 @@ import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { theme } from '../../config/theme';
 import { useTheme } from '../../contexts/ThemeContext';
 import LogoutModal from '../../modals/LogoutModal';
@@ -19,6 +20,10 @@ type RootStackParamList = {
   AIChat: undefined;
   UserSettings: undefined;
   Calendar: undefined;
+  UserHelpCenter: undefined;
+  TermsOfUse: undefined;
+  PrivacyPolicy: undefined;
+  Licenses: undefined;
 };
 
 const UserSettings = () => {
@@ -105,29 +110,25 @@ const UserSettings = () => {
   return (
     <View style={[styles.container, {
       backgroundColor: t.colors.background,
-      paddingTop: 0,
+      paddingTop: insets.top,
       paddingBottom: 0, // Remove bottom padding since UserBottomNavBar now handles it
       paddingLeft: insets.left,
       paddingRight: insets.right,
     }]}>
       <StatusBar
         backgroundColor={t.colors.primary}
-        barStyle={isDarkMode ? "light-content" : "light-content"}
-        translucent={true}
+        barStyle={'light-content'}
+        translucent={false}
       />
-      {/* Safe area filler to match header color when translucent status bar is used */}
-      <View style={{ height: insets.top, backgroundColor: t.colors.primary }} />
 
       {/* Header */}
-      <View style={[styles.header, { 
-        backgroundColor: t.colors.primary,
-        borderBottomLeftRadius: 16,
-        borderBottomRightRadius: 16,
-      }]}>
+      <View style={[styles.header, { backgroundColor: t.colors.primary }]}>
         <View style={styles.headerLeft}>
-          <Text style={[styles.headerTitle, { color: '#fff' }]}>Settings</Text>
+          <Text style={styles.headerTitle}>Settings</Text>
         </View>
         <View style={styles.headerRight}>
+          <View style={styles.headerSpacer} />
+          <View style={styles.headerSpacer} />
         </View>
       </View>
 
@@ -198,7 +199,10 @@ const UserSettings = () => {
               </View>
               <Switch
                 value={isDarkMode}
-                onValueChange={toggleTheme}
+                onValueChange={(value) => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  toggleTheme();
+                }}
                 trackColor={{ false: t.colors.border, true: t.colors.accent }}
                 thumbColor={t.colors.surface}
               />
@@ -237,7 +241,10 @@ const UserSettings = () => {
           <View style={[styles.sectionCard, { backgroundColor: t.colors.card }]}>
             <Text style={[styles.sectionTitle, { color: t.colors.text }]}>About</Text>
             
-            <TouchableOpacity style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
+            <TouchableOpacity 
+              style={[styles.settingItem, { borderBottomColor: t.colors.border }]}
+              onPress={() => navigation.navigate('UserHelpCenter')}
+            >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                   <Ionicons name="help-circle-outline" size={20} color={t.colors.accent} />
@@ -247,7 +254,10 @@ const UserSettings = () => {
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
+            <TouchableOpacity 
+              style={[styles.settingItem, { borderBottomColor: t.colors.border }]}
+              onPress={() => navigation.navigate('TermsOfUse')}
+            >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                   <Ionicons name="document-text-outline" size={20} color={t.colors.accent} />
@@ -257,7 +267,10 @@ const UserSettings = () => {
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
+            <TouchableOpacity 
+              style={[styles.settingItem, { borderBottomColor: t.colors.border }]}
+              onPress={() => navigation.navigate('PrivacyPolicy')}
+            >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                   <Ionicons name="shield-checkmark-outline" size={20} color={t.colors.accent} />
@@ -267,7 +280,10 @@ const UserSettings = () => {
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
+            <TouchableOpacity 
+              style={[styles.settingItem, { borderBottomColor: t.colors.border }]}
+              onPress={() => navigation.navigate('Licenses')}
+            >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                   <Ionicons name="document-outline" size={20} color={t.colors.accent} />
@@ -324,35 +340,38 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surfaceAlt,
   },
   header: {
+    backgroundColor: theme.colors.primary,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
     elevation: 4,
-    marginBottom: 6,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    marginBottom: 8,
   },
   headerLeft: {
     flex: 1,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  headerButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    marginLeft: 4,
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: '800',
     letterSpacing: 0.2,
+    color: '#fff',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  headerSpacer: {
+    width: 40,
+    height: 33,
+    marginLeft: 4,
   },
   scrollContent: {
     paddingHorizontal: theme.spacing(1.5),

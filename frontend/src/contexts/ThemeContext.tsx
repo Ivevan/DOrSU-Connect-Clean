@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from 'react';
-import { useColorScheme, Platform } from 'react-native';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useRef } from 'react';
+import { useColorScheme, Platform, Animated } from 'react-native';
 import { Theme, getTheme } from '../config/theme';
 
 interface ThemeContextType {
@@ -7,6 +7,9 @@ interface ThemeContextType {
   theme: Theme;
   toggleTheme: () => void;
   setTheme: (isDark: boolean) => void;
+  fadeAnim: Animated.Value;
+  isAnimating: boolean;
+  nextIsDarkMode: boolean | null;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -41,6 +44,12 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   // Default to 'light' mode on app launch
   const [userPreference, setUserPreference] = useState<null | 'light' | 'dark'>('light');
 
+  // Animation for theme transition
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [isAnimating, setIsAnimating] = useState(false);
+  const previousIsDarkMode = useRef<boolean | null>(null);
+  const nextIsDarkMode = useRef<boolean | null>(null);
+
   // Compute effective mode
   const isDarkMode = useMemo(() => {
     if (userPreference) return userPreference === 'dark';
@@ -48,11 +57,52 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     return system === 'dark';
   }, [rnScheme, webScheme, userPreference]);
 
-  const toggleTheme = () => {
-    setUserPreference(prev => {
-      const next = prev ? (prev === 'dark' ? 'light' : 'dark') : (isDarkMode ? 'light' : 'dark');
-      return next as 'light' | 'dark';
+  // Trigger animation when theme changes (for system changes)
+  useEffect(() => {
+    if (previousIsDarkMode.current !== null && previousIsDarkMode.current !== isDarkMode) {
+      // Only animate if it's a system change, not a user toggle
+      // (user toggles are handled in toggleTheme)
+      if (!userPreference) {
+        triggerAnimation(isDarkMode);
+      }
+    }
+    previousIsDarkMode.current = isDarkMode;
+  }, [isDarkMode, userPreference]);
+
+  // Animation function
+  const triggerAnimation = (willBeDark: boolean) => {
+    nextIsDarkMode.current = willBeDark;
+    setIsAnimating(true);
+    fadeAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 120,
+        useNativeDriver: true,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setIsAnimating(false);
+      nextIsDarkMode.current = null;
     });
+  };
+
+  const toggleTheme = () => {
+    // Calculate the next theme state
+    const nextMode = userPreference 
+      ? (userPreference === 'dark' ? 'light' : 'dark')
+      : (isDarkMode ? 'light' : 'dark');
+    const willBeDark = nextMode === 'dark';
+    
+    // Start animation immediately before state change
+    triggerAnimation(willBeDark);
+    
+    // Update state immediately after starting animation
+    setUserPreference(nextMode);
   };
 
   const setTheme = (isDark: boolean) => {
@@ -66,6 +116,9 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     theme,
     toggleTheme,
     setTheme,
+    fadeAnim,
+    isAnimating,
+    nextIsDarkMode: nextIsDarkMode.current,
   };
 
   return (

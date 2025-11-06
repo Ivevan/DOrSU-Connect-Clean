@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, Dimensions, Platform, StatusBar, Image, Animated, Easing, KeyboardAvoidingView, ScrollView, Alert } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, Dimensions, Platform, StatusBar, Image, Animated, Easing, KeyboardAvoidingView, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import React, { useRef } from 'react';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -7,7 +7,6 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { theme } from '../../config/theme';
-import { signInWithGoogle, getGoogleSignInErrorMessage } from '../../services/authService';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -35,7 +34,6 @@ const SignIn = () => {
   const [password, setPassword] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
   const [errors, setErrors] = React.useState({ email: '', password: '', general: '' });
   
   // Input focus states
@@ -324,39 +322,6 @@ const SignIn = () => {
     navigation.navigate('SchoolUpdates');
       }
     }, 2000);
-  };
-
-  // Handle Google Sign-In
-  const handleGoogleSignIn = async () => {
-    setIsGoogleLoading(true);
-    setErrors({ email: '', password: '', general: '' });
-    
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const user = await signInWithGoogle();
-      
-      // Success
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
-      // Navigate based on user role or default screen
-      // TODO: You can check user.uid or other properties to determine if admin or user
-      navigation.navigate('SchoolUpdates');
-    } catch (error: any) {
-      console.error('Google Sign-In Error:', error);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      
-      const errorMessage = getGoogleSignInErrorMessage(error);
-      setErrors(prev => ({ ...prev, general: errorMessage }));
-      
-      // Show alert for better visibility
-      Alert.alert(
-        'Sign-In Failed',
-        errorMessage,
-        [{ text: 'OK' }]
-      );
-    } finally {
-      setIsGoogleLoading(false);
-    }
   };
 
   const KeyboardWrapper = Platform.OS === 'ios' ? KeyboardAvoidingView : View;
@@ -792,46 +757,6 @@ const SignIn = () => {
               </LinearGradient>
           </TouchableOpacity>
           </Animated.View>
-
-          {/* Google Sign-In Button */}
-          <View style={styles.dividerContainer}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>OR</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <TouchableOpacity 
-            style={[styles.googleSignInButton, isGoogleLoading && styles.googleSignInButtonDisabled]}
-            onPress={handleGoogleSignIn}
-            disabled={isLoading || isGoogleLoading}
-            accessibilityRole="button"
-            accessibilityLabel="Sign in with Google"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <View style={styles.googleSignInContent}>
-              {isGoogleLoading ? (
-                <Animated.View style={[
-                  styles.loadingSpinner,
-                  {
-                    transform: [{
-                      rotate: loadingRotation.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: ['0deg', '360deg'],
-                      })
-                    }]
-                  }
-                ]}>
-                  <MaterialIcons name="refresh" size={20} color="#666" />
-                </Animated.View>
-              ) : (
-                <MaterialIcons name="login" size={20} color="#4285F4" style={styles.googleIconPlaceholder} />
-              )}
-              <Text style={styles.googleSignInText}>
-                {isGoogleLoading ? 'Signing in with Google...' : 'Continue with Google'}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
           </View>
 
           {/* Bottom Section - Always Accessible */}
@@ -1209,7 +1134,6 @@ const styles = StyleSheet.create({
     color: 'black',
     fontSize: 15,
     fontWeight: '600',
-    textDecorationLine: 'underline',
   },
   signInButton: {
     borderRadius: theme.radii.lg,
@@ -1265,52 +1189,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0.2,
-  },
-  dividerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: theme.spacing(2),
-    paddingHorizontal: theme.spacing(2),
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
-  },
-  dividerText: {
-    marginHorizontal: theme.spacing(2),
-    fontSize: 14,
-    color: theme.colors.textMuted,
-    fontWeight: '500',
-  },
-  googleSignInButton: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radii.lg,
-    paddingVertical: theme.spacing(2.5),
-    paddingHorizontal: theme.spacing(3),
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: theme.spacing(2),
-    ...theme.shadow1,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.1)',
-  },
-  googleSignInButtonDisabled: {
-    opacity: 0.6,
-  },
-  googleSignInContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleIconPlaceholder: {
-    marginRight: theme.spacing(1.5),
-  },
-  googleSignInText: {
-    color: theme.colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-    letterSpacing: 0.3,
   },
 });
 

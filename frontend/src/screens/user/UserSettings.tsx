@@ -108,35 +108,33 @@ const UserSettings = () => {
   return (
     <View style={[styles.container, {
       backgroundColor: t.colors.background,
-      paddingTop: insets.top,
+      paddingTop: 0,
       paddingBottom: 0, // Remove bottom padding since UserBottomNavBar now handles it
       paddingLeft: insets.left,
       paddingRight: insets.right,
     }]}>
       <StatusBar
         backgroundColor={t.colors.primary}
-        barStyle={'light-content'}
-        translucent={false}
+        barStyle={isDarkMode ? "light-content" : "light-content"}
+        translucent={true}
       />
+      {/* Safe area filler to match header color when translucent status bar is used */}
+      <View style={{ height: insets.top, backgroundColor: t.colors.primary }} />
 
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: t.colors.primary }]}>
+      <View style={[styles.header, { 
+        backgroundColor: t.colors.primary,
+        borderBottomLeftRadius: 16,
+        borderBottomRightRadius: 16,
+      }]}>
         <View style={styles.headerLeft}>
-          <View style={styles.headerTextContainer}>
-            <Text style={styles.headerTitle}>Settings</Text>
-            <Text style={styles.headerSubtitle}>DOrSU Connect</Text>
-          </View>
+          <Text style={[styles.headerTitle, { color: '#fff' }]}>Settings</Text>
         </View>
-        <TouchableOpacity onPress={handleLogout} style={[
-          styles.logoutButton,
-          {
-            backgroundColor: 'rgba(255, 255, 255, 0.15)',
-            borderRadius: 8
-          }
-        ]}>
-          <Ionicons name="log-out-outline" size={20} color="#EF4444" />
-          <Text style={[styles.logoutText, { color: '#EF4444' }]}>Logout</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.headerButton} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -181,31 +179,6 @@ const UserSettings = () => {
             }
           ]}
         >
-          {/* Account Settings */}
-          <View style={[styles.sectionCard, { backgroundColor: t.colors.card }]}>
-            <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Account</Text>
-            
-            <TouchableOpacity style={styles.settingItem}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="person-outline" size={20} color={t.colors.accent} />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Profile Information</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.settingItemLast}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="key-outline" size={20} color={t.colors.accent} />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Change Password</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-
           {/* App Settings */}
           <View style={[styles.sectionCard, { backgroundColor: t.colors.card }]}>
             <Text style={[styles.sectionTitle, { color: t.colors.text }]}>App Settings</Text>
@@ -254,31 +227,6 @@ const UserSettings = () => {
                 thumbColor={t.colors.surface}
               />
             </View>
-          </View>
-
-          {/* Appearance */}
-          <View style={[styles.sectionCard, { backgroundColor: t.colors.card }]}>
-            <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Appearance</Text>
-            
-            <TouchableOpacity style={styles.settingItem}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="color-palette-outline" size={20} color={t.colors.accent} />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Theme</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.settingItemLast}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="text-outline" size={20} color={t.colors.accent} />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Font Size</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-            </TouchableOpacity>
           </View>
 
           {/* Support */}
@@ -336,7 +284,6 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surfaceAlt,
   },
   header: {
-    backgroundColor: theme.colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 12,
     flexDirection: 'row',
@@ -347,51 +294,25 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 8,
     elevation: 4,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
     marginBottom: 6,
   },
   headerLeft: {
+    flex: 1,
+  },
+  headerRight: {
     flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
+    gap: 10,
   },
-  headerIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: theme.spacing(2),
-  },
-  headerTextContainer: {
-    flex: 1,
+  headerButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginLeft: 4,
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: '800',
     letterSpacing: 0.2,
-    color: theme.colors.surface,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontWeight: '600',
-  },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    borderRadius: 8,
-    gap: theme.spacing(1),
-  },
-  logoutText: {
-    color: theme.colors.surface,
-    fontSize: 16,
-    fontWeight: '500',
   },
   scrollContent: {
     paddingHorizontal: theme.spacing(1.5),

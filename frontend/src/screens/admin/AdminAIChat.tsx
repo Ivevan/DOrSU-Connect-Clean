@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Animated } from 'react-native';
+import React, { useEffect, useRef, useCallback } from 'react';
+import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Animated, Easing, InteractionManager } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
@@ -39,32 +39,33 @@ const AdminAIChat = () => {
   const { width } = useWindowDimensions();
   const isWide = width > 600;
   const [isInfoOpen, setIsInfoOpen] = React.useState(false);
+  
+  const handleInfoPress = useCallback(() => setIsInfoOpen(true), []);
+  const handleInfoClose = useCallback(() => setIsInfoOpen(false), []);
 
   // Animation values for smooth entrance
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
 
   useEffect(() => {
-    // Entrance animation for AI Chat - Slide from bottom with scale
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 80,
-        friction: 6,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    // Optimized entrance animation - delay until interactions complete
+    const handle = InteractionManager.runAfterInteractions(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+    return () => handle.cancel();
   }, []);
 
   return (
@@ -87,7 +88,7 @@ const AdminAIChat = () => {
           <Text style={styles.headerTitle}>DOrSU AI</Text>
         </View>
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.headerButton} onPress={() => setIsInfoOpen(true)} accessibilityLabel="AI chat information">
+          <TouchableOpacity style={styles.headerButton} onPress={handleInfoPress} accessibilityLabel="AI chat information">
             <Ionicons name="information-circle-outline" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -95,7 +96,7 @@ const AdminAIChat = () => {
       {/* Info Modal */}
       <InfoModal
         visible={isInfoOpen}
-        onClose={() => setIsInfoOpen(false)}
+        onClose={handleInfoClose}
         title="About DOrSU AI"
         subtitle="DOrSU AI can help you:"
         cards={[
@@ -128,8 +129,7 @@ const AdminAIChat = () => {
             {
               opacity: fadeAnim,
               transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
+                { translateY: slideAnim }
               ]
             }
           ]}
@@ -143,8 +143,7 @@ const AdminAIChat = () => {
               color: theme.colors.text,
               opacity: fadeAnim,
               transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
+                { translateY: slideAnim }
               ]
             }
           ]}
@@ -158,8 +157,7 @@ const AdminAIChat = () => {
               color: theme.colors.textMuted,
               opacity: fadeAnim,
               transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
+                { translateY: slideAnim }
               ]
             }
           ]}
@@ -175,8 +173,7 @@ const AdminAIChat = () => {
           {
             opacity: fadeAnim,
             transform: [
-              { translateY: slideAnim },
-              { scale: scaleAnim }
+              { translateY: slideAnim }
             ]
           }
         ]}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback, memo } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import AdminDataService from '../../services/AdminDataService';
 import {
@@ -13,6 +13,8 @@ import {
   Modal,
   Pressable,
   Animated,
+  InteractionManager,
+  Easing,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -83,29 +85,27 @@ const ManagePosts: React.FC = () => {
 
   // Animation values for smooth entrance
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
 
   useEffect(() => {
-    // Entrance animation for Manage Posts - Slide from bottom with scale
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 80,
-        friction: 6,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    // Optimized entrance animation - delay until interactions complete
+    const handle = InteractionManager.runAfterInteractions(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+    return () => handle.cancel();
   }, []);
   
   // Inline, dependency-free date data
@@ -180,7 +180,7 @@ const ManagePosts: React.FC = () => {
     return () => { isCancelled = true; };
   }, [searchQuery, selectedCategory, filterDate, selectedSort]);
 
-  const handleNewPost = () => {
+  const handleNewPost = useCallback(() => {
     // Prevent rapid tapping during animation
     if (isAnimating) {
       return;
@@ -190,7 +190,7 @@ const ManagePosts: React.FC = () => {
     navigation.navigate('PostUpdate');
     // Reset animation state after a short delay
     setTimeout(() => setIsAnimating(false), 300);
-  };
+  }, [isAnimating, navigation]);
 
   const simulateLoading = () => {
     // Prevent rapid tapping during animation
@@ -213,7 +213,7 @@ const ManagePosts: React.FC = () => {
     }, 200);
   };
 
-  const handleEditPost = (postId: string) => {
+  const handleEditPost = useCallback((postId: string) => {
     // Prevent rapid tapping during animation
     if (isAnimating) {
       return;
@@ -224,7 +224,7 @@ const ManagePosts: React.FC = () => {
     (navigation as any).navigate('PostUpdate', { postId });
     // Reset animation state after a short delay
     setTimeout(() => setIsAnimating(false), 300);
-  };
+  }, [isAnimating, navigation]);
 
   const handleMoreOptions = (postId: string) => {
     // Prevent rapid tapping during animation
@@ -428,8 +428,7 @@ const ManagePosts: React.FC = () => {
               borderColor: theme.colors.border,
               opacity: fadeAnim,
               transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
+                { translateY: slideAnim }
               ]
             }
           ]}
@@ -585,8 +584,7 @@ const ManagePosts: React.FC = () => {
             {
               opacity: fadeAnim,
               transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
+                { translateY: slideAnim }
               ]
             }
           ]}

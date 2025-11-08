@@ -1,4 +1,4 @@
- import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,8 @@ import {
   Image,
   FlatList,
   Animated,
+  InteractionManager,
+  Easing,
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -72,29 +74,27 @@ const PostUpdate: React.FC = () => {
 
   // Animation values for smooth entrance
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
 
   useEffect(() => {
-    // Entrance animation for Post Update - Slide from bottom with scale
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 80,
-        friction: 6,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    // Optimized entrance animation - delay until interactions complete
+    const handle = InteractionManager.runAfterInteractions(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+    return () => handle.cancel();
   }, []);
 
   // Inline, dependency-free date data
@@ -134,32 +134,32 @@ const PostUpdate: React.FC = () => {
     return `${dd}/${mm}/${yyyy}`;
   };
 
-  const openCategoryMenu = () => setIsCategoryOpen(true);
-  const closeCategoryMenu = () => setIsCategoryOpen(false);
-  const selectCategory = (value: string) => {
+  const openCategoryMenu = useCallback(() => setIsCategoryOpen(true), []);
+  const closeCategoryMenu = useCallback(() => setIsCategoryOpen(false), []);
+  const selectCategory = useCallback((value: string) => {
     setCategory(value);
-    closeCategoryMenu();
-  };
+    setIsCategoryOpen(false);
+  }, []);
 
-  const onPressDate = () => {
+  const onPressDate = useCallback(() => {
     const base = selectedDateObj ?? new Date();
     setTmpMonth(base.getMonth());
     setTmpYear(base.getFullYear());
     setTmpDay(base.getDate());
     setShowDatePicker(true);
-  };
+  }, [selectedDateObj]);
 
-  const confirmTmpDate = () => {
+  const confirmTmpDate = useCallback(() => {
     const safeDay = Math.min(tmpDay, getDaysInMonth(tmpYear, tmpMonth));
     const next = new Date(tmpYear, tmpMonth, safeDay);
     setSelectedDateObj(next);
     setDate(formatDate(next));
     setShowDatePicker(false);
-  };
+  }, [tmpDay, tmpYear, tmpMonth]);
 
-  const cancelTmpDate = () => setShowDatePicker(false);
+  const cancelTmpDate = useCallback(() => setShowDatePicker(false), []);
 
-  const handlePublish = () => {
+  const handlePublish = useCallback(() => {
     // Prevent rapid tapping during animation
     if (isAnimating) {
       return;
@@ -174,12 +174,12 @@ const PostUpdate: React.FC = () => {
     setIsPublishAlertOpen(true);
     // Reset animation state after a short delay
     setTimeout(() => setIsAnimating(false), 300);
-  };
+  }, [isAnimating, title, description]);
 
-  // Check if form is valid for publishing
-  const isFormValid = title.trim() !== '' && description.trim() !== '';
+  // Check if form is valid for publishing - memoized
+  const isFormValid = useMemo(() => title.trim() !== '' && description.trim() !== '', [title, description]);
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     // Prevent rapid tapping during animation
     if (isAnimating) {
       return;
@@ -189,9 +189,9 @@ const PostUpdate: React.FC = () => {
     setIsCancelAlertOpen(true);
     // Reset animation state after a short delay
     setTimeout(() => setIsAnimating(false), 300);
-  };
+  }, [isAnimating]);
 
-  const handleShowPreview = () => {
+  const handleShowPreview = useCallback(() => {
     // Prevent rapid tapping during animation
     if (isAnimating) {
       return;
@@ -201,7 +201,7 @@ const PostUpdate: React.FC = () => {
     setIsPreviewModalOpen(true);
     // Reset animation state after a short delay
     setTimeout(() => setIsAnimating(false), 300);
-  };
+  }, [isAnimating]);
 
   // Preview helpers to mirror AdminDashboard
   const timeAgo = (dateStr: string | undefined) => {
@@ -248,7 +248,7 @@ const PostUpdate: React.FC = () => {
     return () => { isCancelled = true; };
   }, [editingPostId]);
 
-  const confirmPublish = () => {
+  const confirmPublish = useCallback(() => {
     setIsPublishAlertOpen(false);
     // Simulate publishing then go to ManagePosts
     setTimeout(() => {
@@ -274,18 +274,18 @@ const PostUpdate: React.FC = () => {
         navigation.navigate('AdminDashboard');
       });
     }, 500);
-  };
+  }, [title, category, date, description, pickedFile, pinToTop, markAsUrgent, editingPostId, navigation]);
 
-  const confirmCancel = () => {
+  const confirmCancel = useCallback(() => {
     setIsCancelAlertOpen(false);
     if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
       navigation.goBack();
     } else {
       (navigation as any).navigate('AdminDashboard');
     }
-  };
+  }, [navigation]);
 
-  const handleAddAttachment = async () => {
+  const handleAddAttachment = useCallback(async () => {
     // Prevent rapid tapping during animation
     if (isAnimating) {
       return;
@@ -341,9 +341,9 @@ const PostUpdate: React.FC = () => {
       Alert.alert('Error', 'Unable to pick a file.');
       setIsAnimating(false);
     }
-  };
+  }, [isAnimating]);
 
-  const handleUpload = async () => {
+  const handleUpload = useCallback(async () => {
     // Prevent rapid tapping during animation
     if (isAnimating) {
       return;
@@ -359,7 +359,7 @@ const PostUpdate: React.FC = () => {
     Alert.alert('Upload', `Uploading: ${pickedFile.name}`);
     // Reset animation state after a short delay
     setTimeout(() => setIsAnimating(false), 300);
-  };
+  }, [isAnimating, pickedFile]);
 
   return (
     <View style={[styles.container, {
@@ -405,10 +405,9 @@ const PostUpdate: React.FC = () => {
             styles.contentInner,
             {
               opacity: fadeAnim,
-              transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
-              ]
+            transform: [
+              { translateY: slideAnim }
+            ]
             }
           ]}
         >

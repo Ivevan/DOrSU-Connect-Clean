@@ -336,8 +336,8 @@ const AdminCalendar = () => {
       <View
         style={[
           styles.calendarDay,
-          styles.emptyDay,
           {
+            backgroundColor: theme.colors.surfaceAlt,
             borderRightColor: theme.colors.border,
             borderBottomColor: theme.colors.border,
             borderRightWidth: (index % 7) === 6 ? 0 : StyleSheet.hairlineWidth,
@@ -351,6 +351,7 @@ const AdminCalendar = () => {
         style={[
           styles.calendarDay,
           { 
+            backgroundColor: theme.colors.card,
             borderRightColor: theme.colors.border, 
             borderBottomColor: theme.colors.border,
             borderRightWidth: (index % 7) === 6 ? 0 : StyleSheet.hairlineWidth
@@ -565,7 +566,7 @@ const AdminCalendar = () => {
             </View>
             <View style={[styles.segmentedToggle, { backgroundColor: t.colors.card, borderColor: t.colors.border }]}>
               <TouchableOpacity
-                style={[styles.segmentItem, !showAllEvents && styles.segmentItemActive]}
+                style={[styles.segmentItem, !showAllEvents && [styles.segmentItemActive, { backgroundColor: t.colors.surfaceAlt }]]}
                 onPress={() => { setShowAllEvents(false); AccessibilityInfo.announceForAccessibility?.('Switched to Day view'); Haptics.selectionAsync(); }}
                 accessibilityRole="button"
                 accessibilityLabel="Day view"
@@ -573,7 +574,7 @@ const AdminCalendar = () => {
                 <Text style={[styles.segmentText, { color: t.colors.textMuted }, !showAllEvents && styles.segmentTextActive]}>Day</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.segmentItem, showAllEvents && styles.segmentItemActive]}
+                style={[styles.segmentItem, showAllEvents && [styles.segmentItemActive, { backgroundColor: t.colors.surfaceAlt }]]}
                 onPress={() => { setShowAllEvents(true); AccessibilityInfo.announceForAccessibility?.('Switched to All events'); Haptics.selectionAsync(); }}
                 accessibilityRole="button"
                 accessibilityLabel="All events"
@@ -622,8 +623,8 @@ const AdminCalendar = () => {
           )}
 
           {isLoadingPosts && (
-            <View style={[styles.emptyStateCard, { paddingVertical: 16, overflow: 'hidden' }]}>
-              <LinearGradient colors={[t.colors.surfaceAlt, '#fafafa']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ ...StyleSheet.absoluteFillObject, opacity: 0.6 }} />
+            <View style={[styles.emptyStateCard, { paddingVertical: 16, overflow: 'hidden', backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
+              <LinearGradient colors={[t.colors.surfaceAlt, t.colors.surface]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ ...StyleSheet.absoluteFillObject, opacity: 0.6 }} />
               <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>Loading…</Text>
             </View>
           )}
@@ -900,9 +901,6 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
   },
-  emptyDay: {
-    backgroundColor: theme.colors.surfaceAlt,
-  },
   eventsSection: {
     borderRadius: 16,
     padding: 16,
@@ -972,7 +970,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   segmentItemActive: {
-    backgroundColor: theme.colors.surfaceAlt,
+    // Background color applied inline for theme awareness
   },
   segmentText: {
     fontSize: 12,

@@ -223,8 +223,8 @@ const CalendarScreen = () => {
       <View
         style={[
           styles.calendarDay,
-          styles.emptyDay,
           {
+            backgroundColor: theme.colors.surfaceAlt,
             borderRightColor: theme.colors.border,
             borderBottomColor: theme.colors.border,
             borderRightWidth: (index % 7) === 6 ? 0 : StyleSheet.hairlineWidth,
@@ -238,6 +238,7 @@ const CalendarScreen = () => {
         style={[
           styles.calendarDay,
           { 
+            backgroundColor: theme.colors.card,
             borderRightColor: theme.colors.border, 
             borderBottomColor: theme.colors.border,
             borderRightWidth: (index % 7) === 6 ? 0 : StyleSheet.hairlineWidth
@@ -551,7 +552,7 @@ const CalendarScreen = () => {
             </View>
             <View style={[styles.segmentedToggle, { backgroundColor: t.colors.card, borderColor: t.colors.border }]}>
               <TouchableOpacity
-                style={[styles.segmentItem, !showAllEvents && styles.segmentItemActive]}
+                style={[styles.segmentItem, !showAllEvents && [styles.segmentItemActive, { backgroundColor: t.colors.surfaceAlt }]]}
                 onPress={() => { setShowAllEvents(false); AccessibilityInfo.announceForAccessibility?.('Switched to Day view'); Haptics.selectionAsync(); }}
                 accessibilityRole="button"
                 accessibilityLabel="Day view"
@@ -559,7 +560,7 @@ const CalendarScreen = () => {
                 <Text style={[styles.segmentText, { color: t.colors.textMuted }, !showAllEvents && styles.segmentTextActive]}>Day</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.segmentItem, showAllEvents && styles.segmentItemActive]}
+                style={[styles.segmentItem, showAllEvents && [styles.segmentItemActive, { backgroundColor: t.colors.surfaceAlt }]]}
                 onPress={() => { setShowAllEvents(true); AccessibilityInfo.announceForAccessibility?.('Switched to All events'); Haptics.selectionAsync(); }}
                 accessibilityRole="button"
                 accessibilityLabel="All events"
@@ -581,8 +582,8 @@ const CalendarScreen = () => {
 
           {filteredEvents.length === 0 && !isLoadingPosts && (
             <View style={[styles.emptyStateCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
-              <View style={styles.emptyStateIconWrap}>
-                <Ionicons name="calendar-outline" size={20} color="#6366F1" />
+              <View style={[styles.emptyStateIconWrap, { backgroundColor: t.colors.surfaceAlt }]}>
+                <Ionicons name="calendar-outline" size={20} color={t.colors.accent} />
               </View>
               <Text style={[styles.emptyStateTitle, { color: t.colors.text }]}>No events yet</Text>
               <Text style={[styles.emptyStateSubtitle, { color: t.colors.textMuted }]}>
@@ -594,8 +595,8 @@ const CalendarScreen = () => {
           )}
 
           {isLoadingPosts && (
-            <View style={[styles.emptyStateCard, { paddingVertical: 16, overflow: 'hidden' }]}>
-              <LinearGradient colors={[t.colors.surfaceAlt, '#fafafa']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ ...StyleSheet.absoluteFillObject, opacity: 0.6 }} />
+            <View style={[styles.emptyStateCard, { paddingVertical: 16, overflow: 'hidden', backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
+              <LinearGradient colors={[t.colors.surfaceAlt, t.colors.surface]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ ...StyleSheet.absoluteFillObject, opacity: 0.6 }} />
               <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>Loading…</Text>
             </View>
           )}
@@ -864,9 +865,6 @@ const styles = StyleSheet.create({
     height: 4,
     borderRadius: 2,
   },
-  emptyDay: {
-    backgroundColor: theme.colors.surfaceAlt,
-  },
   eventsSection: {
     borderRadius: 16,
     padding: 16,
@@ -882,9 +880,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 20,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
     borderRadius: 12,
-    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOpacity: 0.06,
     shadowRadius: 6,
@@ -897,18 +893,15 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EEF2FF',
     marginBottom: 10,
   },
   emptyStateTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#111',
     marginBottom: 4,
   },
   emptyStateSubtitle: {
     fontSize: 12,
-    color: '#6B7280',
     marginBottom: 12,
   },
   eventsHeader: {
@@ -930,7 +923,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   segmentItemActive: {
-    backgroundColor: theme.colors.surfaceAlt,
+    // Background color applied inline for theme awareness
   },
   segmentText: {
     fontSize: 12,

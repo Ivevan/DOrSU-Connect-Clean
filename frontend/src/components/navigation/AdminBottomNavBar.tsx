@@ -165,7 +165,6 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
       return;
     }
 
-    console.log('ADD button pressed, isExpanded:', isExpanded);
     setIsAnimating(true);
     isAnimatingRef.current = true;
 
@@ -220,9 +219,6 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
       return;
     }
     
-    console.log('PostUpdate icon pressed!');
-    console.log('onPostUpdatePress function:', onPostUpdatePress);
-    
     // Immediately collapse menu and navigate without animation
     setIsExpanded(false);
     setIsRotated(false);
@@ -235,10 +231,7 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
     
     // Call navigation immediately
     if (onPostUpdatePress) {
-      console.log('Calling onPostUpdatePress function');
       onPostUpdatePress();
-    } else {
-      console.log('onPostUpdatePress is undefined!');
     }
   };
 
@@ -248,8 +241,6 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
       return;
     }
     
-    console.log('ManagePost icon pressed!');
-    console.log('onManagePostPress function:', onManagePostPress);
     
     // Immediately collapse menu and navigate without animation
     setIsExpanded(false);

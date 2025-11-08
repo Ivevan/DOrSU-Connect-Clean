@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Pressable, SafeAreaView, TextInput, Image, FlatList, Animated, Easing } from 'react-native';
+import React, { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Pressable, SafeAreaView, TextInput, Image, FlatList, Animated, Easing, InteractionManager } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AdminDataService from '../../services/AdminDataService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -53,43 +53,45 @@ const AdminDashboard = () => {
 
   // Animation values for smooth entrance
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
 
   useEffect(() => {
-    // Entrance animation for Dashboard - Slide from bottom with scale
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 80,
-        friction: 6,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    // Optimized entrance animation - delay until interactions complete
+    const handle = InteractionManager.runAfterInteractions(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+    return () => handle.cancel();
   }, []);
 
   // Note: awaiting real data; dashboardData can be set from API by filter
 
-  // Filter updates based on search query
-  const filteredUpdates = dashboardData.recentUpdates.filter(update =>
-    update.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    update.tag.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filter updates based on search query - memoized for performance
+  const filteredUpdates = useMemo(() => {
+    if (!searchQuery.trim()) return dashboardData.recentUpdates;
+    const query = searchQuery.toLowerCase();
+    return dashboardData.recentUpdates.filter(update =>
+      update.title.toLowerCase().includes(query) ||
+      update.tag.toLowerCase().includes(query)
+    );
+  }, [dashboardData.recentUpdates, searchQuery]);
 
-  const handleFilterChange = (filter: 'week' | 'month' | 'semester') => {
+  const handleFilterChange = useCallback((filter: 'week' | 'month' | 'semester') => {
     setActiveFilter(filter);
     setSearchQuery(''); // Clear search when filter changes
-  };
+  }, []);
 
   // Placeholder: fetch dashboard data when filter changes
   useEffect(() => {
@@ -110,25 +112,26 @@ const AdminDashboard = () => {
     return () => { isCancelled = true; };
   }, [activeFilter]);
 
-  const handleSearchPress = () => {
-    setIsSearchVisible(!isSearchVisible);
-    if (isSearchVisible) {
-      setSearchQuery(''); // Clear search when closing
-    }
-  };
+  const handleSearchPress = useCallback(() => {
+    setIsSearchVisible(prev => {
+      if (prev) {
+        setSearchQuery(''); // Clear search when closing
+      }
+      return !prev;
+    });
+  }, []);
 
-  const handleNotificationPress = () => {
+  const handleNotificationPress = useCallback(() => {
     // TODO: Implement notifications functionality
-    console.log('Notifications pressed');
     setNotificationCount(0); // Clear notifications when pressed
-  };
+  }, []);
 
-  const handleUpdatePress = (update: { title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean }) => {
+  const handleUpdatePress = useCallback((update: { title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean }) => {
     // Open preview modal for all updates
     setPreviewUpdate(update);
     setActivePreviewIndex(0);
     setIsPreviewOpen(true);
-  };
+  }, []);
 
   // Minimal shimmer component for skeletons
   const Shimmer = ({ height, borderRadius }: { height: number; borderRadius: number }) => {
@@ -229,10 +232,9 @@ const AdminDashboard = () => {
             styles.welcomeSection,
             {
               opacity: fadeAnim,
-              transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
-              ]
+            transform: [
+              { translateY: slideAnim }
+            ]
             }
           ]}
         >
@@ -252,10 +254,9 @@ const AdminDashboard = () => {
             styles.filtersContainer,
             {
               opacity: fadeAnim,
-              transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
-              ]
+            transform: [
+              { translateY: slideAnim }
+            ]
             }
           ]}
         >
@@ -285,10 +286,9 @@ const AdminDashboard = () => {
             styles.statsGrid,
             {
               opacity: fadeAnim,
-              transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
-              ]
+            transform: [
+              { translateY: slideAnim }
+            ]
             }
           ]}
         >
@@ -325,10 +325,9 @@ const AdminDashboard = () => {
               backgroundColor: theme.colors.card,
               borderColor: theme.colors.border,
               opacity: fadeAnim,
-              transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
-              ]
+            transform: [
+              { translateY: slideAnim }
+            ]
             }
           ]}
         >

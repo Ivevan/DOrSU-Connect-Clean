@@ -40,16 +40,15 @@ const Bar: React.FC<BarProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const { theme: t } = useTheme();
-
+  
   return (
     <View style={[styles.container, { 
       backgroundColor: t.colors.tabBar,
       borderTopColor: t.colors.tabBarBorder,
-      paddingBottom: insets.bottom 
+      paddingBottom: 0 // Padding handled by parent container
     }]} collapsable={false}>
       <View style={[styles.backgroundLayer, { 
         backgroundColor: t.colors.tabBar,
-        bottom: -insets.bottom 
       }]} pointerEvents="none" />
       
       <TouchableOpacity style={styles.tab} onPress={onHomePress}>
@@ -75,6 +74,8 @@ const Bar: React.FC<BarProps> = ({
   );
 };
 
+const MemoizedBar = React.memo(Bar);
+
 const UserBottomNavBar = () => {
   const navigation = useNavigation<Navigation>();
   const route = useRoute();
@@ -88,13 +89,19 @@ const UserBottomNavBar = () => {
     : routeName === 'UserSettings' ? 'settings'
     : 'home';
 
+  // Memoize navigation handlers to prevent re-renders
+  const handleHomePress = React.useCallback(() => navigation.navigate('SchoolUpdates'), [navigation]);
+  const handleChatPress = React.useCallback(() => navigation.navigate('AIChat'), [navigation]);
+  const handleCalendarPress = React.useCallback(() => navigation.navigate('Calendar'), [navigation]);
+  const handleSettingsPress = React.useCallback(() => navigation.navigate('UserSettings'), [navigation]);
+
   return (
-    <Bar
+    <MemoizedBar
       activeTab={activeTab}
-      onHomePress={() => navigation.navigate('SchoolUpdates')}
-      onChatPress={() => navigation.navigate('AIChat')}
-      onCalendarPress={() => navigation.navigate('Calendar')}
-      onSettingsPress={() => navigation.navigate('UserSettings')}
+      onHomePress={handleHomePress}
+      onChatPress={handleChatPress}
+      onCalendarPress={handleCalendarPress}
+      onSettingsPress={handleSettingsPress}
     />
   );
 };

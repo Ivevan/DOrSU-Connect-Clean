@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, ScrollView, Switch, Alert, Animated, Image, InteractionManager, Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -32,54 +33,67 @@ const UserSettings = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const scrollRef = useRef<ScrollView>(null);
   
+  // Memoize safe area insets to prevent recalculation during navigation
+  const safeInsets = useMemo(() => ({
+    top: insets.top,
+    bottom: insets.bottom,
+    left: insets.left,
+    right: insets.right,
+  }), [insets.top, insets.bottom, insets.left, insets.right]);
+  
   // State for various settings
   const [language, setLanguage] = useState('English');
   
-  // User state from Firebase Auth
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  // User state from Firebase Auth - Initialize with current user to prevent layout shift
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    // Initialize synchronously to prevent layout shift
+    try {
+      return getCurrentUser();
+    } catch {
+      return null;
+    }
+  });
   
   // Get user display name and email (memoized)
   const userName = useMemo(() => currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User', [currentUser]);
   const userEmail = useMemo(() => currentUser?.email || 'No email', [currentUser]);
   const userPhoto = useMemo(() => currentUser?.photoURL || null, [currentUser]);
+  
+  // Lock header height to prevent layout shifts
+  const headerHeightRef = useRef<number>(64);
+  const [headerHeight, setHeaderHeight] = useState(64);
 
-  // Animation values for smooth entrance
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(20)).current;
+  // Animation values for smooth entrance - DISABLED FOR DEBUGGING
+  const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
+  const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
 
-  useEffect(() => {
-    // Optimized entrance animation - delay until interactions complete
-    const handle = InteractionManager.runAfterInteractions(() => {
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 250,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 250,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    });
-    
-    // Get current user
-    const user = getCurrentUser();
-    setCurrentUser(user);
-    
-    // Listen for auth state changes
-    const unsubscribe = onAuthStateChange((user) => {
-      setCurrentUser(user);
-    });
-    
-    return () => {
-      handle.cancel();
-      unsubscribe();
-    };
-  }, []);
+  // Use useFocusEffect to only update when screen is focused, preventing layout shifts during navigation
+  useFocusEffect(
+    useCallback(() => {
+      // Subscribe to auth changes only when screen is focused
+      // Use InteractionManager to defer until after navigation animation completes
+      // This prevents the callback from firing immediately and causing layout shifts
+      let unsubscribe: (() => void) | null = null;
+      const interactionHandle = InteractionManager.runAfterInteractions(() => {
+        unsubscribe = onAuthStateChange((user) => {
+          // Only update if user actually changed to avoid unnecessary re-renders
+          setCurrentUser(prevUser => {
+            if (prevUser?.uid !== user?.uid) {
+              return user;
+            }
+            return prevUser;
+          });
+        });
+      });
+      
+      return () => {
+        if (unsubscribe) {
+          unsubscribe();
+        }
+        interactionHandle.cancel();
+      };
+    }, [])
+  );
   
   // Function to handle logout
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
@@ -108,39 +122,65 @@ const UserSettings = () => {
   return (
     <View style={[styles.container, {
       backgroundColor: t.colors.background,
-      paddingTop: insets.top,
-      paddingBottom: 0, // Remove bottom padding since UserBottomNavBar now handles it
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    }]}>
+    }]} collapsable={false}>
       <StatusBar
         backgroundColor={t.colors.primary}
         barStyle={'light-content'}
         translucent={false}
+        hidden={false}
       />
 
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: t.colors.primary }]}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>Settings</Text>
+      {/* Safe Area Top Spacer - Fixed position */}
+      <View style={[styles.safeAreaTop, { 
+        height: safeInsets.top,
+        backgroundColor: t.colors.primary,
+      }]} collapsable={false} />
+
+      {/* Header - Fixed position to prevent layout shifts */}
+      <View 
+        style={[styles.header, { 
+          backgroundColor: t.colors.primary,
+          top: safeInsets.top,
+        }]}
+        onLayout={(e) => {
+          const { height } = e.nativeEvent.layout;
+          if (height > 0 && height !== headerHeightRef.current) {
+            headerHeightRef.current = height;
+            setHeaderHeight(height);
+          }
+        }}
+        collapsable={false}
+      >
+        <View style={styles.headerLeft} collapsable={false}>
+          <Text style={styles.headerTitle} numberOfLines={1}>Settings</Text>
         </View>
-        <View style={styles.headerRight}>
+        <View style={styles.headerRight} collapsable={false}>
           <View style={styles.headerSpacer} />
           <View style={styles.headerSpacer} />
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* User Profile Section */}
-        <Animated.View 
+      <ScrollView 
+        style={[styles.scrollView, {
+          marginTop: safeInsets.top + headerHeight,
+          marginBottom: 0,
+        }]}
+        contentContainerStyle={[styles.scrollContent, {
+          paddingBottom: safeInsets.bottom + 80, // Bottom nav bar height + safe area
+        }]} 
+        showsVerticalScrollIndicator={false}
+        removeClippedSubviews={true}
+        keyboardShouldPersistTaps="handled"
+        bounces={true}
+        scrollEventThrottle={16}
+      >
+        {/* User Profile Section - Fixed height to prevent layout shifts */}
+        <View 
           style={[
             styles.profileSection,
             {
-              opacity: fadeAnim,
-              transform: [
-                { translateY: slideAnim }
-              ],
-              backgroundColor: t.colors.card
+              backgroundColor: t.colors.card,
+              minHeight: 100, // Fixed minimum height to prevent layout shifts
             }
           ]}
         >
@@ -150,6 +190,11 @@ const UserSettings = () => {
                 <Image 
                   source={{ uri: userPhoto }} 
                   style={styles.profileAvatarImage}
+                  resizeMode="cover"
+                  // Prevent layout shift by loading image in background
+                  onLoadStart={() => {
+                    // Image is starting to load, but layout is already fixed
+                  }}
                 />
               ) : (
                 <View style={styles.profileAvatarPlaceholder}>
@@ -162,24 +207,30 @@ const UserSettings = () => {
             </View>
           </View>
           <View style={styles.profileInfo}>
-            <Text style={[styles.profileName, { color: t.colors.text }]}>{userName}</Text>
+            <Text 
+              style={[styles.profileName, { color: t.colors.text }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {userName}
+            </Text>
             <View style={styles.profileEmailContainer}>
               <Ionicons name="mail-outline" size={14} color={t.colors.textMuted} />
-              <Text style={[styles.profileEmail, { color: t.colors.textMuted }]}>{userEmail}</Text>
+              <Text 
+                style={[styles.profileEmail, { color: t.colors.textMuted }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {userEmail}
+              </Text>
             </View>
           </View>
-        </Animated.View>
+        </View>
 
         {/* Settings Categories */}
-        <Animated.View 
+        <View 
           style={[
-            styles.settingsContainer,
-            {
-              opacity: fadeAnim,
-              transform: [
-                { translateY: slideAnim }
-              ]
-            }
+            styles.settingsContainer
           ]}
         >
           {/* General Section */}
@@ -315,10 +366,16 @@ const UserSettings = () => {
             <Ionicons name="log-out-outline" size={22} color="#EF4444" />
             <Text style={[styles.signOutText, { color: '#EF4444' }]}>Sign out</Text>
           </TouchableOpacity>
-        </Animated.View>
+        </View>
       </ScrollView>
 
-      <UserBottomNavBar />
+      {/* Bottom Navigation Bar - Fixed position */}
+      <View style={[styles.bottomNavContainer, {
+        bottom: 0,
+        paddingBottom: safeInsets.bottom,
+      }]} collapsable={false}>
+        <UserBottomNavBar />
+      </View>
 
       <LogoutModal
         visible={isLogoutOpen}
@@ -335,7 +392,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.surfaceAlt,
   },
+  safeAreaTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+  },
   header: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 999,
     backgroundColor: theme.colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 16,
@@ -349,7 +417,9 @@ const styles = StyleSheet.create({
     elevation: 4,
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
-    marginBottom: 8,
+  },
+  scrollView: {
+    flex: 1,
   },
   headerLeft: {
     flex: 1,
@@ -372,7 +442,12 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: theme.spacing(1.5),
     paddingTop: theme.spacing(2),
-    paddingBottom: theme.spacing(2),
+  },
+  bottomNavContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 998,
   },
   profileSection: {
     flexDirection: 'row',
@@ -382,6 +457,7 @@ const styles = StyleSheet.create({
     padding: theme.spacing(2.5),
     marginBottom: theme.spacing(2),
     gap: theme.spacing(2),
+    minHeight: 100, // Fixed minimum height to prevent layout shifts
   },
   profileAvatarContainer: {
     position: 'relative',
@@ -439,6 +515,7 @@ const styles = StyleSheet.create({
   profileInfo: {
     flex: 1,
     alignItems: 'flex-start',
+    minWidth: 0, // Prevent flex overflow
   },
   profileName: {
     fontSize: 18,
@@ -446,6 +523,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginBottom: theme.spacing(0.5),
     letterSpacing: 0.2,
+    minHeight: 24, // Fixed height to prevent text layout shift
   },
   profileEmailContainer: {
     flexDirection: 'row',
@@ -456,6 +534,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.colors.textMuted,
     fontWeight: '400',
+    minHeight: 20, // Fixed height to prevent text layout shift
   },
   settingsContainer: {
     gap: theme.spacing(1.5),

@@ -52,30 +52,30 @@ const AIChat = () => {
 
   const displayedSuggestions = useMemo(() => SUGGESTIONS.slice(0, 3), []);
 
-  // Animation values for smooth entrance
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(20)).current;
+  // Animation values for smooth entrance - DISABLED FOR DEBUGGING
+  const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
+  const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
 
-  useEffect(() => {
-    // Optimized entrance animation - delay until interactions complete
-    const handle = InteractionManager.runAfterInteractions(() => {
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 250,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 250,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    });
-    return () => handle.cancel();
-  }, []);
+  // Entrance animation - DISABLED FOR DEBUGGING
+  // useEffect(() => {
+  //   const handle = InteractionManager.runAfterInteractions(() => {
+  //     Animated.parallel([
+  //       Animated.timing(fadeAnim, {
+  //         toValue: 1,
+  //         duration: 250,
+  //         easing: Easing.out(Easing.ease),
+  //         useNativeDriver: true,
+  //       }),
+  //       Animated.timing(slideAnim, {
+  //         toValue: 0,
+  //         duration: 250,
+  //         easing: Easing.out(Easing.ease),
+  //         useNativeDriver: true,
+  //       }),
+  //     ]).start();
+  //   });
+  //   return () => handle.cancel();
+  // }, []);
 
   return (
     <View style={[styles.container, {

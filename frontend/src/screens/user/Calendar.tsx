@@ -39,6 +39,18 @@ const CalendarScreen = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date(Date.UTC(initialNow.getFullYear(), initialNow.getMonth(), 1)));
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date()); // Default to today
   
+  // Memoize safe area insets to prevent recalculation during navigation
+  const safeInsets = useMemo(() => ({
+    top: insets.top,
+    bottom: insets.bottom,
+    left: insets.left,
+    right: insets.right,
+  }), [insets.top, insets.bottom, insets.left, insets.right]);
+  
+  // Lock header height to prevent layout shifts
+  const headerHeightRef = useRef<number>(64);
+  const [headerHeight, setHeaderHeight] = useState(64);
+  
   // Calendar state
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [showAllEvents, setShowAllEvents] = useState(false);
@@ -49,9 +61,9 @@ const CalendarScreen = () => {
   const listAnim = useRef(new Animated.Value(0)).current;
   const dotScale = useRef(new Animated.Value(0.8)).current;
 
-  // Entrance animation values
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(20)).current;
+  // Entrance animation values - DISABLED FOR DEBUGGING
+  const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
+  const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
 
   const formatEventTitle = (raw?: string) => {
     const title = String(raw || '').trim();
@@ -270,9 +282,9 @@ const CalendarScreen = () => {
           {eventsForDay && eventsForDay.length > 0 && (
             <View style={styles.eventIndicators}>
               {eventsForDay.slice(0, 3).map((event, eventIndex) => (
-                <Animated.View 
+                <View 
                   key={eventIndex} 
-                  style={[styles.eventDot, { backgroundColor: event.color, transform: [{ scale: dotScale }] }]} 
+                  style={[styles.eventDot, { backgroundColor: event.color }]} 
                 />
               ))}
             </View>
@@ -382,46 +394,49 @@ const CalendarScreen = () => {
   };
 
 
-  // Optimized entrance animation for Calendar - delay until interactions complete
-  React.useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 250,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 250,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    });
-    return () => handle.cancel();
-  }, []);
+  // Optimized entrance animation for Calendar - DISABLED FOR DEBUGGING
+  // React.useEffect(() => {
+  //   const handle = InteractionManager.runAfterInteractions(() => {
+  //     Animated.parallel([
+  //       Animated.timing(fadeAnim, {
+  //         toValue: 1,
+  //         duration: 250,
+  //         easing: Easing.out(Easing.ease),
+  //         useNativeDriver: true,
+  //       }),
+  //       Animated.timing(slideAnim, {
+  //         toValue: 0,
+  //         duration: 250,
+  //         easing: Easing.out(Easing.ease),
+  //         useNativeDriver: true,
+  //       }),
+  //     ]).start();
+  //   });
+  //   return () => handle.cancel();
+  // }, []);
 
+  // List animation - DISABLED FOR DEBUGGING
   React.useEffect(() => {
-    // Optimized list animation - delay until interactions complete
-    const handle = InteractionManager.runAfterInteractions(() => {
-      listAnim.setValue(0);
-      Animated.timing(listAnim, {
-        toValue: 1,
-        duration: 200,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }).start();
-      dotScale.setValue(0.8);
-      Animated.timing(dotScale, {
-        toValue: 1,
-        duration: 200,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }).start();
-    });
-    return () => handle.cancel();
+    // Set values immediately without animation
+    listAnim.setValue(1);
+    dotScale.setValue(1);
+    // const handle = InteractionManager.runAfterInteractions(() => {
+    //   listAnim.setValue(0);
+    //   Animated.timing(listAnim, {
+    //     toValue: 1,
+    //     duration: 200,
+    //     easing: Easing.out(Easing.ease),
+    //     useNativeDriver: true,
+    //   }).start();
+    //   dotScale.setValue(0.8);
+    //   Animated.timing(dotScale, {
+    //     toValue: 1,
+    //     duration: 200,
+    //     easing: Easing.out(Easing.ease),
+    //     useNativeDriver: true,
+    //   }).start();
+    // });
+    // return () => handle.cancel();
   }, [showAllEvents, selectedDate, posts]);
 
   const days = React.useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
@@ -431,40 +446,63 @@ const CalendarScreen = () => {
     <GestureHandlerRootView style={{ flex: 1 }}>
     <View style={[styles.container, {
       backgroundColor: t.colors.background,
-      paddingTop: insets.top,
-      paddingBottom: 0, // Remove bottom padding since UserBottomNavBar now handles it
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    }]}>
+    }]} collapsable={false}>
       <StatusBar
         backgroundColor={t.colors.primary}
         barStyle={isDarkMode ? "light-content" : "light-content"}
-        translucent={true}
+        translucent={false}
+        hidden={false}
       />
 
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: t.colors.primary }]}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.headerTitle}>School Calendar</Text>
-          </View>
-          <View style={styles.headerRight}>
-            <View style={styles.headerSpacer} />
-            <View style={styles.headerSpacer} />
-          </View>
+      {/* Safe Area Top Spacer - Fixed position */}
+      <View style={[styles.safeAreaTop, { 
+        height: safeInsets.top,
+        backgroundColor: t.colors.primary,
+      }]} collapsable={false} />
+
+      {/* Header - Fixed position to prevent layout shifts */}
+      <View 
+        style={[styles.header, { 
+          backgroundColor: t.colors.primary,
+          top: safeInsets.top,
+        }]}
+        onLayout={(e) => {
+          const { height } = e.nativeEvent.layout;
+          if (height > 0 && height !== headerHeightRef.current) {
+            headerHeightRef.current = height;
+            setHeaderHeight(height);
+          }
+        }}
+        collapsable={false}
+      >
+        <View style={styles.headerLeft} collapsable={false}>
+          <Text style={styles.headerTitle} numberOfLines={1}>School Calendar</Text>
+        </View>
+        <View style={styles.headerRight} collapsable={false}>
+          <View style={styles.headerSpacer} />
+          <View style={styles.headerSpacer} />
+        </View>
       </View>
 
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        ref={scrollRef} 
+        style={[styles.scrollView, {
+          marginTop: safeInsets.top + headerHeight,
+          marginBottom: 0,
+        }]}
+        contentContainerStyle={[styles.scrollContent, {
+          paddingBottom: safeInsets.bottom + 80, // Bottom nav bar height + safe area
+        }]} 
+        showsVerticalScrollIndicator={false}
+        removeClippedSubviews={true}
+        keyboardShouldPersistTaps="handled"
+        bounces={true}
+        scrollEventThrottle={16}
+      >
 
         {/* Calendar Card - Fixed below header */}
-        {/* Outer wrapper for entrance animation (transform/opacity only) */}
-        <Animated.View 
-          style={{
-            opacity: fadeAnim,
-            transform: [
-              { translateY: slideAnim }
-            ]
-          }}
-        >
+        {/* Animation wrapper removed for debugging */}
+        <View>
           {/* Calendar Card */}
           <View style={[
             styles.calendarCard,
@@ -518,7 +556,7 @@ const CalendarScreen = () => {
             })}
           </View>
           </View>
-        </Animated.View>
+        </View>
 
         {/* Month Picker Modal */}
         <MonthPickerModal
@@ -531,15 +569,11 @@ const CalendarScreen = () => {
         />
 
         {/* Events Section */}
-        <Animated.View 
+        <View 
           style={[
             styles.eventsSection,
             {
-              backgroundColor: t.colors.card,
-              opacity: fadeAnim,
-              transform: [
-                { translateY: slideAnim }
-              ]
+              backgroundColor: t.colors.card
             }
           ]}
         >
@@ -602,7 +636,7 @@ const CalendarScreen = () => {
           )}
 
           {!showAllEvents && (
-            <Animated.View style={{ opacity: listAnim, transform: [{ translateY: listAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
+            <View>
             {Array.isArray(filteredEvents) && filteredEvents.map((event: any) => (
             <TouchableOpacity
               key={event.id}
@@ -648,11 +682,11 @@ const CalendarScreen = () => {
               </View>
             </TouchableOpacity>
             ))}
-            </Animated.View>
+            </View>
           )}
 
           {showAllEvents && (
-            <Animated.View style={{ opacity: listAnim, transform: [{ translateY: listAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
+            <View>
             {Array.isArray(groupedEvents) && groupedEvents.map(group => (
             <View key={group.key} style={styles.groupContainer}>
               <Text style={[styles.groupHeaderText, { color: t.colors.textMuted }]}>
@@ -705,12 +739,18 @@ const CalendarScreen = () => {
               ))}
             </View>
             ))}
-            </Animated.View>
+            </View>
           )}
-        </Animated.View>
+        </View>
       </ScrollView>
 
-      <UserBottomNavBar />
+      {/* Bottom Navigation Bar - Fixed position */}
+      <View style={[styles.bottomNavContainer, {
+        bottom: 0,
+        paddingBottom: safeInsets.bottom,
+      }]} collapsable={false}>
+        <UserBottomNavBar />
+      </View>
     </View>
     </GestureHandlerRootView>
   );
@@ -721,7 +761,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.surfaceAlt,
   },
+  safeAreaTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+  },
   header: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 999,
     backgroundColor: theme.colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 16,
@@ -735,7 +786,9 @@ const styles = StyleSheet.create({
     elevation: 4,
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
-    marginBottom: 8,
+  },
+  scrollView: {
+    flex: 1,
   },
   headerLeft: {
     flex: 1,
@@ -758,7 +811,12 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 32,
+  },
+  bottomNavContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 998,
   },
   calendarCard: {
     borderRadius: 16,

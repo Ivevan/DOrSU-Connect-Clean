@@ -70,18 +70,40 @@ const AppNavigator = () => {
         <Stack.Screen 
           name="SchoolUpdates" 
           component={SchoolUpdates}
+          options={{
+            animation: 'none' as const, // Disabled for debugging
+            animationDuration: 0,
+          }}
         />
         <Stack.Screen 
           name="AIChat" 
           component={AIChat}
+          options={{
+            animation: 'none' as const, // Disabled for debugging
+            animationDuration: 0,
+          }}
         />
         <Stack.Screen 
           name="UserSettings" 
           component={UserSettings}
+          options={{
+            animation: 'none' as const, // Disabled for debugging
+            animationDuration: 0,
+            // Prevent layout shifts during navigation
+            freezeOnBlur: true,
+            // Ensure consistent layout
+            contentStyle: {
+              backgroundColor: 'transparent',
+            },
+          }}
         />
         <Stack.Screen 
           name="Calendar" 
           component={Calendar}
+          options={{
+            animation: 'none' as const, // Disabled for debugging
+            animationDuration: 0,
+          }}
         />
         <Stack.Screen 
           name="AdminDashboard" 

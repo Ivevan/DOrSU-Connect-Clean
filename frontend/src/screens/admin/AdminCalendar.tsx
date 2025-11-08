@@ -1,5 +1,9 @@
-import React, { useRef, useState } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Animated, Dimensions, Modal, Easing, AccessibilityInfo } from 'react-native';
+import React, { useRef, useState, useCallback, memo, useMemo } from 'react';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Animated, Easing, AccessibilityInfo, InteractionManager } from 'react-native';
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import AdminDataService from '../../services/AdminDataService';
@@ -9,7 +13,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../contexts/ThemeContext';
+import { theme } from '../../config/theme';
 import { formatDate, formatCalendarDate } from '../../utils/dateUtils';
+import MonthPickerModal from '../../modals/MonthPickerModal';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -27,20 +33,14 @@ type RootStackParamList = {
   ManagePosts: undefined;
 };
 
-// Constants
-const WEEK_DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-const MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-];
-
-// Helper functions
+// Helper functions moved outside component for performance
 const formatEventTitle = (raw?: string) => {
   const title = String(raw || '').trim();
   if (title.length < 3) return 'Untitled';
   const cleaned = title.replace(/\s+/g, ' ');
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 };
+
 
 const categoryToColors = (category?: string) => {
   const key = String(category || '').toLowerCase();
@@ -83,44 +83,35 @@ const formatDateKey = (date: Date) => {
   return `${y}-${m}-${d}`;
 };
 
-const getDaysInMonth = (date: Date) => {
-  const year = date.getFullYear();
-  const month = date.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDayOfMonth = new Date(year, month, 1).getDay();
-  
-  const days = [];
-  for (let i = 0; i < firstDayOfMonth; i++) {
-    days.push(null);
+// Robust PH date-key comparison (avoids off-by-one no matter device tz)
+const getPHDateKey = (d: Date, PH_TZ: string) => {
+  try {
+    const dtf = new Intl.DateTimeFormat('en-PH', {
+      timeZone: PH_TZ,
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    });
+    const parts = dtf.formatToParts(d);
+    const y = Number(parts.find(p => p.type === 'year')?.value);
+    const m = Number(parts.find(p => p.type === 'month')?.value) - 1;
+    const day = Number(parts.find(p => p.type === 'day')?.value);
+    return Date.UTC(y, m, day);
+  } catch {
+    return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
   }
-  for (let i = 1; i <= daysInMonth; i++) {
-    days.push(i);
-  }
-  return days;
-};
-
-const getMonthName = (date: Date) => MONTH_NAMES[date.getMonth()];
-
-const getWeekDaysFor = (referenceDate: Date) => {
-  const ref = new Date(referenceDate);
-  const currentDay = ref.getDay();
-  const startOfWeek = new Date(ref);
-  startOfWeek.setDate(ref.getDate() - currentDay);
-  const weekDays: Date[] = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(startOfWeek);
-    d.setDate(startOfWeek.getDate() + i);
-    weekDays.push(d);
-  }
-  return weekDays;
 };
 
 const AdminCalendar = () => {
+  dayjs.extend(utc);
+  dayjs.extend(timezone);
+  const PH_TZ = 'Asia/Manila';
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { isDarkMode, theme } = useTheme();
+  const { isDarkMode, theme: t } = useTheme();
   const scrollRef = useRef<ScrollView>(null);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const initialNow = new Date();
+  const [currentMonth, setCurrentMonth] = useState(new Date(Date.UTC(initialNow.getFullYear(), initialNow.getMonth(), 1)));
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   
   // Calendar state
@@ -135,8 +126,7 @@ const AdminCalendar = () => {
 
   // Entrance animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
 
 
   // Data from AdminDataService
@@ -160,43 +150,65 @@ const AdminCalendar = () => {
     return () => { cancelled = true; };
   }, []);
 
-  // Entrance animation for Calendar - Slide from bottom with scale
+  // Optimized entrance animation for Calendar - delay until interactions complete
   React.useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 80,
-        friction: 6,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    const handle = InteractionManager.runAfterInteractions(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+    return () => handle.cancel();
   }, []);
 
 
 
-  const goToPreviousMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+  const getDaysInMonth = (date: Date) => {
+    const start = dayjs.utc(date).tz(PH_TZ).startOf('month');
+    const daysInMonth = start.daysInMonth();
+    const firstDayOfMonth = start.day(); // 0=Sun..6=Sat in PH tz
+    
+    const days: Array<number | null> = [];
+    
+    // Add leading empty cells so week starts on Sunday
+    for (let i = 0; i < firstDayOfMonth; i++) {
+      days.push(null);
+    }
+    
+    // Add all days of the month
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(i);
+    }
+    
+    // Add trailing empty cells so total cells is multiple of 7 (complete rows)
+    const remainder = days.length % 7;
+    if (remainder !== 0) {
+      const toAdd = 7 - remainder;
+      for (let i = 0; i < toAdd; i++) days.push(null);
+    }
+    
+    return days;
   };
 
-  const goToNextMonth = () => {
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+  const getMonthName = (date: Date) => {
+    return dayjs.utc(date).tz(PH_TZ).format('MMMM');
   };
 
   const selectMonth = (monthIndex: number) => {
-    const newMonth = new Date(currentMonth.getFullYear(), monthIndex, 1);
+    const newMonth = new Date(Date.UTC(currentMonth.getUTCFullYear(), monthIndex, 1));
     setCurrentMonth(newMonth);
     // Ensure the selected date moves into the chosen month so the week view reflects it
-    setSelectedDate(new Date(newMonth.getFullYear(), newMonth.getMonth(), 1));
+    setSelectedDate(new Date(Date.UTC(newMonth.getUTCFullYear(), newMonth.getUTCMonth(), 1)));
     closeMonthPicker();
   };
 
@@ -235,44 +247,6 @@ const AdminCalendar = () => {
     });
   };
 
-  // Helper functions
-  const getEventsForDate = (date: Date) => {
-    const key = formatDateKey(date);
-    return posts
-      .map(p => ({
-        id: p.id,
-        title: p.title,
-        dateKey: parseAnyDateToKey(p.isoDate || p.date),
-        time: '',
-        type: p.category || 'Announcement',
-        color: categoryToColors(p.category).dot,
-        chip: categoryToColors(p.category),
-      }))
-      .filter(e => e.dateKey === key);
-  };
-
-  const getTasksForDate = (_date: Date) => {
-    return [] as any[];
-  };
-
-  const isToday = (date: Date) => {
-    const today = new Date();
-    return date.toDateString() === today.toDateString();
-  };
-
-  const isSelected = (date: Date) => {
-    return selectedDate && date.toDateString() === selectedDate.toDateString();
-  };
-
-  const getFilteredEvents = () => {
-    if (selectedDate && !showAllEvents) {
-      return getEventsForDate(selectedDate);
-    }
-    return posts.map(transformPostToEvent);
-  };
-
-  const days = getDaysInMonth(currentMonth);
-
   const transformPostToEvent = (p: any) => ({
     id: p.id,
     title: p.title,
@@ -285,7 +259,45 @@ const AdminCalendar = () => {
     isUrgent: !!p.isUrgent,
   });
 
+  const getEventsForDate = React.useCallback((date: Date) => {
+    const key = formatDateKey(date);
+    if (!Array.isArray(posts)) return [];
+    return posts
+      .map(p => ({
+        id: p.id,
+        title: p.title,
+        dateKey: parseAnyDateToKey(p.isoDate || p.date),
+        time: '',
+        type: p.category || 'Announcement',
+        color: categoryToColors(p.category).dot,
+        chip: categoryToColors(p.category),
+      }))
+      .filter(e => e.dateKey === key);
+  }, [posts]);
+
+  const isToday = (date: Date) => {
+    return getPHDateKey(date, PH_TZ) === getPHDateKey(new Date(), PH_TZ);
+  };
+
+  const isSelected = (date: Date) => {
+    return selectedDate ? getPHDateKey(date, PH_TZ) === getPHDateKey(selectedDate, PH_TZ) : false;
+  };
+
+  const handleDayPress = useCallback((date: Date) => {
+    setSelectedDate(date);
+    Haptics.selectionAsync();
+  }, []);
+
+  const filteredEvents = React.useMemo(() => {
+    if (!Array.isArray(posts)) return [];
+    if (selectedDate && !showAllEvents) {
+      return getEventsForDate(selectedDate);
+    }
+    return posts.map(transformPostToEvent);
+  }, [selectedDate, showAllEvents, posts, getEventsForDate]);
+
   const getAllEventsGrouped = () => {
+    if (!Array.isArray(posts)) return [];
     const all = posts.map(p => ({
       ...transformPostToEvent(p),
       dateObj: (() => { 
@@ -318,28 +330,39 @@ const AdminCalendar = () => {
     }, 0);
   };
 
-  const getFilteredTasks = () => {
-    if (selectedDate) {
-      return getTasksForDate(selectedDate);
-    }
-    return [] as any[];
-  };
-
-  const renderCalendarDay = (date: Date, day: number | null, isCurrentDay: boolean, isSelectedDay: boolean, key: number) => {
-    if (!day) return <View key={key} style={[styles.emptyDay, { borderRightColor: theme.colors.border, borderBottomColor: theme.colors.border }]} />;
-    
-    const eventsForDay = getEventsForDate(date);
+  // Memoized Calendar Day Component
+  const CalendarDay = memo(({ date, day, isCurrentDay, isSelectedDay, index, eventsForDay, theme, dotScale, onPress }: { date: Date; day: number | null; isCurrentDay: boolean; isSelectedDay: boolean; index: number; eventsForDay: any[]; theme: any; dotScale: Animated.Value; onPress: (date: Date) => void }) => {
+    if (!day) return (
+      <View
+        style={[
+          styles.calendarDay,
+          styles.emptyDay,
+          {
+            borderRightColor: theme.colors.border,
+            borderBottomColor: theme.colors.border,
+            borderRightWidth: (index % 7) === 6 ? 0 : StyleSheet.hairlineWidth,
+          },
+        ]}
+      />
+    );
     
     return (
       <TouchableOpacity 
-        key={key}
-        style={[styles.calendarDay, { borderRightColor: theme.colors.border, borderBottomColor: theme.colors.border }]}
-        onPress={() => { setSelectedDate(date); Haptics.selectionAsync(); }}
+        style={[
+          styles.calendarDay,
+          { 
+            borderRightColor: theme.colors.border, 
+            borderBottomColor: theme.colors.border,
+            borderRightWidth: (index % 7) === 6 ? 0 : StyleSheet.hairlineWidth
+          }
+        ]}
+        onPress={() => onPress(date)}
       >
         <View style={styles.dayContent}>
           <View style={[
             styles.dayNumberContainer,
             isCurrentDay && styles.todayContainer,
+            isCurrentDay && { backgroundColor: theme.colors.accent },
             isSelectedDay && [styles.selectedContainer, { borderColor: theme.colors.accent }]
           ]}>
             <Text
@@ -356,7 +379,7 @@ const AdminCalendar = () => {
               {day}
             </Text>
           </View>
-          {eventsForDay.length > 0 && (
+          {eventsForDay && eventsForDay.length > 0 && (
             <View style={styles.eventIndicators}>
               {eventsForDay.slice(0, 3).map((event, eventIndex) => (
                 <Animated.View 
@@ -369,40 +392,68 @@ const AdminCalendar = () => {
         </View>
       </TouchableOpacity>
     );
-  };
+  });
+
+  const renderCalendarDay = useCallback((date: Date, day: number | null, isCurrentDay: boolean, isSelectedDay: boolean, key: number) => {
+    const eventsForDay = getEventsForDate(date);
+    return (
+      <CalendarDay
+        key={key}
+        date={date}
+        day={day}
+        isCurrentDay={isCurrentDay}
+        isSelectedDay={isSelectedDay}
+        index={key}
+        eventsForDay={eventsForDay}
+        theme={t}
+        dotScale={dotScale}
+        onPress={handleDayPress}
+      />
+    );
+  }, [getEventsForDate, t, dotScale, handleDayPress]);
 
 
   React.useEffect(() => {
-    listAnim.setValue(0);
-    Animated.timing(listAnim, {
-      toValue: 1,
-      duration: 180,
-      useNativeDriver: true,
-    }).start();
-    dotScale.setValue(0.8);
-    Animated.spring(dotScale, {
-      toValue: 1,
-      friction: 6,
-      useNativeDriver: true,
-    }).start();
+    // Optimized list animation - delay until interactions complete
+    const handle = InteractionManager.runAfterInteractions(() => {
+      listAnim.setValue(0);
+      Animated.timing(listAnim, {
+        toValue: 1,
+        duration: 200,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+      dotScale.setValue(0.8);
+      Animated.timing(dotScale, {
+        toValue: 1,
+        duration: 200,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+    });
+    return () => handle.cancel();
   }, [showAllEvents, selectedDate, posts]);
 
+  const days = React.useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
+  const weekDays = React.useMemo(() => ['S', 'M', 'T', 'W', 'T', 'F', 'S'], []);
+
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <View style={[styles.container, {
-      backgroundColor: theme.colors.background,
+      backgroundColor: t.colors.background,
       paddingTop: insets.top,
       paddingBottom: 0, // Remove bottom padding since AdminBottomNavBar now handles it
       paddingLeft: insets.left,
       paddingRight: insets.right,
     }]}>
       <StatusBar
-        backgroundColor={theme.colors.primary}
+        backgroundColor={t.colors.primary}
         barStyle={isDarkMode ? "light-content" : "light-content"}
         translucent={true}
       />
 
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
+      <View style={[styles.header, { backgroundColor: t.colors.primary }]}>
           <View style={styles.headerLeft}>
             <Text style={styles.headerTitle}>School Calendar</Text>
           </View>
@@ -420,8 +471,7 @@ const AdminCalendar = () => {
           style={{
             opacity: fadeAnim,
             transform: [
-              { translateY: slideAnim },
-              { scale: scaleAnim }
+              { translateY: slideAnim }
             ]
           }}
         >
@@ -429,12 +479,12 @@ const AdminCalendar = () => {
           <View style={[
             styles.calendarCard,
             {
-              backgroundColor: theme.colors.card,
+              backgroundColor: t.colors.card,
             }
           ]}>
 
           {/* Month selector at top of calendar */}
-          <View style={[styles.calendarMonthHeader, { backgroundColor: theme.colors.card, borderBottomColor: theme.colors.border }]}>
+          <View style={[styles.calendarMonthHeader, { backgroundColor: t.colors.card, borderBottomColor: t.colors.border }]}>
             <TouchableOpacity
               style={styles.monthSelectorButton}
               onPress={openMonthPicker}
@@ -444,21 +494,21 @@ const AdminCalendar = () => {
               accessibilityHint="Opens a modal to select a month"
             >
               <View style={styles.monthSelectorContent}>
-                <Ionicons name="calendar" size={18} color={theme.colors.text} />
-                <Text style={[styles.monthHeaderText, { color: theme.colors.text }]}>
+                <Ionicons name="calendar" size={18} color={t.colors.text} />
+                <Text style={[styles.monthHeaderText, { color: t.colors.text }]}>
                   {getMonthName(currentMonth)} {currentMonth.getFullYear()}
                 </Text>
-                <Ionicons name="chevron-down" size={14} color={theme.colors.textMuted} />
+                <Ionicons name="chevron-down" size={14} color={t.colors.textMuted} />
               </View>
             </TouchableOpacity>
           </View>
 
           {/* Week day headers */}
-          <View style={[styles.weekHeader, { backgroundColor: theme.colors.card }]}>
-            {WEEK_DAYS.map((day, index) => (
-              <View key={index} style={[styles.weekDayHeader, { borderRightColor: theme.colors.border }]}>
+          <View style={[styles.weekHeader, { backgroundColor: t.colors.card }]}>
+            {weekDays && Array.isArray(weekDays) && weekDays.map((day, index) => (
+              <View key={index} style={[styles.weekDayHeader, { borderRightColor: t.colors.border }]}>
                 <Text
-                  style={[styles.weekDayText, { color: theme.colors.textMuted }]}
+                  style={[styles.weekDayText, { color: t.colors.textMuted }]}
                   accessibilityElementsHidden={true}
                 >
                   {day}
@@ -470,7 +520,7 @@ const AdminCalendar = () => {
           {/* Calendar Grid */}
           <View style={styles.calendarGrid}>
             {/* Show full month */}
-            {getDaysInMonth(currentMonth).map((day, index) => {
+            {days && Array.isArray(days) && days.map((day, index) => {
               const currentDate = day ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day) : null;
               const isCurrentDay = currentDate ? isToday(currentDate) : false;
               const isSelectedDay = currentDate ? isSelected(currentDate) : false;
@@ -481,58 +531,14 @@ const AdminCalendar = () => {
         </Animated.View>
 
         {/* Month Picker Modal */}
-        <Modal
+        <MonthPickerModal
           visible={showMonthPicker}
-          transparent={true}
-          animationType="none"
-          onRequestClose={closeMonthPicker}
-        >
-          <Animated.View style={[
-            styles.modalOverlay,
-            { opacity: monthPickerOpacityAnim }
-          ]}>
-            <Animated.View style={[
-              styles.monthPickerModal,
-              { backgroundColor: theme.colors.card },
-              {
-                transform: [{ scale: monthPickerScaleAnim }]
-              }
-            ]}>
-              <View style={styles.monthPickerHeader}>
-                <TouchableOpacity 
-                  onPress={closeMonthPicker}
-                  style={styles.monthPickerBackButton}
-                >
-                  <Ionicons name="arrow-back" size={20} color={theme.colors.textMuted} />
-                </TouchableOpacity>
-                <Text style={[styles.monthPickerTitle, { color: theme.colors.text }]}>{currentMonth.getFullYear()}</Text>
-                <View style={styles.monthPickerSpacer} />
-              </View>
-              
-              <View style={styles.monthPickerGrid}>
-                {MONTH_NAMES.map((month, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={[
-                      styles.monthPickerCard,
-                      { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
-                      currentMonth.getMonth() === index && styles.monthPickerCardSelected
-                    ]}
-                    onPress={() => selectMonth(index)}
-                  >
-                    <Text style={[
-                      styles.monthPickerText,
-                      { color: theme.colors.text },
-                      currentMonth.getMonth() === index && styles.monthPickerTextSelected
-                    ]}>
-                      {month.substring(0, 3)}
-                    </Text>
-                  </TouchableOpacity>
-            ))}
-          </View>
-            </Animated.View>
-          </Animated.View>
-        </Modal>
+          currentMonth={currentMonth}
+          onClose={closeMonthPicker}
+          onSelectMonth={selectMonth}
+          scaleAnim={monthPickerScaleAnim}
+          opacityAnim={monthPickerOpacityAnim}
+        />
 
         {/* Day Summary removed by request (Events section already shows count) */}
 
@@ -542,30 +548,29 @@ const AdminCalendar = () => {
           style={[
             styles.eventsSection,
             {
-              backgroundColor: theme.colors.card,
+              backgroundColor: t.colors.card,
               opacity: fadeAnim,
               transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
+                { translateY: slideAnim }
               ]
             }
           ]}
         >
           <View style={styles.eventsHeader}>
             <View style={styles.eventsHeaderLeft}>
-              <View style={[styles.eventsIconWrap, { borderColor: theme.colors.border }]}>
-                <Ionicons name="calendar-outline" size={14} color={theme.colors.accent} />
+              <View style={[styles.eventsIconWrap, { borderColor: t.colors.border }]}>
+                <Ionicons name="calendar-outline" size={14} color={t.colors.accent} />
         </View>
-              <Text style={[styles.eventsTitle, { color: theme.colors.text }]}>Events</Text>
+              <Text style={[styles.eventsTitle, { color: t.colors.text }]}>Events</Text>
             </View>
-            <View style={[styles.segmentedToggle, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <View style={[styles.segmentedToggle, { backgroundColor: t.colors.card, borderColor: t.colors.border }]}>
               <TouchableOpacity
                 style={[styles.segmentItem, !showAllEvents && styles.segmentItemActive]}
                 onPress={() => { setShowAllEvents(false); AccessibilityInfo.announceForAccessibility?.('Switched to Day view'); Haptics.selectionAsync(); }}
                 accessibilityRole="button"
                 accessibilityLabel="Day view"
               >
-                <Text style={[styles.segmentText, { color: theme.colors.textMuted }, !showAllEvents && styles.segmentTextActive]}>Day</Text>
+                <Text style={[styles.segmentText, { color: t.colors.textMuted }, !showAllEvents && styles.segmentTextActive]}>Day</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.segmentItem, showAllEvents && styles.segmentItemActive]}
@@ -573,55 +578,62 @@ const AdminCalendar = () => {
                 accessibilityRole="button"
                 accessibilityLabel="All events"
               >
-                <Text style={[styles.segmentText, { color: theme.colors.textMuted }, showAllEvents && styles.segmentTextActive]}>All</Text>
+                <Text style={[styles.segmentText, { color: t.colors.textMuted }, showAllEvents && styles.segmentTextActive]}>All</Text>
               </TouchableOpacity>
             </View>
           </View>
-           <View style={styles.eventsSubtitleRowEnhanced}>
-             <Text style={[styles.eventsSubtitle, { color: theme.colors.textMuted }]} numberOfLines={1}>
-               {showAllEvents
-                 ? 'All dates'
-                 : selectedDate
-                   ? formatDate(selectedDate)
-                   : 'All dates'} — {getFilteredEvents().length} {getFilteredEvents().length === 1 ? 'event' : 'events'}
-             </Text>
-           </View>
-          <LinearGradient colors={[theme.colors.border, 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ height: 1, marginBottom: 10 }} />
+          <View style={styles.eventsSubtitleRowEnhanced}>
+            <Text style={[styles.eventsSubtitle, { color: t.colors.textMuted }]} numberOfLines={1}>
+              {showAllEvents
+                ? 'All dates'
+                : selectedDate
+                  ? formatDate(selectedDate)
+                  : 'All dates'} — {filteredEvents.length} {filteredEvents.length === 1 ? 'event' : 'events'}
+            </Text>
+          </View>
+          <LinearGradient colors={[t.colors.border, 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ height: 1, marginBottom: 10 }} />
 
-          {getFilteredEvents().length === 0 && !isLoadingPosts && (
-            <View style={[styles.emptyStateCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <View style={styles.emptyStateIconWrap}>
-                <Ionicons name="calendar-outline" size={20} color="#6366F1" />
+          {filteredEvents.length === 0 && !isLoadingPosts && (
+            <View style={[styles.emptyStateCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
+              <View style={[styles.emptyStateIconWrap, { backgroundColor: t.colors.surfaceAlt }]}>
+                <Ionicons name="calendar-outline" size={20} color={t.colors.accent} />
               </View>
-              <Text style={[styles.emptyStateTitle, { color: theme.colors.text }]}>No events yet</Text>
-              <Text style={[styles.emptyStateSubtitle, { color: theme.colors.textMuted }]}>
+              <Text style={[styles.emptyStateTitle, { color: t.colors.text }]}>No events yet</Text>
+              <Text style={[styles.emptyStateSubtitle, { color: t.colors.textMuted }]}>
                 {showAllEvents
                   ? 'Create your first event or announcement.'
                   : `No events for ${selectedDate ? formatDate(selectedDate) : 'this day'}`}
               </Text>
-              <TouchableOpacity style={[styles.emptyStateBtn, { borderColor: theme.colors.border }]} onPress={() => navigation.navigate('PostUpdate')}>
-                <Ionicons name="add" size={14} color="#6366F1" />
-                <Text style={styles.emptyStateBtnText}>Add Event</Text>
+              <TouchableOpacity 
+                style={[
+                  styles.emptyStateBtn, 
+                  { 
+                    borderColor: t.colors.border,
+                    backgroundColor: t.colors.surface,
+                  }
+                ]} 
+                onPress={() => navigation.navigate('PostUpdate')}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="add" size={14} color={t.colors.accent} />
+                <Text style={[styles.emptyStateBtnText, { color: t.colors.accent }]}>Add Event</Text>
           </TouchableOpacity>
             </View>
           )}
 
           {isLoadingPosts && (
             <View style={[styles.emptyStateCard, { paddingVertical: 16, overflow: 'hidden' }]}>
-              <LinearGradient colors={[theme.colors.surfaceAlt, '#fafafa']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ ...StyleSheet.absoluteFillObject, opacity: 0.6 }} />
-              <Text style={{ color: theme.colors.textMuted, fontSize: 12 }}>Loading…</Text>
+              <LinearGradient colors={[t.colors.surfaceAlt, '#fafafa']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ ...StyleSheet.absoluteFillObject, opacity: 0.6 }} />
+              <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>Loading…</Text>
             </View>
           )}
 
           {!showAllEvents && (
             <Animated.View style={{ opacity: listAnim, transform: [{ translateY: listAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
-            {false && getFilteredEvents().length === 0 && (
-              <View />
-            )}
-            {getFilteredEvents().map((event: any) => (
+            {Array.isArray(filteredEvents) && filteredEvents.map((event: any) => (
             <TouchableOpacity
               key={event.id}
-              style={[styles.eventCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+              style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
               onPress={() => navigation.navigate('PostUpdate', { postId: event.id })}
               accessibilityRole="button"
               accessibilityLabel={`Open event ${event.title}`}
@@ -630,11 +642,11 @@ const AdminCalendar = () => {
             >
               <View style={[styles.eventAccent, { backgroundColor: event.color }]} />
               <View style={styles.eventContent}>
-                <Text style={[styles.eventTitle, { color: theme.colors.text }]} numberOfLines={1}>{formatEventTitle(event.title)}</Text>
+                <Text style={[styles.eventTitle, { color: t.colors.text }]} numberOfLines={1}>{formatEventTitle(event.title)}</Text>
                 <View style={styles.eventInnerDivider} />
                 <View style={styles.eventTimeRow}>
-                  <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-                  <Text style={[styles.eventTimeText, { color: theme.colors.textMuted }]}>{event.time || '—'}</Text>
+                  <Ionicons name="time-outline" size={12} color={t.colors.textMuted} />
+                  <Text style={[styles.eventTimeText, { color: t.colors.textMuted }]}>{event.time || '—'}</Text>
                 </View>
                 <View style={styles.statusInline}>
                   {event.isPinned && (
@@ -650,7 +662,7 @@ const AdminCalendar = () => {
                       <Text style={[styles.statusText, { color: '#B91C1C' }]}>Urgent</Text>
                     </View>
                   )}
-                  {event.isUrgent && event.type && <Text style={styles.statusSep}>•</Text>}
+                  {event.isUrgent && event.type && <Text style={[styles.statusSep, { color: t.colors.textMuted }]}>•</Text>}
                   {!!event.type && (
                     <View style={styles.statusItem}>
                       <Ionicons name="pricetag-outline" size={12} color={event.color} />
@@ -668,15 +680,15 @@ const AdminCalendar = () => {
 
           {showAllEvents && (
             <Animated.View style={{ opacity: listAnim, transform: [{ translateY: listAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
-            {groupedEvents.map(group => (
+            {Array.isArray(groupedEvents) && groupedEvents.map(group => (
             <View key={group.key} style={styles.groupContainer}>
-              <Text style={[styles.groupHeaderText, { color: theme.colors.textMuted }]}>
+              <Text style={[styles.groupHeaderText, { color: t.colors.textMuted }]}>
                 {formatCalendarDate(new Date(group.key))}
               </Text>
-              {group.items.map((event: any) => (
+              {Array.isArray(group.items) && group.items.map((event: any) => (
                 <TouchableOpacity
                   key={event.id}
-                  style={[styles.eventCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                  style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
                   onPress={() => navigation.navigate('PostUpdate', { postId: event.id })}
                   accessibilityRole="button"
                   accessibilityLabel={`Open event ${event.title}`}
@@ -685,11 +697,11 @@ const AdminCalendar = () => {
                 >
                   <View style={[styles.eventAccent, { backgroundColor: event.color }]} />
                   <View style={styles.eventContent}>
-                    <Text style={[styles.eventTitle, { color: theme.colors.text }]} numberOfLines={1}>{event.title}</Text>
+                    <Text style={[styles.eventTitle, { color: t.colors.text }]} numberOfLines={1}>{event.title}</Text>
                     <View style={styles.eventInnerDivider} />
                     <View style={styles.eventTimeRow}>
-                      <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-                      <Text style={[styles.eventTimeText, { color: theme.colors.textMuted }]}>{event.time || '—'}</Text>
+                      <Ionicons name="time-outline" size={12} color={t.colors.textMuted} />
+                      <Text style={[styles.eventTimeText, { color: t.colors.textMuted }]}>{event.time || '—'}</Text>
                     </View>
                     <View style={styles.statusInline}>
                       {event.isPinned && (
@@ -705,7 +717,7 @@ const AdminCalendar = () => {
                           <Text style={[styles.statusText, { color: '#B91C1C' }]}>Urgent</Text>
                         </View>
                       )}
-                      {event.isUrgent && event.type && <Text style={styles.statusSep}>•</Text>}
+                      {event.isUrgent && event.type && <Text style={[styles.statusSep, { color: t.colors.textMuted }]}>•</Text>}
                       {!!event.type && (
                         <View style={styles.statusItem}>
                           <Ionicons name="pricetag-outline" size={12} color={event.color} />
@@ -736,12 +748,14 @@ const AdminCalendar = () => {
         onManagePostPress={() => navigation.navigate('ManagePosts')}
       />
     </View>
+    </GestureHandlerRootView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: theme.colors.surfaceAlt,
   },
   header: {
     paddingHorizontal: 16,
@@ -779,7 +793,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 120,
+    paddingBottom: 32,
   },
   calendarCard: {
     borderRadius: 16,
@@ -811,80 +825,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  monthPickerModal: {
-    borderRadius: 16,
-    width: '100%',
-    maxWidth: 320,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  monthPickerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 20,
-    paddingBottom: 16,
-  },
-  monthPickerBackButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  monthPickerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  monthPickerSpacer: {
-    width: 32,
-  },
-  monthPickerGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 20,
-    paddingTop: 0,
-    gap: 8,
-  },
-  monthPickerCard: {
-    width: '30%',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  monthPickerCardSelected: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  monthPickerText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  monthPickerTextSelected: {
-    fontWeight: '700',
-  },
   weekHeader: {
     flexDirection: 'row',
+    backgroundColor: theme.colors.surface,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -893,10 +836,12 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     alignItems: 'center',
     borderRightWidth: 1,
+    borderRightColor: theme.colors.border,
   },
   weekDayText: {
     fontSize: 12,
     fontWeight: '600',
+    color: theme.colors.textMuted,
   },
   calendarGrid: {
     flexDirection: 'row',
@@ -909,6 +854,7 @@ const styles = StyleSheet.create({
     aspectRatio: 1,
     borderRightWidth: 1,
     borderBottomWidth: 1,
+    borderColor: theme.colors.border,
   },
   dayContent: {
     flex: 1,
@@ -926,17 +872,22 @@ const styles = StyleSheet.create({
   dayNumber: {
     fontSize: 12,
     fontWeight: '600',
+    color: theme.colors.text,
   },
   todayContainer: {
+    backgroundColor: '#2563EB',
   },
   todayText: {
+    color: '#fff',
     fontWeight: '700',
   },
   selectedContainer: {
     backgroundColor: 'transparent',
     borderWidth: 2,
+    borderColor: '#3B82F6',
   },
   selectedText: {
+    color: '#1D4ED8',
     fontWeight: '700',
   },
   eventIndicators: {
@@ -950,15 +901,12 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   emptyDay: {
-    width: '14.285%', // 100% / 7 days
-    aspectRatio: 1,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
+    backgroundColor: theme.colors.surfaceAlt,
   },
   eventsSection: {
     borderRadius: 16,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 0,
     shadowColor: '#000',
     shadowOpacity: 0.06,
     shadowRadius: 4,
@@ -1024,12 +972,15 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   segmentItemActive: {
+    backgroundColor: theme.colors.surfaceAlt,
   },
   segmentText: {
     fontSize: 12,
+    color: theme.colors.textMuted,
     fontWeight: '700',
   },
   segmentTextActive: {
+    color: theme.colors.accent,
   },
   eventsHeaderLeft: {
     flexDirection: 'row',
@@ -1202,6 +1153,7 @@ const styles = StyleSheet.create({
   },
   statusSep: {
     fontSize: 12,
+    color: '#9CA3AF',
     fontWeight: '700',
   },
   eventTypeChip: {
@@ -1252,6 +1204,7 @@ const styles = StyleSheet.create({
   },
   eventInnerDivider: {
     height: 1,
+    backgroundColor: theme.colors.border,
     marginVertical: 6,
   },
   inlineCallout: {

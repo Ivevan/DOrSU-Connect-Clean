@@ -9,8 +9,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../contexts/ThemeContext';
 import { theme as themeConfig } from '../../config/theme';
-import LogoutModal from '../../modals/LogoutModal';
-import ProfileSettingsModal from '../../modals/ProfileSettingsModal'; 
+import LogoutModal from '../../modals/LogoutModal'; 
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -26,7 +25,6 @@ type RootStackParamList = {
   AdminCalendar: undefined;
   PostUpdate: undefined;
   ManagePosts: undefined;
-  ContactSupport: undefined;
   UserHelpCenter: undefined;
   TermsOfUse: undefined;
   PrivacyPolicy: undefined;
@@ -41,7 +39,6 @@ const AdminSettings = () => {
   // State for various settings
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
-  const [isProfileSettingsOpen, setIsProfileSettingsOpen] = useState(false);
 
   // Animation values for smooth entrance
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -69,7 +66,6 @@ const AdminSettings = () => {
   }, []);
 
   const sheetY = useRef(new Animated.Value(300)).current;
-  const profileSettingsSheetY = useRef(new Animated.Value(300)).current;
 
   const openLogout = useCallback(() => {
     setIsLogoutOpen(true);
@@ -90,20 +86,6 @@ const AdminSettings = () => {
     navigation.navigate('GetStarted');
   }, [closeLogout, navigation]);
 
-  const openProfileSettings = useCallback(() => {
-    setIsProfileSettingsOpen(true);
-    // Wait for modal mount then animate
-    setTimeout(() => {
-      Animated.timing(profileSettingsSheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
-    }, 0);
-  }, [profileSettingsSheetY]);
-
-  const closeProfileSettings = useCallback(() => {
-    Animated.timing(profileSettingsSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setIsProfileSettingsOpen(false);
-    });
-  }, [profileSettingsSheetY]);
-
   // Navigation handlers for AdminBottomNavBar
   const handleDashboardPress = useCallback(() => navigation.navigate('AdminDashboard'), [navigation]);
   const handleChatPress = useCallback(() => navigation.navigate('AdminAIChat'), [navigation]);
@@ -112,9 +94,6 @@ const AdminSettings = () => {
   const handlePostUpdatePress = useCallback(() => navigation.navigate('PostUpdate'), [navigation]);
   const handleManagePostPress = useCallback(() => navigation.navigate('ManagePosts'), [navigation]);
   const handleAddPress = useCallback(() => { /* future: open create flow */ }, []);
-
-  // Navigation handlers for Support section
-  const handleContactSupportPress = useCallback(() => navigation.navigate('ContactSupport'), [navigation]);
 
   // Navigation handlers for About section
   const handleUserHelpCenterPress = useCallback(() => navigation.navigate('UserHelpCenter'), [navigation]);
@@ -192,34 +171,6 @@ const AdminSettings = () => {
             }
           ]}
         >
-          {/* Account Settings */}
-          <View style={[styles.sectionCard, { backgroundColor: theme.colors.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Account</Text>
-            
-            <TouchableOpacity 
-              style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}
-              onPress={openProfileSettings}
-            >
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="person-outline" size={20} color={theme.colors.accent} />
-                </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Profile Settings</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.settingItemLast}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="key-outline" size={20} color={theme.colors.accent} />
-                </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Change Password</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-
           {/* App Settings */}
           <View style={[styles.sectionCard, { backgroundColor: theme.colors.card }]}>
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>App Settings</Text>
@@ -258,20 +209,16 @@ const AdminSettings = () => {
             </View>
           </View>
 
-
-          {/* Support */}
+          {/* Email Section */}
           <View style={[styles.sectionCard, { backgroundColor: theme.colors.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Support</Text>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Email</Text>
             
-            <TouchableOpacity 
-              style={styles.settingItemLast}
-              onPress={handleContactSupportPress}
-            >
+            <TouchableOpacity style={styles.settingItemLast}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
                   <Ionicons name="mail-outline" size={20} color={theme.colors.accent} />
                 </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Contact Support</Text>
+                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>admin@dorsu.edu.ph</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
@@ -378,12 +325,6 @@ const AdminSettings = () => {
         onClose={closeLogout}
         onConfirm={confirmLogout}
         sheetY={sheetY}
-      />
-
-      <ProfileSettingsModal
-        visible={isProfileSettingsOpen}
-        onClose={closeProfileSettings}
-        sheetY={profileSettingsSheetY}
       />
     </View>
   );

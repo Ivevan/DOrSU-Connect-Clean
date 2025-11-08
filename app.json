@@ -4,11 +4,11 @@
     "slug": "DORSUCONNECT",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/DOrSU.png",
+    "icon": "./assets/1024x1024.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "splash": {
-      "image": "./assets/DOrSU.png",
+      "image": "./assets/1024x1024.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -21,9 +21,10 @@
       "package": "com.dorsuconnect.app",
       "versionCode": 1,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/DOrSU.png",
+        "foregroundImage": "./assets/1024x1024.png",
         "backgroundColor": "#1F2937"
       },
+      "googleServicesFile": "./android/app/google-services.json",
       "edgeToEdgeEnabled": false,
       "statusBarColor": "#black",
       "statusBarStyle": "transparent",
@@ -31,8 +32,12 @@
       "windowSoftInputMode": "adjustResize"
     },
     "web": {
-      "favicon": "./assets/DOrSU.png"
+      "favicon": "./assets/1024x1024.png"
     },
+    "plugins": [
+      "@react-native-google-signin/google-signin",
+      "@react-native-firebase/app"
+    ],
     "extra": {
       "eas": {
         "projectId": "f03ea52c-0053-4a88-a21c-9202c8560009"

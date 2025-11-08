@@ -323,6 +323,7 @@ const SignIn = () => {
       }
     }, 2000);
   };
+
   const KeyboardWrapper = Platform.OS === 'ios' ? KeyboardAvoidingView : View;
   const keyboardProps = Platform.OS === 'ios' ? { behavior: 'padding' as const, keyboardVerticalOffset: 0 } : {};
 
@@ -756,7 +757,6 @@ const SignIn = () => {
               </LinearGradient>
           </TouchableOpacity>
           </Animated.View>
-
           </View>
 
           {/* Bottom Section - Always Accessible */}
@@ -1134,7 +1134,6 @@ const styles = StyleSheet.create({
     color: 'black',
     fontSize: 15,
     fontWeight: '600',
-    textDecorationLine: 'underline',
   },
   signInButton: {
     borderRadius: theme.radii.lg,

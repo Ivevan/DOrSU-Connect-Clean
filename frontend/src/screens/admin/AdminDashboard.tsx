@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Pressable, SafeAreaView, TextInput, Image, FlatList, Animated, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AdminDataService from '../../services/AdminDataService';
@@ -8,7 +8,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { theme as themeStyle } from '../../config/theme';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import { formatDate, timeAgo } from '../../utils/dateUtils';
 import PreviewModal from '../../modals/PreviewModal';
 
@@ -30,9 +30,23 @@ type RootStackParamList = {
 
 const AdminDashboard = () => {
   const insets = useSafeAreaInsets();
-  const { isDarkMode, theme } = useTheme();
+  const { isDarkMode, theme } = useThemeValues();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const scrollRef = useRef<ScrollView>(null);
+  
+  // Memoize safe area insets to prevent recalculation during navigation
+  const safeInsets = useMemo(() => ({
+    top: insets.top,
+    bottom: insets.bottom,
+    left: insets.left,
+    right: insets.right,
+  }), [insets.top, insets.bottom, insets.left, insets.right]);
+  
+  // Lock header height to prevent layout shifts
+  // Use a more accurate initial estimate based on typical header height
+  const headerHeightRef = useRef<number>(56); // More accurate initial estimate (12px padding * 2 + 20px font + some spacing)
+  const [headerHeight, setHeaderHeight] = useState(56);
+  
   const [activeFilter, setActiveFilter] = useState<'week' | 'month' | 'semester'>('week');
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -51,19 +65,26 @@ const AdminDashboard = () => {
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
 
+  // Animation values - DISABLED FOR PERFORMANCE DEBUGGING
+  const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
+  const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
 
   // Note: awaiting real data; dashboardData can be set from API by filter
 
-  // Filter updates based on search query
-  const filteredUpdates = dashboardData.recentUpdates.filter(update =>
-    update.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    update.tag.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filter updates based on search query - memoized for performance
+  const filteredUpdates = useMemo(() => {
+    if (!searchQuery.trim()) return dashboardData.recentUpdates;
+    const query = searchQuery.toLowerCase();
+    return dashboardData.recentUpdates.filter(update =>
+      update.title.toLowerCase().includes(query) ||
+      update.tag.toLowerCase().includes(query)
+    );
+  }, [dashboardData.recentUpdates, searchQuery]);
 
-  const handleFilterChange = (filter: 'week' | 'month' | 'semester') => {
+  const handleFilterChange = useCallback((filter: 'week' | 'month' | 'semester') => {
     setActiveFilter(filter);
     setSearchQuery(''); // Clear search when filter changes
-  };
+  }, []);
 
   // Placeholder: fetch dashboard data when filter changes
   useEffect(() => {
@@ -84,25 +105,26 @@ const AdminDashboard = () => {
     return () => { isCancelled = true; };
   }, [activeFilter]);
 
-  const handleSearchPress = () => {
-    setIsSearchVisible(!isSearchVisible);
-    if (isSearchVisible) {
-      setSearchQuery(''); // Clear search when closing
-    }
-  };
+  const handleSearchPress = useCallback(() => {
+    setIsSearchVisible(prev => {
+      if (prev) {
+        setSearchQuery(''); // Clear search when closing
+      }
+      return !prev;
+    });
+  }, []);
 
-  const handleNotificationPress = () => {
+  const handleNotificationPress = useCallback(() => {
     // TODO: Implement notifications functionality
-    console.log('Notifications pressed');
     setNotificationCount(0); // Clear notifications when pressed
-  };
+  }, []);
 
-  const handleUpdatePress = (update: { title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean }) => {
+  const handleUpdatePress = useCallback((update: { title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean }) => {
     // Open preview modal for all updates
     setPreviewUpdate(update);
     setActivePreviewIndex(0);
     setIsPreviewOpen(true);
-  };
+  }, []);
 
   // Minimal shimmer component for skeletons
   const Shimmer = ({ height, borderRadius }: { height: number; borderRadius: number }) => {
@@ -143,23 +165,40 @@ const AdminDashboard = () => {
   return (
     <View style={[styles.container, {
       backgroundColor: theme.colors.background,
-      paddingTop: insets.top,
-      paddingBottom: 0, // Remove bottom padding since AdminBottomNavBar now handles it
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    }]}>
+    }]} collapsable={false}>
       <StatusBar
         backgroundColor={theme.colors.primary}
         barStyle="light-content"
         translucent={false}
+        hidden={false}
       />
 
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
-        <View style={styles.headerLeft}>
-        <Text style={styles.headerTitle}>DOrSU Connect</Text>
+      {/* Safe Area Top Spacer - Fixed position */}
+      <View style={[styles.safeAreaTop, {
+        height: safeInsets.top,
+        backgroundColor: theme.colors.primary,
+      }]} collapsable={false} />
+
+      {/* Header - Fixed position to prevent layout shifts */}
+      <View
+        style={[styles.header, {
+          backgroundColor: theme.colors.primary,
+          top: safeInsets.top,
+        }]}
+        onLayout={(e) => {
+          const { height } = e.nativeEvent.layout;
+          // Only update if height actually changed to prevent unnecessary re-renders
+          if (height > 0 && Math.abs(height - headerHeightRef.current) > 1) {
+            headerHeightRef.current = height;
+            setHeaderHeight(height);
+          }
+        }}
+        collapsable={false}
+      >
+        <View style={styles.headerLeft} collapsable={false}>
+          <Text style={styles.headerTitle} numberOfLines={1}>DOrSU Connect</Text>
         </View>
-        <View style={styles.headerRight}>
+        <View style={styles.headerRight} collapsable={false}>
           <Pressable style={styles.headerButton} onPress={handleNotificationPress}>
             <Ionicons name="notifications-outline" size={24} color="white" />
             {notificationCount > 0 && (
@@ -174,9 +213,16 @@ const AdminDashboard = () => {
         </View>
       </View>
 
-      {/* Search Bar */}
+      {/* Search Bar - Fixed position below header */}
       {isSearchVisible && (
-        <View style={[styles.searchContainer, { backgroundColor: theme.colors.background, borderBottomColor: theme.colors.border }]}>
+        <View
+          style={[styles.searchContainer, {
+            backgroundColor: theme.colors.background,
+            borderBottomColor: theme.colors.border,
+            top: safeInsets.top + headerHeight,
+          }]}
+          collapsable={false}
+        >
           <View style={[styles.searchInputContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <Ionicons name="search" size={20} color={theme.colors.textMuted} style={styles.searchIcon} />
             <TextInput
@@ -196,9 +242,27 @@ const AdminDashboard = () => {
         </View>
       )}
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollRef}
+        style={[styles.content, {
+          marginTop: safeInsets.top + headerHeight + (isSearchVisible ? 60 : 0), // Account for search bar height
+          marginBottom: 0,
+        }]}
+        contentContainerStyle={[styles.scrollContent, {
+          paddingBottom: safeInsets.bottom + 80, // Bottom nav bar height + safe area
+        }]}
+        showsVerticalScrollIndicator={false}
+        removeClippedSubviews={true}
+        keyboardShouldPersistTaps="handled"
+        bounces={true}
+        scrollEventThrottle={16}
+      >
         {/* Welcome Section */}
-        <View style={styles.welcomeSection}>
+        <View 
+          style={[
+            styles.welcomeSection
+          ]}
+        >
           <View style={styles.welcomeText}>
             <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>Welcome back, Admin</Text>
             <Text style={[styles.welcomeSubtitle, { color: theme.colors.textMuted }]}>Here's a quick overview of today</Text>
@@ -210,7 +274,11 @@ const AdminDashboard = () => {
         </View>
 
         {/* Time Period Filters */}
-        <View style={styles.filtersContainer}>
+        <View 
+          style={[
+            styles.filtersContainer
+          ]}
+        >
           <Pressable 
             style={[styles.filterPill, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, activeFilter === 'week' && { backgroundColor: theme.colors.accent, borderColor: 'transparent' }]} 
             onPress={() => handleFilterChange('week')}
@@ -232,7 +300,11 @@ const AdminDashboard = () => {
         </View>
 
         {/* Stats Grid */}
-        <View style={styles.statsGrid}>
+        <View 
+          style={[
+            styles.statsGrid
+          ]}
+        >
           <View style={[styles.statCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
             <View style={[styles.statIconContainer, { backgroundColor: isDarkMode ? '#1E3A8A' : '#E0F2FE' }]}>
               <Ionicons name="bar-chart" size={24} color={isDarkMode ? '#60A5FA' : '#0284C7'} />
@@ -259,7 +331,15 @@ const AdminDashboard = () => {
         </View>
 
         {/* Recent Updates */}
-        <View style={[styles.recentUpdatesSection, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+        <View 
+          style={[
+            styles.recentUpdatesSection,
+            {
+              backgroundColor: theme.colors.card,
+              borderColor: theme.colors.border
+            }
+          ]}
+        >
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Recent Updates</Text>
           {dashboardError && (
             <Text style={{ color: '#DC2626', marginBottom: 8, fontSize: 12, fontWeight: '600' }}>{dashboardError}</Text>
@@ -310,7 +390,12 @@ const AdminDashboard = () => {
 
       {/* Fullscreen viewer removed per request */}
 
-      <AdminBottomNavBar
+      {/* Bottom Navigation Bar - Fixed position */}
+      <View style={[styles.bottomNavContainer, {
+        bottom: 0,
+        paddingBottom: safeInsets.bottom,
+      }]} collapsable={false}>
+        <AdminBottomNavBar
         activeTab="dashboard"
         onDashboardPress={() => navigation.navigate('AdminDashboard')}
         onChatPress={() => navigation.navigate('AdminAIChat')}
@@ -323,7 +408,8 @@ const AdminDashboard = () => {
         onManagePostPress={() => {
           navigation.navigate('ManagePosts');
         }}
-      />
+        />
+      </View>
     </View>
   );
 };
@@ -368,10 +454,22 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: themeStyle.colors.surfaceAlt,
   },
+  safeAreaTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+  },
   header: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 999,
     backgroundColor: themeStyle.colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 12,
+    minHeight: 56, // Fixed min height to prevent layout shifts
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -382,7 +480,6 @@ const styles = StyleSheet.create({
     elevation: 4,
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
-    marginBottom: 6,
   },
   headerLeft: {
     flex: 1,
@@ -424,9 +521,25 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  scrollContent: {
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 20,
+  },
+  bottomNavContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 998,
+  },
+  searchContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 998,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
   },
   welcomeSection: {
     flexDirection: 'row',
@@ -566,11 +679,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: '#1A3E7A',
-  },
-  searchContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
   },
   searchInputContainer: {
     flexDirection: 'row',

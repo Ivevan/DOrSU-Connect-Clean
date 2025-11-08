@@ -18,6 +18,10 @@ import AdminSettings from '../screens/admin/AdminSettings';
 import AdminCalendar from '../screens/admin/AdminCalendar';
 import PostUpdate from '../screens/admin/PostUpdate';
 import ManagePosts from '../screens/admin/ManagePosts';
+import UserHelpCenterScreen from '../screens/about/HelpCenterScreen';
+import TermsOfUseScreen from '../screens/about/TermsOfUseScreen';
+import PrivacyPolicyScreen from '../screens/about/PrivacyPolicyScreen';
+import LicensesScreen from '../screens/about/LicensesScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -66,22 +70,54 @@ const AppNavigator = () => {
         <Stack.Screen 
           name="SchoolUpdates" 
           component={SchoolUpdates}
+          options={{
+            animation: 'none' as const, // Disabled for debugging
+            animationDuration: 0,
+          }}
         />
         <Stack.Screen 
           name="AIChat" 
           component={AIChat}
+          options={{
+            animation: 'none' as const, // Disabled for debugging
+            animationDuration: 0,
+          }}
         />
         <Stack.Screen 
           name="UserSettings" 
           component={UserSettings}
+          options={{
+            animation: 'none' as const, // Disabled for debugging
+            animationDuration: 0,
+            // Prevent layout shifts during navigation
+            freezeOnBlur: false, // Changed to false to prevent delay
+            // Ensure consistent layout
+            contentStyle: {
+              backgroundColor: 'transparent',
+            },
+          }}
         />
         <Stack.Screen 
           name="Calendar" 
           component={Calendar}
+          options={{
+            animation: 'none' as const, // Disabled for debugging
+            animationDuration: 0,
+            // Optimize for faster navigation
+            freezeOnBlur: false,
+          }}
         />
         <Stack.Screen 
           name="AdminDashboard" 
           component={AdminDashboard}
+          options={{
+            animation: 'none' as const, // Disabled for debugging
+            animationDuration: 0,
+            freezeOnBlur: false,
+            contentStyle: {
+              backgroundColor: 'transparent',
+            },
+          }}
         />
         <Stack.Screen 
           name="AdminAIChat" 
@@ -95,8 +131,23 @@ const AppNavigator = () => {
           name="AdminCalendar" 
           component={AdminCalendar}
         />
-        <Stack.Screen name="PostUpdate" component={PostUpdate} />
+        <Stack.Screen 
+          name="PostUpdate" 
+          component={PostUpdate}
+          options={{
+            animation: 'none' as const, // Disabled for debugging
+            animationDuration: 0,
+            freezeOnBlur: false,
+            contentStyle: {
+              backgroundColor: 'transparent',
+            },
+          }}
+        />
         <Stack.Screen name="ManagePosts" component={ManagePosts} />
+        <Stack.Screen name="UserHelpCenter" component={UserHelpCenterScreen} />
+        <Stack.Screen name="TermsOfUse" component={TermsOfUseScreen} />
+        <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+        <Stack.Screen name="Licenses" component={LicensesScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
@@ -14,6 +14,41 @@ interface PreviewUpdate {
   source?: string;
   pinned?: boolean;
 }
+
+// Helper functions for tag colors (moved outside component for performance)
+const getTagColor = (tag: string) => {
+  switch (tag.toLowerCase()) {
+    case 'announcement':
+      return '#E8F0FF';
+    case 'academic':
+      return '#F0F9FF';
+    case 'event':
+      return '#FEF3C7';
+    case 'service':
+      return '#ECFDF5';
+    case 'infrastructure':
+      return '#FEF2F2';
+    default:
+      return '#E8F0FF';
+  }
+};
+
+const getTagTextColor = (tag: string) => {
+  switch (tag.toLowerCase()) {
+    case 'announcement':
+      return '#1A3E7A';
+    case 'academic':
+      return '#0369A1';
+    case 'event':
+      return '#D97706';
+    case 'service':
+      return '#059669';
+    case 'infrastructure':
+      return '#DC2626';
+    default:
+      return '#1A3E7A';
+  }
+};
 
 interface PreviewModalProps {
   visible: boolean;
@@ -34,40 +69,16 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
 }) => {
   const { theme } = useTheme();
 
-  // Helper functions for tag colors
-  const getTagColor = (tag: string) => {
-    switch (tag.toLowerCase()) {
-      case 'announcement':
-        return '#E8F0FF';
-      case 'academic':
-        return '#F0F9FF';
-      case 'event':
-        return '#FEF3C7';
-      case 'service':
-        return '#ECFDF5';
-      case 'infrastructure':
-        return '#FEF2F2';
-      default:
-        return '#E8F0FF';
-    }
-  };
-
-  const getTagTextColor = (tag: string) => {
-    switch (tag.toLowerCase()) {
-      case 'announcement':
-        return '#1A3E7A';
-      case 'academic':
-        return '#0369A1';
-      case 'event':
-        return '#D97706';
-      case 'service':
-        return '#059669';
-      case 'infrastructure':
-        return '#DC2626';
-      default:
-        return '#1A3E7A';
-    }
-  };
+  // Memoize tag colors and icon
+  const tagColor = useMemo(() => getTagColor(update?.tag || ''), [update?.tag]);
+  const tagTextColor = useMemo(() => getTagTextColor(update?.tag || ''), [update?.tag]);
+  const tagIcon = useMemo(() => {
+    const tagLower = update?.tag?.toLowerCase();
+    if (tagLower === 'announcement') return 'megaphone';
+    if (tagLower === 'academic') return 'school';
+    if (tagLower === 'event') return 'calendar';
+    return 'pricetag-outline';
+  }, [update?.tag]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -75,9 +86,9 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
         <View style={[styles.previewCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
           <View style={styles.previewHeader}>
             <View style={styles.previewHeaderLeft}>
-              <View style={[styles.tagChip, { backgroundColor: getTagColor(update?.tag || '') }]}> 
-                <Ionicons name={update?.tag?.toLowerCase() === 'announcement' ? 'megaphone' : update?.tag?.toLowerCase() === 'academic' ? 'school' : update?.tag?.toLowerCase() === 'event' ? 'calendar' : 'pricetag-outline'} size={14} color={getTagTextColor(update?.tag || '')} />
-                <Text style={[styles.tagChipText, { color: getTagTextColor(update?.tag || '') }]}>{update?.tag}</Text>
+              <View style={[styles.tagChip, { backgroundColor: tagColor }]}> 
+                <Ionicons name={tagIcon as any} size={14} color={tagTextColor} />
+                <Text style={[styles.tagChipText, { color: tagTextColor }]}>{update?.tag}</Text>
               </View>
               <Text style={[styles.previewMetaInline, { color: theme.colors.textMuted }]}>{timeAgo(update?.date)}</Text>
             </View>
@@ -284,4 +295,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default PreviewModal;
+export default memo(PreviewModal);

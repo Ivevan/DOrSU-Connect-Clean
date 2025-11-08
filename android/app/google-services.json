@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "473603633094",
+    "project_id": "dorsu-connect-a7e25",
+    "storage_bucket": "dorsu-connect-a7e25.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:473603633094:android:dbad2618a9b973bd11ccc7",
+        "android_client_info": {
+          "package_name": "com.dorsuconnect.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "473603633094-b8ipfi3qajlds4rm3kvvi4o3dgoabqq4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.dorsuconnect.app",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "473603633094-s78o8vdig63os6dgpjtoiqkhscspfbua.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAZeoFB8Z4WC8TfDB9709q-0DCAt0vX4Yg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "473603633094-s78o8vdig63os6dgpjtoiqkhscspfbua.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

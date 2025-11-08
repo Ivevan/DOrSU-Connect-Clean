@@ -1,7 +1,7 @@
-import React from 'react';
-import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Modal, Pressable } from 'react-native';
+import React, { useRef, useEffect, useCallback, useMemo, memo } from 'react';
+import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Modal, Pressable, Animated, InteractionManager, Easing } from 'react-native';
 import { theme } from '../../config/theme';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
@@ -24,15 +24,58 @@ const SUGGESTIONS = [
   'What\'s the enrollment schedule?',
   'How do I access my student portal?',
   'How do I reset my password?'
-];
+] as const;
+
+// Memoized Suggestion Card Component
+const SuggestionCard = memo(({ text, theme, isWide }: { text: string; theme: any; isWide: boolean }) => (
+  <TouchableOpacity
+    style={[styles.promptCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }, isWide && { maxWidth: 640 }]}
+    activeOpacity={0.9}
+  >
+    <View style={[styles.promptIconWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
+      <Ionicons name="reorder-three" size={16} color={theme.colors.accent} />
+    </View>
+    <Text style={[styles.promptCardText, { color: theme.colors.text }]}>{text}</Text>
+  </TouchableOpacity>
+));
 
 const AIChat = () => {
   const insets = useSafeAreaInsets();
-  const { isDarkMode, theme: t } = useTheme();
+  const { isDarkMode, theme: t } = useThemeValues();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width } = useWindowDimensions();
   const isWide = width > 600;
   const [isInfoOpen, setIsInfoOpen] = React.useState(false);
+
+  const handleInfoOpen = useCallback(() => setIsInfoOpen(true), []);
+  const handleInfoClose = useCallback(() => setIsInfoOpen(false), []);
+
+  const displayedSuggestions = useMemo(() => SUGGESTIONS.slice(0, 3), []);
+
+  // Animation values for smooth entrance - DISABLED FOR DEBUGGING
+  const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
+  const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
+
+  // Entrance animation - DISABLED FOR DEBUGGING
+  // useEffect(() => {
+  //   const handle = InteractionManager.runAfterInteractions(() => {
+  //     Animated.parallel([
+  //       Animated.timing(fadeAnim, {
+  //         toValue: 1,
+  //         duration: 250,
+  //         easing: Easing.out(Easing.ease),
+  //         useNativeDriver: true,
+  //       }),
+  //       Animated.timing(slideAnim, {
+  //         toValue: 0,
+  //         duration: 250,
+  //         easing: Easing.out(Easing.ease),
+  //         useNativeDriver: true,
+  //       }),
+  //     ]).start();
+  //   });
+  //   return () => handle.cancel();
+  // }, []);
 
   return (
     <View style={[styles.container, {
@@ -53,18 +96,18 @@ const AIChat = () => {
           <Text style={styles.headerTitle}>DOrSU AI</Text>
         </View>
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.headerButton} onPress={() => setIsInfoOpen(true)} accessibilityLabel="AI chat information">
+          <TouchableOpacity style={styles.headerButton} onPress={handleInfoOpen} accessibilityLabel="AI chat information">
             <Ionicons name="information-circle-outline" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
       </View>
       {/* Info Modal */}
-      <Modal visible={isInfoOpen} transparent animationType="fade" onRequestClose={() => setIsInfoOpen(false)}>
+      <Modal visible={isInfoOpen} transparent animationType="fade" onRequestClose={handleInfoClose}>
         <View style={styles.infoModalOverlay}>
           <View style={[styles.infoCard, { backgroundColor: t.colors.card, borderColor: t.colors.border }]}>
             <View style={styles.infoHeader}>
               <Text style={[styles.infoTitle, { color: t.colors.text }]}>About DOrSU AI</Text>
-              <Pressable onPress={() => setIsInfoOpen(false)} style={styles.infoCloseBtn} accessibilityLabel="Close info">
+              <Pressable onPress={handleInfoClose} style={styles.infoCloseBtn} accessibilityLabel="Close info">
                 <Ionicons name="close" size={20} color={t.colors.textMuted} />
               </Pressable>
             </View>
@@ -102,27 +145,28 @@ const AIChat = () => {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* AI Assistant Section */}
-        <View style={styles.centerIconContainer}>
+        <Animated.View
+          style={{
+            opacity: fadeAnim,
+            transform: [
+              { translateY: slideAnim }
+            ],
+            width: '100%',
+          }}
+        >
+          {/* AI Assistant Section */}
+          <View style={styles.centerIconContainer}>
           <MaterialIcons name="support-agent" size={80} color={t.colors.textMuted} style={styles.centerIcon} />
         </View>
         <Text style={[styles.askTitle, { color: t.colors.text }]}>Ask DOrSU AI anything</Text>
         <Text style={[styles.disclaimer, { color: t.colors.textMuted }]}>Responses are generated by AI and may be inaccurate.</Text>
+        </Animated.View>
       </ScrollView>
 
       {/* Suggestions */}
       <View style={styles.suggestionsContainer}>
-        {[SUGGESTIONS[0], SUGGESTIONS[1], SUGGESTIONS[2]].map((txt, idx) => (
-          <TouchableOpacity
-            key={idx}
-            style={[styles.promptCard, { backgroundColor: t.colors.card, borderColor: t.colors.border }, isWide && { maxWidth: 640 }]}
-            activeOpacity={0.9}
-          >
-            <View style={[styles.promptIconWrap, { backgroundColor: t.colors.surfaceAlt }]}>
-              <Ionicons name="reorder-three" size={16} color={t.colors.accent} />
-            </View>
-            <Text style={[styles.promptCardText, { color: t.colors.text }]}>{txt}</Text>
-          </TouchableOpacity>
+        {displayedSuggestions.map((txt, idx) => (
+          <SuggestionCard key={idx} text={txt} theme={t} isWide={isWide} />
         ))}
       </View>
 

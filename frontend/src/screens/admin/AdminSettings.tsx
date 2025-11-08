@@ -209,15 +209,15 @@ const AdminSettings = () => {
                 </View>
                 <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Dark Mode</Text>
               </View>
-              <Switch 
-                value={isDarkMode} 
+              <Switch
+                value={isDarkMode}
                 onValueChange={(value) => {
                   // Trigger haptic feedback immediately
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   // Toggle theme - state updates immediately, animation runs in background
                   toggleTheme();
                 }}
-                trackColor={{ false: theme.colors.border, true: theme.colors.accent }} 
+                trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
                 thumbColor={theme.colors.surface}
                 // Optimize switch performance
                 ios_backgroundColor={theme.colors.border}

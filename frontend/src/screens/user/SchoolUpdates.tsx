@@ -7,7 +7,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { theme as themeStyle } from '../../config/theme';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import AdminDataService from '../../services/AdminDataService';
 import { formatDate, timeAgo } from '../../utils/dateUtils';
 import PreviewModal from '../../modals/PreviewModal';
@@ -61,7 +61,7 @@ const UpdateCard = memo(({ update, onPress, theme }: { update: any; onPress: () 
 
 const SchoolUpdates = () => {
   const insets = useSafeAreaInsets();
-  const { isDarkMode, theme } = useTheme();
+  const { isDarkMode, theme } = useThemeValues();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [query, setQuery] = useState('');
   const [isSearchVisible, setIsSearchVisible] = useState(false);

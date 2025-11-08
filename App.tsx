@@ -1,31 +1,17 @@
+import React from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Animated, View } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AppNavigator from './frontend/src/navigation/AppNavigator';
 import { ThemeProvider } from './frontend/src/contexts/ThemeContext';
-import { useTheme } from './frontend/src/contexts/ThemeContext';
 
 const Root = () => {
-  const { fadeAnim, isAnimating, nextIsDarkMode } = useTheme();
-  
+  // Animation overlay disabled for instant theme switching
   return (
     <>
       <AppNavigator />
       <StatusBar style="auto" />
-      {isAnimating && nextIsDarkMode !== null && (
-        <Animated.View
-          style={[
-            styles.overlay,
-            {
-              opacity: fadeAnim,
-              // Use the color of the theme we're transitioning TO
-              backgroundColor: nextIsDarkMode ? '#000000' : '#FFFFFF',
-            },
-          ]}
-          pointerEvents="none"
-        />
-      )}
     </>
   );
 };

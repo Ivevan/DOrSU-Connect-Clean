@@ -12,7 +12,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { theme } from '../../config/theme';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import AdminDataService from '../../services/AdminDataService';
 import { formatDate, timeAgo, formatCalendarDate } from '../../utils/dateUtils';
 import MonthPickerModal from '../../modals/MonthPickerModal';
@@ -33,7 +33,7 @@ const CalendarScreen = () => {
   const PH_TZ = 'Asia/Manila';
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { isDarkMode, theme: t } = useTheme();
+  const { isDarkMode, theme: t } = useThemeValues();
   const scrollRef = useRef<ScrollView>(null);
   const initialNow = new Date();
   const [currentMonth, setCurrentMonth] = useState(new Date(Date.UTC(initialNow.getFullYear(), initialNow.getMonth(), 1)));
@@ -77,6 +77,7 @@ const CalendarScreen = () => {
   const [posts, setPosts] = useState<any[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
 
+  // Defer data loading until after screen is visible to prevent navigation delay
   React.useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -90,8 +91,14 @@ const CalendarScreen = () => {
         if (!cancelled) setIsLoadingPosts(false);
       }
     };
+    // Use requestAnimationFrame to defer to next frame, allowing screen to render immediately
+    const rafId = requestAnimationFrame(() => {
     load();
-    return () => { cancelled = true; };
+    });
+    return () => { 
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+    };
   }, []);
 
   const categoryToColors = (category?: string) => {
@@ -448,7 +455,7 @@ const CalendarScreen = () => {
       backgroundColor: t.colors.background,
     }]} collapsable={false}>
       <StatusBar
-        backgroundColor={t.colors.primary}
+          backgroundColor={t.colors.primary}
         barStyle={isDarkMode ? "light-content" : "light-content"}
         translucent={false}
         hidden={false}
@@ -477,11 +484,11 @@ const CalendarScreen = () => {
       >
         <View style={styles.headerLeft} collapsable={false}>
           <Text style={styles.headerTitle} numberOfLines={1}>School Calendar</Text>
-        </View>
+              </View>
         <View style={styles.headerRight} collapsable={false}>
-          <View style={styles.headerSpacer} />
-          <View style={styles.headerSpacer} />
-        </View>
+            <View style={styles.headerSpacer} />
+            <View style={styles.headerSpacer} />
+          </View>
       </View>
 
       <ScrollView 
@@ -505,8 +512,8 @@ const CalendarScreen = () => {
         <View>
           {/* Calendar Card */}
           <View style={[
-            styles.calendarCard,
-            {
+          styles.calendarCard,
+          {
               backgroundColor: t.colors.card,
             }
           ]}>
@@ -530,7 +537,7 @@ const CalendarScreen = () => {
               </View>
             </TouchableOpacity>
           </View>
-
+          
           {/* Week day headers */}
           <View style={[styles.weekHeader, { backgroundColor: t.colors.card }]}>
             {weekDays && Array.isArray(weekDays) && weekDays.map((day, index) => (
@@ -549,14 +556,14 @@ const CalendarScreen = () => {
           <View style={styles.calendarGrid}>
             {/* Show full month */}
             {days && Array.isArray(days) && days.map((day, index) => {
-              const currentDate = day ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day) : null;
-              const isCurrentDay = currentDate ? isToday(currentDate) : false;
-              const isSelectedDay = currentDate ? isSelected(currentDate) : false;
+                const currentDate = day ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day) : null;
+                const isCurrentDay = currentDate ? isToday(currentDate) : false;
+                const isSelectedDay = currentDate ? isSelected(currentDate) : false;
               return renderCalendarDay(currentDate || new Date(), day, isCurrentDay, !!isSelectedDay, index);
             })}
-          </View>
-          </View>
-        </View>
+                        </View>
+                      </View>
+              </View>
 
         {/* Month Picker Modal */}
         <MonthPickerModal
@@ -749,7 +756,7 @@ const CalendarScreen = () => {
         bottom: 0,
         paddingBottom: safeInsets.bottom,
       }]} collapsable={false}>
-        <UserBottomNavBar />
+      <UserBottomNavBar />
       </View>
     </View>
     </GestureHandlerRootView>

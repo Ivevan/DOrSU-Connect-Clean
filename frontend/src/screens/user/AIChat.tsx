@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Modal, Pressable, Animated, InteractionManager, Easing } from 'react-native';
 import { theme } from '../../config/theme';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
@@ -41,7 +41,7 @@ const SuggestionCard = memo(({ text, theme, isWide }: { text: string; theme: any
 
 const AIChat = () => {
   const insets = useSafeAreaInsets();
-  const { isDarkMode, theme: t } = useTheme();
+  const { isDarkMode, theme: t } = useThemeValues();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width } = useWindowDimensions();
   const isWide = width > 600;

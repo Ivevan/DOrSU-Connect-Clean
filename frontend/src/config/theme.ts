@@ -105,9 +105,23 @@ export const theme = lightTheme;
 
 export type Theme = typeof lightTheme;
 
-// Helper function to get theme based on mode
+// Cache theme objects to prevent recreation on every call
+let cachedLightTheme: Theme | null = null;
+let cachedDarkTheme: Theme | null = null;
+
+// Helper function to get theme based on mode - returns cached objects
 export const getTheme = (isDark: boolean): Theme => {
-  return isDark ? darkTheme : lightTheme;
+  if (isDark) {
+    if (!cachedDarkTheme) {
+      cachedDarkTheme = darkTheme;
+    }
+    return cachedDarkTheme;
+  } else {
+    if (!cachedLightTheme) {
+      cachedLightTheme = lightTheme;
+    }
+    return cachedLightTheme;
+  }
 };
 
 

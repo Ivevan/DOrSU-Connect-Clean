@@ -2,16 +2,25 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useMe
 import { useColorScheme, Platform, Animated } from 'react-native';
 import { Theme, getTheme } from '../config/theme';
 
-interface ThemeContextType {
+// Split context into values and actions to reduce re-renders
+interface ThemeValuesType {
   isDarkMode: boolean;
   theme: Theme;
+}
+
+interface ThemeActionsType {
   toggleTheme: () => void;
   setTheme: (isDark: boolean) => void;
+}
+
+interface ThemeContextType extends ThemeValuesType, ThemeActionsType {
   fadeAnim: Animated.Value;
   isAnimating: boolean;
   nextIsDarkMode: boolean | null;
 }
 
+const ThemeValuesContext = createContext<ThemeValuesType | undefined>(undefined);
+const ThemeActionsContext = createContext<ThemeActionsType | undefined>(undefined);
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 interface ThemeProviderProps {
@@ -44,9 +53,9 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   // Default to 'light' mode on app launch
   const [userPreference, setUserPreference] = useState<null | 'light' | 'dark'>('light');
 
-  // Animation for theme transition
+  // Animation for theme transition - use refs to avoid triggering re-renders
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const [isAnimating, setIsAnimating] = useState(false);
+  const isAnimatingRef = useRef(false);
   const previousIsDarkMode = useRef<boolean | null>(null);
   const nextIsDarkMode = useRef<boolean | null>(null);
 
@@ -57,77 +66,80 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     return system === 'dark';
   }, [rnScheme, webScheme, userPreference]);
 
-  // Trigger animation when theme changes (for system changes)
-  useEffect(() => {
-    if (previousIsDarkMode.current !== null && previousIsDarkMode.current !== isDarkMode) {
-      // Only animate if it's a system change, not a user toggle
-      // (user toggles are handled in toggleTheme)
-      if (!userPreference) {
-        triggerAnimation(isDarkMode);
-      }
-    }
-    previousIsDarkMode.current = isDarkMode;
-  }, [isDarkMode, userPreference]);
+  // Removed animation trigger - no longer needed for instant theme switching
 
-  // Animation function
-  const triggerAnimation = (willBeDark: boolean) => {
-    nextIsDarkMode.current = willBeDark;
-    setIsAnimating(true);
-    fadeAnim.setValue(0);
-    Animated.sequence([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 120,
-        useNativeDriver: true,
-      }),
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setIsAnimating(false);
-      nextIsDarkMode.current = null;
-    });
-  };
-
-  const toggleTheme = () => {
+  // Optimized toggleTheme - INSTANT theme switch, no animation delays
+  const toggleTheme = React.useCallback(() => {
     // Calculate the next theme state
     const nextMode = userPreference 
       ? (userPreference === 'dark' ? 'light' : 'dark')
       : (isDarkMode ? 'light' : 'dark');
-    const willBeDark = nextMode === 'dark';
     
-    // Start animation immediately before state change
-    triggerAnimation(willBeDark);
-    
-    // Update state immediately after starting animation
+    // Update state IMMEDIATELY - no delays, no animation, no batching
+    // This triggers re-renders but should be instant
     setUserPreference(nextMode);
-  };
+    
+    // No animation - instant switch
+  }, [userPreference, isDarkMode]);
 
-  const setTheme = (isDark: boolean) => {
+  const setTheme = React.useCallback((isDark: boolean) => {
     setUserPreference(isDark ? 'dark' : 'light');
-  };
+  }, []);
 
+  // Memoize theme calculation to prevent unnecessary recalculations
   const theme = useMemo(() => getTheme(isDarkMode), [isDarkMode]);
 
-  const value: ThemeContextType = {
+  // Split context values - only changes when theme actually changes
+  const values: ThemeValuesType = useMemo(() => ({
     isDarkMode,
     theme,
+  }), [isDarkMode, theme]);
+
+  // Split context actions - stable, never changes
+  const actions: ThemeActionsType = useMemo(() => ({
     toggleTheme,
     setTheme,
+  }), [toggleTheme, setTheme]);
+
+  // Full context value for backward compatibility
+  const fullValue: ThemeContextType = useMemo(() => ({
+    ...values,
+    ...actions,
     fadeAnim,
-    isAnimating,
+    isAnimating: isAnimatingRef.current,
     nextIsDarkMode: nextIsDarkMode.current,
-  };
+  }), [values, actions, fadeAnim]);
 
   return (
-    <ThemeContext.Provider value={value}>
-      {children}
-    </ThemeContext.Provider>
+    <ThemeValuesContext.Provider value={values}>
+      <ThemeActionsContext.Provider value={actions}>
+        <ThemeContext.Provider value={fullValue}>
+          {children}
+        </ThemeContext.Provider>
+      </ThemeActionsContext.Provider>
+    </ThemeValuesContext.Provider>
   );
 };
 
+// Optimized hook - components can use this to avoid re-renders when only actions are needed
+export const useThemeActions = (): ThemeActionsType => {
+  const context = useContext(ThemeActionsContext);
+  if (context === undefined) {
+    throw new Error('useThemeActions must be used within a ThemeProvider');
+  }
+  return context;
+};
+
+// Optimized hook - components can use this to only subscribe to theme values
+export const useThemeValues = (): ThemeValuesType => {
+  const context = useContext(ThemeValuesContext);
+  if (context === undefined) {
+    throw new Error('useThemeValues must be used within a ThemeProvider');
+  }
+  return context;
+};
+
+// Full hook for backward compatibility - use useThemeValues + useThemeActions when possible
 export const useTheme = (): ThemeContextType => {
   const context = useContext(ThemeContext);
   if (context === undefined) {

@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useThemeValues } from '../../contexts/ThemeContext';
 
 // Keep in sync with app navigator
  type RootStackParamList = {
@@ -39,7 +39,7 @@ const Bar: React.FC<BarProps> = ({
   isDarkMode = false,
 }) => {
   const insets = useSafeAreaInsets();
-  const { theme: t } = useTheme();
+  const { theme: t } = useThemeValues();
   
   return (
     <View style={[styles.container, { 

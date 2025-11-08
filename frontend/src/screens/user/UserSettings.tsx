@@ -9,7 +9,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { theme } from '../../config/theme';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useThemeValues, useThemeActions } from '../../contexts/ThemeContext';
 import LogoutModal from '../../modals/LogoutModal';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 
@@ -29,7 +29,9 @@ type RootStackParamList = {
 
 const UserSettings = () => {
   const insets = useSafeAreaInsets();
-  const { isDarkMode, theme: t, toggleTheme } = useTheme();
+  // Use split hooks to reduce re-renders - only subscribe to what we need
+  const { isDarkMode, theme: t } = useThemeValues();
+  const { toggleTheme } = useThemeActions();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const scrollRef = useRef<ScrollView>(null);
   
@@ -70,11 +72,10 @@ const UserSettings = () => {
   // Use useFocusEffect to only update when screen is focused, preventing layout shifts during navigation
   useFocusEffect(
     useCallback(() => {
-      // Subscribe to auth changes only when screen is focused
-      // Use InteractionManager to defer until after navigation animation completes
-      // This prevents the callback from firing immediately and causing layout shifts
+      // Subscribe to auth changes immediately but with a small delay to prevent blocking navigation
       let unsubscribe: (() => void) | null = null;
-      const interactionHandle = InteractionManager.runAfterInteractions(() => {
+      // Use setTimeout instead of InteractionManager to reduce delay
+      const timeoutId = setTimeout(() => {
         unsubscribe = onAuthStateChange((user) => {
           // Only update if user actually changed to avoid unnecessary re-renders
           setCurrentUser(prevUser => {
@@ -84,13 +85,13 @@ const UserSettings = () => {
             return prevUser;
           });
         });
-      });
+      }, 50); // Small delay to allow screen to render first
       
       return () => {
+        clearTimeout(timeoutId);
         if (unsubscribe) {
           unsubscribe();
         }
-        interactionHandle.cancel();
       };
     }, [])
   );
@@ -247,11 +248,15 @@ const UserSettings = () => {
               <Switch
                 value={isDarkMode}
                 onValueChange={(value) => {
+                  // Trigger haptic feedback immediately
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  // Toggle theme - state updates immediately, animation runs in background
                   toggleTheme();
                 }}
                 trackColor={{ false: t.colors.border, true: t.colors.accent }}
                 thumbColor={t.colors.surface}
+                // Optimize switch performance
+                ios_backgroundColor={t.colors.border}
               />
             </View>
 

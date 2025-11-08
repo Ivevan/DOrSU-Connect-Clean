@@ -90,7 +90,7 @@ const AppNavigator = () => {
             animation: 'none' as const, // Disabled for debugging
             animationDuration: 0,
             // Prevent layout shifts during navigation
-            freezeOnBlur: true,
+            freezeOnBlur: false, // Changed to false to prevent delay
             // Ensure consistent layout
             contentStyle: {
               backgroundColor: 'transparent',
@@ -103,6 +103,8 @@ const AppNavigator = () => {
           options={{
             animation: 'none' as const, // Disabled for debugging
             animationDuration: 0,
+            // Optimize for faster navigation
+            freezeOnBlur: false,
           }}
         />
         <Stack.Screen 

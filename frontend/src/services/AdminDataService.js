@@ -135,7 +135,8 @@ let postsStore = [
 ];
 let idCounter = 17;
 
-const delay = (ms = 250) => new Promise(resolve => setTimeout(resolve, ms));
+// Reduced delay for better performance - can be removed in production
+const delay = (ms = __DEV__ ? 50 : 100) => new Promise(resolve => setTimeout(resolve, ms));
 
 function normalizeImages(images) {
   if (!images) return [];

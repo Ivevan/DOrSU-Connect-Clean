@@ -7,7 +7,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useThemeValues, useThemeActions } from '../../contexts/ThemeContext';
 import { theme as themeConfig } from '../../config/theme';
 import LogoutModal from '../../modals/LogoutModal'; 
 
@@ -34,7 +34,9 @@ type RootStackParamList = {
 const AdminSettings = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { isDarkMode, theme, toggleTheme } = useTheme();
+  // Use split hooks to reduce re-renders
+  const { isDarkMode, theme } = useThemeValues();
+  const { toggleTheme } = useThemeActions();
   
   // State for various settings
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -185,11 +187,15 @@ const AdminSettings = () => {
               <Switch 
                 value={isDarkMode} 
                 onValueChange={(value) => {
+                  // Trigger haptic feedback immediately
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  // Toggle theme - state updates immediately, animation runs in background
                   toggleTheme();
                 }}
                 trackColor={{ false: theme.colors.border, true: theme.colors.accent }} 
-                thumbColor={theme.colors.surface} 
+                thumbColor={theme.colors.surface}
+                // Optimize switch performance
+                ios_backgroundColor={theme.colors.border}
               />
             </View>
 

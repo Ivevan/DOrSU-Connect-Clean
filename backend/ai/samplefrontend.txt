@@ -1,0 +1,593 @@
+const form = document.getElementById('chat-form');
+const input = document.getElementById('input');
+const messages = document.getElementById('messages');
+const statusEl = document.getElementById('status');
+
+// ===== REFRESH KB MODAL =====
+const refreshModal = document.getElementById('refresh-modal');
+const refreshModalClose = document.getElementById('refresh-modal-close');
+const refreshModalDone = document.getElementById('refresh-modal-done');
+const refreshLoading = document.getElementById('refresh-loading');
+const refreshSuccess = document.getElementById('refresh-success');
+const refreshError = document.getElementById('refresh-error');
+const refreshStats = document.getElementById('refresh-stats');
+const refreshErrorMessage = document.getElementById('refresh-error-message');
+
+function showRefreshModal() {
+  refreshModal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  
+  // Reset to loading state
+  refreshLoading.style.display = 'flex';
+  refreshSuccess.style.display = 'none';
+  refreshError.style.display = 'none';
+}
+
+function hideRefreshModal() {
+  refreshModal.style.display = 'none';
+  document.body.style.overflow = 'auto';
+}
+
+function showRefreshSuccess(data) {
+  refreshLoading.style.display = 'none';
+  refreshSuccess.style.display = 'flex';
+  
+  refreshStats.innerHTML = `
+    <div class="refresh-stat-item">
+      <div class="refresh-stat-label">Old Chunks Removed</div>
+      <div class="refresh-stat-value">${data.oldChunksRemoved || 0}</div>
+    </div>
+    <div class="refresh-stat-item">
+      <div class="refresh-stat-label">New Chunks Added</div>
+      <div class="refresh-stat-value">${data.newChunksAdded || 0}</div>
+    </div>
+    <div class="refresh-stat-item">
+      <div class="refresh-stat-label">Total Chunks</div>
+      <div class="refresh-stat-value">${data.totalChunks || 0}</div>
+    </div>
+  `;
+}
+
+function showRefreshError(message) {
+  refreshLoading.style.display = 'none';
+  refreshError.style.display = 'flex';
+  refreshErrorMessage.textContent = message;
+}
+
+// Close modal handlers
+refreshModalClose.addEventListener('click', hideRefreshModal);
+refreshModalDone.addEventListener('click', hideRefreshModal);
+refreshModal.querySelector('.refresh-modal-overlay').addEventListener('click', hideRefreshModal);
+
+// Knowledge base refresh button
+const refreshKnowledgeBtn = document.getElementById('refresh-knowledge-btn');
+if (refreshKnowledgeBtn) {
+  refreshKnowledgeBtn.addEventListener('click', async () => {
+    showRefreshModal();
+    
+    try {
+      const response = await fetch('/api/refresh-knowledge', { method: 'POST' });
+      const result = await response.json();
+      
+      if (result.success) {
+        showRefreshSuccess(result.data);
+      } else {
+        showRefreshError(result.error || 'Unknown error occurred');
+      }
+    } catch (error) {
+      showRefreshError('Network error: ' + error.message);
+    }
+  });
+}
+
+let typingTimer = null;
+let dots = 0;
+
+function startTypingAnimation() {
+  stopTypingAnimation();
+  statusEl.textContent = '';
+  dots = 0;
+}
+
+function stopTypingAnimation() {
+  if (typingTimer) {
+    clearInterval(typingTimer);
+    typingTimer = null;
+  }
+}
+
+function createMessageElement(who) {
+  const wrapper = document.createElement('div');
+  wrapper.className = `message ${who}`;
+
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+
+  wrapper.appendChild(bubble);
+  
+  // Add copy button for AI messages (ChatGPT-style)
+  if (who === 'ai') {
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'copy-btn';
+    copyBtn.innerHTML = `
+      <svg class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+      </svg>
+      <span class="copy-text">Copy</span>
+    `;
+    copyBtn.setAttribute('aria-label', 'Copy message');
+    copyBtn.addEventListener('click', () => copyMessage(bubble, copyBtn));
+    wrapper.appendChild(copyBtn);
+  }
+  
+  return { wrapper, bubble };
+}
+
+// Copy message to clipboard (ChatGPT-style)
+async function copyMessage(bubble, button) {
+  try {
+    // Get plain text from bubble (strip HTML)
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = bubble.innerHTML;
+    const text = tempDiv.innerText || tempDiv.textContent;
+    
+    // Copy to clipboard
+    await navigator.clipboard.writeText(text);
+    
+    // Visual feedback - show "Copied!" with checkmark
+    const originalHTML = button.innerHTML;
+    button.innerHTML = `
+      <svg class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+      <span class="copy-text">Copied!</span>
+    `;
+    button.classList.add('copied');
+    
+    // Reset after 2 seconds
+    setTimeout(() => {
+      button.innerHTML = originalHTML;
+      button.classList.remove('copied');
+    }, 2000);
+  } catch (err) {
+    console.error('Failed to copy:', err);
+    
+    // Fallback feedback
+    const originalHTML = button.innerHTML;
+    button.innerHTML = `<span class="copy-text">Failed</span>`;
+    setTimeout(() => {
+      button.innerHTML = originalHTML;
+    }, 2000);
+  }
+}
+
+function addMessage(text, who) {
+  const { wrapper, bubble } = createMessageElement(who);
+  if (who === 'ai') {
+    bubble.innerHTML = renderMarkdownInline(text);
+  } else {
+    bubble.textContent = text;
+  }
+  messages.appendChild(wrapper);
+  messages.scrollTop = messages.scrollHeight;
+  
+  return { wrapper, bubble };
+}
+
+function addTypingIndicatorAfter(targetWrapper) {
+  const { wrapper, bubble } = createMessageElement('ai');
+  bubble.innerHTML = '<span class="typing"><span class="typing-label">Please wait</span><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>';
+  messages.insertBefore(wrapper, targetWrapper ? targetWrapper.nextSibling : null);
+  messages.scrollTop = messages.scrollHeight;
+  return { wrapper, bubble };
+}
+
+async function typewriterWrite(element, text, speed = 8) {
+  element.innerHTML = '';
+  let acc = '';
+  for (let i = 0; i < text.length; i++) {
+    acc += text[i];
+    element.innerHTML = renderMarkdownInline(acc);
+    await new Promise(r => setTimeout(r, speed));
+  }
+}
+
+function renderMarkdownInline(src) {
+  if (!src) return '';
+  
+  // ☢️☢️☢️ NUCLEAR HTML CLEANUP - MUST RUN FIRST!!!
+  console.log('☢️☢️☢️ [STEP 1] ORIGINAL TEXT:', src.substring(0, 200));
+  
+  // CRITICAL: Clean ALL HTML BEFORE doing ANYTHING else!
+  // PATTERN 0: EXACT md-link match (HIGHEST PRIORITY)
+  // Matches: 2025/07/file.pdf" class="md-link" target="blank"...>Text
+  src = src.replace(/(\d{4}\/\d{2}\/[^\s"]+\.(pdf|jpg|png|jpeg|doc|docx|xls|xlsx))["']\s*class=["']md-link["'][^>]*>([^<\n]*)/gi,
+    (match, partialUrl, ext, trailingText) => {
+      console.log('🎯 CAUGHT md-link:', partialUrl);
+      const fullUrl = `https://dorsu.edu.ph/wp-content/uploads/${partialUrl}`;
+      console.log('  ✅ Fixed to:', fullUrl);
+      return fullUrl; // Return ONLY the complete URL
+    });
+  
+  // Pattern 1: Generic - any file with class= attribute
+  src = src.replace(/([^\s"]+\.(pdf|jpg|png|jpeg|doc|docx|xls|xlsx))["']\s*class=[^>]*>([^<\n]*)/gi, 
+    (match, fileUrl, ext, trailingText) => {
+      console.log('🔥 CAUGHT:', match.substring(0, 70));
+      console.log('  ✅ Cleaned:', fileUrl);
+      return fileUrl;
+    });
+  
+  // Pattern 2: Complete partial URLs (2025/07/...)
+  src = src.replace(/(Link:\s*)(\d{4}\/\d{2}\/[^\s"<>]+\.(pdf|jpg|png|jpeg|doc|docx|xls|xlsx))/gi, 
+    (match, prefix, partialUrl) => {
+      const fullUrl = `https://dorsu.edu.ph/wp-content/uploads/${partialUrl}`;
+      console.log('🔧 Completed:', partialUrl, '→', fullUrl);
+      return prefix + fullUrl;
+    });
+  
+  // Pattern 3: CRITICAL - Fix numbered list bleeding into URLs (MUST RUN FIRST!)
+  // Fixes: Report.pdf2. → Report.pdf\n\n2.
+  // Fixes: Report.pdf2 → Report.pdf\n\n2
+  src = src.replace(/\.(pdf|jpg|png|jpeg|doc|docx|xls|xlsx)(\d+)(\.)/gi, (match, ext, num, dot) => {
+    console.log(`🚨 CAUGHT numbered list bleeding: ${match} → .${ext}\\n\\n${num}${dot}`);
+    return `.${ext}\n\n${num}${dot}`;
+  });
+  
+  // Pattern 4: Remove trailing numbers without period
+  src = src.replace(/\.(pdf|jpg|png|jpeg|doc|docx|xls|xlsx)(\d+)(\s)/gi, '.$1\n\n$2$3');
+  
+  // Pattern 5-12: Remove ALL HTML remnants
+  src = src.replace(/["']\s*class=["'][^"']*["'][^>]*>/gi, '');
+  src = src.replace(/\s*(class|target|rel|href|title)=["'][^"']*["']/gi, '');
+  src = src.replace(/<\/?a[^>]*>/gi, '');
+  src = src.replace(/\.(pdf|jpg|png|jpeg|doc|docx|xls|xlsx)\d*["']/gi, '.$1');
+  src = src.replace(/[<>]/g, '');
+  src = src.replace(/\s+(noopener|noreferrer|md-link|_blank|blank)\s+/gi, ' ');
+  
+  console.log('✅✅✅ [STEP 2] AFTER CLEANUP:', src.substring(0, 200));
+  
+  // Escape function for text content (not URLs or markdown)
+  const esc = (s) => s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  
+  // First, temporarily replace markdown links with placeholders to protect URLs
+  const linkPlaceholders = [];
+  let out = src.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+    const placeholder = `__LINK_${linkPlaceholders.length}__`;
+    const cleanUrl = url.trim().replace(/['"]/g, '');
+    linkPlaceholders.push({ text: text, url: cleanUrl });
+    return placeholder;
+  });
+  
+  // Also detect plain URLs and convert them to markdown links
+  const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`\[\]]+)/gi;
+  out = out.replace(urlRegex, (url) => {
+    // Skip if this URL is already part of a placeholder
+    if (out.includes('__LINK_') && linkPlaceholders.some(l => l.url === url)) {
+      return url;
+    }
+    
+    const placeholder = `__LINK_${linkPlaceholders.length}__`;
+    const cleanUrl = url.replace(/[.,;:!?]+$/, ''); // Remove trailing punctuation
+    
+    // Generate friendly display name
+    let displayName = cleanUrl;
+    if (cleanUrl.includes('heyzine.com/flip-book/921ebac285')) {
+      displayName = 'Grade Inquiry Manual 📖';
+    } else if (cleanUrl.includes('heyzine.com/flip-book/9b5fdf090b')) {
+      displayName = 'Pre-Admission User Manual 📖';
+    } else if (cleanUrl.includes('/wp-content/uploads/') && cleanUrl.includes('Annual')) {
+      // Extract year from FILENAME (e.g., 2024-Annual-Accomplishment-Report.pdf), NOT from path (/2025/07/)
+      const filenameMatch = cleanUrl.match(/\/(\d{4})-Annual-Accomplishment-Report\.pdf$/i);
+      if (filenameMatch) {
+        const reportYear = filenameMatch[1];
+        displayName = `${reportYear} Annual Accomplishment Report 📄`;
+      } else {
+        displayName = 'Annual Accomplishment Report 📄';
+      }
+    } else if (cleanUrl.includes('dorsu.edu.ph/news/')) {
+      // Extract news article title from URL slug
+      const newsMatch = cleanUrl.match(/\/news\/([^\/]+)\/?$/);
+      if (newsMatch) {
+        // Convert URL slug to readable title (e.g., "dorsu-celebrates-success" -> "DOrSU Celebrates Success")
+        const slug = newsMatch[1];
+        const title = slug
+          .replace(/-/g, ' ')
+          .split(' ')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+          .join(' ');
+        displayName = `${title} 📰`;
+      } else {
+        displayName = 'News Article 📰';
+      }
+    } else if (cleanUrl.includes('dorsu.edu.ph')) {
+      // Generic DOrSU page (not news, not uploads)
+      displayName = 'DOrSU Website 🌐';
+    } else if (cleanUrl.length > 50) {
+      displayName = cleanUrl.substring(0, 45) + '... 🔗';
+    }
+    
+    linkPlaceholders.push({ text: displayName, url: cleanUrl });
+    return placeholder;
+  });
+  
+  // This cleanup is now redundant since we cleaned at the start
+  // But keep as final safety net
+  out = out.replace(/["']\s*class=["'][^"']*["']/gi, '');
+  out = out.replace(/[<>]/g, '');
+  
+  console.log('🛡️ [STEP 4] BEFORE ESCAPE:', out.substring(0, 200));
+  
+  // Now escape the remaining text (but not the placeholders)
+  out = esc(out);
+  
+  // Restore links as actual HTML (opens in new tab like ChatGPT)
+  out = out.replace(/__LINK_(\d+)__/g, (match, index) => {
+    const link = linkPlaceholders[index];
+    if (!link) return match; // Safety check
+    
+    const safeText = link.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeUrl = link.url.replace(/"/g, '&quot;');
+    
+    // Add visual indicator for external links (like ChatGPT)
+    return `<a href="${safeUrl}" class="md-link" target="_blank" rel="noopener noreferrer" title="Open in new tab">${safeText}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline-block;margin-left:4px;vertical-align:middle;opacity:0.6;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></a>`;
+  });
+  
+  // Bold text (** or __)
+  out = out.replace(/(\*\*|__)(.*?)\1/g, '<strong class="md-bold">$2</strong>');
+  
+  // Italic text (* or _)
+  out = out.replace(/(?<!\*)\*(?!\*)([^\*]+)\*(?!\*)/g, '<em>$1</em>');
+  out = out.replace(/(?<!_)_(?!_)([^_]+)_(?!_)/g, '<em>$1</em>');
+  
+  // Inline code (`code`)
+  out = out.replace(/`([^`]+)`/g, '<code class="md-code">$1</code>');
+  
+  // Headers
+  out = out.replace(/^### (.*$)/gm, '<h3 class="md-h3">$1</h3>');
+  out = out.replace(/^## (.*$)/gm, '<h2 class="md-h2">$1</h2>');
+  out = out.replace(/^# (.*$)/gm, '<h1 class="md-h1">$1</h1>');
+  
+  // Numbered lists (1. 2. 3.) - with better spacing
+  out = out.replace(/^(\d+)\.\s+(.*)$/gm, '<div class="md-list-item md-numbered"><strong class="md-list-number">$1.</strong> $2</div>');
+  
+  // Bullet points (• or -) - with better spacing
+  out = out.replace(/^[•\-]\s+(.*)$/gm, '<div class="md-list-item md-bullet-item"><span class="md-bullet">•</span> $1</div>');
+  
+  // Line breaks - preserve double newlines for proper spacing
+  // First, protect double newlines by replacing with a marker
+  out = out.replace(/\n\n/g, '___DOUBLE_BR___');
+  out = out.replace(/\n/g, '<br>');
+  // Restore double newlines with proper spacing
+  out = out.replace(/___DOUBLE_BR___/g, '<br><br>');
+  
+  return out;
+}
+
+let clearedPlaceholderOnce = false;
+const performanceMode = true; // Fast mode is always enabled (default)
+
+// Smooth typing animation with visible character-by-character reveal
+async function typewriterSmooth(element, text, speed = 10) {
+  // FIXED: Render the COMPLETE markdown ONCE and show it instantly
+  // This prevents broken HTML from partial URL parsing during character-by-character animation
+  // The typewriter effect was causing renderMarkdownInline() to process incomplete URLs
+  // which resulted in broken HTML being displayed
+  
+  const fullRenderedHTML = renderMarkdownInline(text);
+  element.innerHTML = fullRenderedHTML;
+  
+  // Skip typewriter animation to avoid HTML parsing issues
+  // You can enable a fade-in effect instead for smooth appearance
+  element.style.opacity = '0';
+  element.style.transition = 'opacity 0.3s ease-in';
+  setTimeout(() => {
+    element.style.opacity = '1';
+  }, 50);
+}
+
+async function displayMessage(text, who) {
+  const { bubble } = addMessage('', who);
+  
+  if (who === 'ai') {
+    // Smooth typing animation (10ms per character = natural speed)
+    await typewriterSmooth(bubble, text, 10);
+  } else {
+    bubble.textContent = text;
+  }
+}
+// Hide hero title when user clicks/focuses the input bar (temporary - resets on refresh)
+let welcomeMessageShown = false;
+input.addEventListener('focus', () => {
+  const heroTitle = document.getElementById('hero-title');
+  if (heroTitle && heroTitle.style.display !== 'none') {
+    heroTitle.style.setProperty('display', 'none', 'important');
+    
+    // Show welcome message after hero disappears (only once)
+    // But ONLY if there are no existing messages in the chat
+    if (!welcomeMessageShown && messages.children.length === 0) {
+      setTimeout(() => {
+        addMessage('Hi! I\'m your DOrSU Assistant. Ask me anything about Davao Oriental State University!', 'ai');
+        welcomeMessageShown = true;
+      }, 300);
+    } else {
+      // If there are already messages, just mark as shown to prevent duplicate
+      welcomeMessageShown = true;
+    }
+  }
+});
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = input.value.trim();
+  if (!text) return;
+  
+  if (!clearedPlaceholderOnce) {
+    input.placeholder = '';
+    clearedPlaceholderOnce = true;
+  }
+  const { wrapper: userWrapper } = addMessage(text, 'user');
+  input.value = '';
+  
+  // Add query analysis indicator for complex queries
+  const queryAnalysisElement = document.createElement('div');
+  queryAnalysisElement.className = 'query-analysis';
+  
+  // Check if this might be a comprehensive query
+  const lowerText = text.toLowerCase();
+  const comprehensiveKeywords = ['core values', 'mission', 'missions', 'mandate', 'objectives', 'graduate outcomes', 'quality commitments', 'president', 'leadership', 'history', 'faculties', 'programs', 'enrollment'];
+  const isComprehensive = comprehensiveKeywords.some(keyword => lowerText.includes(keyword));
+  
+  if (isComprehensive) {
+    queryAnalysisElement.textContent = '🎯 Comprehensive query detected - retrieving all related data...';
+    queryAnalysisElement.classList.add('comprehensive');
+  } else {
+    queryAnalysisElement.textContent = '🔍 Analyzing query complexity...';
+  }
+  
+  messages.appendChild(queryAnalysisElement);
+  
+  const { wrapper: typingWrapper } = addTypingIndicatorAfter(userWrapper);
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text })
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Request failed');
+
+    typingWrapper.remove();
+    queryAnalysisElement.remove(); // Remove the analysis indicator
+    const reply = data.reply || 'There is no current available data at the moment.';
+    
+    // Add response time and detailed status information
+    const responseTime = data.responseTime;
+    if (responseTime) {
+      const timeElement = document.createElement('div');
+      timeElement.className = 'response-stats';
+      
+      let statusText = `⚡ ${(responseTime / 1000).toFixed(2)}s`;
+      
+      // Add complexity information
+      if (data.complexity) {
+        const complexityIcon = data.complexity === 'simple' ? '💬' : 
+                              data.complexity === 'complex' ? '🔀' : '🎯';
+        statusText += ` | ${complexityIcon} ${data.complexity.toUpperCase()}`;
+      }
+      
+      // Add source information and apply appropriate class
+      if (data.cached) {
+        statusText += ' | 🎯 CACHED';
+        timeElement.classList.add('stats-cached');
+      } else if (data.source === 'cached-response') {
+        statusText += ' | ⚡ INSTANT';
+        timeElement.classList.add('stats-instant');
+      } else if (data.source === 'ai-model') {
+        statusText += ' | 🤖 AI GENERATED';
+        timeElement.classList.add('stats-ai');
+      } else if (data.source === 'quick-command') {
+        statusText += ' | ⚡ QUICK COMMAND';
+        timeElement.classList.add('stats-quick');
+      }
+      
+      // Add provider and model information
+      if (data.provider) {
+        if (data.provider === 'groq') {
+          statusText += ` | 🚀 Groq Cloud`;
+        } else if (data.provider === 'ollama') {
+          statusText += ` | 💻 Local GPU`;
+        }
+      }
+      if (data.model) {
+        statusText += ` (${data.model})`;
+      }
+      
+      // Add query type information
+      if (data.queryType) {
+        if (data.queryType === 'general-academic') {
+          statusText += ' | 📚 GENERAL';
+        } else if (data.queryType === 'dorsu-specific') {
+          statusText += ' | 🏫 DOrSU KB';
+        }
+      }
+      
+      timeElement.textContent = statusText;
+      messages.appendChild(timeElement);
+    }
+    
+    await displayMessage(reply, 'ai');
+  } catch (err) {
+    typingWrapper.remove();
+    queryAnalysisElement.remove(); // Remove the analysis indicator
+    addMessage('There is no current available data at the moment.', 'ai');
+  } finally {
+    stopTypingAnimation();
+    statusEl.textContent = '';
+  }
+});
+
+// Keyboard shortcuts
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    form.dispatchEvent(new Event('submit'));
+  }
+});
+
+// On page load - hero title always resets to visible (shown by CSS when messages is empty)
+window.addEventListener('load', () => {
+  // Clear any old localStorage from previous version
+  localStorage.removeItem('heroHidden');
+  
+  // Reset welcome message flag on page load
+  welcomeMessageShown = false;
+  
+  // Hero title is automatically shown by CSS: body:has(#messages:empty) #hero-title { display: block; }
+  // It will hide when user clicks the input bar, then welcome message appears
+  // Resets every refresh - no persistence
+});
+
+// ============================================
+// DARK MODE TOGGLE
+// ============================================
+
+const darkModeToggle = document.getElementById('dark-mode-toggle');
+const sunIcon = darkModeToggle.querySelector('.sun-icon');
+const moonIcon = darkModeToggle.querySelector('.moon-icon');
+
+// Check for saved theme preference or default to 'light'
+const currentTheme = localStorage.getItem('theme') || 'light';
+
+// Apply the saved theme on page load
+if (currentTheme === 'dark') {
+  document.documentElement.setAttribute('data-theme', 'dark');
+  sunIcon.style.display = 'none';
+  moonIcon.style.display = 'block';
+} else {
+  document.documentElement.setAttribute('data-theme', 'light');
+  sunIcon.style.display = 'block';
+  moonIcon.style.display = 'none';
+}
+
+// Toggle dark mode
+darkModeToggle.addEventListener('click', () => {
+  const currentTheme = document.documentElement.getAttribute('data-theme');
+  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  
+  document.documentElement.setAttribute('data-theme', newTheme);
+  localStorage.setItem('theme', newTheme);
+  
+  // Toggle icons with animation
+  if (newTheme === 'dark') {
+    sunIcon.style.display = 'none';
+    moonIcon.style.display = 'block';
+  } else {
+    sunIcon.style.display = 'block';
+    moonIcon.style.display = 'none';
+  }
+});
+

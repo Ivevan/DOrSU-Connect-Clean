@@ -3,11 +3,13 @@
   
   "compilerOptions": {
     "strict": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "typeRoots": ["./node_modules/@types", "./frontend/src/types"]
   },
   "include": [
     "**/*.ts",
-    "**/*.tsx"
+    "**/*.tsx",
+    "frontend/src/types/**/*.d.ts"
   ],
   "exclude": [
     "node_modules"

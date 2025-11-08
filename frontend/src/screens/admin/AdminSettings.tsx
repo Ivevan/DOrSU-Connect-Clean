@@ -1,12 +1,14 @@
 import * as React from 'react';
-import { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Switch, Alert, Animated } from 'react-native';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Switch, Alert, Animated, InteractionManager, Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../contexts/ThemeContext';
+import { theme as themeConfig } from '../../config/theme';
 import LogoutModal from '../../modals/LogoutModal';
 import ProfileSettingsModal from '../../modals/ProfileSettingsModal'; 
 
@@ -24,9 +26,11 @@ type RootStackParamList = {
   AdminCalendar: undefined;
   PostUpdate: undefined;
   ManagePosts: undefined;
-  About: undefined;
   ContactSupport: undefined;
-  HelpCenter: undefined;
+  UserHelpCenter: undefined;
+  TermsOfUse: undefined;
+  PrivacyPolicy: undefined;
+  Licenses: undefined;
 };
 
 const AdminSettings = () => {
@@ -41,67 +45,82 @@ const AdminSettings = () => {
 
   // Animation values for smooth entrance
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
 
   useEffect(() => {
-    // Unique entrance animation for Settings - Slide from bottom with scale
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 350,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        tension: 80,
-        friction: 6,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    // Optimized entrance animation - delay until interactions complete
+    const handle = InteractionManager.runAfterInteractions(() => {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 250,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    });
+    return () => handle.cancel();
   }, []);
 
   const sheetY = useRef(new Animated.Value(300)).current;
   const profileSettingsSheetY = useRef(new Animated.Value(300)).current;
 
-  const openLogout = () => {
+  const openLogout = useCallback(() => {
     setIsLogoutOpen(true);
     // Wait for modal mount then animate
     setTimeout(() => {
       Animated.timing(sheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
     }, 0);
-  };
+  }, [sheetY]);
 
-  const closeLogout = () => {
+  const closeLogout = useCallback(() => {
     Animated.timing(sheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
       setIsLogoutOpen(false);
     });
-  };
+  }, [sheetY]);
 
-  const confirmLogout = () => {
+  const confirmLogout = useCallback(() => {
     closeLogout();
     navigation.navigate('GetStarted');
-  };
+  }, [closeLogout, navigation]);
 
-  const openProfileSettings = () => {
+  const openProfileSettings = useCallback(() => {
     setIsProfileSettingsOpen(true);
     // Wait for modal mount then animate
     setTimeout(() => {
       Animated.timing(profileSettingsSheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
     }, 0);
-  };
+  }, [profileSettingsSheetY]);
 
-  const closeProfileSettings = () => {
+  const closeProfileSettings = useCallback(() => {
     Animated.timing(profileSettingsSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
       setIsProfileSettingsOpen(false);
     });
-  };
+  }, [profileSettingsSheetY]);
 
+  // Navigation handlers for AdminBottomNavBar
+  const handleDashboardPress = useCallback(() => navigation.navigate('AdminDashboard'), [navigation]);
+  const handleChatPress = useCallback(() => navigation.navigate('AdminAIChat'), [navigation]);
+  const handleCalendarPress = useCallback(() => navigation.navigate('AdminCalendar'), [navigation]);
+  const handleSettingsPress = useCallback(() => navigation.navigate('AdminSettings'), [navigation]);
+  const handlePostUpdatePress = useCallback(() => navigation.navigate('PostUpdate'), [navigation]);
+  const handleManagePostPress = useCallback(() => navigation.navigate('ManagePosts'), [navigation]);
+  const handleAddPress = useCallback(() => { /* future: open create flow */ }, []);
+
+  // Navigation handlers for Support section
+  const handleContactSupportPress = useCallback(() => navigation.navigate('ContactSupport'), [navigation]);
+
+  // Navigation handlers for About section
+  const handleUserHelpCenterPress = useCallback(() => navigation.navigate('UserHelpCenter'), [navigation]);
+  const handleTermsOfUsePress = useCallback(() => navigation.navigate('TermsOfUse'), [navigation]);
+  const handlePrivacyPolicyPress = useCallback(() => navigation.navigate('PrivacyPolicy'), [navigation]);
+  const handleLicensesPress = useCallback(() => navigation.navigate('Licenses'), [navigation]);
 
   return (
     <View style={[styles.container, {
@@ -113,25 +132,18 @@ const AdminSettings = () => {
     }]}>
       <StatusBar
         backgroundColor={theme.colors.primary}
-        barStyle={isDarkMode ? "light-content" : "light-content"}
-        translucent={true}
+        barStyle="light-content"
+        translucent={false}
       />
-      {/* Safe area filler to match header color when translucent status bar is used */}
-      <View style={{ height: insets.top, backgroundColor: theme.colors.primary }} />
 
       {/* Header */}
-      <View style={[styles.header, { 
-        backgroundColor: theme.colors.primary,
-        borderBottomLeftRadius: 16,
-        borderBottomRightRadius: 16,
-      }]}>
+      <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
         <View style={styles.headerLeft}>
-          <Text style={[styles.headerTitle, { color: '#fff' }]}>Settings</Text>
+          <Text style={styles.headerTitle}>Settings</Text>
         </View>
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.headerButton} onPress={openLogout}>
-            <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
+          <View style={styles.headerSpacer} />
+          <View style={styles.headerSpacer} />
         </View>
       </View>
 
@@ -141,20 +153,31 @@ const AdminSettings = () => {
           style={[
             styles.profileSection,
             {
-              backgroundColor: theme.colors.card,
               opacity: fadeAnim,
               transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
-              ]
+                { translateY: slideAnim }
+              ],
+              backgroundColor: theme.colors.card
             }
           ]}
         >
-          <View style={[styles.profileAvatar, { backgroundColor: theme.colors.surfaceAlt }]}>
-            <Ionicons name="person" size={32} color={theme.colors.textMuted} />
+          <View style={styles.profileAvatarContainer}>
+            <View style={[styles.profileAvatar, { backgroundColor: theme.colors.primary + '20' }]}>
+              <View style={styles.profileAvatarPlaceholder}>
+                <Ionicons name="person" size={40} color={theme.colors.primary} />
+              </View>
+            </View>
+            <View style={[styles.profileBadge, { backgroundColor: '#10B981' }]}>
+              <Ionicons name="checkmark" size={12} color="#FFFFFF" />
+            </View>
           </View>
-          <Text style={[styles.profileName, { color: theme.colors.text }]}>Admin User</Text>
-          <Text style={[styles.profileEmail, { color: theme.colors.textMuted }]}>admin@dorsu.edu.ph</Text>
+          <View style={styles.profileInfo}>
+            <Text style={[styles.profileName, { color: theme.colors.text }]}>Admin User</Text>
+            <View style={styles.profileEmailContainer}>
+              <Ionicons name="mail-outline" size={14} color={theme.colors.textMuted} />
+              <Text style={[styles.profileEmail, { color: theme.colors.textMuted }]}>admin@dorsu.edu.ph</Text>
+            </View>
+          </View>
         </Animated.View>
 
         {/* Settings Categories */}
@@ -164,8 +187,7 @@ const AdminSettings = () => {
             {
               opacity: fadeAnim,
               transform: [
-                { translateY: slideAnim },
-                { scale: scaleAnim }
+                { translateY: slideAnim }
               ]
             }
           ]}
@@ -179,7 +201,7 @@ const AdminSettings = () => {
               onPress={openProfileSettings}
             >
               <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.chipBg }]}>
+                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
                   <Ionicons name="person-outline" size={20} color={theme.colors.accent} />
                 </View>
                 <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Profile Settings</Text>
@@ -189,7 +211,7 @@ const AdminSettings = () => {
 
             <TouchableOpacity style={styles.settingItemLast}>
               <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.chipBg }]}>
+                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
                   <Ionicons name="key-outline" size={20} color={theme.colors.accent} />
                 </View>
                 <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Change Password</Text>
@@ -204,14 +226,17 @@ const AdminSettings = () => {
             
             <View style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}>
               <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.chipBg }]}>
+                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
                   <Ionicons name="moon-outline" size={20} color={theme.colors.accent} />
                 </View>
                 <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Dark Mode</Text>
               </View>
               <Switch 
                 value={isDarkMode} 
-                onValueChange={toggleTheme} 
+                onValueChange={(value) => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  toggleTheme();
+                }}
                 trackColor={{ false: theme.colors.border, true: theme.colors.accent }} 
                 thumbColor={theme.colors.surface} 
               />
@@ -219,7 +244,7 @@ const AdminSettings = () => {
 
             <View style={styles.settingItemLast}>
               <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.chipBg }]}>
+                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
                   <Ionicons name="notifications-outline" size={20} color={theme.colors.accent} />
                 </View>
                 <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Notifications</Text>
@@ -239,11 +264,29 @@ const AdminSettings = () => {
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Support</Text>
             
             <TouchableOpacity 
-              style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}
-              onPress={() => navigation.navigate('HelpCenter')}
+              style={styles.settingItemLast}
+              onPress={handleContactSupportPress}
             >
               <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.chipBg }]}>
+                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
+                  <Ionicons name="mail-outline" size={20} color={theme.colors.accent} />
+                </View>
+                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Contact Support</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+
+          {/* About Section */}
+          <View style={[styles.sectionCard, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>About</Text>
+            
+            <TouchableOpacity 
+              style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}
+              onPress={handleUserHelpCenterPress}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
                   <Ionicons name="help-circle-outline" size={20} color={theme.colors.accent} />
                 </View>
                 <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Help Center</Text>
@@ -253,40 +296,81 @@ const AdminSettings = () => {
 
             <TouchableOpacity 
               style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}
-              onPress={() => navigation.navigate('ContactSupport')}
+              onPress={handleTermsOfUsePress}
             >
               <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.chipBg }]}>
-                  <Ionicons name="mail-outline" size={20} color={theme.colors.accent} />
+                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
+                  <Ionicons name="document-text-outline" size={20} color={theme.colors.accent} />
                 </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Contact Support</Text>
+                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Terms of Use</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.settingItemLast} onPress={() => navigation.navigate('About')}>
+            <TouchableOpacity 
+              style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}
+              onPress={handlePrivacyPolicyPress}
+            >
               <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.chipBg }]}>
+                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
+                  <Ionicons name="shield-checkmark-outline" size={20} color={theme.colors.accent} />
+                </View>
+                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Privacy Policy</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}
+              onPress={handleLicensesPress}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
+                  <Ionicons name="document-outline" size={20} color={theme.colors.accent} />
+                </View>
+                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Licenses</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+
+            <View style={styles.settingItemLast}>
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
                   <Ionicons name="information-circle-outline" size={20} color={theme.colors.accent} />
                 </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>About</Text>
+                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>DOrSU Connect</Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
-            </TouchableOpacity>
+              <Text style={[styles.settingValue, { color: theme.colors.textMuted }]}>v1.0.0</Text>
+            </View>
           </View>
 
+          {/* Sign Out Button */}
+          <TouchableOpacity 
+            style={[
+              styles.signOutButton, 
+              { 
+                backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)',
+                borderColor: isDarkMode ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.2)',
+              }
+            ]}
+            onPress={openLogout}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="log-out-outline" size={22} color="#EF4444" />
+            <Text style={[styles.signOutText, { color: '#EF4444' }]}>Sign out</Text>
+          </TouchableOpacity>
         </Animated.View>
       </ScrollView>
 
       <AdminBottomNavBar
         activeTab="settings"
-        onDashboardPress={() => navigation.navigate('AdminDashboard')}
-        onChatPress={() => navigation.navigate('AdminAIChat')}
-        onAddPress={() => { /* future: open create flow */ }}
-        onCalendarPress={() => navigation.navigate('AdminCalendar')}
-        onSettingsPress={() => navigation.navigate('AdminSettings')}
-        onPostUpdatePress={() => navigation.navigate('PostUpdate')}
-        onManagePostPress={() => navigation.navigate('ManagePosts')}
+        onDashboardPress={handleDashboardPress}
+        onChatPress={handleChatPress}
+        onAddPress={handleAddPress}
+        onCalendarPress={handleCalendarPress}
+        onSettingsPress={handleSettingsPress}
+        onPostUpdatePress={handlePostUpdatePress}
+        onManagePostPress={handleManagePostPress}
       />
 
       <LogoutModal
@@ -308,114 +392,160 @@ const AdminSettings = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: themeConfig.colors.surfaceAlt,
   },
   header: {
+    backgroundColor: themeConfig.colors.primary,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
     elevation: 4,
-    marginBottom: 6,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    marginBottom: 8,
   },
   headerLeft: {
     flex: 1,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  headerButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    marginLeft: 4,
-  },
-  headerIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: '800',
     letterSpacing: 0.2,
+    color: '#fff',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  headerSpacer: {
+    width: 40,
+    height: 33,
+    marginLeft: 4,
   },
   scrollContent: {
-    paddingHorizontal: 12,
-    paddingTop: 16,
-    paddingBottom: 32,
+    paddingHorizontal: themeConfig.spacing(1.5),
+    paddingTop: themeConfig.spacing(2),
+    paddingBottom: themeConfig.spacing(2),
   },
   profileSection: {
+    flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    backgroundColor: themeConfig.colors.surface,
+    borderRadius: themeConfig.radii.md,
+    padding: themeConfig.spacing(2.5),
+    marginBottom: themeConfig.spacing(2),
+    gap: themeConfig.spacing(2),
   },
-  profileAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  profileAvatarContainer: {
+    position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    backgroundColor: 'transparent',
+  },
+  profileAvatar: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: themeConfig.colors.primary + '30',
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+  profileAvatarPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+  profileBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: themeConfig.colors.surface,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  profileInfo: {
+    flex: 1,
+    alignItems: 'flex-start',
   },
   profileName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 2,
+    fontSize: 18,
+    fontWeight: '700',
+    color: themeConfig.colors.text,
+    marginBottom: themeConfig.spacing(0.5),
+    letterSpacing: 0.2,
+  },
+  profileEmailContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   profileEmail: {
-    fontSize: 13,
+    fontSize: 14,
+    color: themeConfig.colors.textMuted,
+    fontWeight: '400',
   },
   settingsContainer: {
-    gap: 12,
+    gap: themeConfig.spacing(1.5),
   },
   sectionCard: {
-    borderRadius: 12,
-    padding: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    backgroundColor: themeConfig.colors.surface,
+    borderRadius: themeConfig.radii.md,
+    padding: themeConfig.spacing(1.5),
+    ...themeConfig.shadow1,
   },
   sectionTitle: {
     fontSize: 15,
     fontWeight: '600',
-    marginBottom: 12,
+    color: themeConfig.colors.text,
+    marginBottom: themeConfig.spacing(1.5),
   },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    paddingVertical: themeConfig.spacing(1.5),
     borderBottomWidth: 1,
+    borderBottomColor: themeConfig.colors.border,
   },
   settingItemLast: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    paddingVertical: themeConfig.spacing(1.5),
   },
   settingLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    gap: 12,
+    gap: themeConfig.spacing(1.5),
   },
   settingIcon: {
     width: 32,
@@ -427,6 +557,33 @@ const styles = StyleSheet.create({
   settingTitle: {
     fontSize: 14,
     fontWeight: '500',
+    color: themeConfig.colors.text,
+  },
+  settingRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  settingValue: {
+    fontSize: 14,
+    fontWeight: '400',
+  },
+  signOutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: themeConfig.spacing(2.5),
+    paddingHorizontal: themeConfig.spacing(3),
+    borderRadius: themeConfig.radii.md,
+    marginTop: themeConfig.spacing(2),
+    marginBottom: 0,
+    gap: themeConfig.spacing(1.5),
+    borderWidth: 1,
+  },
+  signOutText: {
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
 });
 

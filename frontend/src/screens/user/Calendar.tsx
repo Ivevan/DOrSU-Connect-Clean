@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useCallback, memo, useMemo } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Alert, Pressable, Image, Animated, Dimensions, Easing, SectionList, AccessibilityInfo, InteractionManager } from 'react-native';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -157,8 +157,21 @@ const CalendarScreen = () => {
     return dayjs.utc(date).tz(PH_TZ).format('MMMM');
   };
 
+  const transformPostToEvent = (p: any) => ({
+    id: p.id,
+    title: p.title,
+    dateKey: parseAnyDateToKey(p.isoDate || p.date),
+    time: '',
+    type: p.category || 'Announcement',
+    color: categoryToColors(p.category).dot,
+    chip: categoryToColors(p.category),
+    isPinned: !!p.isPinned,
+    isUrgent: !!p.isUrgent,
+  });
+
   const getEventsForDate = React.useCallback((date: Date) => {
     const key = formatDateKey(date);
+    if (!Array.isArray(posts)) return [];
     return posts
       .map(p => ({
         id: p.id,
@@ -199,43 +212,45 @@ const CalendarScreen = () => {
     return selectedDate ? getPHDateKey(date) === getPHDateKey(selectedDate) : false;
   };
 
-  const renderCalendarDay = (date: Date, day: number | null, isCurrentDay: boolean, isSelectedDay: boolean, key: number) => {
+  const handleDayPress = useCallback((date: Date) => {
+    setSelectedDate(date);
+    Haptics.selectionAsync();
+  }, []);
+
+  // Memoized Calendar Day Component
+  const CalendarDay = memo(({ date, day, isCurrentDay, isSelectedDay, index, eventsForDay, theme, dotScale, onPress }: { date: Date; day: number | null; isCurrentDay: boolean; isSelectedDay: boolean; index: number; eventsForDay: any[]; theme: any; dotScale: Animated.Value; onPress: (date: Date) => void }) => {
     if (!day) return (
       <View
-        key={key}
         style={[
           styles.calendarDay,
           styles.emptyDay,
           {
-            borderRightColor: t.colors.border,
-            borderBottomColor: t.colors.border,
-            borderRightWidth: (key % 7) === 6 ? 0 : StyleSheet.hairlineWidth,
+            borderRightColor: theme.colors.border,
+            borderBottomColor: theme.colors.border,
+            borderRightWidth: (index % 7) === 6 ? 0 : StyleSheet.hairlineWidth,
           },
         ]}
       />
     );
     
-    const eventsForDay = getEventsForDate(date);
-    
     return (
       <TouchableOpacity 
-        key={key}
         style={[
           styles.calendarDay,
           { 
-            borderRightColor: t.colors.border, 
-            borderBottomColor: t.colors.border,
-            borderRightWidth: (key % 7) === 6 ? 0 : StyleSheet.hairlineWidth
+            borderRightColor: theme.colors.border, 
+            borderBottomColor: theme.colors.border,
+            borderRightWidth: (index % 7) === 6 ? 0 : StyleSheet.hairlineWidth
           }
         ]}
-        onPress={() => { setSelectedDate(date); Haptics.selectionAsync(); }}
+        onPress={() => onPress(date)}
       >
         <View style={styles.dayContent}>
           <View style={[
             styles.dayNumberContainer,
             isCurrentDay && styles.todayContainer,
-            isCurrentDay && { backgroundColor: t.colors.accent },
-            isSelectedDay && [styles.selectedContainer, { borderColor: t.colors.accent }]
+            isCurrentDay && { backgroundColor: theme.colors.accent },
+            isSelectedDay && [styles.selectedContainer, { borderColor: theme.colors.accent }]
           ]}>
             <Text
               accessibilityRole="button"
@@ -243,7 +258,7 @@ const CalendarScreen = () => {
               accessibilityHint="Selects this date to view events"
               style={[
                 styles.dayNumber,
-                { color: t.colors.text },
+                { color: theme.colors.text },
                 isCurrentDay && styles.todayText,
                 isSelectedDay && styles.selectedText
               ]}
@@ -251,7 +266,7 @@ const CalendarScreen = () => {
               {day}
             </Text>
           </View>
-          {eventsForDay.length > 0 && (
+          {eventsForDay && eventsForDay.length > 0 && (
             <View style={styles.eventIndicators}>
               {eventsForDay.slice(0, 3).map((event, eventIndex) => (
                 <Animated.View 
@@ -264,28 +279,36 @@ const CalendarScreen = () => {
         </View>
       </TouchableOpacity>
     );
-  };
+  });
+
+  const renderCalendarDay = useCallback((date: Date, day: number | null, isCurrentDay: boolean, isSelectedDay: boolean, key: number) => {
+    const eventsForDay = getEventsForDate(date);
+    return (
+      <CalendarDay
+        key={key}
+        date={date}
+        day={day}
+        isCurrentDay={isCurrentDay}
+        isSelectedDay={isSelectedDay}
+        index={key}
+        eventsForDay={eventsForDay}
+        theme={t}
+        dotScale={dotScale}
+        onPress={handleDayPress}
+      />
+    );
+  }, [getEventsForDate, t, dotScale, handleDayPress]);
 
   const filteredEvents = React.useMemo(() => {
+    if (!Array.isArray(posts)) return [];
     if (selectedDate && !showAllEvents) {
       return getEventsForDate(selectedDate);
     }
     return posts.map(transformPostToEvent);
-  }, [selectedDate, showAllEvents, posts, getEventsForDate]);
-
-  const transformPostToEvent = (p: any) => ({
-    id: p.id,
-    title: p.title,
-    dateKey: parseAnyDateToKey(p.isoDate || p.date),
-    time: '',
-    type: p.category || 'Announcement',
-    color: categoryToColors(p.category).dot,
-    chip: categoryToColors(p.category),
-    isPinned: !!p.isPinned,
-    isUrgent: !!p.isUrgent,
-  });
+  }, [selectedDate, showAllEvents, posts, getEventsForDate, transformPostToEvent]);
 
   const getAllEventsGrouped = () => {
+    if (!Array.isArray(posts)) return [];
     const all = posts.map(p => ({
       ...transformPostToEvent(p),
       dateObj: (() => { 
@@ -471,7 +494,7 @@ const CalendarScreen = () => {
 
           {/* Week day headers */}
           <View style={[styles.weekHeader, { backgroundColor: t.colors.card }]}>
-            {weekDays.map((day, index) => (
+            {weekDays && Array.isArray(weekDays) && weekDays.map((day, index) => (
               <View key={index} style={[styles.weekDayHeader, { borderRightColor: t.colors.border }]}>
                 <Text
                   style={[styles.weekDayText, { color: t.colors.textMuted }]}
@@ -486,7 +509,7 @@ const CalendarScreen = () => {
           {/* Calendar Grid */}
           <View style={styles.calendarGrid}>
             {/* Show full month */}
-            {getDaysInMonth(currentMonth).map((day, index) => {
+            {days && Array.isArray(days) && days.map((day, index) => {
               const currentDate = day ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day) : null;
               const isCurrentDay = currentDate ? isToday(currentDate) : false;
               const isSelectedDay = currentDate ? isSelected(currentDate) : false;
@@ -579,7 +602,7 @@ const CalendarScreen = () => {
 
           {!showAllEvents && (
             <Animated.View style={{ opacity: listAnim, transform: [{ translateY: listAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
-            {filteredEvents.map((event: any) => (
+            {Array.isArray(filteredEvents) && filteredEvents.map((event: any) => (
             <TouchableOpacity
               key={event.id}
               style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
@@ -629,12 +652,12 @@ const CalendarScreen = () => {
 
           {showAllEvents && (
             <Animated.View style={{ opacity: listAnim, transform: [{ translateY: listAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
-            {groupedEvents.map(group => (
+            {Array.isArray(groupedEvents) && groupedEvents.map(group => (
             <View key={group.key} style={styles.groupContainer}>
               <Text style={[styles.groupHeaderText, { color: t.colors.textMuted }]}>
                 {formatCalendarDate(new Date(group.key))}
               </Text>
-              {group.items.map((event: any) => (
+              {Array.isArray(group.items) && group.items.map((event: any) => (
             <TouchableOpacity
                   key={event.id}
                   style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}

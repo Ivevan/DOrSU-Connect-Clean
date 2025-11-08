@@ -1,7 +1,13 @@
-import React from 'react';
+import React, { memo, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
+
+// Month names array (moved outside component for performance)
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
 
 interface MonthPickerModalProps {
   visible: boolean;
@@ -11,6 +17,26 @@ interface MonthPickerModalProps {
   scaleAnim: Animated.Value;
   opacityAnim: Animated.Value;
 }
+
+// Memoized Month Item Component
+const MonthItem = memo(({ month, index, isSelected, onSelect, theme }: { month: string; index: number; isSelected: boolean; onSelect: (index: number) => void; theme: any }) => (
+  <TouchableOpacity
+    style={[
+      styles.monthPickerCard,
+      { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+      isSelected && [styles.monthPickerCardSelected, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }]
+    ]}
+    onPress={() => onSelect(index)}
+  >
+    <Text style={[
+      styles.monthPickerText,
+      { color: theme.colors.text },
+      isSelected && styles.monthPickerTextSelected
+    ]}>
+      {month.substring(0, 3)}
+    </Text>
+  </TouchableOpacity>
+));
 
 const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
   visible,
@@ -22,12 +48,11 @@ const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
 }) => {
   const { theme: t } = useTheme();
 
-  const getMonthNames = () => {
-    return [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-  };
+  const currentMonthIndex = useMemo(() => currentMonth.getMonth(), [currentMonth]);
+
+  const handleSelectMonth = useCallback((index: number) => {
+    onSelectMonth(index);
+  }, [onSelectMonth]);
 
   return (
     <Modal
@@ -59,24 +84,15 @@ const MonthPickerModal: React.FC<MonthPickerModalProps> = ({
           </View>
           
           <View style={styles.monthPickerGrid}>
-            {getMonthNames().map((month, index) => (
-              <TouchableOpacity
+            {MONTH_NAMES.map((month, index) => (
+              <MonthItem
                 key={index}
-                style={[
-                  styles.monthPickerCard,
-                  { backgroundColor: t.colors.surface, borderColor: t.colors.border },
-                  currentMonth.getMonth() === index && [styles.monthPickerCardSelected, { backgroundColor: t.colors.primary, borderColor: t.colors.primary }]
-                ]}
-                onPress={() => onSelectMonth(index)}
-              >
-                <Text style={[
-                  styles.monthPickerText,
-                  { color: t.colors.text },
-                  currentMonth.getMonth() === index && styles.monthPickerTextSelected
-                ]}>
-                  {month.substring(0, 3)}
-                </Text>
-              </TouchableOpacity>
+                month={month}
+                index={index}
+                isSelected={currentMonthIndex === index}
+                onSelect={handleSelectMonth}
+                theme={t}
+              />
             ))}
           </View>
         </Animated.View>
@@ -168,4 +184,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default MonthPickerModal;
+export default memo(MonthPickerModal);

@@ -42,6 +42,19 @@ let postsStore = [
     source: 'Admin',
   },
   {
+    id: '16',
+    title: 'Campus Career Fair 2025',
+    description: 'Join us for the annual Campus Career Fair today from 9:00 AM to 4:00 PM at the Main Gymnasium. Meet with top employers, explore career opportunities, and network with industry professionals. Bring your resume and dress professionally!',
+    category: 'Event',
+    date: 'Nov 8, 2025',
+    isoDate: new Date(2025, 10, 8).toISOString(), // Nov 8, 2025 (Saturday)
+    images: [],
+    image: undefined,
+    isPinned: true,
+    isUrgent: false,
+    source: 'Admin',
+  },
+  {
     id: '10',
     title: 'Cultural Week Celebration',
     description: 'Join us for our annual Cultural Week celebration from November 10-14, 2025. Experience diverse cultural performances, food festivals, and art exhibitions. All students and faculty are welcome.',
@@ -120,7 +133,7 @@ let postsStore = [
     source: 'Admin',
   },
 ];
-let idCounter = 16;
+let idCounter = 17;
 
 const delay = (ms = 250) => new Promise(resolve => setTimeout(resolve, ms));
 

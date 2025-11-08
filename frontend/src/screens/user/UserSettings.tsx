@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, ScrollView, Switch, Alert, Animated, Image, InteractionManager, Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
@@ -38,10 +38,10 @@ const UserSettings = () => {
   // User state from Firebase Auth
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   
-  // Get user display name and email
-  const userName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
-  const userEmail = currentUser?.email || 'No email';
-  const userPhoto = currentUser?.photoURL || null;
+  // Get user display name and email (memoized)
+  const userName = useMemo(() => currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User', [currentUser]);
+  const userEmail = useMemo(() => currentUser?.email || 'No email', [currentUser]);
+  const userPhoto = useMemo(() => currentUser?.photoURL || null, [currentUser]);
 
   // Animation values for smooth entrance
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -85,25 +85,25 @@ const UserSettings = () => {
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
   const sheetY = useRef(new Animated.Value(300)).current;
 
-  const openLogout = () => {
+  const openLogout = useCallback(() => {
     setIsLogoutOpen(true);
     setTimeout(() => {
       Animated.timing(sheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
     }, 0);
-  };
+  }, [sheetY]);
 
-  const closeLogout = () => {
+  const closeLogout = useCallback(() => {
     Animated.timing(sheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
       setIsLogoutOpen(false);
     });
-  };
+  }, [sheetY]);
 
-  const handleLogout = () => openLogout();
+  const handleLogout = useCallback(() => openLogout(), [openLogout]);
 
-  const confirmLogout = () => {
+  const confirmLogout = useCallback(() => {
     closeLogout();
     navigation.navigate('GetStarted');
-  };
+  }, [closeLogout, navigation]);
   
   return (
     <View style={[styles.container, {

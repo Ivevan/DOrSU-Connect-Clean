@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef, useEffect } from 'react';
+import React, { useMemo, useState, useRef, useEffect, useCallback, memo } from 'react';
 import { View, Text, StyleSheet, StatusBar, Platform, TextInput, ScrollView, Pressable, Image, FlatList, Animated, InteractionManager, Easing, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +25,40 @@ type RootStackParamList = {
 
 type UpdateCategory = 'Announcement' | 'Event' | 'Academic';
 
+// Helper function to get Philippines timezone date key (moved outside component for performance)
+const getPHDateKey = (d: Date | string) => {
+  try {
+    const date = typeof d === 'string' ? new Date(d) : d;
+    const dtf = new Intl.DateTimeFormat('en-PH', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    });
+    const parts = dtf.formatToParts(date);
+    const y = Number(parts.find(p => p.type === 'year')?.value);
+    const m = Number(parts.find(p => p.type === 'month')?.value) - 1;
+    const day = Number(parts.find(p => p.type === 'day')?.value);
+    return Date.UTC(y, m, day);
+  } catch {
+    const date = typeof d === 'string' ? new Date(d) : d;
+    return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+};
+
+// Memoized Update Card Component
+const UpdateCard = memo(({ update, onPress, theme }: { update: any; onPress: () => void; theme: any }) => (
+  <Pressable style={[styles.updateCard, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
+    <View style={styles.updateContent}>
+      <Text style={[styles.updateTitle, { color: theme.colors.text }]}>{update.title}</Text>
+      <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
+    </View>
+    <View style={[styles.updateTag, { backgroundColor: getTagColor(update.tag) }]}>
+      <Text style={[styles.updateTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
+    </View>
+  </Pressable>
+));
+
 const SchoolUpdates = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useTheme();
@@ -42,7 +76,7 @@ const SchoolUpdates = () => {
 
   // Auth state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const userName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
+  const userName = useMemo(() => currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User', [currentUser]);
 
   // Animation values for smooth entrance
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -77,23 +111,29 @@ const SchoolUpdates = () => {
     return () => unsubscribe();
   }, []);
 
-  const handleSearchPress = () => {
-    setIsSearchVisible(!isSearchVisible);
-    if (isSearchVisible) {
-      setQuery(''); // Clear search when closing
-    }
-  };
+  const handleSearchPress = useCallback(() => {
+    setIsSearchVisible(prev => {
+      if (prev) {
+        setQuery(''); // Clear search when closing
+      }
+      return !prev;
+    });
+  }, []);
 
-  const handleNotificationsPress = () => {
+  const handleNotificationsPress = useCallback(() => {
     Alert.alert('Notifications', 'Notifications feature coming soon.');
-  };
+  }, []);
 
-  const handleUpdatePress = (update: { title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean }) => {
+  const handleUpdatePress = useCallback((update: { title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean }) => {
     // Open preview modal for all updates
     setPreviewUpdate(update);
     setActivePreviewIndex(0);
     setIsPreviewOpen(true);
-  };
+  }, []);
+
+  const handleClosePreview = useCallback(() => {
+    setIsPreviewOpen(false);
+  }, []);
 
   // Fetch data from AdminDataService
   useEffect(() => {
@@ -108,7 +148,8 @@ const SchoolUpdates = () => {
           id: post.id,
           title: post.title,
           body: post.description,
-          date: formatDate(post.date),
+          date: formatDate(post.isoDate || post.date),
+          isoDate: post.isoDate || post.date, // Store isoDate for accurate date comparison
           category: post.category as UpdateCategory,
           tag: post.category,
           description: post.description,
@@ -142,10 +183,15 @@ const SchoolUpdates = () => {
     });
   }, [updates, query]);
 
-  // Today's events (category Event occurring today)
+  // Today's events (category Event occurring today) - using timezone-aware comparison
   const todaysEvents = useMemo(() => {
-    const today = formatDate(new Date());
-    return updates.filter(u => u.category === 'Event' && u.date === today);
+    const todayKey = getPHDateKey(new Date());
+    return updates.filter(u => {
+      if (u.category !== 'Event') return false;
+      if (!u.isoDate) return false;
+      const eventKey = getPHDateKey(u.isoDate);
+      return eventKey === todayKey;
+    });
   }, [updates]);
 
   return (
@@ -231,16 +277,8 @@ const SchoolUpdates = () => {
             </View>
           )}
 
-          {!isLoading && !error && todaysEvents.map((update, index) => (
-            <Pressable key={index} style={[styles.updateCard, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={() => handleUpdatePress(update)}>
-              <View style={styles.updateContent}>
-                <Text style={[styles.updateTitle, { color: theme.colors.text }]}>{update.title}</Text>
-                <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
-              </View>
-              <View style={[styles.updateTag, { backgroundColor: getTagColor(update.tag) }]}>
-                <Text style={[styles.updateTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
-              </View>
-            </Pressable>
+          {!isLoading && !error && todaysEvents.map((update) => (
+            <UpdateCard key={update.id} update={update} onPress={() => handleUpdatePress(update)} theme={theme} />
           ))}
         </View>
 
@@ -269,16 +307,8 @@ const SchoolUpdates = () => {
             </View>
           )}
 
-          {!isLoading && !error && filtered.map((update, index) => (
-            <Pressable key={index} style={[styles.updateCard, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={() => handleUpdatePress(update)}>
-              <View style={styles.updateContent}>
-                <Text style={[styles.updateTitle, { color: theme.colors.text }]}>{update.title}</Text>
-                <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
-              </View>
-              <View style={[styles.updateTag, { backgroundColor: getTagColor(update.tag) }]}>
-                <Text style={[styles.updateTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
-              </View>
-            </Pressable>
+          {!isLoading && !error && filtered.map((update) => (
+            <UpdateCard key={update.id} update={update} onPress={() => handleUpdatePress(update)} theme={theme} />
           ))}
         </View>
         </Animated.View>
@@ -288,7 +318,7 @@ const SchoolUpdates = () => {
       <PreviewModal
         visible={isPreviewOpen}
         update={previewUpdate}
-        onClose={() => setIsPreviewOpen(false)}
+        onClose={handleClosePreview}
       />
 
       <UserBottomNavBar />

@@ -3,6 +3,7 @@ import { View, TouchableOpacity, Text, StyleSheet, Animated, InteractionManager 
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useFocusEffect } from '@react-navigation/native';
 
 interface AdminBottomNavBarProps {
   onDashboardPress?: () => void;
@@ -66,6 +67,27 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
   const waveAnim2 = waveAnim2Ref.current!;
   const waveAnim3 = waveAnim3Ref.current!;
   const rotateAnim = rotateAnimRef.current!;
+  
+  // Reset expanded state when screen comes back into focus (e.g., navigating back from PostUpdate/ManagePosts)
+  useFocusEffect(
+    React.useCallback(() => {
+      // Always ensure menu is collapsed when screen comes into focus
+      // This resets the state when navigating back from PostUpdate/ManagePosts
+      const resetMenu = () => {
+        setIsExpanded(false);
+        setIsRotated(false);
+        expandAnim.setValue(0);
+        rotateAnim.setValue(0);
+      };
+      
+      // Use a small delay to ensure this runs after any navigation transitions
+      const timeoutId = setTimeout(resetMenu, 50);
+      
+      return () => {
+        clearTimeout(timeoutId);
+      };
+    }, [expandAnim, rotateAnim])
+  );
 
   useEffect(() => {
     // Only start animation if component is mounted
@@ -219,17 +241,15 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
       return;
     }
     
-    // Immediately collapse menu and navigate without animation
+    // Immediately collapse menu - instant reset for better UX
     setIsExpanded(false);
     setIsRotated(false);
-    setIsAnimating(true);
-    isAnimatingRef.current = true;
-    
-    // Reset animation state immediately
+    expandAnim.setValue(0);
+    rotateAnim.setValue(0);
     setIsAnimating(false);
     isAnimatingRef.current = false;
     
-    // Call navigation immediately
+    // Navigate immediately
     if (onPostUpdatePress) {
       onPostUpdatePress();
     }
@@ -241,23 +261,17 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
       return;
     }
     
-    
-    // Immediately collapse menu and navigate without animation
+    // Immediately collapse menu - instant reset for better UX
     setIsExpanded(false);
     setIsRotated(false);
-    setIsAnimating(true);
-    isAnimatingRef.current = true;
-    
-    // Reset animation state immediately
+    expandAnim.setValue(0);
+    rotateAnim.setValue(0);
     setIsAnimating(false);
     isAnimatingRef.current = false;
     
-    // Call navigation immediately
+    // Navigate immediately
     if (onManagePostPress) {
-      console.log('Calling onManagePostPress function');
       onManagePostPress();
-    } else {
-      console.log('onManagePostPress is undefined!');
     }
   };
 

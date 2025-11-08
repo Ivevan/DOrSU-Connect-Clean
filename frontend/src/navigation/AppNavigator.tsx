@@ -131,7 +131,18 @@ const AppNavigator = () => {
           name="AdminCalendar" 
           component={AdminCalendar}
         />
-        <Stack.Screen name="PostUpdate" component={PostUpdate} />
+        <Stack.Screen 
+          name="PostUpdate" 
+          component={PostUpdate}
+          options={{
+            animation: 'none' as const, // Disabled for debugging
+            animationDuration: 0,
+            freezeOnBlur: false,
+            contentStyle: {
+              backgroundColor: 'transparent',
+            },
+          }}
+        />
         <Stack.Screen name="ManagePosts" component={ManagePosts} />
         <Stack.Screen name="UserHelpCenter" component={UserHelpCenterScreen} />
         <Stack.Screen name="TermsOfUse" component={TermsOfUseScreen} />

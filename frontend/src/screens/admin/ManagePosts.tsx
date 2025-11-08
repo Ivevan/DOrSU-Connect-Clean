@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo, useRef, useCallback, memo } from 'react';
-import { useTheme } from '../../contexts/ThemeContext';
+import React, { useEffect, useState, useMemo, useRef, useCallback, memo, useLayoutEffect } from 'react';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import AdminDataService from '../../services/AdminDataService';
 import {
   View,
@@ -43,7 +43,19 @@ type Post = {
 const ManagePosts: React.FC = () => {
   const navigation = useNavigation<ManagePostsNavigationProp>();
   const insets = useSafeAreaInsets();
-  const { isDarkMode, theme } = useTheme();
+  const { isDarkMode, theme } = useThemeValues();
+  
+  // Memoize safe area insets to prevent recalculation during navigation
+  const safeInsets = useMemo(() => ({
+    top: insets.top,
+    bottom: insets.bottom,
+    left: insets.left,
+    right: insets.right,
+  }), [insets.top, insets.bottom, insets.left, insets.right]);
+  
+  // Lock header height to prevent layout shifts
+  const headerHeightRef = useRef<number>(64);
+  const [headerHeight, setHeaderHeight] = useState(64);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
@@ -80,10 +92,6 @@ const ManagePosts: React.FC = () => {
   // Animation values for confirmation modals
   const pinSheetY = useRef(new Animated.Value(300)).current;
   const deleteSheetY = useRef(new Animated.Value(300)).current;
-
-  // Animation values - DISABLED FOR PERFORMANCE DEBUGGING
-  const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
-  const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
   
   // Inline, dependency-free date data
   const months = useMemo(() => [
@@ -356,32 +364,61 @@ const ManagePosts: React.FC = () => {
     }
   }, [filteredPosts, selectedSort]);
 
+  // Measure header height immediately on layout
+  useLayoutEffect(() => {
+    // Set initial header height estimate
+    if (headerHeightRef.current === 64) {
+      // This will be updated by onLayout callback
+    }
+  }, []);
+
   return (
     <View style={[styles.container, {
       backgroundColor: theme.colors.background,
-      paddingTop: insets.top,
-      paddingBottom: insets.bottom, // Keep bottom padding since this screen doesn't use AdminBottomNavBar
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    }]}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+    }]} collapsable={false}>
+      <StatusBar 
+        backgroundColor={theme.colors.background}
+        barStyle={isDarkMode ? "light-content" : "dark-content"} 
+        translucent={false}
+        hidden={false}
+      />
       
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.background }] }>
+      {/* Safe Area Top Spacer - Fixed position */}
+      <View style={[styles.safeAreaTop, {
+        height: safeInsets.top,
+        backgroundColor: theme.colors.background,
+      }]} collapsable={false} />
+      
+      {/* Header - Fixed position to prevent layout shifts */}
+      <View
+        style={[styles.header, {
+          backgroundColor: theme.colors.background,
+          top: safeInsets.top,
+        }]}
+        onLayout={(e) => {
+          const { height } = e.nativeEvent.layout;
+          // Only update if height actually changed to prevent unnecessary re-renders
+          if (height > 0 && Math.abs(height - headerHeightRef.current) > 1) {
+            headerHeightRef.current = height;
+            setHeaderHeight(height);
+          }
+        }}
+        collapsable={false}
+      >
         <TouchableOpacity onPress={() => {
           if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
             navigation.goBack();
           } else {
             (navigation as any).navigate('AdminDashboard');
           }
-        }} style={styles.closeButton}>
+        }} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Go back" accessibilityHint="Returns to the previous screen">
           <Ionicons name="chevron-back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Manage Posts</Text>
-          <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]}>View and manage all updates</Text>
+        <View style={styles.headerCenter} collapsable={false}>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>Manage Posts</Text>
+          <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]} numberOfLines={1}>View and manage all updates</Text>
         </View>
-        <View style={styles.headerRight}>
+        <View style={styles.headerRight} collapsable={false}>
           <TouchableOpacity style={[styles.newButton, { backgroundColor: theme.colors.primary }]} onPress={handleNewPost}>
             <Ionicons name="add" size={20} color="#fff" />
             <Text style={[styles.newButtonText, { color: '#fff' }]}>New</Text>
@@ -390,25 +427,30 @@ const ManagePosts: React.FC = () => {
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: 12, paddingBottom: 12 }]}
+        style={[styles.scrollView, {
+          marginTop: safeInsets.top + headerHeight,
+        }]}
+        contentContainerStyle={[styles.content, {
+          paddingTop: 12,
+          paddingBottom: 12 + safeInsets.bottom,
+        }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={true}
         bounces={true}
+        removeClippedSubviews={true}
+        scrollEventThrottle={16}
       >
 
         {/* Filter Posts Section */}
-        <Animated.View 
+        <View 
           style={[
             styles.filterContainer,
             {
               backgroundColor: theme.colors.card,
               borderColor: theme.colors.border,
-              opacity: fadeAnim,
-              transform: [
-                { translateY: slideAnim }
-              ]
             }
           ]}
+          collapsable={false}
         >
           <View style={styles.filterHeaderRow}>
             <Text style={[styles.filterTitle, { color: theme.colors.text }]}>Filter Posts</Text>
@@ -552,19 +594,14 @@ const ManagePosts: React.FC = () => {
               )}
             </TouchableOpacity>
           </View>
-        </Animated.View>
+        </View>
 
         {/* Posts List */}
-        <Animated.View 
+        <View 
           style={[
             styles.postsContainer,
-            {
-              opacity: fadeAnim,
-              transform: [
-                { translateY: slideAnim }
-              ]
-            }
           ]}
+          collapsable={false}
         >
           <Text style={[styles.postsTitle, { color: theme.colors.text }]}>Posts ({sortedPosts.length})</Text>
           
@@ -660,7 +697,7 @@ const ManagePosts: React.FC = () => {
               </View>
             ))
           )}
-        </Animated.View>
+        </View>
       </ScrollView>
 
       {/* More Options Modal */}
@@ -918,16 +955,29 @@ const ManagePosts: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
     paddingBottom: 0,
   },
+  safeAreaTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+  },
+  scrollView: {
+    flex: 1,
+  },
   header: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 999,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingBottom: 12,
-    backgroundColor: '#fff',
+    minHeight: 64, // Fixed min height to prevent layout shifts
     borderBottomWidth: 0,
     shadowColor: '#000',
     shadowOpacity: 0.04,

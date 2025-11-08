@@ -24,7 +24,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as DocumentPicker from 'expo-document-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import PreviewModal from '../../modals/PreviewModal';
 
 type RootStackParamList = {
@@ -40,7 +40,19 @@ const PostUpdate: React.FC = () => {
   const route = useRoute<any>();
   const editingPostId: string | undefined = route?.params?.postId;
   const insets = useSafeAreaInsets();
-  const { isDarkMode, theme } = useTheme();
+  const { isDarkMode, theme } = useThemeValues();
+  
+  // Memoize safe area insets to prevent recalculation during navigation
+  const safeInsets = useMemo(() => ({
+    top: insets.top,
+    bottom: insets.bottom,
+    left: insets.left,
+    right: insets.right,
+  }), [insets.top, insets.bottom, insets.left, insets.right]);
+  
+  // Lock header height to prevent layout shifts
+  const headerHeightRef = useRef<number>(64);
+  const [headerHeight, setHeaderHeight] = useState(64);
   
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Announcement');
@@ -341,27 +353,44 @@ const PostUpdate: React.FC = () => {
   return (
     <View style={[styles.container, {
       backgroundColor: theme.colors.background,
-      paddingTop: insets.top,
-      paddingBottom: insets.bottom, // Keep bottom padding since this screen doesn't use AdminBottomNavBar
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    }]}>
+    }]} collapsable={false}>
       <StatusBar 
+        backgroundColor={theme.colors.background}
         barStyle={isDarkMode ? "light-content" : "dark-content"} 
-        backgroundColor="transparent" 
-        translucent 
+        translucent={false}
+        hidden={false}
       />
       
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.background }]}>
+      {/* Safe Area Top Spacer - Fixed position */}
+      <View style={[styles.safeAreaTop, {
+        height: safeInsets.top,
+        backgroundColor: theme.colors.background,
+      }]} collapsable={false} />
+      
+      {/* Header - Fixed position to prevent layout shifts */}
+      <View
+        style={[styles.header, {
+          backgroundColor: theme.colors.background,
+          top: safeInsets.top,
+        }]}
+        onLayout={(e) => {
+          const { height } = e.nativeEvent.layout;
+          // Only update if height actually changed to prevent unnecessary re-renders
+          if (height > 0 && Math.abs(height - headerHeightRef.current) > 1) {
+            headerHeightRef.current = height;
+            setHeaderHeight(height);
+          }
+        }}
+        collapsable={false}
+      >
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Go back" accessibilityHint="Returns to the previous screen">
           <Ionicons name="chevron-back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Post Update</Text>
-          <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]}>Create and edit updates</Text>
+        <View style={styles.headerCenter} collapsable={false}>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>Post Update</Text>
+          <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]} numberOfLines={1}>Create and edit updates</Text>
         </View>
-        <View style={styles.headerRight}>
+        <View style={styles.headerRight} collapsable={false}>
           <View style={[styles.categoryChipSmall, { borderColor: currentCategory.color + '33', backgroundColor: currentCategory.color + '14' }]}>
             <View style={[styles.categoryChipIconWrapSmall, { backgroundColor: currentCategory.color + '22' }]}>
               <Ionicons name={currentCategory.icon as any} size={14} color={currentCategory.color} />
@@ -372,22 +401,20 @@ const PostUpdate: React.FC = () => {
       </View>
 
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: 120 + insets.bottom }]}
+        style={[styles.scrollView, {
+          marginTop: safeInsets.top + headerHeight,
+          marginBottom: 0,
+        }]}
+        contentContainerStyle={[styles.content, {
+          paddingBottom: 120 + safeInsets.bottom + 80, // Footer height + safe area + extra padding
+        }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={true}
         bounces={true}
+        removeClippedSubviews={true}
+        scrollEventThrottle={16}
       >
-        <Animated.View 
-          style={[
-            styles.contentInner,
-            {
-              opacity: fadeAnim,
-            transform: [
-              { translateY: slideAnim }
-            ]
-            }
-          ]}
-        >
+        <View style={styles.contentInner}>
         
         {/* Title Field */}
         <View style={styles.inputContainer}>
@@ -699,10 +726,10 @@ const PostUpdate: React.FC = () => {
           {/* Schedule for later removed */}
         </View>
 
-        </Animated.View>
+        </View>
       </ScrollView>
 
-      {/* Footer with Action Buttons */}
+      {/* Footer with Action Buttons - Fixed position */}
       <View style={[styles.footer, { 
         backgroundColor: theme.colors.background,
         borderTopColor: theme.colors.border,
@@ -710,10 +737,10 @@ const PostUpdate: React.FC = () => {
         bottom: 0,
         left: 0,
         right: 0,
-        paddingBottom: 16 + insets.bottom 
-      }]}>
+        paddingBottom: 16 + safeInsets.bottom 
+      }]} collapsable={false}>
         {/* Background layer to prevent transparency below footer */}
-        <View style={[styles.footerBackground, { backgroundColor: theme.colors.background, height: insets.bottom }]} />
+        <View style={[styles.footerBackground, { backgroundColor: theme.colors.background, height: safeInsets.bottom }]} collapsable={false} />
         {/* Show Preview Button */}
         <TouchableOpacity 
           style={[styles.previewBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]} 
@@ -816,6 +843,13 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingBottom: 0,
   },
+  safeAreaTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+  },
   scrollView: {
     flex: 1,
   },
@@ -850,11 +884,16 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   header: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 999,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingBottom: 12,
+    minHeight: 64, // Fixed min height to prevent layout shifts
     borderBottomWidth: 0,
     shadowColor: '#000',
     shadowOpacity: 0.04,
@@ -1099,6 +1138,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 16,
+    zIndex: 998,
     shadowColor: '#000',
     shadowOpacity: 0.08,
     shadowOffset: { width: 0, height: -2 },

@@ -13,8 +13,6 @@ import {
   Modal,
   Pressable,
   Animated,
-  InteractionManager,
-  Easing,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -83,30 +81,9 @@ const ManagePosts: React.FC = () => {
   const pinSheetY = useRef(new Animated.Value(300)).current;
   const deleteSheetY = useRef(new Animated.Value(300)).current;
 
-  // Animation values for smooth entrance
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(20)).current;
-
-  useEffect(() => {
-    // Optimized entrance animation - delay until interactions complete
-    const handle = InteractionManager.runAfterInteractions(() => {
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 250,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 250,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    });
-    return () => handle.cancel();
-  }, []);
+  // Animation values - DISABLED FOR PERFORMANCE DEBUGGING
+  const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
+  const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
   
   // Inline, dependency-free date data
   const months = useMemo(() => [

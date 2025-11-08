@@ -1,6 +1,6 @@
 import * as React from 'react';
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Switch, Alert, Animated, InteractionManager, Easing } from 'react-native';
+import { useState, useRef, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Switch, Alert, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
@@ -37,35 +37,27 @@ const AdminSettings = () => {
   // Use split hooks to reduce re-renders
   const { isDarkMode, theme } = useThemeValues();
   const { toggleTheme } = useThemeActions();
+  const scrollRef = useRef<ScrollView>(null);
+  
+  // Memoize safe area insets to prevent recalculation during navigation
+  const safeInsets = useMemo(() => ({
+    top: insets.top,
+    bottom: insets.bottom,
+    left: insets.left,
+    right: insets.right,
+  }), [insets.top, insets.bottom, insets.left, insets.right]);
   
   // State for various settings
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
 
-  // Animation values for smooth entrance
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(20)).current;
+  // Lock header height to prevent layout shifts
+  const headerHeightRef = useRef<number>(64);
+  const [headerHeight, setHeaderHeight] = useState(64);
 
-  useEffect(() => {
-    // Optimized entrance animation - delay until interactions complete
-    const handle = InteractionManager.runAfterInteractions(() => {
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 250,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 250,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    });
-    return () => handle.cancel();
-  }, []);
+  // Animation values - DISABLED FOR LAYOUT STABILITY
+  const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
+  const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
 
   const sheetY = useRef(new Animated.Value(300)).current;
 
@@ -106,39 +98,66 @@ const AdminSettings = () => {
   return (
     <View style={[styles.container, {
       backgroundColor: theme.colors.background,
-      paddingTop: 0,
-      paddingBottom: 0, // Remove bottom padding since AdminBottomNavBar now handles it
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    }]}>
+    }]} collapsable={false}>
       <StatusBar
         backgroundColor={theme.colors.primary}
         barStyle="light-content"
         translucent={false}
+        hidden={false}
       />
 
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.primary }]}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>Settings</Text>
+      {/* Safe Area Top Spacer - Fixed position */}
+      <View style={[styles.safeAreaTop, {
+        height: safeInsets.top,
+        backgroundColor: theme.colors.primary,
+      }]} collapsable={false} />
+
+      {/* Header - Fixed position to prevent layout shifts */}
+      <View
+        style={[styles.header, {
+          backgroundColor: theme.colors.primary,
+          top: safeInsets.top,
+        }]}
+        onLayout={(e) => {
+          const { height } = e.nativeEvent.layout;
+          if (height > 0 && height !== headerHeightRef.current) {
+            headerHeightRef.current = height;
+            setHeaderHeight(height);
+          }
+        }}
+        collapsable={false}
+      >
+        <View style={styles.headerLeft} collapsable={false}>
+          <Text style={styles.headerTitle} numberOfLines={1}>Settings</Text>
         </View>
-        <View style={styles.headerRight}>
+        <View style={styles.headerRight} collapsable={false}>
           <View style={styles.headerSpacer} />
           <View style={styles.headerSpacer} />
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* User Profile Section */}
-        <Animated.View 
+      <ScrollView
+        ref={scrollRef}
+        style={[styles.scrollView, {
+          marginTop: safeInsets.top + headerHeight,
+          marginBottom: 0,
+        }]}
+        contentContainerStyle={[styles.scrollContent, {
+          paddingBottom: safeInsets.bottom + 80, // Bottom nav bar height + safe area
+        }]}
+        showsVerticalScrollIndicator={false}
+        removeClippedSubviews={true}
+        keyboardShouldPersistTaps="handled"
+        bounces={true}
+        scrollEventThrottle={16}
+      >
+        {/* User Profile Section - Fixed height to prevent layout shifts */}
+        <View
           style={[
             styles.profileSection,
             {
-              opacity: fadeAnim,
-              transform: [
-                { translateY: slideAnim }
-              ],
-              backgroundColor: theme.colors.card
+              backgroundColor: theme.colors.card,
+              minHeight: 100, // Fixed minimum height to prevent layout shifts
             }
           ]}
         >
@@ -153,24 +172,30 @@ const AdminSettings = () => {
             </View>
           </View>
           <View style={styles.profileInfo}>
-            <Text style={[styles.profileName, { color: theme.colors.text }]}>Admin User</Text>
+            <Text
+              style={[styles.profileName, { color: theme.colors.text }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              Admin User
+            </Text>
             <View style={styles.profileEmailContainer}>
               <Ionicons name="mail-outline" size={14} color={theme.colors.textMuted} />
-              <Text style={[styles.profileEmail, { color: theme.colors.textMuted }]}>admin@dorsu.edu.ph</Text>
+              <Text
+                style={[styles.profileEmail, { color: theme.colors.textMuted }]}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                admin@dorsu.edu.ph
+              </Text>
             </View>
           </View>
-        </Animated.View>
+        </View>
 
         {/* Settings Categories */}
-        <Animated.View 
+        <View
           style={[
-            styles.settingsContainer,
-            {
-              opacity: fadeAnim,
-              transform: [
-                { translateY: slideAnim }
-              ]
-            }
+            styles.settingsContainer
           ]}
         >
           {/* App Settings */}
@@ -312,10 +337,15 @@ const AdminSettings = () => {
             <Ionicons name="log-out-outline" size={22} color="#EF4444" />
             <Text style={[styles.signOutText, { color: '#EF4444' }]}>Sign out</Text>
           </TouchableOpacity>
-        </Animated.View>
+        </View>
       </ScrollView>
 
-      <AdminBottomNavBar
+      {/* Bottom Navigation Bar - Fixed position */}
+      <View style={[styles.bottomNavContainer, {
+        bottom: 0,
+        paddingBottom: safeInsets.bottom,
+      }]} collapsable={false}>
+        <AdminBottomNavBar
         activeTab="settings"
         onDashboardPress={handleDashboardPress}
         onChatPress={handleChatPress}
@@ -324,7 +354,8 @@ const AdminSettings = () => {
         onSettingsPress={handleSettingsPress}
         onPostUpdatePress={handlePostUpdatePress}
         onManagePostPress={handleManagePostPress}
-      />
+        />
+      </View>
 
       <LogoutModal
         visible={isLogoutOpen}
@@ -341,7 +372,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: themeConfig.colors.surfaceAlt,
   },
+  safeAreaTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+  },
   header: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 999,
     backgroundColor: themeConfig.colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 16,
@@ -355,7 +397,9 @@ const styles = StyleSheet.create({
     elevation: 4,
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
-    marginBottom: 8,
+  },
+  scrollView: {
+    flex: 1,
   },
   headerLeft: {
     flex: 1,
@@ -378,7 +422,12 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: themeConfig.spacing(1.5),
     paddingTop: themeConfig.spacing(2),
-    paddingBottom: themeConfig.spacing(2),
+  },
+  bottomNavContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 998,
   },
   profileSection: {
     flexDirection: 'row',
@@ -388,6 +437,7 @@ const styles = StyleSheet.create({
     padding: themeConfig.spacing(2.5),
     marginBottom: themeConfig.spacing(2),
     gap: themeConfig.spacing(2),
+    minHeight: 100, // Fixed minimum height to prevent layout shifts
   },
   profileAvatarContainer: {
     position: 'relative',
@@ -441,6 +491,7 @@ const styles = StyleSheet.create({
   profileInfo: {
     flex: 1,
     alignItems: 'flex-start',
+    minWidth: 0, // Prevent flex overflow
   },
   profileName: {
     fontSize: 18,
@@ -448,6 +499,7 @@ const styles = StyleSheet.create({
     color: themeConfig.colors.text,
     marginBottom: themeConfig.spacing(0.5),
     letterSpacing: 0.2,
+    minHeight: 24, // Fixed height to prevent text layout shift
   },
   profileEmailContainer: {
     flexDirection: 'row',
@@ -458,6 +510,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: themeConfig.colors.textMuted,
     fontWeight: '400',
+    minHeight: 20, // Fixed height to prevent text layout shift
   },
   settingsContainer: {
     gap: themeConfig.spacing(1.5),

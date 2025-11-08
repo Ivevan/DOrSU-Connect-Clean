@@ -110,6 +110,14 @@ const AppNavigator = () => {
         <Stack.Screen 
           name="AdminDashboard" 
           component={AdminDashboard}
+          options={{
+            animation: 'none' as const, // Disabled for debugging
+            animationDuration: 0,
+            freezeOnBlur: false,
+            contentStyle: {
+              backgroundColor: 'transparent',
+            },
+          }}
         />
         <Stack.Screen 
           name="AdminAIChat" 

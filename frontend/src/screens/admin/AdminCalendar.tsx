@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, memo, useMemo } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Animated, Easing, AccessibilityInfo, InteractionManager } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Animated, Easing, AccessibilityInfo } from 'react-native';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
@@ -12,7 +12,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import { theme } from '../../config/theme';
 import { formatDate, formatCalendarDate } from '../../utils/dateUtils';
 import MonthPickerModal from '../../modals/MonthPickerModal';
@@ -108,11 +108,23 @@ const AdminCalendar = () => {
   const PH_TZ = 'Asia/Manila';
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { isDarkMode, theme: t } = useTheme();
+  const { isDarkMode, theme: t } = useThemeValues();
   const scrollRef = useRef<ScrollView>(null);
   const initialNow = new Date();
   const [currentMonth, setCurrentMonth] = useState(new Date(Date.UTC(initialNow.getFullYear(), initialNow.getMonth(), 1)));
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
+  
+  // Memoize safe area insets to prevent recalculation during navigation
+  const safeInsets = useMemo(() => ({
+    top: insets.top,
+    bottom: insets.bottom,
+    left: insets.left,
+    right: insets.right,
+  }), [insets.top, insets.bottom, insets.left, insets.right]);
+  
+  // Lock header height to prevent layout shifts
+  const headerHeightRef = useRef<number>(64);
+  const [headerHeight, setHeaderHeight] = useState(64);
   
   // Calendar state
   const [showMonthPicker, setShowMonthPicker] = useState(false);
@@ -124,9 +136,9 @@ const AdminCalendar = () => {
   const listAnim = useRef(new Animated.Value(0)).current;
   const dotScale = useRef(new Animated.Value(0.8)).current;
 
-  // Entrance animation values
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(20)).current;
+  // Entrance animation values - DISABLED FOR PERFORMANCE DEBUGGING
+  const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
+  const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
 
 
   // Data from AdminDataService
@@ -150,26 +162,7 @@ const AdminCalendar = () => {
     return () => { cancelled = true; };
   }, []);
 
-  // Optimized entrance animation for Calendar - delay until interactions complete
-  React.useEffect(() => {
-    const handle = InteractionManager.runAfterInteractions(() => {
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 250,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 250,
-          easing: Easing.out(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    });
-    return () => handle.cancel();
-  }, []);
+  // Entrance animation disabled for performance debugging
 
 
 
@@ -331,7 +324,7 @@ const AdminCalendar = () => {
   };
 
   // Memoized Calendar Day Component
-  const CalendarDay = memo(({ date, day, isCurrentDay, isSelectedDay, index, eventsForDay, theme, dotScale, onPress }: { date: Date; day: number | null; isCurrentDay: boolean; isSelectedDay: boolean; index: number; eventsForDay: any[]; theme: any; dotScale: Animated.Value; onPress: (date: Date) => void }) => {
+  const CalendarDay = memo(({ date, day, isCurrentDay, isSelectedDay, index, eventsForDay, theme, onPress }: { date: Date; day: number | null; isCurrentDay: boolean; isSelectedDay: boolean; index: number; eventsForDay: any[]; theme: any; onPress: (date: Date) => void }) => {
     if (!day) return (
       <View
         style={[
@@ -383,9 +376,9 @@ const AdminCalendar = () => {
           {eventsForDay && eventsForDay.length > 0 && (
             <View style={styles.eventIndicators}>
               {eventsForDay.slice(0, 3).map((event, eventIndex) => (
-                <Animated.View 
+                <View 
                   key={eventIndex} 
-                  style={[styles.eventDot, { backgroundColor: event.color, transform: [{ scale: dotScale }] }]} 
+                  style={[styles.eventDot, { backgroundColor: event.color }]} 
                 />
               ))}
             </View>
@@ -407,32 +400,17 @@ const AdminCalendar = () => {
         index={key}
         eventsForDay={eventsForDay}
         theme={t}
-        dotScale={dotScale}
         onPress={handleDayPress}
       />
     );
-  }, [getEventsForDate, t, dotScale, handleDayPress]);
+  }, [getEventsForDate, t, handleDayPress]);
 
 
+  // List animation - DISABLED FOR PERFORMANCE DEBUGGING
   React.useEffect(() => {
-    // Optimized list animation - delay until interactions complete
-    const handle = InteractionManager.runAfterInteractions(() => {
-      listAnim.setValue(0);
-      Animated.timing(listAnim, {
-        toValue: 1,
-        duration: 200,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }).start();
-      dotScale.setValue(0.8);
-      Animated.timing(dotScale, {
-        toValue: 1,
-        duration: 200,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }).start();
-    });
-    return () => handle.cancel();
+    // Set values immediately without animation
+    listAnim.setValue(1);
+    dotScale.setValue(1);
   }, [showAllEvents, selectedDate, posts]);
 
   const days = React.useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
@@ -442,40 +420,63 @@ const AdminCalendar = () => {
     <GestureHandlerRootView style={{ flex: 1 }}>
     <View style={[styles.container, {
       backgroundColor: t.colors.background,
-      paddingTop: insets.top,
-      paddingBottom: 0, // Remove bottom padding since AdminBottomNavBar now handles it
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    }]}>
+    }]} collapsable={false}>
       <StatusBar
         backgroundColor={t.colors.primary}
         barStyle={isDarkMode ? "light-content" : "light-content"}
-        translucent={true}
+        translucent={false}
+        hidden={false}
       />
 
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: t.colors.primary }]}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.headerTitle}>School Calendar</Text>
-          </View>
-          <View style={styles.headerRight}>
-            <View style={styles.headerSpacer} />
-            <View style={styles.headerSpacer} />
-          </View>
+      {/* Safe Area Top Spacer - Fixed position */}
+      <View style={[styles.safeAreaTop, {
+        height: safeInsets.top,
+        backgroundColor: t.colors.primary,
+      }]} collapsable={false} />
+
+      {/* Header - Fixed position to prevent layout shifts */}
+      <View
+        style={[styles.header, {
+          backgroundColor: t.colors.primary,
+          top: safeInsets.top,
+        }]}
+        onLayout={(e) => {
+          const { height } = e.nativeEvent.layout;
+          if (height > 0 && height !== headerHeightRef.current) {
+            headerHeightRef.current = height;
+            setHeaderHeight(height);
+          }
+        }}
+        collapsable={false}
+      >
+        <View style={styles.headerLeft} collapsable={false}>
+          <Text style={styles.headerTitle} numberOfLines={1}>School Calendar</Text>
+        </View>
+        <View style={styles.headerRight} collapsable={false}>
+          <View style={styles.headerSpacer} />
+          <View style={styles.headerSpacer} />
+        </View>
       </View>
 
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollRef}
+        style={[styles.scrollView, {
+          marginTop: safeInsets.top + headerHeight,
+          marginBottom: 0,
+        }]}
+        contentContainerStyle={[styles.scrollContent, {
+          paddingBottom: safeInsets.bottom + 80, // Bottom nav bar height + safe area
+        }]}
+        showsVerticalScrollIndicator={false}
+        removeClippedSubviews={true}
+        keyboardShouldPersistTaps="handled"
+        bounces={true}
+        scrollEventThrottle={16}
+      >
 
         {/* Calendar Card - Fixed below header */}
-        {/* Outer wrapper for entrance animation (transform/opacity only) */}
-        <Animated.View 
-          style={{
-            opacity: fadeAnim,
-            transform: [
-              { translateY: slideAnim }
-            ]
-          }}
-        >
+        {/* Animation wrapper removed for debugging */}
+        <View>
           {/* Calendar Card */}
           <View style={[
             styles.calendarCard,
@@ -529,7 +530,7 @@ const AdminCalendar = () => {
             })}
           </View>
           </View>
-        </Animated.View>
+        </View>
 
         {/* Month Picker Modal */}
         <MonthPickerModal
@@ -545,15 +546,11 @@ const AdminCalendar = () => {
 
 
         {/* Events Section */}
-        <Animated.View 
+        <View
           style={[
             styles.eventsSection,
             {
-              backgroundColor: t.colors.card,
-              opacity: fadeAnim,
-              transform: [
-                { translateY: slideAnim }
-              ]
+              backgroundColor: t.colors.card
             }
           ]}
         >
@@ -630,7 +627,7 @@ const AdminCalendar = () => {
           )}
 
           {!showAllEvents && (
-            <Animated.View style={{ opacity: listAnim, transform: [{ translateY: listAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
+            <View>
             {Array.isArray(filteredEvents) && filteredEvents.map((event: any) => (
             <TouchableOpacity
               key={event.id}
@@ -676,11 +673,11 @@ const AdminCalendar = () => {
               </View>
             </TouchableOpacity>
             ))}
-            </Animated.View>
+            </View>
           )}
 
           {showAllEvents && (
-            <Animated.View style={{ opacity: listAnim, transform: [{ translateY: listAnim.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }}>
+            <View>
             {Array.isArray(groupedEvents) && groupedEvents.map(group => (
             <View key={group.key} style={styles.groupContainer}>
               <Text style={[styles.groupHeaderText, { color: t.colors.textMuted }]}>
@@ -733,12 +730,17 @@ const AdminCalendar = () => {
               ))}
             </View>
             ))}
-            </Animated.View>
+            </View>
           )}
-        </Animated.View>
+        </View>
       </ScrollView>
 
-      <AdminBottomNavBar
+      {/* Bottom Navigation Bar - Fixed position */}
+      <View style={[styles.bottomNavContainer, {
+        bottom: 0,
+        paddingBottom: safeInsets.bottom,
+      }]} collapsable={false}>
+        <AdminBottomNavBar
         activeTab="calendar"
         onDashboardPress={() => navigation.navigate('AdminDashboard')}
         onChatPress={() => navigation.navigate('AdminAIChat')}
@@ -747,7 +749,8 @@ const AdminCalendar = () => {
         onSettingsPress={() => navigation.navigate('AdminSettings')}
         onPostUpdatePress={() => navigation.navigate('PostUpdate')}
         onManagePostPress={() => navigation.navigate('ManagePosts')}
-      />
+        />
+      </View>
     </View>
     </GestureHandlerRootView>
   );
@@ -758,7 +761,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.surfaceAlt,
   },
+  safeAreaTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+  },
   header: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 999,
     paddingHorizontal: 16,
     paddingVertical: 16,
     flexDirection: 'row',
@@ -771,7 +785,9 @@ const styles = StyleSheet.create({
     elevation: 4,
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
-    marginBottom: 8,
+  },
+  scrollView: {
+    flex: 1,
   },
   headerLeft: {
     flex: 1,
@@ -794,7 +810,12 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 32,
+  },
+  bottomNavContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 998,
   },
   calendarCard: {
     borderRadius: 16,

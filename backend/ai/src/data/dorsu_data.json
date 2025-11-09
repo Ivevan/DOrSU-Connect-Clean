@@ -1105,6 +1105,35 @@
         }
       ]
     },
+    "suastStatistics": {
+      "testName": "State University Aptitude and Scholarship Test",
+      "acronym": "SUAST",
+      "description": "The State University Aptitude and Scholarship Test (SUAST) is the entrance examination for Davao Oriental State University. It assesses the aptitude and readiness of applicants for admission to the university's various programs.",
+      "statistics": [
+        {
+          "year": 2023,
+          "numberOfApplicants": 7444,
+          "numberOfPassers": 4198,
+          "passingRate": "56%",
+          "numberOfEnrolledApplicants": 4574
+        },
+        {
+          "year": 2024,
+          "numberOfApplicants": 6967,
+          "numberOfPassers": 3430,
+          "passingRate": "49%",
+          "numberOfEnrolledApplicants": 4952
+        },
+        {
+          "year": 2025,
+          "numberOfApplicants": 6974,
+          "numberOfPassers": 3437,
+          "passingRate": "49%",
+          "numberOfEnrolledApplicants": 4447
+        }
+      ],
+      "notes": "The passing rate represents the percentage of applicants who passed the SUAST examination. The number of enrolled applicants may exceed the number of passers as it includes students who may have been admitted through other pathways or special programs."
+    },
     "developers": {
       "team": [
         { "name": "Ivan J P. Vasay", "role": "BSIT Student Developer" },

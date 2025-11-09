@@ -1,0 +1,1963 @@
+{
+    "organization": {
+      "name": "Davao Oriental State University",
+      "shortName": "DOrSU",
+      "type": "state-funded research-based coeducational higher education institution",
+      "founded": "1989-12-13",
+      "about": "The Davao Oriental State University is a state-funded research-based coeducational higher education institution in Mati City, Davao Oriental, Philippines.",
+      "location": {
+        "address": "Guang-guang, Dahican, City of Mati 8200, Davao Oriental, Philippines",
+        "city": "Mati",
+        "province": "Davao Oriental",
+        "country": "Philippines"
+      },
+      "contacts": {
+        "generalEmail": "op@dorsu.edu.ph",
+        "ictUnitEmail": "dorsu.itservices@dorsu.edu.ph"
+      },
+      "socialMedia": {
+        "facebook": "https://www.facebook.com/dorsuofficial"
+      }
+    },
+    "visionMission": {
+      "vision": "A university of excellence, innovation and inclusion.",
+      "mission": [
+        "To elevate knowledge generation, utilization and distribution.",
+        "To promote inclusive sustainable development through research-based higher quality education and technical-vocational skills.",
+        "To produce holistic, creative, and inclusive human resource responsive to global challenges while maintaining strong sense of nationhood."
+      ]
+    },
+    "valuesAndOutcomes": {
+      "coreValues": [
+        "God-centeredness and humaneness",
+        "Critical Thinking and Creativity",
+        "Discipline and Competence",
+        "Commitment and Collaboration",
+        "Resilience and Sustainability"
+      ],
+      "graduateOutcomes": [
+        "Research-Oriented and Innovative",
+        "Sense of Professionalism",
+        "ICT-enabled",
+        "Effective Communicator",
+        "Gratitude and Compassion"
+      ]
+    },
+    "enrollment (as of 2025)": {
+      "campusEnrollments": [
+        { "campus": "Main Campus", "students": 12009 },
+        { "campus": "Baganga Campus", "students": 654 },
+        { "campus": "Banaybanay Campus", "students": 1301 },
+        { "campus": "Cateel Campus", "students": 1620 },
+        { "campus": "San Isidro Campus", "students": 1337 },
+        { "campus": "Tarragona Campus", "students": 330 }
+      ],
+      "total": 17251
+    },
+    "mandate": {
+      "statement": "The University is mandated to provide academic programs in science and technology, agriculture, engineering, teacher education, and technical education, aligned with national, regional and local development goals.",
+      "objectives": [
+        "Provide higher quality tertiary education characterized by cultural sensitivity and interdisciplinary approach.",
+        "Advance knowledge by research and community involvement achieving national recognition.",
+        "Support national and regional economic development agenda and directions.",
+        "Build strong ties within the region, the nation, and international partnerships."
+      ]
+    },
+    "qualityPolicy": {
+      "statement": "Davao Oriental State University is an institution sustained by quality education. It seeks to improve its Quality Management System to better serve students and communities.",
+      "commitments": [
+        "Deliver quality education, research, extension, and progressive leadership.",
+        "Offer programs responsive to the Sustainable Development Goals.",
+        "Maintain a conducive environment through continuous development and modern facilities.",
+        "Comply with statutory and regulatory requirements.",
+        "Implement improvements using Risk Management and 5S.",
+        "Transfer knowledge and QMS expertise to other institutions."
+      ]
+    },
+    "history": {
+      "timeline": [
+        {
+          "date": "1972",
+          "event": "Founded as Mati Community College (MCC) by Mayor Thelma Z. Almario",
+          "details": "Founding Dean of College: Dr. Leopoldo Bravo",
+          "significance": "Initial establishment to provide educational opportunities to residents of Davao Oriental"
+        },
+        {
+          "date": "1989-12-13",
+          "event": "Converted into Davao Oriental State College of Science and Technology (DOSCST)",
+          "legalBasis": "Republic Act No. 6807",
+          "keyPerson": "Hon. Thelma Z. Almario (2nd Congressional District Representative of Davao Oriental)",
+          "significance": "Expanded operation to provide more opportunities to residents of Davao Oriental and neighboring provinces"
+        },
+        {
+          "date": "1991",
+          "event": "Transferred to current 10-hectare campus in Guang-Guang, Dahican, City of Mati",
+          "donor": "Heirs of Don Jose Corro Martinez",
+          "significance": "Establishment of permanent campus location"
+        },
+        {
+          "date": "1997-11",
+          "event": "San Isidro Campus established",
+          "keyPerson": "Hon. Justina MB Yu"
+        },
+        {
+          "date": "1999-06",
+          "event": "Cateel Campus established",
+          "keyPerson": "Hon. Camilo T. Nuñez"
+        },
+        {
+          "date": "2015-06",
+          "event": "Banaybanay Campus established",
+          "keyPerson": "Hon. Adalia C. Lopez"
+        },
+        {
+          "date": "2018-05-28",
+          "event": "Converted into Davao Oriental State University (DOrSU)",
+          "legalBasis": "Republic Act No. 11033",
+          "signedBy": "President Rodrigo Roa Duterte at Malacañang Palace",
+          "houseBill": "House Bill 7007 (authored by Congress Representative Joel Mayo Z. Almario)",
+          "senateBill": "Senate Bill 1617 (filed by Senator Joel E. Villanueva)",
+          "significance": "End-product of university conversion efforts, elevating institution to university status"
+        },
+        {
+          "date": "2021-05-26",
+          "event": "CHED Commission En Banc certified DOrSU's full compliance to university standards",
+          "legalBasis": "Resolution No. 293-2021",
+          "significance": "Official certification of compliance with all university requirements"
+        }
+      ],
+      "conversionProcess": {
+        "description": "The university conversion was a collaborative effort involving multiple stakeholders and rigorous compliance with CHED standards",
+        "keyLeaders": [
+          {
+            "name": "President Emeritus Edito B. Sumile",
+            "role": "Successfully paved the groundwork for the University conversion"
+          },
+          {
+            "name": "Dr. Roy G. Ponce",
+            "role": "Sustained the conversion process and became the first University President"
+          },
+          {
+            "name": "Hon. Thelma Z. Almario",
+            "role": "Forward-looking initiative in the conversion process"
+          },
+          {
+            "name": "Chairperson Julian Prospero E. De Vera III",
+            "role": "CHED Chairperson, provided dynamic leadership"
+          },
+          {
+            "name": "Commissioner Aldrin A. Darilag",
+            "role": "Presiding Chair of the DOrSU Board of Regents"
+          },
+          {
+            "name": "Hon. Mark O. Go",
+            "role": "Chairperson of the Committee on Higher and Technical Education (CHTE)"
+          },
+          {
+            "name": "Director Maricar R. Casquejo",
+            "role": "Director of CHED Regional Office XI, spearheaded coordination efforts"
+          }
+        ],
+        "stakeholders": [
+          "University Conversion Technical Working Team",
+          "CHED Regional Office XI",
+          "University faculty and staff",
+          "Students",
+          "Local Government Units (LGUs)",
+          "Community stakeholders"
+        ],
+        "complianceAreas": [
+          "Enrollment and Program Offerings",
+          "Faculty Requirements",
+          "Research Capability",
+          "Learning Resources and Support Structures",
+          "Linkages and Outreach"
+        ]
+      },
+      "narrative": "Davao Oriental State University (DOrSU) was established through Republic Act No. 11033, signed into law by President Rodrigo Roa Duterte at the Malacañang Palace on May 28, 2018. The University's rich history dates back to 1972 as a Mati Community College (MCC) founded by the then Mati Municipal Mayor Thelma Z. Almario with the Founding Dean of College, Dr. Leopoldo Bravo. With the goal to expand its operation and provide more opportunities to the residents of Davao Oriental and its neighboring provinces, it was converted into Davao Oriental State College of Science and Technology (DOSCST), established on December 13, 1989, by virtue of Republic Act No. 6807. In 1991, the College transferred to its present 10-hectare campus in Guang-Guang, Dahican, City of Mati, donated by the heirs of Don Jose Corro Martinez. The University expanded services across the Province of Davao Oriental with campuses established in San Isidro (November 1997), Cateel (June 1999), and Banaybanay (June 2015).",
+      "heritage": {
+        "description": "DOrSU is an academic steward of world-renowned natural heritage sites",
+        "sites": [
+          {
+            "name": "Mt. Hamiguitan Range Wildlife Sanctuary (MHRWS)",
+            "designation": "UNESCO World Heritage Site",
+            "significance": "The only World Heritage Site in Mindanao inscribed by UNESCO"
+          },
+          {
+            "name": "Pujada Bay",
+            "designation": "Most Beautiful Bays of the World (MBBW)",
+            "significance": "Listed among the world's most beautiful bays"
+          },
+          {
+            "name": "Mayo Bay",
+            "designation": "Most Beautiful Bays of the World (MBBW)",
+            "significance": "Listed among the world's most beautiful bays"
+          }
+        ]
+      },
+      "currentMission": "The University remains true to its vision of promoting excellence, innovation, and inclusion as a premier institution in the easternmost part of the Philippines. It forefronts the advancement of sustainable development, regenerative science, and future-proofing in all academic disciplines. DOrSU embodies the hopes and aspirations of its founders, leaders, constituents, and the local and indigenous communities that it serves.",
+      "charterMandates": [
+        "Offering undergraduate, graduate, and postgraduate programs",
+        "Agriculture and environmental studies",
+        "Pure and applied sciences",
+        "Behavioral and social sciences",
+        "Law",
+        "Culture and arts",
+        "Tourism",
+        "Business",
+        "Nautical science and maritime transportation",
+        "Industrial technology",
+        "Engineering",
+        "Education and teacher training",
+        "Communication and information technology",
+        "Health sciences",
+        "Developmental management and leadership",
+        "Other areas of specialization"
+      ],
+      "source": "Written by Jhonnel P. Villegas, October 13, 2021"
+    },
+    "leadership": {
+      "president": {
+        "name": "Dr. Roy G. Ponce",
+        "title": "President",
+        "education": {
+          "institution": "The University of Melbourne, Australia",
+          "degrees": [
+            {
+              "degree": "Master of Assessment and Evaluation",
+              "honor": "First-Class Honor",
+              "scholarship": "AusAID scholarship"
+            },
+            {
+              "degree": "Doctor of Education in Evaluation Capacity Building",
+              "scholarship": "Australia Awards scholarship"
+            }
+          ]
+        },
+        "expertise": [
+          "Biodiversity conservation",
+          "Education",
+          "Evaluation capacity building",
+          "Research",
+          "Technical consultation",
+          "Museum curation"
+        ],
+        "achievements": [
+          "Two-time alumnus of The University of Melbourne, Australia",
+          "Internationally acclaimed researcher and extensionist",
+          "Instrumental in the successful inscription of Mt. Hamiguitan as a UNESCO World Heritage Site",
+          "Established the Subangan Museum and Mt. Hamiguitan Museum in Davao Oriental",
+          "Honored by discovery of weevil species Metapocyrtus poncei named after him",
+          "Co-founded Happy Fish Kids (HFK) afterschool care project",
+          "Recipient of prestigious Australian Alumni Excellence Awards in 2017",
+          "Institutionalized Happy Forest Kids and Happy Farm Kids programs as offshoots of HFK",
+          "Brainchild and thought-leader in positioning DOrSU as a regenerative futures university"
+        ],
+        "currentRole": "President of Davao Oriental State University, the only public university in the Province of Davao Oriental"
+      },
+      "boardOfRegents": [
+        "Roy G. Ponce",
+        "Alan Peter Cayetano",
+        "Mark O. Go",
+        "Priscilla Sonido",
+        "Anthony C. Sales"
+      ]
+    },
+    "organizationalStructure/DOrSUOfficials2025": {
+      "universityPresident": {
+        "position": "University President",
+        "name": "Dr. Roy G. Ponce"
+      },
+      "vicePresidents": [
+        {
+          "position": "VP for Administration and Finance",
+          "name": "Dr. Roy M. Padilla"
+        },
+        {
+          "position": "VP for Research, Innovation, and Extension",
+          "name": "Dr. Lea A. Jimenez"
+        },
+        {
+          "position": "VP for Planning, Quality Assurance, Global Affairs and Resource Generation",
+          "name": "Dr. Lilibeth S. Galvez"
+        },
+        {
+          "position": "VP for Academic Affairs",
+          "name": "Dr. Edito B. Sumile",
+          "note": "President Emeritus"
+        }
+      ],
+      "chancellorAndCampusAdministrators": [
+        {
+          "position": "Chancellor for Extension Campuses",
+          "name": "Dr. Misael B. Clapano"
+        },
+        {
+          "position": "Campus Administrator, Banaybanay",
+          "name": "Dr. Anglie B. Nemenzo"
+        },
+        {
+          "position": "Campus Administrator, Cateel",
+          "name": "Asst. Prof. Richard C. Maravillas"
+        },
+        {
+          "position": "Campus Administrator, Baganga",
+          "name": "Ms. Purisima N. Tampus"
+        },
+        {
+          "position": "Campus Administrator, San Isidro",
+          "name": "Dr. Jovanie B. Garay"
+        },
+        {
+          "position": "Campus Administrator, Tarragona",
+          "name": "Mr. Leopoldo A. Aquino"
+        }
+      ],
+      "deans": [
+        {
+          "faculty": "Faculty of Advanced and International Studies",
+          "name": "Dr. Gemma M. Valdez"
+        },
+        {
+          "faculty": "Faculty of Agriculture and Life Sciences",
+          "name": "Dr. Eleanor M. Vilela"
+        },
+        {
+          "faculty": "Faculty of Business and Management",
+          "name": "Dr. Rizaldy V. Maypa"
+        },
+        {
+          "faculty": "Faculty of Computing, Engineering, and Technology",
+          "name": "Dr. Danilo O. Jacobe"
+        },
+        {
+          "faculty": "Faculty of Criminal Justice Education",
+          "name": "Dr. Rex S. Aparicio"
+        },
+        {
+          "faculty": "Faculty of Humanities, Social Sciences, and Communications",
+          "name": "Dr. Goriel E. Llanita"
+        },
+        {
+          "faculty": "Faculty of Nursing and Allied Health Sciences",
+          "name": "Dr. Michelle Suzanne L. Tabotabo"
+        },
+        {
+          "faculty": "Faculty of Teacher Education",
+          "name": "Dr. Jocelyn C. Arles"
+        }
+      ],
+      "directors": [
+        {
+          "office": "Information, Communication, and Technology",
+          "name": "Mr. Arnel Leo L. Aranquez"
+        },
+        {
+          "office": "Production and Resource Generation Management",
+          "name": "Dr. Ma. Cecilia L. Catubig"
+        },
+        {
+          "office": "Global Affairs and International Relations",
+          "name": "Dr. Cheryll L. Bautista"
+        },
+        {
+          "office": "Research",
+          "name": "Dr. Jonathan S. Cabrera"
+        },
+        {
+          "office": "Extension",
+          "name": "Dr. Lanie B. Laureano"
+        },
+        {
+          "office": "Innovation",
+          "name": "Mr. Venson B. Sarita"
+        },
+        {
+          "office": "Legal Affairs",
+          "name": "Atty. Althea Chiara B. Garcia"
+        },
+        {
+          "office": "Student Affairs and Services",
+          "name": "Dr. Evangeline R. Rivera"
+        },
+        {
+          "office": "National Service Training Program",
+          "name": "Asst. Prof. Djhoanna S. Mama"
+        },
+        {
+          "office": "University Library",
+          "name": "Ms. Maida C. Santos"
+        },
+        {
+          "office": "University Registrar",
+          "name": "Ms. Grace D. Antipolo",
+          "socialMedia": {
+            "facebook": "https://www.facebook.com/dorsuregistrar"
+          }
+        },
+        {
+          "office": "University Planning and Development",
+          "name": "Dr. Ray John A. Salimaco"
+        },
+        {
+          "office": "Quality Assurance",
+          "name": "Dr. Roque N. Langcoy II"
+        }
+      ],
+      "centerDirectors": [
+        {
+          "center": "Arts, Traditions, and Cultural Heritage",
+          "name": "Ms. Laarni M. Pasion"
+        },
+        {
+          "center": "Cooperative Development",
+          "name": "Ms. Jeni A. Nicolas"
+        },
+        {
+          "center": "Gender and Development",
+          "name": "Dr. Jeralyn N. Hemillan"
+        },
+        {
+          "center": "Data Analytics, Data Sciences, and Evaluation",
+          "name": "Ms. Nikka A. Singh"
+        },
+        {
+          "center": "Tourism, Information, Education, and Communication",
+          "name": "Dr. Helina Jean P. Dupa"
+        },
+        {
+          "center": "Disaster Risk Reduction and Management & Climate Change",
+          "name": "Engr. Emmanuel B. Barbas"
+        },
+        {
+          "center": "Lifelong Learning and Life Skills Development",
+          "name": "Dr. Saturnino E. Dalagan, Jr."
+        },
+        {
+          "center": "Futures Thinking and Regenerative Development",
+          "name": "Dr. Ricksterlie C. Verzosa"
+        },
+        {
+          "center": "Provincial Institute of Agriculture",
+          "name": "Asso. Prof. Erna S. Macusi"
+        },
+        {
+          "center": "Sentro ng Wika at Kultura",
+          "name": "Dr. Raymund M. Pasion"
+        },
+        {
+          "center": "Regional Integrated Coastal Resource Management Center XI",
+          "name": "Ms. Amy G. Ponce"
+        },
+        {
+          "center": "University Marine Science Research Lab",
+          "name": "Ms. Chella May R. Sison"
+        }
+      ],
+      "universityResearchComplex": {
+        "supervisor": "Dr. Wilanfranco C. Tayone",
+        "institutes": [
+          {
+            "institute": "Institute for Food Innovation",
+            "associateSupervisors": [
+              "Ms. Catherine T. Padilla",
+              "Mr. Elmer James E. Catubig"
+            ]
+          },
+          {
+            "institute": "Institute for Bioassay Development and Screening",
+            "associateSupervisor": "Dr. Roselyn V. Regino",
+            "assistantSupervisor": "Dr. Phoebe Nemenzo-Calica",
+            "note": "Microbiology Laboratory"
+          },
+          {
+            "institute": "Institute for Soil and Water",
+            "associateSupervisor": "Dr. Janeth C. Tayone",
+            "assistantSupervisor": "Mr. Geralph Sam P. Villarubia"
+          },
+          {
+            "institute": "Institute for Innovation Materials Design and Fabrication",
+            "associateSupervisor": "Asst. Prof. Rod Ryan B. Mendoza",
+            "assistantSupervisor": "Dr. Ivan L. Saligumba"
+          },
+          {
+            "institute": "Institute for Tropical Regenerative Biodiversity",
+            "associateSupervisor": "Dr. Bernadette J. Nanual",
+            "assistantSupervisors": [
+              {
+                "name": "Dr. Milton Norman D. Medina",
+                "specialization": "Invertebrates Research"
+              },
+              {
+                "name": "Mr. Giovanne G. Tampos",
+                "specialization": "Vertebrates Research"
+              }
+            ]
+          }
+        ]
+      },
+      "unitsAndOfficesHeads": [
+        {
+          "unit": "Budget Unit",
+          "head": "Ms. Rhio D. Gallego"
+        },
+        {
+          "unit": "Cashier Unit",
+          "head": "Dr. Ma. Anita O. Nuñez"
+        },
+        {
+          "unit": "Office of Student Counseling and Testing",
+          "head": "Ms. Marites S. Cergas"
+        },
+        {
+          "unit": "Office of Student Promotion, Admissions, and Testing",
+          "head": "Ms. Trishea Amor C. Jacobe"
+        },
+        {
+          "unit": "Financial Aids and Scholarship Grants Office",
+          "head": "Ms. Candy J. Martinez"
+        },
+        {
+          "unit": "Office of Student Internship Program",
+          "head": "Mr. Renante M. Andrada"
+        },
+        {
+          "unit": "Office of Student Sports and Wellness",
+          "head": "Dr. Leonard Sydrick H. Pajo"
+        },
+        {
+          "unit": "Volunteerism",
+          "head": "Prof. Djhoanna S. Mama"
+        },
+        {
+          "unit": "Office of Student Affairs",
+          "head": "Mr. Felipe Cergas"
+        },
+        {
+          "unit": "Public Employment Service Office (PESO)",
+          "head": "Ms. Trishea Amor C. Jacobe",
+          "title": "Manager"
+        },
+        {
+          "unit": "Office of Health Services",
+          "head": "Ms. Alvie R. Saxby"
+        },
+        {
+          "unit": "Office of Student Culture and Arts Literacy",
+          "head": "Mr. Arianne Michael Sim M. Tuano"
+        },
+        {
+          "unit": "Marfori Farm Productivity",
+          "head": "Mr. Felix T. Lorejo Jr.",
+          "title": "Manager"
+        },
+        {
+          "unit": "University Sports Facilities",
+          "head": "Mr. Rey L. Rabuya",
+          "title": "Manager"
+        },
+        {
+          "unit": "General Services Unit",
+          "head": "Mr. Diego P. Tan"
+        },
+        {
+          "unit": "Human Resource Development Services",
+          "head": "Mr. Angelito S. David"
+        },
+        {
+          "unit": "Procurement Office",
+          "head": "Ms. Ivy Kate T. Ortiz"
+        },
+        {
+          "unit": "Property and Supply Management Unit",
+          "head": "Ms. Marideth S. Gallardo"
+        },
+        {
+          "unit": "Security and Disaster Management Unit",
+          "head": "Mr. Edwin B. Trinidad"
+        },
+        {
+          "unit": "University Archives and Record Management Unit",
+          "head": "Ms. Vivian C. Labasano"
+        },
+        {
+          "unit": "Accounting Unit",
+          "head": "Ms. Anna Mae F. Teoxon",
+          "socialMedia": {
+            "facebook": "https://www.facebook.com/dorsuaccounting"
+          }
+        }
+      ]
+    },
+    "faculties": [
+      { "code": "FACET", "name": "Faculty of Computing, Engineering and Technology" },
+      { "code": "FNAHS", "name": "Faculty of Nursing and Allied Health Services" },
+      { "code": "FTED", "name": "Faculty of Teacher Education" },
+      { "code": "FALS", "name": "Faculty of Agriculture and Life Sciences" },
+      { "code": "FCJE", "name": "Faculty of Criminal Justice Education" },
+      { "code": "FBM", "name": "Faculty of Business Management" },
+      { "code": "FHUSOCOM", "name": "Faculty of Humanities, Social Sciences and Communication" }
+    ],
+    "programs": {
+      "FALS": {
+        "faculty": "Faculty of Agriculture and Life Sciences",
+        "programs": [
+          {
+            "code": "BSAM",
+            "name": "Bachelor of Science in Agribusiness Management",
+            "accreditation": "Level III"
+          },
+          {
+            "code": "BSA",
+            "name": "Bachelor of Science in Agriculture major in Animal Science",
+            "accreditation": "Level II"
+          },
+          {
+            "code": "BSA",
+            "name": "Bachelor of Science in Agriculture major in Crop Science",
+            "accreditation": "Level II"
+          },
+          {
+            "code": "BSBio",
+            "name": "Bachelor of Science in Biology",
+            "accreditation": "Level IV"
+          },
+          {
+            "code": "BSBio",
+            "name": "Bachelor of Science in Biology major in Animal Biology",
+            "accreditation": "Level IV"
+          },
+          {
+            "code": "BSBio",
+            "name": "Bachelor of Science in Biology major in Ecology",
+            "accreditation": "Level IV"
+          },
+          {
+            "code": "BSES",
+            "name": "Bachelor of Science in Environmental Science",
+            "accreditation": "Level III"
+          }
+        ]
+      },
+      "FHUSOCOM": {
+        "faculty": "Faculty of Humanities, Social Sciences, and Communications",
+        "programs": [
+          {
+            "code": "BSDevCom",
+            "name": "Bachelor of Science in Development Communication",
+            "accreditation": "Level III"
+          },
+          {
+            "code": "AB PolSci",
+            "name": "Bachelor of Arts in Political Science",
+            "accreditation": "N/A"
+          },
+          {
+            "code": "BS Psych",
+            "name": "Bachelor of Science in Psychology",
+            "accreditation": "N/A"
+          }
+        ]
+      },
+      "FBM": {
+        "faculty": "Faculty of Business and Management",
+        "programs": [
+          {
+            "code": "BSBA",
+            "name": "Bachelor of Science in Business Administration",
+            "accreditation": "Level III"
+          },
+          {
+            "code": "BSHM",
+            "name": "Bachelor of Science in Hospitality Management",
+            "accreditation": "Level II"
+          }
+        ]
+      },
+      "FCJE": {
+        "faculty": "Faculty of Criminal Justice Education",
+        "programs": [
+          {
+            "code": "BSC",
+            "name": "Bachelor of Science in Criminology",
+            "accreditation": "Level II"
+          }
+        ]
+      },
+      "FACET": {
+        "faculty": "Faculty of Computing, Engineering, and Technology",
+        "programs": [
+          {
+            "code": "BITM",
+            "name": "Bachelor in Industrial Technology Management major in Automotive Technology",
+            "accreditation": "Level II"
+          },
+          {
+            "code": "BSCE",
+            "name": "Bachelor of Science in Civil Engineering",
+            "accreditation": "Level II"
+          },
+          {
+            "code": "BSIT",
+            "name": "Bachelor of Science in Information Technology",
+            "accreditation": "Level III"
+          },
+          {
+            "code": "BSMath",
+            "name": "Bachelor of Science in Mathematics",
+            "accreditation": "Level III"
+          },
+          {
+            "code": "BSMRS",
+            "name": "Bachelor of Science in Mathematics with Research Statistics",
+            "accreditation": "Level III"
+          }
+        ]
+      },
+      "FNAHS": {
+        "faculty": "Faculty of Nursing and Allied Health Sciences",
+        "programs": [
+          {
+            "code": "BSN",
+            "name": "Bachelor of Science in Nursing",
+            "accreditation": "Level II"
+          }
+        ]
+      },
+      "FTED": {
+        "faculty": "Faculty of Teacher Education",
+        "programs": [
+          {
+            "code": "BEED",
+            "name": "Bachelor of Elementary Education",
+            "accreditation": "Level I"
+          },
+          {
+            "code": "BCED",
+            "name": "Bachelor of Early Childhood Education",
+            "accreditation": "Level IV"
+          },
+          {
+            "code": "BSNED",
+            "name": "Bachelor of Special Needs Education",
+            "accreditation": "Candidate for PSV"
+          },
+          {
+            "code": "BPED",
+            "name": "Bachelor Physical Education",
+            "accreditation": "Level I"
+          },
+          {
+            "code": "BTLED",
+            "name": "Bachelor of Technology and Livelihood Education major in Home Economics",
+            "accreditation": "Level I"
+          },
+          {
+            "code": "BTLED",
+            "name": "Bachelor of Technology and Livelihood Education major in Industrial Arts",
+            "accreditation": "Level I"
+          },
+          {
+            "code": "BSED – English",
+            "name": "Bachelor of Secondary Education major in English",
+            "accreditation": "Level IV"
+          },
+          {
+            "code": "BSED – Filipino",
+            "name": "Bachelor of Secondary Education major in Filipino",
+            "accreditation": "Level I"
+          },
+          {
+            "code": "BSED – Mathematics",
+            "name": "Bachelor of Secondary Education major in Mathematics",
+            "accreditation": "Level IV"
+          },
+          {
+            "code": "BSED – Science",
+            "name": "Bachelor of Secondary Education major in Science",
+            "accreditation": "Level IV"
+          }
+        ]
+      }
+    },
+    "extensionCampusPrograms": {
+      "bagangaCampus": {
+        "campus": "Baganga Campus",
+        "programs": [
+          {
+            "code": "BSA",
+            "name": "Bachelor of Science in Agriculture"
+          },
+          {
+            "code": "BSAM",
+            "name": "Bachelor of Science in Agribusiness Management"
+          },
+          {
+            "code": "BSMath",
+            "name": "Bachelor of Science in Mathematics"
+          },
+          {
+            "code": "BSEnvi-Sci",
+            "name": "Bachelor of Science in Environmental Science"
+          },
+          {
+            "code": "BSIT",
+            "name": "Bachelor of Science in Information Technology"
+          }
+        ]
+      },
+      "banaybanayCampus": {
+        "campus": "Banaybanay Campus",
+        "programs": [
+          {
+            "code": "BSA",
+            "name": "Bachelor of Science in Agriculture"
+          },
+          {
+            "code": "BSBA",
+            "name": "Bachelor of Science in Business Administration"
+          },
+          {
+            "code": "BSIT",
+            "name": "Bachelor of Science in Information Technology"
+          },
+          {
+            "code": "BTLED",
+            "name": "Bachelor of Technology and Livelihood Education"
+          }
+        ]
+      },
+      "cateelCampus": {
+        "campus": "Cateel Campus",
+        "programs": [
+          {
+            "code": "BSA",
+            "name": "Bachelor of Science in Agriculture"
+          },
+          {
+            "code": "BSAM",
+            "name": "Bachelor of Science in Agribusiness Management"
+          },
+          {
+            "code": "BSBA",
+            "name": "Bachelor of Science in Business Administration"
+          },
+          {
+            "code": "BSC",
+            "name": "Bachelor of Science in Criminology"
+          },
+          {
+            "code": "BEED",
+            "name": "Bachelor of Elementary Education"
+          }
+        ]
+      },
+      "sanIsidroCampus": {
+        "campus": "San Isidro Campus",
+        "programs": [
+          {
+            "code": "BSA",
+            "name": "Bachelor of Science in Agriculture"
+          },
+          {
+            "code": "BSBA",
+            "name": "Bachelor of Science in Business Administration"
+          },
+          {
+            "code": "BSC",
+            "name": "Bachelor of Science in Criminology"
+          },
+          {
+            "code": "BEED",
+            "name": "Bachelor of Elementary Education"
+          }
+        ]
+      },
+      "tarragonaCampus": {
+        "campus": "Tarragona Campus",
+        "programs": [
+          {
+            "code": "BSA",
+            "name": "Bachelor of Science in Agriculture"
+          },
+          {
+            "code": "BSAM",
+            "name": "Bachelor of Science in Agribusiness Management"
+          }
+        ]
+      }
+    },
+    "graduatePrograms": {
+      "masters": [
+        {
+          "code": "MBA",
+          "name": "Master in Business Administration"
+        },
+        {
+          "code": "MAED",
+          "name": "Master of Arts in Education major in Educational Management"
+        },
+        {
+          "code": "MAED",
+          "name": "Master of Arts in Education major in Teaching English"
+        },
+        {
+          "code": "MST",
+          "name": "Master of Science Teaching – Mathematics"
+        },
+        {
+          "code": "MST",
+          "name": "Master of Science Teaching – General Science"
+        },
+        {
+          "code": "MSES",
+          "name": "Master of Science in Environmental Science"
+        }
+      ],
+      "doctorate": [
+        {
+          "code": "PhD Bio",
+          "name": "Doctor of Philosophy in Biology – Biodiversity"
+        },
+        {
+          "code": "EdD",
+          "name": "Doctor of Education – Educational Leadership & Management"
+        },
+        {
+          "code": "PhD ES",
+          "name": "Doctor of Philosophy in Environmental Science – Resource Management"
+        }
+      ]
+    },
+    "identity": {
+      "logo": {
+        "elements": [
+          { "name": "Provincial Map", "meaning": "Represents Davao Oriental identity and eco-tourism." },
+          { "name": "Hands", "meaning": "Symbolize strength, balance, and commitment." },
+          { "name": "Ionic Column", "meaning": "Symbolizes principles and ideals of the university." },
+          { "name": "Book & Shield", "meaning": "God-centered and humane values." }
+        ],
+        "colors": {
+          "Blue": "organization, loyalty, honesty",
+          "Yellow": "integrity, commitment, social responsibility, success",
+          "White": "peace, prosperity, compassion"
+        }
+      },
+      "hymn": {
+        "title": "Davao Oriental State University",
+        "composers": {
+          "words": "Harold Chang & Jillian Sitchon",
+          "music": "Harold Chang"
+        },
+        "lyrics": {
+          "verse1": [
+            "Precious Gem of Davao Orient seas, Davao Oriental State University",
+            "Pillar of success, Fountain of wisdom and creativity",
+            "In every battle together we will fight, Thy army pledge it's loyalty",
+            "With virtue of love to God and humanity, Let's stand with pride and dignity"
+          ],
+          "chorus": [
+            "Davao Oriental State University",
+            "Raise your banner proud and mighty",
+            "Keep a heart that nurtures life",
+            "Move forward in every fight",
+            "Davao Oriental State University Go forth bearer of truth and integrity",
+            "Emblem the seal in our hearts and minds",
+            "Lit our lamp with light and warmth,",
+            "DOrSU our Alma Matter dear"
+          ],
+          "verse2": [
+            "Precious gem of Davao Orient Seas, Davao Oriental State University",
+            "We unite to include everyone, all praise and salute to thee",
+            "Your light shall shine over hills and plains, And every ocean strand",
+            "For the Divine hath favored thy greatness, together we will stand"
+          ],
+          "finalChorus": [
+            "Davao Oriental State University",
+            "Raise your banner proud and mighty",
+            "Keep a heart that nurtures life",
+            "Move forward in every fight (transpose to F)",
+            "Davao Oriental State University",
+            "Go forth bearer of truth and integrity",
+            "Emblem the seal in our hearts and minds",
+            "Lit our lamp with light and warmth,",
+            "DORSU our Alma Matter dear",
+            "DORSU our Alma Matter dear"
+          ]
+        },
+        "themes": [
+          "Loyalty and commitment",
+          "Love for God and humanity",
+          "Pride and dignity",
+          "Truth and integrity",
+          "Unity and inclusion",
+          "Divine favor and greatness"
+        ]
+      }
+    },
+    "admissionEnrollmentRequirements2025": {
+      "academicYear": "2025-2026",
+      "semester": "First Semester",
+      "scope": "Main and Extension Campuses",
+      "returningStudents": {
+        "category": "Returning Students",
+        "requirements": [
+          "Duly Accomplished Student's Profile Form",
+          "3 pcs of recent 2x2 ID picture with white background",
+          "1 pc of short brown envelope",
+          "Completely signed clearance",
+          "Report of Grades from previous semester",
+          "A Medical certificate issued by a licensed physician, with laboratory results including stool examination, urinalysis, and chest x-ray (Pregnant women are exempt from the chest X-ray requirement)",
+          "Drug Test Result"
+        ]
+      },
+      "continuingStudents": {
+        "category": "Continuing Students",
+        "requirements": [
+          "Duly Accomplished Student's Profile Form",
+          "Completely signed clearance",
+          "Drug Test"
+        ]
+      },
+      "transferringStudents": {
+        "category": "Transferring Students",
+        "requirements": [
+          "SUAST Examination Result (Original copy)",
+          "Informative copy of Transcript of Record (TOR) (Original copy)",
+          "Certificate of Transfer Credential / Honorable Dismissal (Original copy)",
+          "Certificate of Good Moral Character (Original copy)",
+          "Photocopy of PSA Birth Certificate (Please bring the original copy upon submission)",
+          "Photocopy of PSA Marriage Contract for married female only (Please bring the original copy upon submission)",
+          "A Medical certificate issued by a licensed physician, with laboratory results including stool examination, urinalysis, and chest x-ray (Pregnant women are exempt from the chest X-ray requirement)",
+          "Drug Test Result"
+        ]
+      },
+      "secondDegreeStudents": {
+        "category": "Second-degree Students",
+        "requirements": [
+          "Informative copy of Transcript of Record (TOR) (Original copy)",
+          "Certificate of Transfer Credential / Honorable Dismissal (Original copy)",
+          "Certificate of Good Moral Character (Original copy)",
+          "Photocopy of PSA Birth Certificate (Please bring the original copy upon submission)",
+          "Photocopy of PSA Marriage Contract for married female only (Please bring the original copy upon submission)",
+          "A Medical certificate issued by a licensed physician, with laboratory results including stool examination, urinalysis, and chest x-ray (Pregnant women are exempt from the chest X-ray requirement)",
+          "Drug Test Result"
+        ]
+      },
+      "incomingFirstYearStudents": {
+        "category": "Incoming First Year Students",
+        "requirements": [
+          "SUAST Examination Result (Original copy)",
+          "Form 138 (Original copy)",
+          "For ALS and PEPT passers: Certificate of Rating (Original copy)",
+          "Certificate of Good Moral Character (Original copy)",
+          "Photocopy of PSA Birth Certificate (Please bring the original copy upon submission)",
+          "Photocopy of PSA Marriage Contract for married female only (Please bring the original copy upon submission)",
+          "A Medical certificate issued by a licensed physician, with laboratory results including stool examination, urinalysis, and chest x-ray (Pregnant women are exempt from the chest X-ray requirement)",
+          "Drug Test Result"
+        ]
+      }
+    },
+    "enrollmentSchedule2025": {
+      "academicYear": "2025-2026",
+      "semester": "First Semester",
+      "scope": "Main and Extension Campuses",
+      "schedule": [
+        {
+          "dates": "21–29 July",
+          "category": "INCOMING FIRST YEAR STUDENTS under FREE HIGHER EDUCATION (FHE)"
+        },
+        {
+          "dates": "30 July – 1 August",
+          "category": "INCOMING FIRST YEAR STUDENTS under SLE-FHE Program"
+        },
+        {
+          "dates": "4 August",
+          "category": "SECOND YEAR STUDENTS"
+        },
+        {
+          "dates": "5 August",
+          "category": "THIRD YEAR STUDENTS"
+        },
+        {
+          "dates": "6 August",
+          "category": "FOURTH YEAR STUDENTS"
+        },
+        {
+          "dates": "7 & 8 August",
+          "category": "TRANSFEREES, RETURNEES, SHIFTEES, IRREGULAR AND SECOND-DEGREE STUDENTS"
+        },
+        {
+          "dates": "9 August",
+          "category": "GRADUATE SCHOOL STUDENTS"
+        },
+        {
+          "dates": "11 – 15 August",
+          "category": "CHANGE OF MATRICULATION — UNDERGRADUATE STUDENTS"
+        },
+        {
+          "dates": "11 August",
+          "category": "START OF CLASSES — UNDERGRADUATE STUDENTS"
+        },
+        {
+          "dates": "16 August",
+          "category": "CHANGE OF MATRICULATION AND START OF CLASSES — GRADUATE SCHOOL STUDENTS"
+        }
+      ]
+    },
+    "suastStatistics": {
+      "testName": "State University Aptitude and Scholarship Test",
+      "acronym": "SUAST",
+      "description": "The State University Aptitude and Scholarship Test (SUAST) is the entrance examination for Davao Oriental State University. It assesses the aptitude and readiness of applicants for admission to the university's various programs.",
+      "statistics": [
+        {
+          "year": 2023,
+          "numberOfApplicants": 7444,
+          "numberOfPassers": 4198,
+          "passingRate": "56%",
+          "numberOfEnrolledApplicants": 4574
+        },
+        {
+          "year": 2024,
+          "numberOfApplicants": 6967,
+          "numberOfPassers": 3430,
+          "passingRate": "49%",
+          "numberOfEnrolledApplicants": 4952
+        },
+        {
+          "year": 2025,
+          "numberOfApplicants": 6974,
+          "numberOfPassers": 3437,
+          "passingRate": "49%",
+          "numberOfEnrolledApplicants": 4447
+        }
+      ],
+      "notes": "The passing rate represents the percentage of applicants who passed the SUAST examination. The number of enrolled applicants may exceed the number of passers as it includes students who may have been admitted through other pathways or special programs."
+    },
+    "developers": {
+      "team": [
+        { "name": "Ivan J P. Vasay", "role": "BSIT Student Developer" },
+        { "name": "John Kenneth M. Gade", "role": "BSIT Student Developer" }
+      ],
+      "notes": "Developed the DOrSU Assistant AI and dataset structure as part of their capstone project."
+    },
+    "allProgramsOffered": {
+      "undergraduate": [
+        {
+          "code": "BSAM",
+          "name": "Bachelor of Science in Agribusiness Management",
+          "faculty": "FALS"
+        },
+        {
+          "code": "BSA",
+          "name": "Bachelor of Science in Agriculture major in Animal Science",
+          "faculty": "FALS"
+        },
+        {
+          "code": "BSA",
+          "name": "Bachelor of Science in Agriculture major in Crop Science",
+          "faculty": "FALS"
+        },
+        {
+          "code": "BSBio",
+          "name": "Bachelor of Science in Biology",
+          "faculty": "FALS"
+        },
+        {
+          "code": "BSBio",
+          "name": "Bachelor of Science in Biology major in Animal Biology",
+          "faculty": "FALS"
+        },
+        {
+          "code": "BSBio",
+          "name": "Bachelor of Science in Biology major in Ecology",
+          "faculty": "FALS"
+        },
+        {
+          "code": "BSES",
+          "name": "Bachelor of Science in Environmental Science",
+          "faculty": "FALS"
+        },
+        {
+          "code": "BSDevCom",
+          "name": "Bachelor of Science in Development Communication",
+          "faculty": "FHUSOCOM"
+        },
+        {
+          "code": "AB PolSci",
+          "name": "Bachelor of Arts in Political Science",
+          "faculty": "FHUSOCOM"
+        },
+        {
+          "code": "BS Psych",
+          "name": "Bachelor of Science in Psychology",
+          "faculty": "FHUSOCOM"
+        },
+        {
+          "code": "BSBA",
+          "name": "Bachelor of Science in Business Administration",
+          "faculty": "FBM"
+        },
+        {
+          "code": "BSHM",
+          "name": "Bachelor of Science in Hospitality Management",
+          "faculty": "FBM"
+        },
+        {
+          "code": "BSC",
+          "name": "Bachelor of Science in Criminology",
+          "faculty": "FCJE"
+        },
+        {
+          "code": "BITM",
+          "name": "Bachelor in Industrial Technology Management major in Automotive Technology",
+          "faculty": "FACET"
+        },
+        {
+          "code": "BSCE",
+          "name": "Bachelor of Science in Civil Engineering",
+          "faculty": "FACET"
+        },
+        {
+          "code": "BSIT",
+          "name": "Bachelor of Science in Information Technology",
+          "faculty": "FACET"
+        },
+        {
+          "code": "BSMath",
+          "name": "Bachelor of Science in Mathematics",
+          "faculty": "FACET"
+        },
+        {
+          "code": "BSMRS",
+          "name": "Bachelor of Science in Mathematics with Research Statistics",
+          "faculty": "FACET"
+        },
+        {
+          "code": "BSN",
+          "name": "Bachelor of Science in Nursing",
+          "faculty": "FNAHS"
+        },
+        {
+          "code": "BEED",
+          "name": "Bachelor of Elementary Education",
+          "faculty": "FTED"
+        },
+        {
+          "code": "BCED",
+          "name": "Bachelor of Early Childhood Education",
+          "faculty": "FTED"
+        },
+        {
+          "code": "BSNED",
+          "name": "Bachelor of Special Needs Education",
+          "faculty": "FTED"
+        },
+        {
+          "code": "BPED",
+          "name": "Bachelor Physical Education",
+          "faculty": "FTED"
+        },
+        {
+          "code": "BTLED",
+          "name": "Bachelor of Technology and Livelihood Education major in Home Economics",
+          "faculty": "FTED"
+        },
+        {
+          "code": "BTLED",
+          "name": "Bachelor of Technology and Livelihood Education major in Industrial Arts",
+          "faculty": "FTED"
+        },
+        {
+          "code": "BSED",
+          "name": "Bachelor of Secondary Education major in English",
+          "faculty": "FTED"
+        },
+        {
+          "code": "BSED",
+          "name": "Bachelor of Secondary Education major in Filipino",
+          "faculty": "FTED"
+        },
+        {
+          "code": "BSED",
+          "name": "Bachelor of Secondary Education major in Mathematics",
+          "faculty": "FTED"
+        },
+        {
+          "code": "BSED",
+          "name": "Bachelor of Secondary Education major in Science",
+          "faculty": "FTED"
+        }
+      ]
+    },
+    "offices": {
+      "studentServices": [
+        {
+          "acronym": "OSPAT",
+          "fullName": "Office of Student Promotion, Admissions and Testing",
+          "head": "Ms. Trishea Amor C. Jacobe",
+          "socialMedia": {
+            "facebook": "https://www.facebook.com/dorsuadmissions"
+          }
+        },
+        {
+          "acronym": "OSA",
+          "fullName": "Office of Student Affairs",
+          "head": "Mr. Felipe Cergas",
+          "socialMedia": {
+            "facebook": "https://www.facebook.com/dorsuOSA"
+          }
+        },
+        {
+          "acronym": "OSCD",
+          "fullName": "Office of Student Counsel and Development",
+          "head": "Ms. Marites S. Cergas",
+          "socialMedia": {
+            "facebook": "https://www.facebook.com/OSCD.DOrSU"
+          }
+        },
+        {
+          "acronym": "",
+          "fullName": "Office of Student Internship",
+          "head": "Mr. Renante M. Andrada"
+        },
+        {
+          "acronym": "FASG",
+          "fullName": "Financial Aids and Scholarship Grants Office",
+          "head": "Ms. Candy J. Martinez"
+        },
+        {
+          "acronym": "PESO",
+          "fullName": "Public Employment Service Office",
+          "head": "Ms. Trishea Amor C. Jacobe"
+        },
+        {
+          "acronym": "",
+          "fullName": "Office of Health and Wellness Services",
+          "head": "Ms. Alvie R. Saxby",
+          "socialMedia": {
+            "facebook": "https://www.facebook.com/DOrSUClinic"
+          }
+        },
+        {
+          "acronym": "",
+          "fullName": "Office of Student Sports and Wellness",
+          "head": "Dr. Leonard Sydrick H. Pajo"
+        },
+        {
+          "acronym": "",
+          "fullName": "Office of Student Culture and Arts Literacy",
+          "head": "Mr. Arianne Michael Sim M. Tuano"
+        }
+      ],
+      "administrative": [
+        {
+          "acronym": "DICT",
+          "fullName": "Directorate for Information, Communication and Technology",
+          "head": "Mr. Arnel Leo L. Aranquez"
+        },
+        {
+          "acronym": "",
+          "fullName": "Office of the Cashier",
+          "head": "Dr. Ma. Anita O. Nuñez"
+        },
+        {
+          "acronym": "",
+          "fullName": "Marfori Farm Productivity",
+          "head": "Mr. Felix T. Lorejo Jr."
+        },
+        {
+          "acronym": "",
+          "fullName": "University Sports Facilities",
+          "head": "Mr. Rey L. Rabuya"
+        }
+      ]
+    },
+    "studentResources": {
+      "manuals": [
+        {
+          "title": "Pre-Admission User Manual for 1st Year Incoming Students",
+          "description": "Comprehensive guide for incoming first-year students on the pre-admission process",
+          "link": "https://heyzine.com/flip-book/9b5fdf090b.html?fbclid=IwY2xjawKt2NhleHRuA2FlbQIxMABicmlkETFjM3QxcXNPYmFmekpUelc2AR4VAv87tmTTzeRohLQClpzKeJbnMqrw4ye2qtJmC1H_oi7LB1am2AtWzdMQtw_aem_qUviiZPxjTYaRsoWtVDyXA"
+        },
+        {
+          "title": "Grade Inquiry Manual",
+          "description": "Manual for students on how to inquire about their grades",
+          "link": "https://heyzine.com/flip-book/921ebac285.html#page/1"
+        }
+      ]
+    },
+    "studentOrganizations": {
+      "usc": {
+        "fullName": "University Student Council",
+        "acronym": "USC",
+        "type": "Highest Student Governing Body",
+        "description": "The Davao Oriental State University Student Council, the highest student governing body of Davao Oriental State University, one of the biggest state universities in Region 11 that has the highest number of student population on the entire region. The University Student Council (USC) of Davao Oriental State University (DOrSU) is a constitution that governs the whole student population of DOrSU which includes the students of the extension campuses as well. This organization aspires to bestow programs, projects, and activities that are aligned with the University's vision of Excellence, Innovation, and Inclusion.",
+        "mission": "This USC seeks to uphold and promote the rights and general welfare of all the DOrSU students. It also aspires to be an active forum of students' ideas and sentiments, and instill consciousness among the students. The organization strives to enhance social awareness and promote national consciousness among students, and develop responsible studentry, which will reinforce service-oriented education. And aspires to cultivate potentials, skills, and knowledge among the studentry for the betterment of the community.",
+        "beliefs": [
+          "That access to education shall be given to everyone",
+          "That education should develop man's physical, mental, social, cultural, political, and spiritual potentials to the fullest, in order to realize a human and humane existence for all",
+          "That education should enhance critical and analytical thinking and sound judgment, free from superstitious and myths belief",
+          "That the University Student Council's programs, projects and activities should be aligned with the University's vision of Excellence, Innovation, and Inclusion"
+        ],
+        "objectives": [
+          "Defend and promote the rights and general welfare of DOrSU students",
+          "Serve as an active forum to student's ideas and sentiments",
+          "Instill consciousness among the ranks of students",
+          "Promote the ideals of the University in realizing that the development of human resources in terms of ensuring well-rounded intellectual, social, cultural, physical, political and spiritual development of every students",
+          "Enhance social awareness and promote national consciousness among students",
+          "Cooperate and establish linkages with various sectors of the society in the pursuit of common interest particularly in the formation of just and humane society",
+          "Develop responsible studentry, who will uphold service-oriented education",
+          "Support educational reforms along nationalistic, humanistic and scientific methods, for the development of human potential; to meet the social realities and to exercise academic freedom",
+          "Develop a responsive studentry who put educational opportunity to optional use and look after the unity and welfare of the whole studentry and the people",
+          "Be an effective voice which can truly realize the plans and aspirations of the students",
+          "Develop potentials, skills and knowledge among the studentry for the betterment of the community",
+          "Coordinate with the OSA in the overall planning for the development of the institution"
+        ],
+        "logoSymbolism": {
+          "universityStatue": "Symbolic of the University's mission to develop holistic, creative and inclusive human resource who are responsive and resilient to global challenges",
+          "threeStars": "Means voice, service and reform",
+          "laurelLeaves": "Stand for knowledge and learning"
+        },
+        "executives2025": [
+          {
+            "position": "President",
+            "name": "Naxes Cablinda"
+          },
+          {
+            "position": "Vice President",
+            "name": "John Carlo Balante"
+          },
+          {
+            "position": "Secretary",
+            "name": "Diether Manguiob"
+          },
+          {
+            "position": "Treasurer",
+            "name": "Jay Ponce"
+          },
+          {
+            "position": "Auditor",
+            "name": "Lemwiel Hitutua"
+          },
+          {
+            "position": "Public Information Officer (PIO)",
+            "name": "Ian Carlo Calub"
+          },
+          {
+            "position": "Business Manager",
+            "name": "Tyrone Kyle Dapitanon"
+          }
+        ],
+        "socialMedia": {
+          "facebook": "https://www.facebook.com/DORSU.UniversirtyStudentCouncil"
+        }
+      },
+      "angSidlakan": {
+        "fullName": "Ang Sidlakan",
+        "acronym": "AS",
+        "type": "Official Student Publication",
+        "tagline": "Your Voice. Your Vanguard. Your Truth.",
+        "description": "Davao Oriental State University upholds the right to freedom of expression and the journalistic views of its students, and it is embodied in the University's student publication, Ang Sidlakan.",
+        "about": "Ang Sidlakan, attributed to its acronym 'AS' is the Official Student Publication of Davao Oriental State University. It bears its official tagline, 'Your Voice. Your Vanguard. Your Truth.' The AS is in service to the general needs of the student body and is always abiding by the ethics of responsible journalism. Its primary duty is to publish articles with a wide range of topics, stemming from news and events within the campus, local, national, or even international level that directly impact the students and the public in general.",
+        "membership": "The members of Ang Sidlakan are bonafide students of DOrSU, and are carefully selected in accordance to their academic standing and capabilities. Each member possesses exemplary wit and communication skills, a pleasing personality, and the passion and commitment to be of service to the students, the university, and the people. AS values fairness and equality within the publication, while carrying their duty to amplify the voices of every Tata, despite diversities in their age, gender, religion, and cultural backgrounds.",
+        "objectives": [
+          "To publish at least one issue per semester and special issues if needed",
+          "Establish and maintain an online presence to serve the student body in the digital medium",
+          "To serve general interest of the DOrSU studentry in the main and extension campuses",
+          "To serve as a medium of truth for campus, local, national, and international issues",
+          "To continually equip its staff with high caliber skills in writing, photojournalism, layout, and cartooning"
+        ]
+      },
+      "catalyst": {
+        "fullName": "The Catalyst",
+        "type": "Special Student Organization",
+        "division": "Student Services Division",
+        "leadership": {
+          "structure": "Headed by a President and supervised by a faculty as its Adviser"
+        },
+        "purpose": "A special student organization under the Student Services Division of Davao Oriental State University that caters to the needs and interests of the graduating students. Its major goal is to provide the senior students with a repository of their memories – a yearbook.",
+        "vision": "The Catalyst envisions an organization to provide quality services to its clientele particularly to the DOrSU graduating students in terms of yearbook production and to foster good and harmonious relationships among the members in the organizations. It upholds the vision of the institution in creating a culture of excellence, innovation and inclusion.",
+        "servicesOffered": [
+          "Yearbook Publication",
+          "Information Dissemination",
+          "Profiling of Graduates",
+          "Collection of graduates pictures and yearbook",
+          "Documentation of all University activities",
+          "Newsletter making",
+          "Releasing of graduate pictures and yearbook",
+          "Client reception through telephone/mail and Facebook inquiry",
+          "University Service and Community Outreach Activities"
+        ]
+      }
+    },
+    "detailedOfficeServices": {
+      "OSCD": {
+        "fullName": "Office of Student Counseling and Development",
+        "acronym": "OSCD",
+        "formerName": "GCTC",
+        "description": "Office of Student Counseling and Development formerly GCTC is here to help you with your academic, personal, social and career needs. The Office is committed to help you attain your full academic potential, foster responsible independence and develop a sense of self-worth as you strive to identify and clarify your personal values and goals, through a supportive counseling relationship.",
+        "socialMedia": {
+          "facebook": "https://www.facebook.com/OSCD.DOrSU"
+        },
+        "servicesOverview": "OSCD offers Counseling services, Testing service, Orientation services, Placement service, Individual Inventory service and Information service.",
+        "servicesOffered": [
+          {
+            "name": "Individual Inventory Service",
+            "description": "This service keeps the individual student records and reports to be utilized for counseling, planning the student's educational and vocational programs and for administrative purposes."
+          },
+          {
+            "name": "Counseling Service",
+            "description": "This service aims to assist DOrSU community, especially the student body lay a permanent foundation for making sound mature decision in their pursuit for self-fulfillment and self-actualization. This can be individual counseling (one-on-one with the guidance counselor) or group guidance as in group dynamics enrichment sessions, for a group discussion & group process."
+          },
+          {
+            "name": "Orientation Service",
+            "description": "It acquaints and help you adjust with the school environment and situation."
+          },
+          {
+            "name": "Information Service",
+            "description": "This service is designed to promote environmental awareness. It aims to promote valuable information to inspire the students and give motivation for their success."
+          },
+          {
+            "name": "Testing Service",
+            "description": "Testing helps individuals understand their strengths and weaknesses so they can better realize their potential. It can help appraise the students mental ability, emotional intelligence, personality profile, adjustment inventory, and self-report measure."
+          },
+          {
+            "name": "Placement Service",
+            "description": "A Placement Service is a continuous program which helps determine the manner to assign a student based on his/her personal and social adjustment. Students are placed in classes and programs suitable to their needs, interests and abilities. Moreover, they also receive appropriate training and preparation to ensure them that they will be prepared to land for a stable job after graduation."
+          },
+          {
+            "name": "Follow-up Service",
+            "description": "A continuous monitoring program designed to evaluate the effectiveness of the intervention procedures in relation to student progress and adjustments. This service is undertaken as systematic evaluation of whether the guidance service in particular and the educational program in general have satisfied the needs of students."
+          },
+          {
+            "name": "Prevention and Wellness",
+            "description": "A service offered to the clientele aiming to encourage lifestyle change for healthy living and keep something from happening or worsen such as psychosocial, emotional and intellectual problems."
+          }
+        ]
+      },
+      "OSA": {
+        "fullName": "Office of Student Affairs",
+        "acronym": "OSA",
+        "purpose": "The main purpose of Student Affairs' work is to support student learning and personal growth. We do this by providing important services, being advocates for students, helping students adjust socially, and providing a curriculum for personal growth and learning through student involvement in co-curricular activities. The most desirable approach to the support of learning and personal growth is in partnership with the faculty. This partnership can take on many forms including service-learning opportunities, compensatory educational programs, and student-faculty interaction outside the classroom, especially in student organizations that are academically aligned.",
+        "socialMedia": {
+          "facebook": "https://www.facebook.com/dorsuOSA"
+        },
+        "roles": [
+          "Providing services",
+          "Being advocates",
+          "Helping student adjust to the campus",
+          "Being educators in partnership with the faculty"
+        ],
+        "servicesOffered": [
+          "Accreditation / Recognition of Student Organization",
+          "Processing and Issuance of Identification Card",
+          "Application and Issuance of Certification of Moral Character, etc.",
+          "Signing of Clearance",
+          "Student Grievance Mechanism"
+        ]
+      },
+      "OHWS": {
+        "fullName": "Office of Health and Wellness Services",
+        "acronym": "OHWS",
+        "alternativeName": "Health Services Unit (HSU)",
+        "description": "The Health Services Unit (HSU) is an arm of the office of the Director of Student Services that provides health services to the DOrSU constituents within the framework of a clinic-out-patient setting and referral system-as the need arises. This involves consultation, treatment of health related problems and referrals.",
+        "socialMedia": {
+          "facebook": "https://www.facebook.com/DOrSUClinic"
+        },
+        "servicePledge": "We are committed to deliver quality health care and friendly environment.",
+        "objectives": [
+          "To promote primary health care to all clients",
+          "To provide initial management of common illnesses",
+          "To promote safety culture in the college and among the clients through active participation in emergency response and disaster prevention"
+        ],
+        "servicesOffered": [
+          {
+            "service": "General Consultation",
+            "procedure": [
+              "Present School Identification Card",
+              "For old client, locate the outpatient record/dental record",
+              "For new client, fill up the outpatient/center record",
+              "Ask and record the complaint of the clients",
+              "Take the vital signs (Blood Pressure, Temperature, Height and Weight)"
+            ],
+            "duration": "10-20 minutes",
+            "personnel": "Health Services Unit Personnel and Physician"
+          },
+          {
+            "service": "Referral to Higher Facility",
+            "procedure": [
+              "Refer to the school physician/dentist for consultation and perform medical/dental procedures",
+              "Give prescribed medicine and correct dosage with proper health teaching",
+              "Give over the counter medicine (if necessary) or independent nursing intervention as needed",
+              "Refer to specialized medical practitioner or higher facility"
+            ],
+            "duration": "10-20 minutes",
+            "personnel": "Physician assisted by Health Services Unit Personnel"
+          },
+          {
+            "service": "Medical Profiling",
+            "procedure": [
+              "For old students, fill-up the updated physical examination records",
+              "For new students, physical examination record",
+              "Take the vital sign (Blood Pressure, Temperature, Height and Weight)",
+              "Assessment and interview of the laboratory results with medical certification",
+              "Needs follow-up if YES to come back for consultation. If NO, keep the file"
+            ],
+            "duration": "10-15 minutes",
+            "personnel": "Health Services Unit Personnel"
+          },
+          {
+            "service": "Responding to Medical Emergency",
+            "procedure": [
+              "Take client vital signs",
+              "Apply first aid",
+              "Refer to school physician/give OTC meds or prescribed meds if necessary",
+              "Health Services Unit Personnel fills up the emergency care record form",
+              "Health Services Unit Personnel informs client's relatives/parents/instructor",
+              "Reassessment of clients",
+              "Call EMS/CDRRMO",
+              "Discharge the client with complete health teaching and home instructions"
+            ],
+            "duration": "10-15 minutes",
+            "personnel": "Health Services Unit Personnel"
+          }
+        ]
+      },
+      "library": {
+        "fullName": "University Learning and Information Resource Center",
+        "commonName": "DOrSU Library",
+        "about": "The Davao Oriental State University (DOrSU) Library serves as the intellectual heart of our campus, providing essential resources and services to support the academic and research needs of students, faculty, and staff. Established alongside the university, our library has grown into a comprehensive knowledge hub that combines traditional library services with innovative digital resources.",
+        "hours": {
+          "physicalLibrary": "8:00 AM to 5:00 PM, Monday to Saturday",
+          "onlineServices": "5:00 PM to 9:00 PM, Monday to Friday",
+          "closed": "Sundays and holidays"
+        },
+        "vision": "A World-Class Learning and Information Center",
+        "mission": "To fulfill the vision of excellence, innovation, and inclusion of DOrSU, the university library shall be an inclusive learning information resource center that endeavors to: contribute to quality academic and research programs of the university; provide cutting-edge innovation in library services; and respond to the information needs of diverse constituents of instruction, research, extension, and production.",
+        "collections": "Our library houses a diverse collection of resources, including books, journals, magazines, theses, dissertations, and digital materials. We continuously update our collection to ensure that our resources remain relevant and responsive to the evolving needs of our academic community. Our specialized collections cover a wide range of disciplines reflecting the university's academic programs.",
+        "services": {
+          "clientEducationServices": {
+            "description": "The client education section is responsible for the timely, appropriate, and relevant services to educate all users about what the Library can offer for their instruction, research, extension, and other information needs. The section is also responsible for reaching out to the information community about the latest information resources and how they can benefit from the same.",
+            "programs": [
+              {
+                "name": "Information Literacy",
+                "description": "The Library promotes its resources and services. One of these is library instruction which is conducted every opening of classes. This is an enhanced instruction using recorded videos, policy guides, and other handouts. The instruction also includes how to use the collection of online databases and electronic resources. There are also established programs such as 'Read Every Day, Lead a Better Life' and 'ineed, ivalue, ILOVEMYLIBRARY' that help educate users on the value of reading and the preservation of resources."
+              },
+              {
+                "name": "Marketing",
+                "description": "This service is one of the most relevant components of library information delivery. Librarians shall create persuasive efforts in disseminating information, so that clients or library clients will be motivated to take advantage of library services and develop skills that will improve learning and research abilities in support to their academic requirements. The Client Education and Information Services supervisor monitors the operation."
+              },
+              {
+                "name": "Library Orientation",
+                "description": "Educating new students on library operations and services is a yearly activity conducted by librarians. The schedule usually happens in the first semester of every school year. New students are required to attend this activity to acquire information on library rules, regulations, policies, and services. Hence, to get the maximum attendance of the new students, cooperation with the deans and program heads of the different institutes/faculties is necessary."
+              }
+            ]
+          },
+          "clientInformationServices": {
+            "description": "The client information section is complementary to the role and functions of the client education service. After clients are informed about the resources and services of the library, the section provides them with their much-needed information resources. The majority of these resources can be borrowed for home use depending on their type: Some are available only at the library; while others are accessed via the internet.",
+            "sections": [
+              {
+                "name": "General Education and References Section",
+                "description": "Contains supplemental reading materials to textbooks used in different courses. It also contains books (e.g. encyclopedia, almanac, miscellanies, atlases, yearbooks, dictionaries, etc.) and materials to be consulted only for specific or brief inquiries which are available for room use only."
+              },
+              {
+                "name": "Professional Collection",
+                "description": "Includes professional reading materials to support the curricular needs of all the programs offered in the institution.",
+                "subcategories": [
+                  "General Education and References",
+                  "Computing, Engineering and Technology",
+                  "Agriculture and Life Sciences (Agriculture, Biology, Environmental Science, DevCom)",
+                  "Special Collections",
+                  "Serials",
+                  "Archives and Records",
+                  "Nursing and Allied Health Sciences",
+                  "Reserve"
+                ]
+              },
+              {
+                "name": "Reserve Section",
+                "description": "Includes single copies of textbooks to support different courses are put on reserve."
+              },
+              {
+                "name": "Filipiniana and Memorabilia",
+                "description": "Include books, manuscripts and other similar publications about the Philippines regardless of author and place of publication which are strictly for room use only."
+              },
+              {
+                "name": "Serials",
+                "description": "House publication like journals, magazines, and periodicals. It also includes government publications and vertical filing. All of these materials are strictly for room use only."
+              },
+              {
+                "name": "Special Collection",
+                "description": "Houses books and private organization. It includes these collections: Atty. Piit Special Collection, Provincial DILG-KRN, American Corner, PSA/NSO, and so on, are deposited in the Special Collections sections."
+              },
+              {
+                "name": "Audio-Visual and Multimedia Materials",
+                "description": "Offer services that are for instruction-related services. A faculty will make the reservation, which will be on a first-come, first-served basis. He/she shall facilitate the activity to ensure safety and protection of the facilities. Only the library collected titles and other audio-visual materials recommended by the faculty shall be allowed for viewing. A ten pesos (P10.00) per hour fee shall be collected as an incidental fee to augment the budget for the repair of damaged resources and/or facilities of their or purchase of their replacements. The AVR/MM materials and equipment are strictly for room use only."
+              },
+              {
+                "name": "Archives and Records",
+                "description": "Houses both published and unpublished manuscripts submitted by graduate and undergraduate students as well as academic researchers. It also houses other collections of greater value. All library records of perpetual importance can also be found in this section. These materials are strictly for room use only."
+              },
+              {
+                "name": "Digital Document Delivery",
+                "description": "The Digital Document Delivery Service (DDD) is an online or electronic version of circulation service. The Materials in print are digitized to allow online research on a view only capacity. The digitized titles are emailed to clients upon request. Inquiries relevant to this service may be sent to the DOrSU library page."
+              }
+            ],
+            "onlineServices": [
+              {
+                "name": "Ask-A-Librarian",
+                "description": "An activity in which a patron can ask possible resources available online, from any downloaded databases. It provides links to reliable open access sites."
+              },
+              {
+                "name": "Ask-A-Patron",
+                "description": "Any library staff will find ways to reach out to library patrons to gather their concerns and research needs. Personal data shall be dealt with utmost confidentiality, adhering to the Data Privacy Act of 2018."
+              },
+              {
+                "name": "Photo Request Service",
+                "description": "Requests for taking photos of limited book pages may be made. This can be accomplished by sending a private message to our Facebook, sending a request via email, or texting via SMS."
+              }
+            ]
+          }
+        }
+      }
+    },
+    "additionalOfficesAndCenters": {
+      "IRO": {
+        "fullName": "International Relations Office",
+        "acronym": "IRO",
+        "administrativeUnit": "Office of the President",
+        "description": "The Davao Oriental State University's International Relations Office (IRO) is an Administrative Unit under the Office of the President and serves as the university's channel in organizing innovative and inclusive programs essential in expanding its transnational experience for its stakeholders towards global competitiveness and development; strengthen its global linkages to form a global representative network that will carry DOrSU in the international academic map.",
+        "purpose": "Anchored to the university's vision to become a university of excellence, innovation and inclusion, the International Relations Office shall take the initiative in establishing an engaging international relationship and explore opportunities for faculty members, students, and non-teaching staff towards cross border mobility and internationalization.",
+        "legalBasis": "BOT Resolution No. 2019-27",
+        "services": [
+          "Initiate and explore linkages with foreign organizations, networks, and associations for prospective programs and projects",
+          "Promote good international public relations and goodwill for the University",
+          "Plan and implement capability-building activities promoting efforts for international recognition for the University",
+          "Coordinate, monitor, and assess international recognition efforts in the University",
+          "Represent the University in international meetings when required",
+          "Perform other duties and responsibilities that may be assigned by the University President"
+        ],
+        "notableAchievementsAndPartnerships": [
+          {
+            "institution": "Universiti Teknologi Malaysia",
+            "country": "Malaysia"
+          },
+          {
+            "institution": "Universitas Bhayangkara Surabaya",
+            "country": "Indonesia"
+          },
+          {
+            "institution": "Universiti Malaysia Terengganu, Faculty of Fisheries and Food Science",
+            "country": "Malaysia"
+          },
+          {
+            "institution": "Universiti Malaya",
+            "country": "Malaysia"
+          },
+          {
+            "institution": "Kaoshiung Medical University",
+            "country": "Taiwan"
+          },
+          {
+            "institution": "Daugavpils University",
+            "country": "Latvia"
+          },
+          {
+            "institution": "Kansai University",
+            "country": "Japan"
+          },
+          {
+            "institution": "Rhein Waal University",
+            "country": "Germany"
+          },
+          {
+            "institution": "Huaqiao University",
+            "country": "China"
+          },
+          {
+            "institution": "Teknokrat Indonesia University",
+            "country": "Indonesia"
+          },
+          {
+            "institution": "Hiroshima University",
+            "country": "Japan"
+          },
+          {
+            "institution": "The University of Tokyo",
+            "country": "Japan"
+          },
+          {
+            "institution": "Silla University",
+            "country": "Korea"
+          },
+          {
+            "institution": "Yamaguchi University",
+            "country": "Japan"
+          },
+          {
+            "institution": "Universitas of Brawijaya",
+            "country": "Indonesia"
+          },
+          {
+            "institution": "Hirosaki University",
+            "country": "Japan"
+          },
+          {
+            "institution": "Universitas Andalas",
+            "country": "Indonesia"
+          },
+          {
+            "institution": "Atma Jaya Catholic University",
+            "country": "Indonesia"
+          },
+          {
+            "institution": "Faculti Pendidikan-Universiti Teknologi Mara",
+            "country": "Malaysia"
+          },
+          {
+            "institution": "Universiti Malaysia Sabah",
+            "country": "Malaysia"
+          },
+          {
+            "institution": "Universitas Islamic Indonesia",
+            "country": "Indonesia"
+          },
+          {
+            "institution": "University of Mary Hardin-Baylor",
+            "country": "USA"
+          }
+        ],
+        "link": "https://dorsu.edu.ph/international-relations/"
+      },
+      "CGAD": {
+        "fullName": "Center for Gender and Development",
+        "acronym": "CGAD",
+        "vision": "A premier Center for Gender and Development in the Asia Pacific that emulates inclusion through gender-responsive policies, programs and services leading towards gender equality and women's empowerment.",
+        "mission": "The Center for Gender and Development is committed to uphold gender equality and women's empowerment in all spheres of public and private life by implementing various gender mainstreaming strategies that cuts across instruction, research, and community extension.",
+        "goals": [
+          "Sustainable and gender responsive instruction, research, community development and involvement",
+          "Gender equity and equality among the DORSU constituents",
+          "Sustainable GAD responsive partnership and cooperation among stakeholders",
+          "Advance a gender-responsive policy environment in the University"
+        ],
+        "bannerPrograms": [
+          "Gender Fair Education Program",
+          "Gender-Responsive Curriculum Development Program",
+          "Gender-Responsive Research and Resource Collection Program",
+          "Gender-Responsive Extension and Community Engagement Program",
+          "Gender-Responsive Learning and Working Environments Program"
+        ],
+        "partnerships": [
+          "The International Institute of Knowledge Management",
+          "Global Impact",
+          "Department of Education – City of Mati",
+          "Department of the Interior and Local Government",
+          "Davao del Norte State College",
+          "Philippine Eagle Foundation",
+          "Provincial Drug Abuse Council",
+          "Local Government Unit of San Isidro, Davao Oriental",
+          "Sangguniang Kabataan",
+          "Diocese of Mati"
+        ],
+        "services": [
+          "Gender Analysis",
+          "Information Service",
+          "Expert Service",
+          "Technical Service",
+          "Consultancy Service",
+          "Research Service"
+        ],
+        "links": {
+          "website": "https://dorsu.edu.ph/linkages/",
+          "facebook": "https://www.facebook.com/connectwithGAD"
+        }
+      },
+      "IPTBM": {
+        "fullName": "Intellectual Property and Technology Business Management",
+        "acronym": "IP-TBM",
+        "establishedDate": "2021-05-18",
+        "description": "The Davao Oriental State University formerly known as the Davao Oriental State College of Science and Technology (DOSCST) inaugurated its Intellectual Property and Technology Business Management (IP-TBM) Office through a Marker Unveiling Ceremony on May 18, 2021.",
+        "history": "The ceremony signifies the establishment of an institutionalized IP-TBM office in the College as part of its organizational structure. This office, led by DOrSU/DOSCST-IPTBM Project Staff Mr. Venson B. Sarita, will have a separate identity and will be in charge of Intellectual Property Management which will include copyright, patents, utility models, and trademarks for future research and inventions.",
+        "leadership": {
+          "projectStaff": "Mr. Venson B. Sarita"
+        },
+        "guestsAtInauguration": [
+          "SUSTAIN-IPTMB Project Leader and Director of USeP KTTD Engr. Filmann T. Simpao",
+          "DOST XI Provincial Director Ms. Sharon Alegado",
+          "SUC President III Dr. Roy G. Ponce",
+          "VP for RDE Dr. Wilanfranco Tayone"
+        ],
+        "responsibilities": [
+          "Intellectual Property Management",
+          "Copyright management",
+          "Patents processing",
+          "Utility models",
+          "Trademarks for research and inventions"
+        ],
+        "achievement": "DOrSU is considered the top institution in the Davao Region for the most applications in IP models. This accolade is a clear manifestation of the College's commitment to being a top-notch hub for research and development in the country.",
+        "link": "https://dorsu.edu.ph/iptbm/"
+      }
+    },
+    "importantLinks": {
+      "officialWebsite": "https://dorsu.edu.ph/",
+      "locationMap": "https://dorsu.edu.ph/location-map/",
+      "universitySeal": "https://dorsu.edu.ph/university-seal/",
+      "universityHymn": "https://dorsu.edu.ph/university-hymn/",
+      "offices": {
+        "IRO": "https://dorsu.edu.ph/international-relations/",
+        "IPTBM": "https://dorsu.edu.ph/iptbm/",
+        "HSU": "https://dorsu.edu.ph/hsu/",
+        "CGAD": {
+          "website": "https://dorsu.edu.ph/linkages/",
+          "facebook": "https://www.facebook.com/connectwithGAD"
+        }
+      }
+    },
+    "annualAccomplishmentReports": {
+      "description": "DOrSU's Annual Accomplishment Reports document the university's achievements, initiatives, and progress across instruction, research, extension, and administration for each academic year.",
+      "reports": [
+        {
+          "year": 2024,
+          "title": "2024 Annual Accomplishment Report",
+          "url": "https://dorsu.edu.ph/wp-content/uploads/2025/07/2024-Annual-Accomplishment-Report.pdf",
+          "status": "Latest",
+          "coveragePeriod": "January - December 2024"
+        },
+        {
+          "year": 2023,
+          "title": "2023 Annual Accomplishment Report",
+          "url": "https://dorsu.edu.ph/wp-content/uploads/2025/07/2023-Annual-Accomplishment-Report.pdf",
+          "coveragePeriod": "January - December 2023"
+        },
+        {
+          "year": 2022,
+          "title": "2022 Annual Accomplishment Report",
+          "url": "https://dorsu.edu.ph/wp-content/uploads/2025/07/2022-Annual-Accomplishment-Report.pdf",
+          "coveragePeriod": "January - December 2022"
+        },
+        {
+          "year": 2021,
+          "title": "2021 Annual Accomplishment Report",
+          "url": "https://dorsu.edu.ph/wp-content/uploads/2025/07/2021-Annual-Accomplishment-Report.pdf",
+          "coveragePeriod": "January - December 2021"
+        }
+      ],
+      "categories": [
+        "Academic Programs and Achievements",
+        "Research and Innovation",
+        "Extension and Community Engagement",
+        "Administrative and Organizational Development",
+        "Faculty and Staff Development",
+        "Student Services and Activities",
+        "Infrastructure and Facilities Development",
+        "Financial Performance",
+        "Quality Assurance and Accreditation",
+        "International Partnerships and Linkages"
+      ],
+      "access": "All reports are publicly accessible via the DOrSU official website and contain comprehensive information about the university's performance and achievements."
+    }
+  }
+  
+  
+  

@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DOrSU Connect • AI Chat</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Main Content -->
+      <div id="main-content" class="main-content">
+  <header>
+    <div class="header-content">
+      <div class="header-left">
+        <div class="header-title">
+          <h1>DOrSU Connect</h1>
+          <p class="subtitle">AI Assistant powered by Llama 3</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <button id="refresh-knowledge-btn" class="refresh-knowledge-btn" title="Refresh Knowledge Base">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <polyline points="1 20 1 14 7 14"></polyline>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+          </svg>
+          Refresh KB
+        </button>
+        <button id="dark-mode-toggle" class="dark-mode-toggle" title="Toggle Dark Mode">
+          <svg class="sun-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 2V4M12 20V22M4 12H2M6.31412 6.31412L4.8999 4.8999M17.6859 6.31412L19.1001 4.8999M6.31412 17.69L4.8999 19.1042M17.6859 17.69L19.1001 19.1042M22 12H20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <svg class="moon-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: none;">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <span class="beta-badge">BETA</span>
+      </div>
+    </div>
+  </header>
+  
+  <!-- Refresh KB Modal -->
+  <div id="refresh-modal" class="refresh-modal">
+    <div class="refresh-modal-overlay"></div>
+    <div class="refresh-modal-content">
+      <div class="refresh-modal-header">
+        <h3 class="refresh-modal-title">Refresh Knowledge Base</h3>
+        <button id="refresh-modal-close" class="refresh-modal-close" title="Close">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      
+      <div class="refresh-modal-body">
+        <!-- Loading State -->
+        <div id="refresh-loading" class="refresh-state refresh-loading">
+          <div class="refresh-spinner">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="23 4 23 10 17 10"></polyline>
+              <polyline points="1 20 1 14 7 14"></polyline>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+            </svg>
+          </div>
+          <p class="refresh-message">Refreshing knowledge base...</p>
+          <p class="refresh-submessage">This may take a few moments</p>
+        </div>
+
+        <!-- Success State -->
+        <div id="refresh-success" class="refresh-state refresh-success" style="display: none;">
+          <div class="refresh-icon refresh-icon-success">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+              <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+          </div>
+          <p class="refresh-message">Knowledge base refreshed!</p>
+          <div id="refresh-stats" class="refresh-stats"></div>
+        </div>
+
+        <!-- Error State -->
+        <div id="refresh-error" class="refresh-state refresh-error" style="display: none;">
+          <div class="refresh-icon refresh-icon-error">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+          </div>
+          <p class="refresh-message">Refresh failed</p>
+          <p id="refresh-error-message" class="refresh-submessage"></p>
+        </div>
+      </div>
+
+      <div class="refresh-modal-footer">
+        <button id="refresh-modal-done" class="refresh-modal-btn refresh-modal-primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+      <main id="chat">
+        <div id="hero-title">Ask me anything about DOrSU!</div>
+        <div id="messages"></div>
+      </main>
+
+      <footer>
+        <form id="chat-form">
+          <div class="input-wrapper">
+            <input id="input" placeholder="" />
+            <button type="submit">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M7 11L12 6L17 11M12 18V7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </form>
+        <div id="status" class="status-indicator"></div>
+        <div class="disclaimer">Data may be subject to change. This assistant is for testing purposes only.</div>
+      </footer>
+      </div> <!-- End main-content -->
+    </div> <!-- End app -->
+
+    <script src="app.js"></script>
+  </body>
+</html>

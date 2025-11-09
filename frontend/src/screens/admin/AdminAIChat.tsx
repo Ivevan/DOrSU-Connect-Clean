@@ -1,12 +1,15 @@
-import React, { useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, TextInput, ScrollView, useWindowDimensions, Animated } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Linking, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import Markdown from 'react-native-markdown-display';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import { useTheme } from '../../contexts/ThemeContext';
 import InfoModal from '../../modals/InfoModal';
+import AIService, { Message } from '../../services/AIService';
+import { formatAIResponse, getMarkdownStyles } from '../../utils/markdownFormatter';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -38,14 +41,73 @@ const AdminAIChat = () => {
   const { isDarkMode, theme } = useTheme();
   const { width } = useWindowDimensions();
   const isWide = width > 600;
-  const [isInfoOpen, setIsInfoOpen] = React.useState(false);
-  
-  const handleInfoPress = useCallback(() => setIsInfoOpen(true), []);
-  const handleInfoClose = useCallback(() => setIsInfoOpen(false), []);
+  const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [inputText, setInputText] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
 
-  // Animation values - DISABLED FOR PERFORMANCE DEBUGGING
-  const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
-  const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
+  // Scroll to bottom when new messages arrive
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [messages]);
+
+  const handleSendMessage = async (messageText?: string) => {
+    const textToSend = messageText || inputText.trim();
+    if (!textToSend || isLoading) return;
+
+    // Create user message
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: textToSend,
+      timestamp: new Date(),
+    };
+
+    // Add user message to chat
+    setMessages(prev => [...prev, userMessage]);
+    setInputText('');
+    setIsLoading(true);
+
+    try {
+      // Call AI service
+      const response = await AIService.sendMessage(textToSend);
+
+      // Format the AI response with enhanced markdown formatting
+      const formattedContent = formatAIResponse(response.reply);
+
+      // Create assistant message
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: formattedContent,
+        timestamp: new Date(),
+      };
+
+      // Add assistant message to chat
+      setMessages(prev => [...prev, assistantMessage]);
+    } catch (error) {
+      // Show error message
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: 'Sorry, I encountered an error. Please make sure the AI backend is running and try again.',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      console.error('Failed to send message:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSuggestionPress = (suggestion: string) => {
+    handleSendMessage(suggestion);
+  };
 
   return (
     <View style={[styles.container, {
@@ -67,7 +129,7 @@ const AdminAIChat = () => {
           <Text style={styles.headerTitle}>DOrSU AI</Text>
         </View>
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.headerButton} onPress={handleInfoPress} accessibilityLabel="AI chat information">
+          <TouchableOpacity style={styles.headerButton} onPress={() => setIsInfoOpen(true)} accessibilityLabel="AI chat information">
             <Ionicons name="information-circle-outline" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
@@ -75,7 +137,7 @@ const AdminAIChat = () => {
       {/* Info Modal */}
       <InfoModal
         visible={isInfoOpen}
-        onClose={handleInfoClose}
+        onClose={() => setIsInfoOpen(false)}
         title="About DOrSU AI"
         subtitle="DOrSU AI can help you:"
         cards={[
@@ -100,56 +162,93 @@ const AdminAIChat = () => {
         ]}
         description="Avoid sharing sensitive or personal data."
       />
-      {/* Content */}
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        <View 
-          style={[
-            styles.centerIconContainer
-          ]}
-        >
-          <MaterialIcons name="support-agent" size={80} color={theme.colors.textMuted} style={styles.centerIcon} />
-        </View>
-        <Text 
-          style={[
-            styles.askTitle,
-            { 
-              color: theme.colors.text
-            }
-          ]}
-        >
-          Ask DOrSU AI anything
-        </Text>
-        <Text 
-          style={[
-            styles.disclaimer,
-            { 
-              color: theme.colors.textMuted
-            }
-          ]}
-        >
-          Responses are generated by AI and may be inaccurate.
-        </Text>
+      {/* Content - Chat Messages */}
+      <ScrollView 
+        ref={scrollViewRef}
+        contentContainerStyle={[
+          styles.scrollContent,
+          messages.length === 0 && styles.emptyScrollContent
+        ]} 
+        keyboardShouldPersistTaps="handled" 
+        showsVerticalScrollIndicator={false}
+      >
+        {messages.length === 0 ? (
+          // Empty state - show AI icon and welcome message
+          <>
+            <View style={styles.centerIconContainer}>
+              <MaterialIcons name="support-agent" size={80} color={theme.colors.textMuted} style={styles.centerIcon} />
+            </View>
+            <Text style={[styles.askTitle, { color: theme.colors.text }]}>Ask DOrSU AI anything</Text>
+            <Text style={[styles.disclaimer, { color: theme.colors.textMuted }]}>Responses are generated by AI and may be inaccurate.</Text>
+          </>
+        ) : (
+          // Chat messages
+          <>
+            {messages.map((message) => (
+              <View
+                key={message.id}
+                style={[
+                  styles.messageContainer,
+                  message.role === 'user' ? styles.userMessage : styles.assistantMessage,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.messageBubble,
+                    message.role === 'user'
+                      ? { backgroundColor: theme.colors.primary }
+                      : { backgroundColor: theme.colors.card, borderColor: theme.colors.border, borderWidth: 1 },
+                  ]}
+                >
+                  {message.role === 'user' ? (
+                    <Text
+                      style={[styles.messageText, { color: '#fff' }]}
+                    >
+                      {message.content}
+                    </Text>
+                  ) : (
+                    <Markdown
+                      style={getMarkdownStyles(theme)}
+                      onLinkPress={(url: string) => {
+                        Linking.openURL(url).catch(err => console.error('Failed to open URL:', err));
+                        return false;
+                      }}
+                    >
+                      {message.content}
+                    </Markdown>
+                  )}
+                </View>
+              </View>
+            ))}
+            {isLoading && (
+              <View style={[styles.messageContainer, styles.assistantMessage]}>
+                <View style={[styles.messageBubble, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, borderWidth: 1 }]}>
+                  <ActivityIndicator size="small" color={theme.colors.primary} />
+                </View>
+              </View>
+            )}
+          </>
+        )}
       </ScrollView>
 
-      {/* Suggestions */}
-      <View 
-        style={[
-          styles.suggestionsContainer
-        ]}
-      >
-        {[SUGGESTIONS[0], SUGGESTIONS[1], SUGGESTIONS[2]].map((txt, idx) => (
-          <TouchableOpacity
-            key={idx}
-            style={[styles.promptCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }, isWide && { maxWidth: 640 }]}
-            activeOpacity={0.9}
-          >
-            <View style={[styles.promptIconWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
-              <Ionicons name="reorder-three" size={16} color={theme.colors.accent} />
-            </View>
-            <Text style={[styles.promptCardText, { color: theme.colors.text }]}>{txt}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {/* Suggestions - Only show when no messages */}
+      {messages.length === 0 && (
+        <View style={styles.suggestionsContainer}>
+          {[SUGGESTIONS[0], SUGGESTIONS[1], SUGGESTIONS[2]].map((txt, idx) => (
+            <TouchableOpacity
+              key={idx}
+              style={[styles.promptCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }, isWide && { maxWidth: 640 }]}
+              activeOpacity={0.9}
+              onPress={() => handleSuggestionPress(txt)}
+            >
+              <View style={[styles.promptIconWrap, { backgroundColor: theme.colors.surfaceAlt }]}>
+                <Ionicons name="reorder-three" size={16} color={theme.colors.accent} />
+              </View>
+              <Text style={[styles.promptCardText, { color: theme.colors.text }]}>{txt}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       {/* Message Input Bar */}
       <View style={[styles.inputBar, { backgroundColor: theme.colors.background, borderTopColor: theme.colors.border }]}>
@@ -157,9 +256,26 @@ const AdminAIChat = () => {
           style={[styles.input, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.text }]}
           placeholder="Type a message to DOrSU AI"
           placeholderTextColor={theme.colors.textMuted}
+          value={inputText}
+          onChangeText={setInputText}
+          onSubmitEditing={() => handleSendMessage()}
+          editable={!isLoading}
+          multiline
         />
-        <TouchableOpacity style={[styles.sendBtn, { backgroundColor: theme.colors.primary }]}>
-          <Ionicons name="arrow-up" size={18} color="#fff" />
+        <TouchableOpacity 
+          style={[
+            styles.sendBtn, 
+            { backgroundColor: theme.colors.primary },
+            (isLoading || !inputText.trim()) && styles.sendBtnDisabled
+          ]}
+          onPress={() => handleSendMessage()}
+          disabled={isLoading || !inputText.trim()}
+        >
+          {isLoading ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="arrow-up" size={18} color="#fff" />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -220,10 +336,12 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   scrollContent: {
-    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 20,
+    paddingTop: 12,
     paddingBottom: 20,
+  },
+  emptyScrollContent: {
+    alignItems: 'center',
   },
   centerIconContainer: {
     marginTop: 8,
@@ -299,6 +417,29 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 14,
+  },
+  sendBtnDisabled: {
+    opacity: 0.5,
+  },
+  messageContainer: {
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  userMessage: {
+    alignItems: 'flex-end',
+  },
+  assistantMessage: {
+    alignItems: 'flex-start',
+  },
+  messageBubble: {
+    maxWidth: '80%',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+  },
+  messageText: {
+    fontSize: 15,
+    lineHeight: 20,
   },
   infoModalOverlay: {
     flex: 1,

@@ -1,5 +1,5 @@
 import React, { memo, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Modal, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatDate, timeAgo } from '../utils/dateUtils';
@@ -69,6 +69,13 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
 }) => {
   const { theme } = useTheme();
 
+  // Get image URL from update
+  const imageUrl = useMemo(() => {
+    if (update?.images && update.images.length > 0) return update.images[0];
+    if (update?.image) return update.image;
+    return null;
+  }, [update?.images, update?.image]);
+
   // Memoize tag colors and icon
   const tagColor = useMemo(() => getTagColor(update?.tag || ''), [update?.tag]);
   const tagTextColor = useMemo(() => getTagTextColor(update?.tag || ''), [update?.tag]);
@@ -96,10 +103,18 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
               <Ionicons name="close" size={20} color={theme.colors.textMuted} />
             </Pressable>
           </View>
-          <View style={[styles.previewImagePlaceholder, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-            <Ionicons name="image-outline" size={28} color={theme.colors.textMuted} />
-            <Text style={[styles.previewImagePlaceholderText, { color: theme.colors.textMuted }]}>No image</Text>
-          </View>
+          {imageUrl ? (
+            <Image 
+              source={{ uri: imageUrl }} 
+              style={styles.previewImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.previewImagePlaceholder, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <Ionicons name="image-outline" size={28} color={theme.colors.textMuted} />
+              <Text style={[styles.previewImagePlaceholderText, { color: theme.colors.textMuted }]}>No image</Text>
+            </View>
+          )}
           {update?.pinned && (
             <View style={styles.pinnedRibbon}>
               <Ionicons name="pin" size={12} color="#fff" />
@@ -203,6 +218,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     borderWidth: 1,
+  },
+  previewImage: {
+    width: '100%',
+    height: 160,
+    borderRadius: 12,
+    marginBottom: 10,
   },
   previewImagePlaceholderText: {
     fontSize: 12,

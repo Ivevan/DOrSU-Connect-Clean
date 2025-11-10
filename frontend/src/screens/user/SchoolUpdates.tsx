@@ -59,6 +59,39 @@ const UpdateCard = memo(({ update, onPress, theme }: { update: any; onPress: () 
   </Pressable>
 ));
 
+// Event Card with Image Preview (Horizontal Scrollable)
+const EventCard = memo(({ update, onPress, theme }: { update: any; onPress: () => void; theme: any }) => {
+  const imageUrl = update.images?.[0] || update.image;
+  
+  return (
+    <Pressable style={[styles.eventCardHorizontal, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
+      {imageUrl ? (
+        <Image 
+          source={{ uri: imageUrl }} 
+          style={styles.eventImageHorizontal}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={[styles.eventImagePlaceholder, { backgroundColor: theme.colors.surface }]}>
+          <Ionicons name="calendar-outline" size={40} color={theme.colors.textMuted} />
+        </View>
+      )}
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.7)']}
+        style={styles.eventGradient}
+      >
+        <View style={styles.eventOverlayContent}>
+          <View style={[styles.eventTagOverlay, { backgroundColor: getTagColor(update.tag) }]}>
+            <Text style={[styles.eventTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
+          </View>
+          <Text style={styles.eventTitleOverlay} numberOfLines={2}>{update.title}</Text>
+          <Text style={styles.eventDateOverlay}>{update.date}</Text>
+        </View>
+      </LinearGradient>
+    </Pressable>
+  );
+});
+
 const SchoolUpdates = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
@@ -266,21 +299,13 @@ const SchoolUpdates = () => {
 
         {/* Totals removed */}
 
-        {/* Today's Events */}
-        <View style={[styles.recentUpdatesSection, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}> 
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Today's Events</Text>
-
-          {!isLoading && !error && todaysEvents.length === 0 && (
-            <View style={{ alignItems: 'center', paddingVertical: 12 }}>
-              <Ionicons name="calendar-outline" size={28} color={theme.colors.textMuted} />
-              <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>No events today</Text>
-            </View>
-          )}
-
-          {!isLoading && !error && todaysEvents.map((update) => (
-            <UpdateCard key={update.id} update={update} onPress={() => handleUpdatePress(update)} theme={theme} />
-          ))}
-        </View>
+        {/* Today's Events - Single Card Display */}
+        {!isLoading && !error && todaysEvents.length > 0 && (
+          <View style={styles.todaysEventsSection}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text, paddingHorizontal: 0, marginBottom: 12 }]}>Today's Events</Text>
+            <EventCard update={todaysEvents[0]} onPress={() => handleUpdatePress(todaysEvents[0])} theme={theme} />
+          </View>
+        )}
 
         {/* Recent Updates */}
         <View style={[styles.recentUpdatesSection, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
@@ -561,6 +586,68 @@ const styles = StyleSheet.create({
   },
   clearButton: {
     padding: 4,
+  },
+  todaysEventsSection: {
+    marginBottom: 16,
+  },
+  eventCardHorizontal: {
+    width: '100%',
+    height: 220,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 0,
+  },
+  eventImageHorizontal: {
+    width: '100%',
+    height: '100%',
+  },
+  eventImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eventGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '55%',
+    justifyContent: 'flex-end',
+    padding: 16,
+  },
+  eventOverlayContent: {
+    gap: 4,
+  },
+  eventTagOverlay: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  eventTitleOverlay: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+    lineHeight: 24,
+  },
+  eventDateOverlay: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    opacity: 0.95,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+    marginTop: 2,
+  },
+  eventTagText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   
 });

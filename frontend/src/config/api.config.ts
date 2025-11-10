@@ -16,16 +16,18 @@ const API_CONFIG = {
     // For physical device, use your computer's IP: 'http://192.168.x.x:3000'
   },
   
-  // Production - replace with your production backend URL
+  // Production - Render deployment
   production: {
-    baseUrl: 'https://your-backend-url.com',
+    baseUrl: 'https://dorsu-connect.onrender.com',
   },
 };
 
 // Export the current environment's config
-export const API_BASE_URL = isDevelopment 
-  ? API_CONFIG.development.baseUrl 
-  : API_CONFIG.production.baseUrl;
+// TEMPORARY: Force production URL for testing deployed backend
+export const API_BASE_URL = 'https://dorsu-connect.onrender.com';
+// export const API_BASE_URL = isDevelopment 
+//   ? API_CONFIG.development.baseUrl 
+//   : API_CONFIG.production.baseUrl;
 
 // Helper to get platform-specific URLs
 export const getPlatformAPIUrl = () => {

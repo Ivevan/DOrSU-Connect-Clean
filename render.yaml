@@ -1,0 +1,22 @@
+services:
+  # DOrSU AI Backend Service
+  - type: web
+    name: dorsu-ai-backend
+    runtime: node
+    region: oregon
+    plan: free
+    buildCommand: cd backend/ai && npm install
+    startCommand: cd backend/ai && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: MONGODB_URI
+        sync: false
+      - key: PORT
+        value: 10000
+    healthCheckPath: /health
+    autoDeploy: true

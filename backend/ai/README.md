@@ -2,6 +2,14 @@
 
 AI-powered chatbot backend for DOrSU Connect app using RAG (Retrieval-Augmented Generation) for context-aware responses.
 
+## 🚀 Quick Deploy to Render
+
+**Deploy in 3 minutes!** See [QUICK_DEPLOY.md](./QUICK_DEPLOY.md)
+
+For detailed deployment instructions, see [RENDER_DEPLOYMENT.md](./RENDER_DEPLOYMENT.md)
+
+---
+
 ## Features
 
 - **RAG-based Context Retrieval** - Retrieves relevant information from DOrSU knowledge base

@@ -521,7 +521,10 @@ const server = http.createServer(async (req, res) => {
   sendJson(res, 404, { error: 'Not found' });
 });
 
-server.listen(port, () => Logger.success(`Server: http://localhost:${port}`));
+server.listen(port, '0.0.0.0', () => {
+  Logger.success(`Server: http://localhost:${port}`);
+  Logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+});
 
 // ===== HELPER FUNCTIONS =====
 

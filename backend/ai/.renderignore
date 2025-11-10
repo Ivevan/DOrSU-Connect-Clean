@@ -1,0 +1,23 @@
+# Ignore files for Render deployment
+*.md
+!RENDER_DEPLOYMENT.md
+!README.md
+
+# Development files
+.vscode/
+.idea/
+*.swp
+
+# Test files
+__tests__/
+*.test.js
+*.spec.js
+
+# Sample files (not needed in production)
+samplecss.txt
+samplefrontend.txt
+samplehtml.txt
+
+# Local environment
+.env.local
+.env.*.local

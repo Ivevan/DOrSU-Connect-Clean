@@ -31,10 +31,19 @@ export class LlamaService {
       useMmap: process.env.USE_MMAP !== 'false'
     };
     
+    // Groq model fallback list (in priority order)
+    this.groqModels = [
+      'llama-3.3-70b-versatile',              // Primary: Fast + High Quality
+      'llama-3.1-8b-instant',                 // Fallback 1: Faster, smaller
+      'meta-llama/llama-4-scout-17b-16e-instruct', // Fallback 2
+      'openai/gpt-oss-120b'                   // Fallback 3
+    ];
+    this.currentModelIndex = 0;
+    
     // Initialize appropriate client
     if (this.useGroq) {
       this.groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY });
-      this.groqModel = process.env.GROQ_MODEL || 'llama-3.1-70b-versatile'; // Fast + High Quality
+      this.groqModel = this.groqModels[this.currentModelIndex];
       Logger.success(`🚀 AI Provider: Groq Cloud (${this.groqModel}) - Ultra-fast responses`);
     } else {
       this.client = new Ollama({ host: this.config.host });
@@ -46,7 +55,7 @@ export class LlamaService {
     try {
       // Route to appropriate provider
       if (this.useGroq) {
-        return await this.chatWithGroq(messages, options);
+        return await this.chatWithGroqFallback(messages, options);
       } else {
         return await this.chatWithOllama(messages, options);
       }
@@ -57,9 +66,55 @@ export class LlamaService {
   }
 
   /**
+   * Chat with automatic model fallback on rate limit
+   */
+  async chatWithGroqFallback(messages, options = {}) {
+    let lastError = null;
+    const maxAttempts = this.groqModels.length;
+    
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        this.groqModel = this.groqModels[this.currentModelIndex];
+        const response = await this.chatWithGroq(messages, options);
+        
+        // Success! Reset to primary model for next time
+        if (this.currentModelIndex !== 0) {
+          Logger.info(`✅ Successfully switched back to primary model: ${this.groqModels[0]}`);
+          this.currentModelIndex = 0;
+        }
+        
+        return response;
+      } catch (error) {
+        lastError = error;
+        
+        // Check if it's a rate limit error (429)
+        const isRateLimit = error.message?.includes('429') || 
+                           error.message?.includes('rate_limit_exceeded') ||
+                           error.status === 429;
+        
+        if (isRateLimit && attempt < maxAttempts - 1) {
+          // Try next model
+          this.currentModelIndex = (this.currentModelIndex + 1) % this.groqModels.length;
+          Logger.warn(`⚠️  Rate limit hit on ${this.groqModel}. Switching to: ${this.groqModels[this.currentModelIndex]}`);
+          continue;
+        }
+        
+        // If not a rate limit error, or we've tried all models, throw
+        break;
+      }
+    }
+    
+    // All models failed
+    Logger.error(`❌ All ${maxAttempts} models exhausted. Last error: ${lastError?.message}`);
+    throw lastError;
+  }
+
+  /**
    * Chat using Groq Cloud (Production - Ultra Fast)
    */
   async chatWithGroq(messages, options = {}) {
+    Logger.info(`🤖 Using model: ${this.groqModel}`);
+    
     const response = await this.groqClient.chat.completions.create({
       model: this.groqModel,
       messages: messages.map(msg => ({

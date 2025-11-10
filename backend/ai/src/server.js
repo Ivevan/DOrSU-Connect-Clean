@@ -10,6 +10,12 @@ import { getMongoDBService } from './services/mongodb.js';
 import { OptimizedRAGService } from './services/rag.js';
 import { getNewsScraperService } from './services/scraper.js';
 import { LlamaService } from './services/service.js';
+import {
+  generateCampusesResponse,
+  generateFacultiesResponse,
+  generateOfficersResponse,
+  generateProgramListResponse
+} from './services/structured-responses.js';
 import { buildSystemInstructions } from './services/system.js';
 import { GPUMonitor } from './utils/gpu-monitor.js';
 import { IntentClassifier } from './utils/intent-classifier.js';
@@ -304,6 +310,65 @@ const server = http.createServer(async (req, res) => {
           processedPrompt = prompt.replace(/\b(course|courses)\b/gi, 'program');
         }
         
+        // SMART FALLBACK: Detect "list all" queries and return structured data without AI
+        // Programs/Courses
+        const listAllPattern = /\b(list|show|give me|give|what are|enumerate|tell me|can you give)\s+(all|the|me)?\s*(list of)?\s*(program|programs|course|courses)\b/i;
+        const byFacultyPattern = /\b(program|programs|course|courses)\s+(by|per|in|under|for each)\s+(faculty|faculties)\b/i;
+        const offeredPattern = /\b(program|programs|course|courses)\s+(offered|available)\b/i;
+        const isProgramListQuery = listAllPattern.test(prompt) || byFacultyPattern.test(prompt) || offeredPattern.test(prompt);
+        
+        // Officers/Leadership
+        const officersPattern = /\b(list|show|give me|give|what are|who are|enumerate|tell me)\s+(all|the|me)?\s*(list of)?\s*(officer|officers|dean|deans|director|directors|leadership|leaders|officials?)\b/i;
+        const presidentListPattern = /\b(who is|who's|tell me about)\s+(the\s+)?(university\s+)?president\b/i;
+        const isOfficersQuery = officersPattern.test(prompt) || presidentListPattern.test(prompt);
+        
+        // Faculties
+        const facultiesPattern = /\b(list|show|give me|give|what are|enumerate|tell me)\s+(all|the|me)?\s*(list of)?\s*(faculty|faculties)\b/i;
+        const isFacultiesQuery = facultiesPattern.test(prompt);
+        
+        // Campuses
+        const campusesPattern = /\b(list|show|give me|give|what are|enumerate|tell me)\s+(all|the|me)?\s*(list of)?\s*(campus|campuses|extension)\b/i;
+        const isCampusesQuery = campusesPattern.test(prompt);
+        
+        // Check if any fallback pattern matches
+        if (isProgramListQuery || isOfficersQuery || isFacultiesQuery || isCampusesQuery) {
+          let fallbackType = '';
+          let structuredResponse = '';
+          
+          if (isProgramListQuery) {
+            fallbackType = 'programs';
+            structuredResponse = generateProgramListResponse(byFacultyPattern.test(prompt));
+          } else if (isOfficersQuery) {
+            fallbackType = 'officers';
+            structuredResponse = generateOfficersResponse(presidentListPattern.test(prompt));
+          } else if (isFacultiesQuery) {
+            fallbackType = 'faculties';
+            structuredResponse = generateFacultiesResponse();
+          } else if (isCampusesQuery) {
+            fallbackType = 'campuses';
+            structuredResponse = generateCampusesResponse();
+          }
+          
+          Logger.info(`📋 ${fallbackType.toUpperCase()} list query detected - using structured fallback (no AI needed)`);
+          
+          sendJson(res, 200, {
+            reply: structuredResponse,
+            source: 'structured-fallback',
+            model: 'none',
+            provider: 'static',
+            complexity: 'simple',
+            responseTime: Date.now() - Date.now(),
+            usedKnowledgeBase: true,
+            intent: {
+              conversational: 'information_query',
+              confidence: 100,
+              dataSource: 'knowledge_base',
+              category: fallbackType
+            }
+          });
+          return;
+        }
+        
         // Handle programs/courses list queries - ensure complete list
         const programPattern = /\b(program|programs|course|courses)\s+(offered|available|in|at|of|does|do)\b/i;
         const isProgramQuery = programPattern.test(prompt);
@@ -404,16 +469,16 @@ const server = http.createServer(async (req, res) => {
           let retrievalType = '';
           
           if (isUSCQuery) {
-            ragSections = 40;
-            ragTokens = 4000;  // Reduced from 8000 to stay within 8K token limit
+            ragSections = 30;       // Reduced from 40
+            ragTokens = 3000;       // Reduced from 4000 to save tokens
             retrievalType = '(USC query - full retrieval)';
           } else if (isProgramQuery) {
-            ragSections = 45;
-            ragTokens = 4500;  // Reduced from 10000 to stay within 8K token limit
+            ragSections = 35;       // Reduced from 45
+            ragTokens = 3500;       // Reduced from 4500 to prevent rate limits
             retrievalType = '(Program list query - complete retrieval)';
           } else if (isPresidentQuery) {
-            ragSections = 20;
-            ragTokens = 2500;  // Reduced from 3000 for safety
+            ragSections = 15;       // Reduced from 20
+            ragTokens = 2000;       // Reduced from 2500 for safety
             retrievalType = '(President query - focused retrieval)';
           }
           
@@ -451,14 +516,8 @@ const server = http.createServer(async (req, res) => {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: 'What is DOrSU?' },
           { role: 'assistant', content: 'DOrSU is Davao Oriental State University, founded 1989 in Mati City, Philippines.' },
-          { role: 'user', content: 'Can you give me the DOrSU website link?' },
-          { role: 'assistant', content: 'Yes! The official DOrSU website is: https://dorsu.edu.ph\n\nYou can visit it to find more information about the university.' },
-          { role: 'user', content: 'Can you give me some news about DOrSU?' },
-          { role: 'assistant', content: 'Here are the 3 latest news updates from DOrSU:\n\n1. **DOrSU, JVACC Seal Agreement for BSCE Internships**\n   Date: October 9, 2025\n   Link: https://dorsu.edu.ph/2025/10/09/dorsu-jvacc-seal-agreement-for-bsce-internships/\n\n2. **University President Ponce Speaks at EMBC Summit 2025**\n   Date: October 7, 2025\n   Link: https://dorsu.edu.ph/2025/10/07/university-president-ponce-speaks-at-embc-summit-2025/\n\n3. **President Ponce Emphasizes Values-Based Education**\n   Date: October 6, 2025\n   Link: https://dorsu.edu.ph/2025/10/06/president-ponce-emphasizes-values-based-education/\n\nFor more news, visit https://dorsu.edu.ph' },
           { role: 'user', content: 'Who is the president?' },
-          { role: 'assistant', content: 'As of 2025, the president of DOrSU is Dr. Roy G. Ponce. He holds a Masters and Doctorate from the University of Melbourne, Australia, and is an expert in biodiversity conservation, education, and research.' },
-          { role: 'user', content: 'Does DOrSU offer BS in Mechanical Engineering?' },
-          { role: 'assistant', content: 'No, DOrSU does not offer BS in Mechanical Engineering. That program is NOT in the knowledge base. DOrSU only offers the 29 undergraduate programs listed in the knowledge base.' },
+          { role: 'assistant', content: 'The president is Dr. Roy G. Ponce.' },
           { role: 'user', content: processedPrompt }
         ], options);
         

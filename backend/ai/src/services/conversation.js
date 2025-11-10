@@ -50,9 +50,9 @@ export class ConversationService {
       
       history.push(turn);
       
-      // Keep only last 10 turns to prevent memory bloat
-      if (history.length > 10) {
-        history = history.slice(-10);
+      // Keep only last 5 turns to prevent memory bloat and token overflow
+      if (history.length > 5) {
+        history = history.slice(-5);
       }
       
       this.conversations.set(sessionId, history);

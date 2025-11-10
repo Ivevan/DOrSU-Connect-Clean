@@ -23,19 +23,27 @@ const API_CONFIG = {
 };
 
 // Export the current environment's config
-// TEMPORARY: Force production URL for testing deployed backend
-export const API_BASE_URL = 'https://dorsu-connect.onrender.com';
-// export const API_BASE_URL = isDevelopment 
-//   ? API_CONFIG.development.baseUrl 
-//   : API_CONFIG.production.baseUrl;
+// Read runtime API selection from Expo env variables
+const envMode = process.env.EXPO_PUBLIC_API_ENV;
+const localUrl = process.env.EXPO_PUBLIC_API_BASE_URL_LOCAL;
+const renderUrl = process.env.EXPO_PUBLIC_API_BASE_URL_RENDER;
+
+export const API_BASE_URL = (() => {
+  if (envMode === 'render') {
+    return renderUrl || API_CONFIG.production.baseUrl;
+  }
+  if (envMode === 'localhost') {
+    return localUrl || API_CONFIG.development.baseUrl;
+  }
+  // Fallback to Expo __DEV__ mode if no env specified
+  return isDevelopment
+    ? (localUrl || API_CONFIG.development.baseUrl)
+    : (renderUrl || API_CONFIG.production.baseUrl);
+})();
 
 // Helper to get platform-specific URLs
 export const getPlatformAPIUrl = () => {
-  if (isDevelopment) {
-    // You can add platform-specific logic here if needed
-    return API_CONFIG.development.baseUrl;
-  }
-  return API_CONFIG.production.baseUrl;
+  return API_BASE_URL;
 };
 
 export default {

@@ -47,17 +47,30 @@ const getPHDateKey = (d: Date | string) => {
 };
 
 // Memoized Update Card Component
-const UpdateCard = memo(({ update, onPress, theme }: { update: any; onPress: () => void; theme: any }) => (
-  <Pressable style={[styles.updateCard, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
-    <View style={styles.updateContent}>
-      <Text style={[styles.updateTitle, { color: theme.colors.text }]}>{update.title}</Text>
-      <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
-    </View>
-    <View style={[styles.updateTag, { backgroundColor: getTagColor(update.tag) }]}>
-      <Text style={[styles.updateTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
-    </View>
-  </Pressable>
-));
+const UpdateCard = memo(({ update, onPress, theme }: { update: any; onPress: () => void; theme: any }) => {
+  const imageUrl = update.images?.[0] || update.image;
+  
+  return (
+    <Pressable style={[styles.updateCard, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
+      {imageUrl && (
+        <Image 
+          source={{ uri: imageUrl }} 
+          style={styles.updateImage}
+          resizeMode="cover"
+        />
+      )}
+      <View style={styles.updateContentWrapper}>
+        <View style={styles.updateContent}>
+          <Text style={[styles.updateTitle, { color: theme.colors.text }]} numberOfLines={2}>{update.title}</Text>
+          <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
+        </View>
+        <View style={[styles.updateTag, { backgroundColor: getTagColor(update.tag) }]}>
+          <Text style={[styles.updateTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+});
 
 // Event Card with Image Preview (Horizontal Scrollable)
 const EventCard = memo(({ update, onPress, theme }: { update: any; onPress: () => void; theme: any }) => {
@@ -104,6 +117,7 @@ const SchoolUpdates = () => {
   const [updates, setUpdates] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'recent'>('all');
   const scrollRef = useRef<ScrollView>(null);
   const searchRef = useRef<TextInput>(null);
 
@@ -227,6 +241,33 @@ const SchoolUpdates = () => {
     });
   }, [updates]);
 
+  // Upcoming updates (future dates)
+  const upcomingUpdates = useMemo(() => {
+    const todayKey = getPHDateKey(new Date());
+    return filtered.filter(u => {
+      if (!u.isoDate) return false;
+      const eventKey = getPHDateKey(u.isoDate);
+      return eventKey > todayKey;
+    });
+  }, [filtered]);
+
+  // Recent updates (today and past dates)
+  const recentUpdates = useMemo(() => {
+    const todayKey = getPHDateKey(new Date());
+    return filtered.filter(u => {
+      if (!u.isoDate) return false;
+      const eventKey = getPHDateKey(u.isoDate);
+      return eventKey <= todayKey;
+    });
+  }, [filtered]);
+
+  // Filtered by time (all, upcoming, or recent)
+  const displayedUpdates = useMemo(() => {
+    if (timeFilter === 'upcoming') return upcomingUpdates;
+    if (timeFilter === 'recent') return recentUpdates;
+    return filtered; // 'all'
+  }, [timeFilter, upcomingUpdates, recentUpdates, filtered]);
+
   return (
     <View style={[styles.container, {
       backgroundColor: theme.colors.background,
@@ -307,9 +348,39 @@ const SchoolUpdates = () => {
           </View>
         )}
 
-        {/* Recent Updates */}
+        {/* Updates Section (filtered by time) */}
         <View style={[styles.recentUpdatesSection, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Recent Updates</Text>
+          <View style={styles.sectionHeader}>
+            <Ionicons 
+              name={timeFilter === 'upcoming' ? 'time-outline' : timeFilter === 'recent' ? 'calendar-outline' : 'grid-outline'} 
+              size={18} 
+              color={theme.colors.accent} 
+              style={{ marginRight: 8 }} 
+            />
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Updates</Text>
+          </View>
+
+          {/* Time Filter Pills */}
+          <View style={styles.filtersContainer}>
+            <Pressable
+              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'all' && styles.filterPillActive]}
+              onPress={() => setTimeFilter('all')}
+            >
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'all' && styles.filterPillTextActive]}>All</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'upcoming' && styles.filterPillActive]}
+              onPress={() => setTimeFilter('upcoming')}
+            >
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'upcoming' && styles.filterPillTextActive]}>Upcoming</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'recent' && styles.filterPillActive]}
+              onPress={() => setTimeFilter('recent')}
+            >
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'recent' && styles.filterPillTextActive]}>Recent</Text>
+            </Pressable>
+          </View>
           
           {error && (
             <View style={{ alignItems: 'center', paddingVertical: 16 }}>
@@ -325,14 +396,16 @@ const SchoolUpdates = () => {
             </View>
           )}
           
-          {!isLoading && !error && filtered.length === 0 && (
+          {!isLoading && !error && displayedUpdates.length === 0 && (
             <View style={{ alignItems: 'center', paddingVertical: 16 }}>
               <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
-              <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>No updates found</Text>
+              <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>
+                {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : 'No updates found'}
+              </Text>
             </View>
           )}
 
-          {!isLoading && !error && filtered.map((update) => (
+          {!isLoading && !error && displayedUpdates.map((update) => (
             <UpdateCard key={update.id} update={update} onPress={() => handleUpdatePress(update)} theme={theme} />
           ))}
         </View>
@@ -515,20 +588,22 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 8,
   },
   updateCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
     borderWidth: 1,
     borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
     marginBottom: 8,
+    overflow: 'hidden',
   },
   cardShadow: {
     shadowColor: '#000',
@@ -536,6 +611,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 6,
     elevation: 2,
+  },
+  updateImage: {
+    width: '100%',
+    height: 120,
+  },
+  updateContentWrapper: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
   },
   updateContent: {
     flex: 1,

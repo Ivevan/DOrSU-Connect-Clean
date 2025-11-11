@@ -299,12 +299,11 @@ const styles = StyleSheet.create({
   },
   previewBody: {
     paddingHorizontal: 14,
-    marginBottom: 16,
-    marginTop: 12,
+    paddingTop: 12,
+    paddingBottom: 16,
   },
   previewDivider: {
-    height: 1,
-    marginVertical: 0,
+    height: 0,
   },
   previewUpdateTitle: {
     fontSize: 20,
@@ -328,7 +327,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   previewUpdateDescription: {
-    marginTop: 12,
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '400',

@@ -57,10 +57,9 @@ const PostUpdate: React.FC = () => {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Announcement');
   const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
   const [description, setDescription] = useState('');
-  const [pinToTop, setPinToTop] = useState(false);
-  const [markAsUrgent, setMarkAsUrgent] = useState(false);
-  // removed: scheduleForLater
+  // removed: scheduleForLater, pinToTop, markAsUrgent
 
   const [pickedFile, setPickedFile] = useState<{
     name: string;
@@ -75,6 +74,13 @@ const PostUpdate: React.FC = () => {
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDateObj, setSelectedDateObj] = useState<Date | null>(null);
+  
+  // Time picker state
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+  const [tmpHour, setTmpHour] = useState<number>(9);
+  const [tmpMinute, setTmpMinute] = useState<number>(0);
+  const [tmpPeriod, setTmpPeriod] = useState<'AM' | 'PM'>('AM');
   
   // Custom Alert Modals
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
@@ -147,6 +153,52 @@ const PostUpdate: React.FC = () => {
   }, [tmpDay, tmpYear, tmpMonth]);
 
   const cancelTmpDate = useCallback(() => setShowDatePicker(false), []);
+
+  // Time picker functions
+  const onPressStartTime = useCallback(() => {
+    const startTime = time.split(' - ')[0] || '';
+    if (startTime) {
+      const match = startTime.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+      if (match) {
+        setTmpHour(parseInt(match[1]));
+        setTmpMinute(parseInt(match[2]));
+        setTmpPeriod(match[3]?.toUpperCase() as 'AM' | 'PM' || 'AM');
+      }
+    }
+    setShowStartTimePicker(true);
+  }, [time]);
+
+  const onPressEndTime = useCallback(() => {
+    const endTime = time.split(' - ')[1] || '';
+    if (endTime) {
+      const match = endTime.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+      if (match) {
+        setTmpHour(parseInt(match[1]));
+        setTmpMinute(parseInt(match[2]));
+        setTmpPeriod(match[3]?.toUpperCase() as 'AM' | 'PM' || 'AM');
+      }
+    }
+    setShowEndTimePicker(true);
+  }, [time]);
+
+  const confirmStartTime = useCallback(() => {
+    const formattedTime = `${tmpHour}:${String(tmpMinute).padStart(2, '0')} ${tmpPeriod}`;
+    const endTime = time.split(' - ')[1] || '';
+    setTime(endTime ? `${formattedTime} - ${endTime}` : formattedTime);
+    setShowStartTimePicker(false);
+  }, [tmpHour, tmpMinute, tmpPeriod, time]);
+
+  const confirmEndTime = useCallback(() => {
+    const formattedTime = `${tmpHour}:${String(tmpMinute).padStart(2, '0')} ${tmpPeriod}`;
+    const startTime = time.split(' - ')[0] || '';
+    setTime(startTime ? `${startTime} - ${formattedTime}` : formattedTime);
+    setShowEndTimePicker(false);
+  }, [tmpHour, tmpMinute, tmpPeriod, time]);
+
+  const cancelTimePicker = useCallback(() => {
+    setShowStartTimePicker(false);
+    setShowEndTimePicker(false);
+  }, []);
 
   const handlePublish = useCallback(() => {
     // Prevent rapid tapping during animation
@@ -229,9 +281,8 @@ const PostUpdate: React.FC = () => {
       setTitle(post.title || '');
       setCategory(post.category || 'Announcement');
       setDate(post.date || '');
+      setTime(post.time || '');
       setDescription(post.description || '');
-      setPinToTop(!!post.isPinned);
-      setMarkAsUrgent(!!post.isUrgent);
     };
     load();
     return () => { isCancelled = true; };
@@ -251,10 +302,9 @@ const PostUpdate: React.FC = () => {
         title: title || 'Untitled',
         category,
         date: date || displayDate,
+        time: time || '',
         description,
         images: images.length > 0 ? images : undefined,
-        isPinned: pinToTop,
-        isUrgent: markAsUrgent,
       };
       const op = editingPostId
         ? AdminDataService.updatePost(editingPostId, payload)
@@ -263,7 +313,7 @@ const PostUpdate: React.FC = () => {
         navigation.navigate('AdminDashboard');
       });
     }, 500);
-  }, [title, category, date, description, pickedFile, pinToTop, markAsUrgent, editingPostId, navigation]);
+  }, [title, category, date, time, description, pickedFile, editingPostId, navigation]);
 
   const confirmCancel = useCallback(() => {
     setIsCancelAlertOpen(false);
@@ -406,7 +456,7 @@ const PostUpdate: React.FC = () => {
           marginBottom: 0,
         }]}
         contentContainerStyle={[styles.content, {
-          paddingBottom: 120 + safeInsets.bottom + 80, // Footer height + safe area + extra padding
+          paddingBottom: 140, // Fixed footer height
         }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={true}
@@ -449,6 +499,26 @@ const PostUpdate: React.FC = () => {
             <TouchableOpacity style={[styles.dateContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={onPressDate}>
               <Text style={[styles.dateText, { color: theme.colors.text }]}>{date || 'dd/mm/yyyy'}</Text>
               <Ionicons name="calendar" size={18} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Event Time Available */}
+        <View style={styles.inputContainer}>
+          <Text style={[styles.label, { color: theme.colors.text }]}>Event Time Available</Text>
+          <View style={styles.timeRangeContainer}>
+            <TouchableOpacity style={[styles.timeInputWrapper, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={onPressStartTime}>
+              <Text style={[styles.timeText, { color: time.split(' - ')[0] ? theme.colors.text : theme.colors.textMuted }]}>
+                {time.split(' - ')[0] || 'Start Time'}
+              </Text>
+              <Ionicons name="time-outline" size={18} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+            <Text style={[styles.timeSeparator, { color: theme.colors.textMuted }]}>-</Text>
+            <TouchableOpacity style={[styles.timeInputWrapper, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={onPressEndTime}>
+              <Text style={[styles.timeText, { color: time.split(' - ')[1] ? theme.colors.text : theme.colors.textMuted }]}>
+                {time.split(' - ')[1] || 'End Time'}
+              </Text>
+              <Ionicons name="time-outline" size={18} color={theme.colors.textMuted} />
             </TouchableOpacity>
           </View>
         </View>
@@ -540,6 +610,114 @@ const PostUpdate: React.FC = () => {
           </Modal>
         )}
 
+        {/* Time Picker Modal - Start Time */}
+        {showStartTimePicker && (
+          <Modal transparent animationType="fade" onRequestClose={cancelTimePicker}>
+            <View style={styles.modalOverlay}>
+              <View style={[styles.dateModal, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+                <Text style={[styles.dateModalTitle, { color: theme.colors.text }]}>Select Start Time</Text>
+                <View style={styles.datePickersRow}>
+                  {/* Hour */}
+                  <View style={styles.datePickerCol}>
+                    <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted }]}>Hour</Text>
+                    <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
+                        <TouchableOpacity key={h} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpHour === h && styles.datePickerItemActive]} onPress={() => setTmpHour(h)}>
+                          <Text style={[styles.datePickerText, { color: theme.colors.text }, tmpHour === h && styles.datePickerTextActive]}>{h}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                  {/* Minute */}
+                  <View style={styles.datePickerCol}>
+                    <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted }]}>Minute</Text>
+                    <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
+                      {Array.from({ length: 60 }, (_, i) => i).map((m) => (
+                        <TouchableOpacity key={m} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpMinute === m && styles.datePickerItemActive]} onPress={() => setTmpMinute(m)}>
+                          <Text style={[styles.datePickerText, { color: theme.colors.text }, tmpMinute === m && styles.datePickerTextActive]}>{String(m).padStart(2, '0')}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                  {/* AM/PM */}
+                  <View style={styles.datePickerCol}>
+                    <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted }]}>Period</Text>
+                    <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
+                      {['AM', 'PM'].map((p) => (
+                        <TouchableOpacity key={p} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpPeriod === p && styles.datePickerItemActive]} onPress={() => setTmpPeriod(p as 'AM' | 'PM')}>
+                          <Text style={[styles.datePickerText, { color: theme.colors.text }, tmpPeriod === p && styles.datePickerTextActive]}>{p}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                </View>
+                <View style={styles.dateModalActions}>
+                  <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={cancelTimePicker}>
+                    <Text style={[styles.cancelText, { color: theme.colors.text }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.publishBtn, { backgroundColor: theme.colors.primary }]} onPress={confirmStartTime}>
+                    <Text style={[styles.publishText, { color: '#fff' }]}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        )}
+
+        {/* Time Picker Modal - End Time */}
+        {showEndTimePicker && (
+          <Modal transparent animationType="fade" onRequestClose={cancelTimePicker}>
+            <View style={styles.modalOverlay}>
+              <View style={[styles.dateModal, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+                <Text style={[styles.dateModalTitle, { color: theme.colors.text }]}>Select End Time</Text>
+                <View style={styles.datePickersRow}>
+                  {/* Hour */}
+                  <View style={styles.datePickerCol}>
+                    <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted }]}>Hour</Text>
+                    <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
+                        <TouchableOpacity key={h} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpHour === h && styles.datePickerItemActive]} onPress={() => setTmpHour(h)}>
+                          <Text style={[styles.datePickerText, { color: theme.colors.text }, tmpHour === h && styles.datePickerTextActive]}>{h}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                  {/* Minute */}
+                  <View style={styles.datePickerCol}>
+                    <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted }]}>Minute</Text>
+                    <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
+                      {Array.from({ length: 60 }, (_, i) => i).map((m) => (
+                        <TouchableOpacity key={m} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpMinute === m && styles.datePickerItemActive]} onPress={() => setTmpMinute(m)}>
+                          <Text style={[styles.datePickerText, { color: theme.colors.text }, tmpMinute === m && styles.datePickerTextActive]}>{String(m).padStart(2, '0')}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                  {/* AM/PM */}
+                  <View style={styles.datePickerCol}>
+                    <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted }]}>Period</Text>
+                    <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
+                      {['AM', 'PM'].map((p) => (
+                        <TouchableOpacity key={p} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpPeriod === p && styles.datePickerItemActive]} onPress={() => setTmpPeriod(p as 'AM' | 'PM')}>
+                          <Text style={[styles.datePickerText, { color: theme.colors.text }, tmpPeriod === p && styles.datePickerTextActive]}>{p}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                </View>
+                <View style={styles.dateModalActions}>
+                  <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={cancelTimePicker}>
+                    <Text style={[styles.cancelText, { color: theme.colors.text }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.publishBtn, { backgroundColor: theme.colors.primary }]} onPress={confirmEndTime}>
+                    <Text style={[styles.publishText, { color: '#fff' }]}>Done</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        )}
+
         {/* Cancel Alert Modal */}
         <Modal visible={isCancelAlertOpen} transparent animationType="fade" onRequestClose={() => setIsCancelAlertOpen(false)}>
           <View style={styles.modalOverlay}>
@@ -581,18 +759,6 @@ const PostUpdate: React.FC = () => {
                   <Ionicons name="folder" size={14} color={theme.colors.textMuted} />
                   <Text style={[styles.alertPreviewText, { color: theme.colors.text }]}>Category: {category}</Text>
                 </View>
-                {pinToTop && (
-                  <View style={styles.alertPreviewRow}>
-                    <Ionicons name="pin" size={14} color={theme.colors.textMuted} />
-                    <Text style={[styles.alertPreviewText, { color: theme.colors.text }]}>Will be pinned to top</Text>
-                  </View>
-                )}
-                {markAsUrgent && (
-                  <View style={styles.alertPreviewRow}>
-                    <Ionicons name="alert-circle" size={14} color={theme.colors.textMuted} />
-                    <Text style={[styles.alertPreviewText, { color: theme.colors.text }]}>Marked as urgent</Text>
-                  </View>
-                )}
               </View>
               <View style={styles.alertActionsRow}>
                 <TouchableOpacity style={[styles.alertCancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={() => setIsPublishAlertOpen(false)}>
@@ -614,8 +780,9 @@ const PostUpdate: React.FC = () => {
             title: title || 'Your post title will appear here',
             date: date || new Date().toLocaleDateString(),
             tag: category,
+            time: time,
             description: description,
-            pinned: pinToTop
+            images: previewImages,
           }}
           onClose={() => setIsPreviewModalOpen(false)}
           customAction={{
@@ -673,57 +840,6 @@ const PostUpdate: React.FC = () => {
               </TouchableOpacity>
             </View>
           )}
-        </View>
-
-        {/* Update Options */}
-        <View style={[styles.optionsContainerCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-          <View style={styles.optionsContainerHeaderRow}>
-            <Text style={[styles.optionsTitle, { color: theme.colors.text }]}>Update Options</Text>
-          </View>
-
-          {/* Pin to Top */}
-          <TouchableOpacity style={styles.optionRowCompact} activeOpacity={0.7} onPress={() => {
-            Vibration.vibrate(50);
-            setPinToTop(!pinToTop);
-          }}>
-            <View style={styles.optionLeft}>
-              <Ionicons name={pinToTop ? 'pin' : 'pin-outline'} size={20} color={pinToTop ? '#1976D2' : theme.colors.textMuted} />
-              <Text style={[styles.optionTextCompact, { color: theme.colors.text }]}>Pin to Top</Text>
-            </View>
-            <Switch
-              value={pinToTop}
-              onValueChange={(value) => {
-                Vibration.vibrate(50);
-                setPinToTop(value);
-              }}
-              trackColor={{ false: theme.colors.border, true: '#1976D266' }}
-              thumbColor={pinToTop ? '#1976D2' : theme.colors.surface}
-              style={styles.smallSwitch}
-            />
-          </TouchableOpacity>
-
-          {/* Mark as urgent */}
-          <TouchableOpacity style={styles.optionRowCompact} activeOpacity={0.7} onPress={() => {
-            Vibration.vibrate(50);
-            setMarkAsUrgent(!markAsUrgent);
-          }}>
-            <View style={styles.optionLeft}>
-              <Ionicons name={markAsUrgent ? 'alert-circle' : 'alert-circle-outline'} size={20} color={markAsUrgent ? '#D32F2F' : theme.colors.textMuted} />
-              <Text style={[styles.optionTextCompact, { color: theme.colors.text }]}>Mark as urgent</Text>
-            </View>
-            <Switch
-              value={markAsUrgent}
-              onValueChange={(value) => {
-                Vibration.vibrate(50);
-                setMarkAsUrgent(value);
-              }}
-              trackColor={{ false: theme.colors.border, true: '#D32F2F66' }}
-              thumbColor={markAsUrgent ? '#D32F2F' : theme.colors.surface}
-              style={styles.smallSwitch}
-            />
-          </TouchableOpacity>
-
-          {/* Schedule for later removed */}
         </View>
 
         </View>
@@ -990,9 +1106,51 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 10,
+    gap: 8,
   },
   halfInputContainer: {
     width: '48%',
+  },
+  thirdInputContainer: {
+    flex: 1,
+  },
+  timeRangeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  timeInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  timeSeparator: {
+    fontSize: 16,
+    fontWeight: '700',
+    paddingHorizontal: 4,
+  },
+  timeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  timeInput: {
+    flex: 1,
+    fontSize: 14,
+    padding: 0,
+  },
+  timeText: {
+    fontSize: 14,
+    flex: 1,
   },
   dropdownContainer: {
     flexDirection: 'row',

@@ -25,6 +25,62 @@ type RootStackParamList = {
 
 type UpdateCategory = 'Announcement' | 'Event' | 'Academic';
 
+// Animated No Events Component
+const NoEventsAnimation = memo(({ theme }: { theme: any }) => {
+  const floatAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(floatAnim, {
+            toValue: -6,
+            duration: 2000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(floatAnim, {
+            toValue: 0,
+            duration: 2000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(scaleAnim, {
+            toValue: 1.08,
+            duration: 2000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 1,
+            duration: 2000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [floatAnim, scaleAnim]);
+
+  return (
+    <Animated.View 
+      style={{
+        transform: [
+          { translateY: floatAnim },
+          { scale: scaleAnim }
+        ],
+      }}
+    >
+      <Ionicons name="calendar-clear-outline" size={100} color={theme.colors.textMuted} style={{ opacity: 0.4 }} />
+    </Animated.View>
+  );
+});
+
 // Helper function to get Philippines timezone date key (moved outside component for performance)
 const getPHDateKey = (d: Date | string) => {
   try {
@@ -239,15 +295,9 @@ const SchoolUpdates = () => {
           category: post.category as UpdateCategory,
           tag: post.category,
           description: post.description,
-          pinned: post.isPinned,
-          urgent: post.isUrgent,
           source: post.source,
           image: post.image,
           images: post.images,
-          tags: [
-            { label: post.category, color: getTagTextColor(post.category), bg: getTagColor(post.category) },
-            ...(post.isUrgent ? [{ label: 'Urgent', color: '#8B2C2C', bg: '#FDECEC' }] : [])
-          ]
         }));
         
         setUpdates(mappedUpdates);
@@ -270,15 +320,17 @@ const SchoolUpdates = () => {
   }, [updates, query]);
 
   // Today's events (category Event occurring today) - using timezone-aware comparison
-  const todaysEvents = useMemo(() => {
-    const todayKey = getPHDateKey(new Date());
-    return updates.filter(u => {
-      if (u.category !== 'Event') return false;
-      if (!u.isoDate) return false;
-      const eventKey = getPHDateKey(u.isoDate);
-      return eventKey === todayKey;
-    });
-  }, [updates]);
+  // const todaysEvents = useMemo(() => {
+  //   const todayKey = getPHDateKey(new Date());
+  //   return updates.filter(u => {
+  //     if (u.category !== 'Event') return false;
+  //     if (!u.isoDate) return false;
+  //     const eventKey = getPHDateKey(u.isoDate);
+  //     return eventKey === todayKey;
+  //   });
+  // }, [updates]);
+  // Temporarily return empty array to test "no events" state
+  const todaysEvents = useMemo(() => [], []);
 
   // Upcoming updates (future dates)
   const upcomingUpdates = useMemo(() => {
@@ -385,10 +437,27 @@ const SchoolUpdates = () => {
         {/* Totals removed */}
 
         {/* Today's Events - Single Card Display */}
-        {!isLoading && !error && todaysEvents.length > 0 && (
+        {!isLoading && !error && (
           <View style={styles.todaysEventsSection}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text, paddingHorizontal: 0, marginBottom: 12 }]}>Today's Events</Text>
-            <EventCard update={todaysEvents[0]} onPress={() => handleUpdatePress(todaysEvents[0])} theme={theme} />
+            <View style={styles.todaysEventsHeader}>
+              <View style={[styles.sectionIconWrapper, { backgroundColor: theme.colors.accent + '15' }]}>
+                <Ionicons name="calendar-outline" size={20} color={theme.colors.accent} />
+              </View>
+              <View style={styles.sectionTitleWrapper}>
+                <Text style={[styles.todaysEventsTitle, { color: theme.colors.text }]}>Today's Events</Text>
+                <Text style={[styles.todaysEventsSubtitle, { color: theme.colors.textMuted }]}>
+                  {todaysEvents.length > 0 ? 'Happening now' : 'No events today'}
+                </Text>
+              </View>
+            </View>
+            {todaysEvents.length > 0 ? (
+              <EventCard update={todaysEvents[0]} onPress={() => handleUpdatePress(todaysEvents[0])} theme={theme} />
+            ) : (
+              <View style={[styles.noEventsCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <NoEventsAnimation theme={theme} />
+                <Text style={[styles.noEventsText, { color: theme.colors.textMuted }]}>No events scheduled for today</Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -721,6 +790,35 @@ const styles = StyleSheet.create({
   },
   todaysEventsSection: {
     marginBottom: 16,
+  },
+  todaysEventsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 12,
+  },
+  todaysEventsTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  todaysEventsSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  noEventsCard: {
+    padding: 32,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  noEventsText: {
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   eventCardHorizontal: {
     width: '100%',

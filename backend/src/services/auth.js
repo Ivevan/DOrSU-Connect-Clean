@@ -161,8 +161,8 @@ export class AuthService {
  * Authentication Middleware
  * Protects routes by verifying JWT token
  */
-export function authMiddleware(authService) {
-  return (req) => {
+export function authMiddleware(authService, mongoService = null) {
+  return async (req) => {
     const authHeader = req.headers['authorization'];
     
     if (!authHeader) {
@@ -173,16 +173,53 @@ export function authMiddleware(authService) {
       ? authHeader.substring(7) 
       : authHeader;
 
+    // First try backend JWT verification
     const verification = authService.verifyToken(token);
-    
-    if (!verification.valid) {
-      return { authenticated: false, error: 'Invalid token' };
+    if (verification.valid) {
+      return { authenticated: true, userId: verification.userId, email: verification.email };
     }
 
-    return { 
-      authenticated: true, 
-      userId: verification.userId,
-      email: verification.email 
-    };
+    // Fallback: accept Firebase ID token directly (mainly for web) if JWT not present
+    try {
+      const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(token)}`);
+      if (!res.ok) {
+        return { authenticated: false, error: 'Invalid token' };
+      }
+      const info = await res.json();
+
+      // Enforce audience check if configured
+      const expectedAud = process.env.GOOGLE_WEB_CLIENT_ID;
+      if (expectedAud && info.aud && info.aud !== expectedAud) {
+        return { authenticated: false, error: 'Invalid token audience' };
+      }
+
+      const email = (info.email || '').toLowerCase();
+      if (!email) {
+        return { authenticated: false, error: 'Invalid token' };
+      }
+
+      // Ensure user exists if we have access to mongoService
+      let userId = null;
+      if (mongoService) {
+        let user = await mongoService.findUser(email);
+        if (!user) {
+          user = await mongoService.createUser({
+            username: info.name || email.split('@')[0],
+            email,
+            password: '',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            isActive: true,
+            provider: 'google',
+            googleSub: info.sub
+          });
+        }
+        userId = user._id || user.id;
+      }
+
+      return { authenticated: true, userId, email };
+    } catch {
+      return { authenticated: false, error: 'Invalid token' };
+    }
   };
 }

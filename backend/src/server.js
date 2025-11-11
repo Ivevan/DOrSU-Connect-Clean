@@ -209,6 +209,84 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Google/Firebase ID token login (exchange for backend JWT)
+  if (method === 'POST' && url === '/api/auth/firebase-login') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        if (!authService || !mongoService) {
+          sendJson(res, 503, { error: 'Authentication service not available' });
+          return;
+        }
+
+        const { idToken } = JSON.parse(body || '{}');
+        if (!idToken) {
+          sendJson(res, 400, { error: 'idToken is required' });
+          return;
+        }
+
+        // Verify Firebase ID token using Google tokeninfo endpoint
+        // This validates signature and returns token claims if valid
+        const tokenInfoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+        if (!tokenInfoRes.ok) {
+          sendJson(res, 401, { error: 'Invalid Firebase ID token' });
+          return;
+        }
+        const tokenInfo = await tokenInfoRes.json();
+
+        // Optional audience check if provided
+        const expectedAud = process.env.GOOGLE_WEB_CLIENT_ID;
+        if (expectedAud && tokenInfo.aud && tokenInfo.aud !== expectedAud) {
+          sendJson(res, 401, { error: 'Invalid token audience' });
+          return;
+        }
+
+        const email = (tokenInfo.email || '').toLowerCase();
+        const name = tokenInfo.name || (email ? email.split('@')[0] : 'Google User');
+        if (!email) {
+          sendJson(res, 400, { error: 'Token missing email claim' });
+          return;
+        }
+
+        // Find or create local user
+        let user = await mongoService.findUser(email);
+        if (!user) {
+          user = await mongoService.createUser({
+            username: name,
+            email,
+            password: '', // No password for federated accounts
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            isActive: true,
+            provider: 'google',
+            googleSub: tokenInfo.sub
+          });
+        } else {
+          // Update last login and provider info
+          await mongoService.updateUserLastLogin(email);
+        }
+
+        // Issue backend JWT for subsequent authenticated requests
+        const token = authService.generateToken(user);
+
+        sendJson(res, 200, {
+          success: true,
+          user: {
+            id: user._id || user.id,
+            username: user.username,
+            email: user.email
+          },
+          token
+        });
+      } catch (error) {
+        Logger.error('Firebase login error:', error.message || String(error));
+        sendJson(res, 401, { error: 'Firebase login failed' });
+      }
+    });
+    return;
+  }
+
   // Get current user profile
   if (method === 'GET' && url === '/api/auth/me') {
     if (!authService) {
@@ -216,7 +294,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const auth = authMiddleware(authService)(req);
+    const auth = await authMiddleware(authService, mongoService)(req);
     if (!auth.authenticated) {
       sendJson(res, 401, { error: auth.error || 'Unauthorized' });
       return;
@@ -351,6 +429,142 @@ const server = http.createServer(async (req, res) => {
     
     const status = dataRefreshService.getStatus();
     sendJson(res, 200, { success: true, status });
+    return;
+  }
+
+  // ===== CHAT HISTORY ENDPOINTS =====
+  
+  // Save chat history
+  if (method === 'POST' && url === '/api/chat-history') {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+    
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+    
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > 1000000) req.destroy(); });
+    req.on('end', async () => {
+      try {
+        const json = JSON.parse(body);
+        const { sessionId, messages } = json;
+        
+        if (!sessionId || !messages) {
+          sendJson(res, 400, { error: 'sessionId and messages required' });
+          return;
+        }
+        
+        // Save the chat session
+        await mongoService.saveChatSession(auth.userId, sessionId, messages);
+        
+        // Add to chat history list
+        if (messages.length > 0) {
+          const firstMessage = messages[0];
+          const lastMessage = messages[messages.length - 1];
+          
+          const chatInfo = {
+            id: sessionId,
+            title: firstMessage.content.substring(0, 50) + (firstMessage.content.length > 50 ? '...' : ''),
+            preview: lastMessage.content.substring(0, 100) + (lastMessage.content.length > 100 ? '...' : ''),
+            timestamp: new Date()
+          };
+          
+          await mongoService.addChatToHistory(auth.userId, chatInfo);
+        }
+        
+        sendJson(res, 200, { success: true, message: 'Chat history saved' });
+      } catch (error) {
+        Logger.error('Save chat history error:', error);
+        sendJson(res, 500, { error: error.message });
+      }
+    });
+    return;
+  }
+  
+  // Get chat history list
+  if (method === 'GET' && url === '/api/chat-history') {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+    
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+    
+    try {
+      const history = await mongoService.getChatHistory(auth.userId);
+      sendJson(res, 200, { success: true, history });
+    } catch (error) {
+      Logger.error('Get chat history error:', error);
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+  
+  // Get specific chat session
+  if (method === 'GET' && url.startsWith('/api/chat-session/')) {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+    
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+    
+    try {
+      const sessionId = url.split('/')[3]; // /api/chat-session/{sessionId}
+      
+      if (!sessionId) {
+        sendJson(res, 400, { error: 'Session ID required' });
+        return;
+      }
+      
+      const messages = await mongoService.getChatSession(auth.userId, sessionId);
+      sendJson(res, 200, { success: true, messages });
+    } catch (error) {
+      Logger.error('Get chat session error:', error);
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+
+  // Delete specific chat session
+  if (method === 'DELETE' && url.startsWith('/api/chat-session/')) {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = authMiddleware(authService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+
+    try {
+      const sessionId = url.split('/')[3]; // /api/chat-session/{sessionId}
+      if (!sessionId) {
+        sendJson(res, 400, { error: 'Session ID required' });
+        return;
+      }
+
+      await mongoService.deleteChatSession(auth.userId, sessionId);
+      sendJson(res, 200, { success: true });
+    } catch (error) {
+      Logger.error('Delete chat session error:', error);
+      sendJson(res, 500, { error: error.message });
+    }
     return;
   }
 

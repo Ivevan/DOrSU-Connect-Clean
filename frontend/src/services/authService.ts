@@ -14,14 +14,22 @@ if (Platform.OS === 'web') {
 
 // Configure Google Sign-In for Android
 // Web Client ID from Google Cloud Console (auto-created by Firebase)
-const WEB_CLIENT_ID = '473603633094-s78o8vdig63os6dgpjtoiqkhscspfbua.apps.googleusercontent.com';
+const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '473603633094-s78o8vdig63os6dgpjtoiqkhscspfbua.apps.googleusercontent.com';
+// Android OAuth Client ID (type: Android) - optional for some setups
+const ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '473603633094-b8ipfi3qajlds4rm3kvvi4o3dgoabqq4.apps.googleusercontent.com';
 
-// Initialize Google Sign-In
-GoogleSignin.configure({
-  webClientId: WEB_CLIENT_ID, // Required for Android - use Web Client ID
-  offlineAccess: true, // If you want to access Google API on behalf of the user FROM YOUR SERVER
-  forceCodeForRefreshToken: true, // [Android] related to `serverAuthCode`, read the docs link below *.
-});
+// Initialize Google Sign-In (native only; web module is a stub)
+if (Platform.OS !== 'web') {
+  const googleConfig: any = {
+    webClientId: WEB_CLIENT_ID,
+    offlineAccess: true,
+    forceCodeForRefreshToken: true,
+  };
+  if (ANDROID_CLIENT_ID) {
+    googleConfig.androidClientId = ANDROID_CLIENT_ID;
+  }
+  GoogleSignin.configure(googleConfig);
+}
 
 // Auth state change listener type
 export type AuthStateListener = (user: FirebaseAuthTypes.User | null) => void;

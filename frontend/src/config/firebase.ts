@@ -16,15 +16,15 @@ const isNativeBuild = !isExpoGo && Platform.OS !== 'web';
 let auth: any = null;
 let FirebaseAuthTypes: any = null;
 
-// Firebase config for JS SDK (Expo Go and Web)
+// Firebase config for JS SDK (Expo Go and Web) - read from env with fallbacks
 const firebaseConfig = {
-  apiKey: "AIzaSyC0j8xRHaUezorPFQVNHt0TOxMkU-9jt4g",
-  authDomain: "dorsu-connect-a7e25.firebaseapp.com",
-  projectId: "dorsu-connect-a7e25",
-  storageBucket: "dorsu-connect-a7e25.firebasestorage.app",
-  messagingSenderId: "473603633094",
-  appId: "1:473603633094:web:b8902108095df87911ccc7",
-  measurementId: "G-E88RPCR7NQ"
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || "AIzaSyC0j8xRHaUezorPFQVNHt0TOxMkU-9jt4g",
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || "dorsu-connect-a7e25.firebaseapp.com",
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || "dorsu-connect-a7e25",
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || "dorsu-connect-a7e25.firebasestorage.app",
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "473603633094",
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || "1:473603633094:web:b8902108095df87911ccc7",
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-E88RPCR7NQ"
 };
 
 if (isNativeBuild) {

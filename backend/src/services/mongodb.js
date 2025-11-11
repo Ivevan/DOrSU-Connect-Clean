@@ -545,6 +545,185 @@ class MongoDBService {
       return 0;
     }
   }
+
+  // ===== CHAT HISTORY METHODS =====
+
+  /**
+   * Save chat history for a user
+   */
+  async saveChatHistory(userId, chatHistory) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.conversations);
+      
+      // Create or update chat history document
+      const result = await collection.updateOne(
+        { userId: userId },
+        {
+          $set: {
+            userId: userId,
+            history: chatHistory,
+            updatedAt: new Date()
+          }
+        },
+        { upsert: true }
+      );
+      
+      Logger.success(`✅ Chat history saved for user: ${userId}`);
+      return result;
+    } catch (error) {
+      Logger.error('Failed to save chat history:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get chat history for a user
+   */
+  async getChatHistory(userId) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.conversations);
+      
+      const chatHistory = await collection.findOne({ userId: userId });
+      
+      return chatHistory ? chatHistory.history : [];
+    } catch (error) {
+      Logger.error('Failed to get chat history:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Save a specific chat session
+   */
+  async saveChatSession(userId, sessionId, messages) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.conversations);
+      
+      // Update or create chat session within user's document
+      const result = await collection.updateOne(
+        { userId: userId },
+        {
+          $set: {
+            [`sessions.${sessionId}.messages`]: messages,
+            [`sessions.${sessionId}.updatedAt`]: new Date()
+          },
+          $setOnInsert: {
+            userId: userId,
+            history: [],
+            createdAt: new Date(),
+            [`sessions.${sessionId}.createdAt`]: new Date()
+          }
+        },
+        { upsert: true }
+      );
+      
+      Logger.success(`✅ Chat session saved for user: ${userId}, session: ${sessionId}`);
+      return result;
+    } catch (error) {
+      Logger.error('Failed to save chat session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a specific chat session
+   */
+  async getChatSession(userId, sessionId) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.conversations);
+      
+      const chatDoc = await collection.findOne(
+        { userId: userId },
+        { projection: { [`sessions.${sessionId}`]: 1 } }
+      );
+      
+      return chatDoc && chatDoc.sessions && chatDoc.sessions[sessionId] 
+        ? chatDoc.sessions[sessionId].messages 
+        : [];
+    } catch (error) {
+      Logger.error('Failed to get chat session:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Add chat to history list
+   */
+  async addChatToHistory(userId, chatInfo) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.conversations);
+      
+      // First try to update existing history entry with same id
+      const updateExisting = await collection.updateOne(
+        { userId: userId, 'history.id': chatInfo.id },
+        {
+          $set: {
+            'history.$.title': chatInfo.title,
+            'history.$.preview': chatInfo.preview,
+            'history.$.timestamp': chatInfo.timestamp
+          },
+          $setOnInsert: { userId: userId }
+        }
+      );
+      
+      if (updateExisting.matchedCount > 0) {
+        Logger.success(`✅ Chat history updated for user: ${userId}, session: ${chatInfo.id}`);
+        return updateExisting;
+      }
+
+      // If not existing, push new history item, keeping only the last 50
+      const result = await collection.updateOne(
+        { userId: userId },
+        {
+          $push: {
+            history: {
+              $each: [chatInfo],
+              $slice: -50 // Keep only the last 50 chats
+            }
+          },
+          $setOnInsert: {
+            userId: userId,
+            sessions: {},
+            createdAt: new Date()
+          },
+          $set: {
+            updatedAt: new Date()
+          }
+        },
+        { upsert: true }
+      );
+      
+      Logger.success(`✅ Chat added to history for user: ${userId}`);
+      return result;
+    } catch (error) {
+      Logger.error('Failed to add chat to history:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a chat session and remove from history
+   */
+  async deleteChatSession(userId, sessionId) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.conversations);
+
+      const result = await collection.updateOne(
+        { userId: userId },
+        {
+          $unset: { [`sessions.${sessionId}`]: '' },
+          $pull: { history: { id: sessionId } },
+          $set: { updatedAt: new Date() }
+        }
+      );
+
+      Logger.success(`🗑️ Chat session deleted for user: ${userId}, session: ${sessionId}`);
+      return result;
+    } catch (error) {
+      Logger.error('Failed to delete chat session:', error);
+      throw error;
+    }
+  }
 }
 
 // Singleton instance

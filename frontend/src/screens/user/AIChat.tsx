@@ -2,13 +2,15 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Animated, Linking, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View, Platform } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import { theme } from '../../config/theme';
+import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import AIService, { Message } from '../../services/AIService';
+import AIService, { ChatHistoryItem, Message } from '../../services/AIService';
+import { getCurrentUser } from '../../services/authService';
 import { formatAIResponse, getMarkdownStyles } from '../../utils/markdownFormatter';
 
 type RootStackParamList = {
@@ -32,14 +34,19 @@ const SUGGESTIONS = [
 const AIChat = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme: t } = useTheme();
+  const { getUserToken, userEmail } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width } = useWindowDimensions();
   const isWide = width > 600;
   const [isInfoOpen, setIsInfoOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
+  const sidebarAnim = useRef(new Animated.Value(-300)).current;
+  const sessionId = useRef<string>('');
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
@@ -50,9 +57,77 @@ const AIChat = () => {
     }
   }, [messages]);
 
+  // Load chat history on component mount
+  useEffect(() => {
+    loadChatHistory();
+  }, []);
+
+  // Animate sidebar when opening/closing
+  useEffect(() => {
+    Animated.timing(sidebarAnim, {
+      toValue: isHistoryOpen ? 0 : -300,
+      duration: 300,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
+  }, [isHistoryOpen, sidebarAnim]);
+
+  // Save chat when messages change (only if there are messages)
+  useEffect(() => {
+    if (messages.length > 0) {
+      saveChatHistory();
+    }
+  }, [messages]);
+
+  const loadChatHistory = async () => {
+    try {
+      const token = await getUserToken();
+      if (token) {
+        const history = await AIService.getChatHistory(token);
+        setChatHistory(history);
+      }
+    } catch (error) {
+      console.error('Failed to load chat history:', error);
+    }
+  };
+
+  const saveChatHistory = async () => {
+    try {
+      const token = await getUserToken();
+      if (token && messages.length > 0 && sessionId.current) {
+        await AIService.saveChatHistory(sessionId.current, messages, token);
+        // Refresh chat history list
+        await loadChatHistory();
+      }
+    } catch (error) {
+      console.error('Failed to save chat history:', error);
+    }
+  };
+
+  const loadChatFromHistory = async (chatId: string) => {
+    try {
+      const token = await getUserToken();
+      if (!token) return;
+      
+      setIsLoading(true);
+      const chatMessages = await AIService.getChatSession(chatId, token);
+      setMessages(chatMessages);
+      sessionId.current = chatId; // Set the session ID to the loaded chat
+      setIsHistoryOpen(false);
+    } catch (error) {
+      console.error('Failed to load chat:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSendMessage = async (messageText?: string) => {
     const textToSend = messageText || inputText.trim();
     if (!textToSend || isLoading) return;
+
+    // Generate a new session ID if this is the first message
+    if (!sessionId.current) {
+      sessionId.current = Date.now().toString();
+    }
 
     // Create user message
     const userMessage: Message = {
@@ -103,6 +178,24 @@ const AIChat = () => {
     handleSendMessage(suggestion);
   };
 
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formatDate = (date: Date) => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (date.toDateString() === today.toDateString()) {
+      return 'Today';
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday';
+    } else {
+      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    }
+  };
+
   return (
     <View style={[styles.container, {
       backgroundColor: t.colors.background,
@@ -119,6 +212,9 @@ const AIChat = () => {
       {/* Header */}
       <View style={[styles.header, { backgroundColor: t.colors.primary }]}>
         <View style={styles.headerLeft}>
+          <TouchableOpacity onPress={() => setIsHistoryOpen(true)} style={styles.menuButton}>
+            <Ionicons name="menu" size={24} color="#fff" />
+          </TouchableOpacity>
           <Text style={styles.headerTitle}>DOrSU AI</Text>
         </View>
         <View style={styles.headerRight}>
@@ -127,6 +223,98 @@ const AIChat = () => {
           </TouchableOpacity>
         </View>
       </View>
+      
+      {/* Chat History Sidebar */}
+      <Animated.View 
+        style={[
+          styles.sidebar, 
+          { 
+            transform: [{ translateX: sidebarAnim }],
+            backgroundColor: t.colors.background,
+            borderRightColor: t.colors.border
+          }
+        ]}
+      >
+        <View style={styles.sidebarHeader}>
+          <Text style={[styles.sidebarTitle, { color: t.colors.text }]}>Chat History</Text>
+          <TouchableOpacity onPress={() => setIsHistoryOpen(false)} style={styles.closeSidebarButton}>
+            <Ionicons name="close" size={24} color={t.colors.text} />
+          </TouchableOpacity>
+        </View>
+        
+        <ScrollView style={styles.sidebarContent}>
+          {chatHistory.length === 0 ? (
+            <View style={styles.emptyHistoryContainer}>
+              <Ionicons name="chatbubbles-outline" size={48} color={t.colors.textMuted} />
+              <Text style={[styles.emptyHistoryText, { color: t.colors.textMuted }]}>
+                No chat history yet
+              </Text>
+              <Text style={[styles.emptyHistorySubtext, { color: t.colors.textMuted }]}>
+                Your conversations will appear here
+              </Text>
+            </View>
+          ) : (
+            chatHistory.map((chat, idx) => (
+              <View key={`${chat.id}:${idx}`} style={[styles.historyItem, { borderBottomColor: t.colors.border }]}>
+                <TouchableOpacity onPress={() => loadChatFromHistory(chat.id)}>
+                  <Text style={[styles.historyTitle, { color: t.colors.text }]} numberOfLines={1}>
+                    {chat.title}
+                  </Text>
+                  <Text style={[styles.historyPreview, { color: t.colors.textMuted }]} numberOfLines={1}>
+                    {chat.preview}
+                  </Text>
+                  <View style={styles.historyFooter}>
+                    <Text style={[styles.historyDate, { color: t.colors.textMuted }]}>
+                      {formatDate(new Date(chat.timestamp))}
+                    </Text>
+                    <Text style={[styles.historyTime, { color: t.colors.textMuted }]}>
+                      {formatTime(new Date(chat.timestamp))}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.deleteHistoryBtn}
+                  onPress={async () => {
+                    try {
+                      let token = await getUserToken();
+                      if (!token) {
+                        const user = getCurrentUser();
+                        if (user && typeof user.getIdToken === 'function') {
+                          token = await user.getIdToken();
+                        }
+                      }
+                      if (!token) return;
+                      const ok = await AIService.deleteChatSession(chat.id, token);
+                      if (ok) {
+                        setChatHistory(prev => prev.filter(h => h.id !== chat.id));
+                        if (sessionId.current === chat.id) {
+                          sessionId.current = '';
+                          setMessages([]);
+                        }
+                      }
+                    } catch (e) {
+                      console.error('Failed to delete chat:', e);
+                    }
+                  }}
+                  accessibilityLabel="Delete chat"
+                >
+                  <Ionicons name="trash-outline" size={18} color={t.colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
+        </ScrollView>
+      </Animated.View>
+      
+      {/* Overlay for sidebar */}
+      {isHistoryOpen && (
+        <TouchableOpacity 
+          style={styles.sidebarOverlay} 
+          onPress={() => setIsHistoryOpen(false)}
+          activeOpacity={1}
+        />
+      )}
+      
       {/* Info Modal */}
       <Modal visible={isInfoOpen} transparent animationType="fade" onRequestClose={() => setIsInfoOpen(false)}>
         <View style={styles.infoModalOverlay}>
@@ -165,6 +353,7 @@ const AIChat = () => {
           </View>
         </View>
       </Modal>
+      
       {/* Main Content - Chat Messages */}
       <ScrollView 
         ref={scrollViewRef}
@@ -300,14 +489,25 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
     marginBottom: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
     elevation: 4,
+    zIndex: 10,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0px 3px 8px rgba(0,0,0,0.08)' }
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 3 },
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
+        }),
   },
   headerLeft: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  menuButton: {
+    padding: 8,
+    marginRight: 8,
   },
   headerRight: {
     flexDirection: 'row',
@@ -325,6 +525,89 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.2,
     color: '#fff',
+  },
+  // Sidebar styles
+  sidebar: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: 300,
+    borderRightWidth: 1,
+    zIndex: 20,
+    elevation: 20,
+  },
+  sidebarOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 15,
+  },
+  sidebarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+  },
+  sidebarTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  closeSidebarButton: {
+    padding: 4,
+  },
+  sidebarContent: {
+    flex: 1,
+  },
+  historyItem: {
+    padding: 16,
+    borderBottomWidth: 1,
+  },
+  historyTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  historyPreview: {
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  historyFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  deleteHistoryBtn: {
+    position: 'absolute',
+    right: 12,
+    top: 14,
+    padding: 6,
+    borderRadius: 8,
+  },
+  historyDate: {
+    fontSize: 12,
+  },
+  historyTime: {
+    fontSize: 12,
+  },
+  emptyHistoryContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  emptyHistoryText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyHistorySubtext: {
+    fontSize: 14,
+    textAlign: 'center',
   },
   scrollContent: {
     paddingHorizontal: 16,
@@ -373,11 +656,15 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
     elevation: 2,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0px 3px 6px rgba(0,0,0,0.06)' }
+      : {
+          shadowColor: '#000',
+          shadowOpacity: 0.06,
+          shadowRadius: 6,
+          shadowOffset: { width: 0, height: 3 },
+        }),
   },
   promptIconWrap: {
     width: 32,
@@ -458,11 +745,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
     elevation: 4,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0px 4px 8px rgba(0,0,0,0.1)' }
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.1,
+          shadowRadius: 8,
+        }),
   },
   infoHeader: {
     flexDirection: 'row',
@@ -540,4 +831,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default AIChat; 
+export default AIChat;

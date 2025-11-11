@@ -304,6 +304,26 @@ const GetStarted = () => {
       }
       // Mark as Google Sign-In user
       await AsyncStorage.setItem('authProvider', 'google');
+
+      // Exchange Firebase ID token for backend JWT so protected APIs (chat history) work
+      try {
+        const idToken = await user.getIdToken();
+        const { API_BASE_URL } = require('../../config/api.config');
+        const resp = await fetch(`${API_BASE_URL}/api/auth/firebase-login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken }),
+        });
+        const data = await resp.json();
+        if (resp.ok && data?.token) {
+          await AsyncStorage.setItem('userToken', data.token);
+        } else {
+          console.warn('Firebase login exchange failed:', data?.error || resp.status);
+        }
+      } catch (ex: unknown) {
+        const msg = ex instanceof Error ? ex.message : String(ex);
+        console.warn('Failed to exchange Firebase token:', msg);
+      }
       
       // Success
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

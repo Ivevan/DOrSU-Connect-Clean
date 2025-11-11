@@ -12,6 +12,7 @@ interface AuthContextType {
   login: (token: string, email: string, userName: string, userId: string) => Promise<void>;
   logout: () => Promise<void>;
   checkAuthStatus: () => Promise<boolean>;
+  getUserToken: () => Promise<string | null>; // Add this method
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -73,6 +74,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Get user token (for Firebase users, get ID token)
+  const getUserToken = async (): Promise<string | null> => {
+    // First check if we have a backend token
+    const backendToken = await AsyncStorage.getItem('userToken');
+    if (backendToken) {
+      return backendToken;
+    }
+    
+    // If no backend token, check if we have a Firebase user
+    if (firebaseUser) {
+      try {
+        // Get Firebase ID token
+        const idToken = await firebaseUser.getIdToken();
+        return idToken;
+      } catch (error) {
+        console.error('Failed to get Firebase ID token:', error);
+        return null;
+      }
+    }
+    
+    return null;
   };
 
   // Login function
@@ -144,6 +168,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     login,
     logout,
     checkAuthStatus,
+    getUserToken, // Add this method
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

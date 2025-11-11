@@ -1,11 +1,13 @@
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, Dimensions, Platform, StatusBar, Image, Animated, Easing, KeyboardAvoidingView, ScrollView } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import React, { useRef } from 'react';
 import { MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useRef } from 'react';
+import { Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { API_BASE_URL } from '../../config/api.config';
 import { theme } from '../../config/theme';
 
 type RootStackParamList = {
@@ -266,14 +268,31 @@ const SignIn = () => {
       newErrors.email = 'Try again with a valid email';
       hasErrors = true;
       triggerVibrationAnimation('email');
+    } else {
+      // Block temporary/disposable email services
+      const tempEmailDomains = [
+        'tempmail.com', 'guerrillamail.com', '10minutemail.com', 'throwaway.email',
+        'mailinator.com', 'maildrop.cc', 'temp-mail.org', 'yopmail.com',
+        'fakeinbox.com', 'trashmail.com', 'getnada.com', 'mailnesia.com',
+        'dispostable.com', 'throwawaymail.com', 'tempinbox.com', 'emailondeck.com',
+        'sharklasers.com', 'guerrillamail.info', 'grr.la', 'guerrillamail.biz',
+        'guerrillamail.de', 'spam4.me', 'mailtemp.com', 'tempsky.com'
+      ];
+      
+      const emailDomain = email.toLowerCase().split('@')[1];
+      if (tempEmailDomains.includes(emailDomain)) {
+        newErrors.email = 'Temporary emails not allowed';
+        hasErrors = true;
+        triggerVibrationAnimation('email');
+      }
     }
     
     if (!password.trim()) {
       newErrors.password = 'Try again with a valid password';
       hasErrors = true;
       triggerVibrationAnimation('password');
-    } else if (password.length < 6) {
-      newErrors.password = 'Try again with a valid password';
+    } else if (password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters';
       hasErrors = true;
       triggerVibrationAnimation('password');
     }
@@ -297,31 +316,62 @@ const SignIn = () => {
     };
     startLoadingAnimation();
     
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      // Call backend API to login user
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed');
+      }
+      
+      // Store user data and token locally
+      await AsyncStorage.setItem('userToken', data.token);
+      await AsyncStorage.setItem('userEmail', data.user.email);
+      await AsyncStorage.setItem('userName', data.user.username);
+      await AsyncStorage.setItem('userId', data.user.id);
+      
       setIsLoading(false);
       loadingRotation.stopAnimation();
       
-      // Simulate authentication failure for demo
-      // In real app, check actual authentication response here
-      const isAuthenticated = Math.random() > 0.3; // 70% success rate for demo
+      // Success - navigate to main app
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      navigation.navigate('SchoolUpdates');
+    } catch (error: any) {
+      setIsLoading(false);
+      loadingRotation.stopAnimation();
       
-      if (!isAuthenticated) {
-        // Wrong credentials - trigger vibration and show error
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        setErrors(prev => ({ 
-          ...prev, 
-          general: 'Invalid email or password. Please try again.' 
-        }));
-        
-        // Trigger vibration for both fields
-        triggerVibrationAnimation('email');
-        setTimeout(() => triggerVibrationAnimation('password'), 200);
-      } else {
-        // Success - navigate to next screen
-    navigation.navigate('SchoolUpdates');
+      // Handle errors
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      
+      let errorMessage = 'Invalid email or password. Please try again.';
+      
+      if (error.message.includes('Invalid')) {
+        errorMessage = 'Invalid email or password';
+      } else if (error.message.includes('deactivated')) {
+        errorMessage = 'This account has been deactivated';
+      } else if (error.message) {
+        errorMessage = error.message;
       }
-    }, 2000);
+      
+      setErrors(prev => ({ ...prev, general: errorMessage }));
+      
+      // Trigger vibration for both fields
+      triggerVibrationAnimation('email');
+      setTimeout(() => triggerVibrationAnimation('password'), 200);
+      
+      console.error('Sign in error:', error);
+    }
   };
 
   const KeyboardWrapper = Platform.OS === 'ios' ? KeyboardAvoidingView : View;
@@ -724,12 +774,14 @@ const SignIn = () => {
               accessibilityHint="Double tap to sign in to your DOrSU Connect account"
               accessibilityState={{ disabled: isLoading }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              activeOpacity={0.8}
             >
               <LinearGradient
                 colors={isLoading ? ['#6B7280', '#9CA3AF'] : ['#1F2937', '#374151']}
                 style={styles.signInButtonGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
+                pointerEvents="none"
               >
                 {isLoading ? (
                   <>
@@ -766,8 +818,9 @@ const SignIn = () => {
             <TouchableOpacity 
               onPress={() => navigation.navigate('CreateAccount')}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                accessibilityRole="button"
-                accessibilityLabel="Create new account"
+              accessibilityRole="button"
+              accessibilityLabel="Create new account"
+              style={styles.signUpLinkButton}
             >
               <Text style={styles.signUpLink}>Sign Up</Text>
             </TouchableOpacity>
@@ -1129,6 +1182,11 @@ const styles = StyleSheet.create({
   forgotPassword: {
     alignSelf: 'flex-end',
     marginTop: theme.spacing(1),
+    ...Platform.select({
+      web: {
+        cursor: 'pointer',
+      },
+    }),
   },
   forgotPasswordText: {
     color: 'black',
@@ -1146,6 +1204,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
+    ...Platform.select({
+      web: {
+        cursor: 'pointer',
+        userSelect: 'none',
+      },
+    }),
   },
   signInButtonDisabled: {
     opacity: 0.7,
@@ -1189,6 +1253,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0.2,
+  },
+  signUpLinkButton: {
+    ...Platform.select({
+      web: {
+        cursor: 'pointer',
+      },
+    }),
   },
 });
 

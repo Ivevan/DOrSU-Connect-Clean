@@ -1,19 +1,20 @@
-import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Platform, StatusBar, Image, Animated, Easing, Alert } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import React, { useRef } from 'react';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useRef } from 'react';
+import { Alert, Animated, Dimensions, Easing, Image, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lightTheme as theme } from '../../config/theme';
-import { signInWithGoogle, getGoogleSignInErrorMessage } from '../../services/authService';
+import { getGoogleSignInErrorMessage, signInWithGoogle } from '../../services/authService';
 
 type RootStackParamList = {
   GetStarted: undefined;
   SignIn: undefined;
   CreateAccount: undefined;
   AdminDashboard: undefined;
+  SchoolUpdates: undefined;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'GetStarted'>;
@@ -286,6 +287,23 @@ const GetStarted = () => {
 
     try {
       const user = await signInWithGoogle();
+      
+      // Save Google user data to AsyncStorage for persistence
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      if (user.email) {
+        await AsyncStorage.setItem('userEmail', user.email);
+      }
+      if (user.displayName) {
+        await AsyncStorage.setItem('userName', user.displayName);
+      }
+      if (user.photoURL) {
+        await AsyncStorage.setItem('userPhoto', user.photoURL);
+      }
+      if (user.uid) {
+        await AsyncStorage.setItem('userId', user.uid);
+      }
+      // Mark as Google Sign-In user
+      await AsyncStorage.setItem('authProvider', 'google');
       
       // Success
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

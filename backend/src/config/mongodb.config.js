@@ -16,7 +16,8 @@ export const mongoConfig = {
       cache: process.env.MONGODB_COLLECTION_CACHE || 'ai_cache',
       analytics: process.env.MONGODB_COLLECTION_ANALYTICS || 'query_analytics',
       conversations: 'conversations',
-      feedback: 'user_feedback'
+      feedback: 'user_feedback',
+      users: 'users'
     },
     
     // Connection options

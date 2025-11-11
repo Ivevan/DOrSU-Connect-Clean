@@ -1,27 +1,28 @@
-import React from 'react';
-import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 
-import SplashScreen from '../screens/auth/SplashScreen';
+import UserHelpCenterScreen from '../screens/about/HelpCenterScreen';
+import LicensesScreen from '../screens/about/LicensesScreen';
+import PrivacyPolicyScreen from '../screens/about/PrivacyPolicyScreen';
+import TermsOfUseScreen from '../screens/about/TermsOfUseScreen';
+import AdminAIChat from '../screens/admin/AdminAIChat';
+import AdminCalendar from '../screens/admin/AdminCalendar';
+import AdminDashboard from '../screens/admin/AdminDashboard';
+import AdminSettings from '../screens/admin/AdminSettings';
+import ManagePosts from '../screens/admin/ManagePosts';
+import PostUpdate from '../screens/admin/PostUpdate';
+import CreateAccount from '../screens/auth/CreateAccount';
 import GetStarted from '../screens/auth/GetStarted';
 import SignIn from '../screens/auth/SignIn';
-import CreateAccount from '../screens/auth/CreateAccount';
-import SchoolUpdates from '../screens/user/SchoolUpdates';
+import SplashScreen from '../screens/auth/SplashScreen';
 import AIChat from '../screens/user/AIChat';
-import UserSettings from '../screens/user/UserSettings';
 import Calendar from '../screens/user/Calendar';
-import AdminDashboard from '../screens/admin/AdminDashboard';
-import AdminAIChat from '../screens/admin/AdminAIChat';
-import AdminSettings from '../screens/admin/AdminSettings';
-import AdminCalendar from '../screens/admin/AdminCalendar';
-import PostUpdate from '../screens/admin/PostUpdate';
-import ManagePosts from '../screens/admin/ManagePosts';
-import UserHelpCenterScreen from '../screens/about/HelpCenterScreen';
-import TermsOfUseScreen from '../screens/about/TermsOfUseScreen';
-import PrivacyPolicyScreen from '../screens/about/PrivacyPolicyScreen';
-import LicensesScreen from '../screens/about/LicensesScreen';
+import SchoolUpdates from '../screens/user/SchoolUpdates';
+import UserSettings from '../screens/user/UserSettings';
 
 const Stack = createNativeStackNavigator();
 
@@ -45,10 +46,59 @@ const useScreenOptions = () => {
 
 const AppNavigator = () => {
   const screenOptions = useScreenOptions();
+  const [isLoading, setIsLoading] = useState(true);
+  const [initialRoute, setInitialRoute] = useState<string>('SplashScreen');
+  
+  // Check authentication status on app load
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      try {
+        // Check for backend auth token
+        const userToken = await AsyncStorage.getItem('userToken');
+        const userEmail = await AsyncStorage.getItem('userEmail');
+        const authProvider = await AsyncStorage.getItem('authProvider');
+        
+        // If user has valid session, skip to main app
+        if ((userToken && userEmail) || (userEmail && authProvider === 'google')) {
+          setInitialRoute('SchoolUpdates');
+        } else {
+          // Check for Firebase auth (if user logged in with Google)
+          try {
+            const { getCurrentUser } = require('../services/authService');
+            const currentUser = getCurrentUser();
+            if (currentUser?.email) {
+              setInitialRoute('SchoolUpdates');
+            } else {
+              setInitialRoute('SplashScreen');
+            }
+          } catch {
+            setInitialRoute('SplashScreen');
+          }
+        }
+      } catch (error) {
+        console.error('Auth check error:', error);
+        setInitialRoute('SplashScreen');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    checkAuthStatus();
+  }, []);
+  
+  // Show loading indicator while checking auth status
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1F2937' }}>
+        <ActivityIndicator size="large" color="#FFFFFF" />
+      </View>
+    );
+  }
+  
   return (
     <NavigationContainer>
       <Stack.Navigator 
-        initialRouteName="SplashScreen"
+        initialRouteName={initialRoute}
         screenOptions={screenOptions}
       >
         <Stack.Screen 

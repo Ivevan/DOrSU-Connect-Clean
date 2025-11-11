@@ -1,15 +1,15 @@
-import * as React from 'react';
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, StatusBar, Platform, TouchableOpacity, ScrollView, Switch, Alert, Animated, Image, InteractionManager, Easing } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
-import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
-import { useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as React from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { Animated, Image, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import { theme } from '../../config/theme';
-import { useThemeValues, useThemeActions } from '../../contexts/ThemeContext';
+import { useThemeActions, useThemeValues } from '../../contexts/ThemeContext';
 import LogoutModal from '../../modals/LogoutModal';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 
@@ -56,10 +56,53 @@ const UserSettings = () => {
     }
   });
   
-  // Get user display name and email (memoized)
-  const userName = useMemo(() => currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User', [currentUser]);
-  const userEmail = useMemo(() => currentUser?.email || 'No email', [currentUser]);
-  const userPhoto = useMemo(() => currentUser?.photoURL || null, [currentUser]);
+  // Backend auth user data from AsyncStorage
+  const [backendUserName, setBackendUserName] = useState<string | null>(null);
+  const [backendUserEmail, setBackendUserEmail] = useState<string | null>(null);
+  const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
+  
+  // Load backend user data on mount and screen focus
+  useFocusEffect(
+    useCallback(() => {
+      const loadBackendUserData = async () => {
+        try {
+          const userName = await AsyncStorage.getItem('userName');
+          const userEmail = await AsyncStorage.getItem('userEmail');
+          const userPhoto = await AsyncStorage.getItem('userPhoto');
+          setBackendUserName(userName);
+          setBackendUserEmail(userEmail);
+          setBackendUserPhoto(userPhoto);
+        } catch (error) {
+          console.error('Failed to load backend user data:', error);
+        }
+      };
+      loadBackendUserData();
+    }, [])
+  );
+  
+  // Get user display name and email (memoized) - Check backend first, then Firebase
+  const userName = useMemo(() => {
+    // Priority: Backend username -> Firebase displayName -> Firebase email username -> Backend email username -> Default
+    if (backendUserName) return backendUserName;
+    if (currentUser?.displayName) return currentUser.displayName;
+    if (currentUser?.email) return currentUser.email.split('@')[0];
+    if (backendUserEmail) return backendUserEmail.split('@')[0];
+    return 'User';
+  }, [currentUser, backendUserName, backendUserEmail]);
+  
+  const userEmail = useMemo(() => {
+    // Priority: Backend email -> Firebase email -> Default
+    if (backendUserEmail) return backendUserEmail;
+    if (currentUser?.email) return currentUser.email;
+    return 'No email';
+  }, [currentUser, backendUserEmail]);
+  
+  const userPhoto = useMemo(() => {
+    // Priority: Backend photo -> Firebase photo -> Default
+    if (backendUserPhoto) return backendUserPhoto;
+    if (currentUser?.photoURL) return currentUser.photoURL;
+    return null;
+  }, [currentUser, backendUserPhoto]);
   
   // Lock header height to prevent layout shifts
   const headerHeightRef = useRef<number>(64);
@@ -115,10 +158,43 @@ const UserSettings = () => {
 
   const handleLogout = useCallback(() => openLogout(), [openLogout]);
 
-  const confirmLogout = useCallback(() => {
-    closeLogout();
-    navigation.navigate('GetStarted');
-  }, [closeLogout, navigation]);
+  const confirmLogout = useCallback(async () => {
+    try {
+      // Clear backend auth data from AsyncStorage
+      await AsyncStorage.multiRemove(['userToken', 'userEmail', 'userName', 'userId', 'userPhoto', 'authProvider']);
+      
+      // Sign out from Firebase if user is signed in
+      if (currentUser) {
+        try {
+          const { getFirebaseAuth } = require('../../config/firebase');
+          const auth = getFirebaseAuth();
+          
+          // Check if using Firebase JS SDK or React Native Firebase
+          const isJSSDK = auth.signOut !== undefined;
+          
+          if (isJSSDK) {
+            // Firebase JS SDK (Web/Expo Go)
+            const { signOut } = require('firebase/auth');
+            await signOut(auth);
+          } else {
+            // React Native Firebase (Native build)
+            await auth.signOut();
+          }
+        } catch (firebaseError) {
+          console.error('Firebase sign out error:', firebaseError);
+          // Continue with logout even if Firebase sign out fails
+        }
+      }
+      
+      closeLogout();
+      navigation.navigate('GetStarted');
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Still navigate to GetStarted even if there's an error
+      closeLogout();
+      navigation.navigate('GetStarted');
+    }
+  }, [closeLogout, navigation, currentUser]);
   
   return (
     <View style={[styles.container, {

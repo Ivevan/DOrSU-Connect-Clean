@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { AuthService, authMiddleware } from './services/auth.js';
 import conversationService from './services/conversation.js';
 import { getDataRefreshService } from './services/data-refresh.js';
 import responseFormatter from './services/formatter.js';
@@ -39,6 +40,7 @@ let ragService = null;
 let mongoService = null;
 let dataRefreshService = null;
 let newsScraperService = null;
+let authService = null;
 
 // ===== FALLBACK CONTEXT =====
 const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
@@ -52,6 +54,10 @@ const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
     mongoService = getMongoDBService();
     await mongoService.connect();
     Logger.success('MongoDB initialized');
+    
+    // Initialize authentication service
+    authService = new AuthService(mongoService);
+    Logger.success('Auth service initialized');
     
     // Initialize data refresh service
     dataRefreshService = getDataRefreshService();
@@ -142,6 +148,109 @@ const server = http.createServer(async (req, res) => {
   if (method === 'GET' && url === '/api/mongodb-status') {
     const health = mongoService ? await mongoService.healthCheck() : { status: 'unavailable' };
     sendJson(res, 200, health);
+    return;
+  }
+
+  // ===== AUTHENTICATION ENDPOINTS =====
+
+  // User Registration
+  if (method === 'POST' && url === '/api/auth/register') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        if (!authService) {
+          sendJson(res, 503, { error: 'Authentication service not available' });
+          return;
+        }
+
+        const { username, email, password } = JSON.parse(body);
+
+        if (!username || !email || !password) {
+          sendJson(res, 400, { error: 'Username, email and password are required' });
+          return;
+        }
+
+        const result = await authService.register(username, email, password);
+        sendJson(res, 201, result);
+      } catch (error) {
+        Logger.error('Register error:', error.message);
+        sendJson(res, 400, { error: error.message });
+      }
+    });
+    return;
+  }
+
+  // User Login
+  if (method === 'POST' && url === '/api/auth/login') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        if (!authService) {
+          sendJson(res, 503, { error: 'Authentication service not available' });
+          return;
+        }
+
+        const { email, password } = JSON.parse(body);
+
+        if (!email || !password) {
+          sendJson(res, 400, { error: 'Email and password are required' });
+          return;
+        }
+
+        const result = await authService.login(email, password);
+        sendJson(res, 200, result);
+      } catch (error) {
+        Logger.error('Login error:', error.message);
+        sendJson(res, 401, { error: error.message });
+      }
+    });
+    return;
+  }
+
+  // Get current user profile
+  if (method === 'GET' && url === '/api/auth/me') {
+    if (!authService) {
+      sendJson(res, 503, { error: 'Authentication service not available' });
+      return;
+    }
+
+    const auth = authMiddleware(authService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+
+    try {
+      const user = await authService.getUserById(auth.userId);
+      if (!user) {
+        sendJson(res, 404, { error: 'User not found' });
+        return;
+      }
+      sendJson(res, 200, { success: true, user });
+    } catch (error) {
+      Logger.error('Get user error:', error.message);
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+
+  // Get all users (admin endpoint)
+  if (method === 'GET' && url === '/api/users') {
+    if (!authService) {
+      sendJson(res, 503, { error: 'Authentication service not available' });
+      return;
+    }
+
+    try {
+      const users = await mongoService.getAllUsers();
+      const count = await mongoService.getUserCount();
+      sendJson(res, 200, { success: true, count, users });
+    } catch (error) {
+      Logger.error('Get users error:', error.message);
+      sendJson(res, 500, { error: error.message });
+    }
     return;
   }
 

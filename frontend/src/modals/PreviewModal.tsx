@@ -9,6 +9,7 @@ interface PreviewUpdate {
   title: string;
   date: string;
   tag: string;
+  time?: string;
   image?: string;
   images?: string[];
   description?: string;
@@ -108,7 +109,17 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
                     <Text style={[styles.tagChipText, { color: tagTextColor }]}>{update?.tag}</Text>
                   </View>
                   <Text style={styles.previewTitleOverlay} numberOfLines={2}>{update?.title}</Text>
-                  <Text style={styles.previewDateOverlay}>{formatDate(update?.date)}</Text>
+                  <View style={styles.previewDateTimeRow}>
+                    <Ionicons name="calendar-outline" size={14} color="#FFFFFF" />
+                    <Text style={styles.previewDateOverlay}>{formatDate(update?.date)}</Text>
+                    {update?.time && (
+                      <>
+                        <Text style={styles.previewDateSeparator}>•</Text>
+                        <Ionicons name="time-outline" size={14} color="#FFFFFF" />
+                        <Text style={styles.previewDateOverlay}>{update.time}</Text>
+                      </>
+                    )}
+                  </View>
                 </View>
               </LinearGradient>
               {update?.pinned && (
@@ -126,12 +137,6 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
           )}
           <View style={[styles.previewDivider, { backgroundColor: theme.colors.border }]} />
           <View style={styles.previewBody}>
-            <View style={styles.previewMetaRow}>
-              <View style={styles.previewMetaItem}>
-                <Ionicons name="time-outline" size={14} color={theme.colors.textMuted} />
-                <Text style={[styles.previewMetaText, { color: theme.colors.textMuted }]}>{timeAgo(update?.date)}</Text>
-              </View>
-            </View>
             {!!update?.description && (
               <Text style={[styles.previewUpdateDescription, { color: theme.colors.text }]} numberOfLines={5}>
                 {update?.description}
@@ -275,7 +280,18 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  previewDateTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     marginTop: 4,
+  },
+  previewDateSeparator: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    opacity: 0.7,
   },
   previewImagePlaceholderText: {
     fontSize: 12,

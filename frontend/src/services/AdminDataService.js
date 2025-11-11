@@ -8,11 +8,10 @@ let postsStore = [
     description: 'Midterm examinations will be held from November 3-7, 2025. Please check the examination schedule posted on the bulletin board. Students must bring their ID cards.',
     category: 'Academic',
     date: 'Nov 3, 2025',
+    time: '8:00 AM',
     isoDate: new Date(2025, 10, 3).toISOString(), // Nov 3, 2025 (Monday)
     images: ['https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800'],
     image: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=800',
-    isPinned: true,
-    isUrgent: true,
     source: 'Admin',
   },
   {
@@ -21,11 +20,10 @@ let postsStore = [
     description: 'Classes will be suspended on November 1, 2025 in observance of All Saints Day. Regular classes will resume on November 3, 2025.',
     category: 'Announcement',
     date: 'Nov 3, 2025',
+    time: 'All Day',
     isoDate: new Date(2025, 10, 3).toISOString(),
     images: ['https://images.unsplash.com/photo-1478098711619-5ab0b478d6e6?w=800'],
     image: 'https://images.unsplash.com/photo-1478098711619-5ab0b478d6e6?w=800',
-    isPinned: false,
-    isUrgent: false,
     source: 'Admin',
   },
   {
@@ -34,11 +32,10 @@ let postsStore = [
     description: 'Registration for the annual Science Fair is now open. Interested students can register at the Science Department office until November 8, 2025. Projects should showcase innovation and creativity.',
     category: 'Academic',
     date: 'Nov 5, 2025',
+    time: '9:00 AM - 5:00 PM',
     isoDate: new Date(2025, 10, 5).toISOString(),
     images: ['https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=800'],
     image: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=800',
-    isPinned: false,
-    isUrgent: false,
     source: 'Admin',
   },
   {
@@ -47,11 +44,10 @@ let postsStore = [
     description: 'Join us for the annual Campus Career Fair today from 9:00 AM to 4:00 PM at the Main Gymnasium. Meet with top employers, explore career opportunities, and network with industry professionals. Bring your resume and dress professionally!',
     category: 'Event',
     date: 'Nov 8, 2025',
+    time: '9:00 AM - 4:00 PM',
     isoDate: new Date(2025, 10, 8).toISOString(), // Nov 8, 2025 (Saturday)
     images: ['https://images.unsplash.com/photo-1511578314322-379afb476865?w=800'],
     image: 'https://images.unsplash.com/photo-1511578314322-379afb476865?w=800',
-    isPinned: true,
-    isUrgent: false,
     source: 'Admin',
   },
   {
@@ -60,11 +56,10 @@ let postsStore = [
     description: 'Join us for our annual Cultural Week celebration from November 10-14, 2025. Experience diverse cultural performances, food festivals, and art exhibitions. All students and faculty are welcome.',
     category: 'Event',
     date: 'Nov 10, 2025',
+    time: '10:00 AM - 6:00 PM',
     isoDate: new Date(2025, 10, 10).toISOString(),
     images: ['https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=800'],
     image: 'https://images.unsplash.com/photo-1533174072545-7a4b6ad7a6c3?w=800',
-    isPinned: true,
-    isUrgent: false,
     source: 'Admin',
   },
   {
@@ -73,11 +68,10 @@ let postsStore = [
     description: 'Join us for a special ceremony honoring our veterans on November 11, 2025. The event will be held at the Main Auditorium starting at 10:00 AM. All students and faculty are invited to attend.',
     category: 'Event',
     date: 'Nov 11, 2025',
+    time: '10:00 AM',
     isoDate: new Date(2025, 10, 11).toISOString(),
     images: ['https://images.unsplash.com/photo-1534430480872-3498386e7856?w=800'],
     image: 'https://images.unsplash.com/photo-1534430480872-3498386e7856?w=800',
-    isPinned: false,
-    isUrgent: false,
     source: 'Admin',
   },
   {
@@ -86,11 +80,10 @@ let postsStore = [
     description: 'The deadline for second semester tuition fee payment is November 14, 2025. Please settle your accounts at the Finance Office to avoid late payment charges.',
     category: 'Academic',
     date: 'Nov 12, 2025',
+    time: '8:00 AM - 5:00 PM',
     isoDate: new Date(2025, 10, 12).toISOString(),
     images: ['https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=800'],
     image: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=800',
-    isPinned: false,
-    isUrgent: true,
     source: 'Admin',
   },
   {
@@ -99,11 +92,10 @@ let postsStore = [
     description: 'The annual Sports Intramurals will be held on November 18-22, 2025. All students are encouraged to participate. Registration forms are available at the PE Department.',
     category: 'Event',
     date: 'Nov 18, 2025',
+    time: '7:00 AM - 5:00 PM',
     isoDate: new Date(2025, 10, 18).toISOString(),
     images: ['https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=800'],
     image: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?w=800',
-    isPinned: true,
-    isUrgent: false,
     source: 'Admin',
   },
   {
@@ -112,11 +104,10 @@ let postsStore = [
     description: 'The library system will undergo maintenance on November 20, 2025 from 2:00 PM to 6:00 PM. Online services will be temporarily unavailable during this period.',
     category: 'Announcement',
     date: 'Nov 20, 2025',
+    time: '2:00 PM - 6:00 PM',
     isoDate: new Date(2025, 10, 20).toISOString(),
     images: ['https://images.unsplash.com/photo-1507842217343-583bb7270b66?w=800'],
     image: 'https://images.unsplash.com/photo-1507842217343-583bb7270b66?w=800',
-    isPinned: false,
-    isUrgent: false,
     source: 'Admin',
   },
   {
@@ -125,11 +116,10 @@ let postsStore = [
     description: 'Classes will be suspended from November 27-29, 2025 for the Thanksgiving break. Regular classes will resume on December 1, 2025. Have a safe and restful holiday!',
     category: 'Announcement',
     date: 'Nov 25, 2025',
+    time: 'All Day',
     isoDate: new Date(2025, 10, 25).toISOString(),
     images: ['https://images.unsplash.com/photo-1606787366850-de6330128bfc?w=800'],
     image: 'https://images.unsplash.com/photo-1606787366850-de6330128bfc?w=800',
-    isPinned: true,
-    isUrgent: false,
     source: 'Admin',
   },
   {
@@ -138,11 +128,10 @@ let postsStore = [
     description: 'All final projects and research papers must be submitted on or before November 28, 2025. Late submissions will incur a grade deduction. Please coordinate with your respective professors.',
     category: 'Academic',
     date: 'Nov 26, 2025',
+    time: '11:59 PM',
     isoDate: new Date(2025, 10, 26).toISOString(),
     images: ['https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=800'],
     image: 'https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=800',
-    isPinned: false,
-    isUrgent: true,
     source: 'Admin',
   },
 ];
@@ -196,10 +185,8 @@ function dateToSortKey(post) {
 const AdminDataService = {
   async getPosts() {
     await delay();
-    // Pinned first, then newest by date
+    // Sort by newest date
     return [...postsStore].sort((a, b) => {
-      if (a.isPinned && !b.isPinned) return -1;
-      if (!a.isPinned && b.isPinned) return 1;
       const da = dateToSortKey(a);
       const db = dateToSortKey(b);
       return db - da;

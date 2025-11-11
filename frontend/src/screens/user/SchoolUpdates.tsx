@@ -151,7 +151,7 @@ const SchoolUpdates = () => {
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
-  const [previewUpdate, setPreviewUpdate] = useState<{ title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean } | null>(null);
+  const [previewUpdate, setPreviewUpdate] = useState<{ title: string; date: string; tag: string; time?: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean } | null>(null);
   const [updates, setUpdates] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -209,7 +209,7 @@ const SchoolUpdates = () => {
     Alert.alert('Notifications', 'Notifications feature coming soon.');
   }, []);
 
-  const handleUpdatePress = useCallback((update: { title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean }) => {
+  const handleUpdatePress = useCallback((update: { title: string; date: string; tag: string; time?: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean }) => {
     // Open preview modal for all updates
     setPreviewUpdate(update);
     setActivePreviewIndex(0);
@@ -234,6 +234,7 @@ const SchoolUpdates = () => {
           title: post.title,
           body: post.description,
           date: formatDate(post.isoDate || post.date),
+          time: post.time,
           isoDate: post.isoDate || post.date, // Store isoDate for accurate date comparison
           category: post.category as UpdateCategory,
           tag: post.category,

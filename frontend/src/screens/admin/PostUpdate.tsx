@@ -405,8 +405,8 @@ const PostUpdate: React.FC = () => {
       backgroundColor: theme.colors.background,
     }]} collapsable={false}>
       <StatusBar 
-        backgroundColor={theme.colors.background}
-        barStyle={isDarkMode ? "light-content" : "dark-content"} 
+        backgroundColor={theme.colors.primary}
+        barStyle={isDarkMode ? "light-content" : "light-content"}
         translucent={false}
         hidden={false}
       />
@@ -414,13 +414,13 @@ const PostUpdate: React.FC = () => {
       {/* Safe Area Top Spacer - Fixed position */}
       <View style={[styles.safeAreaTop, {
         height: safeInsets.top,
-        backgroundColor: theme.colors.background,
+        backgroundColor: theme.colors.primary,
       }]} collapsable={false} />
       
       {/* Header - Fixed position to prevent layout shifts */}
       <View
         style={[styles.header, {
-          backgroundColor: theme.colors.background,
+          backgroundColor: theme.colors.primary,
           top: safeInsets.top,
         }]}
         onLayout={(e) => {
@@ -433,19 +433,12 @@ const PostUpdate: React.FC = () => {
         }}
         collapsable={false}
       >
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Go back" accessibilityHint="Returns to the previous screen">
-          <Ionicons name="chevron-back" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter} collapsable={false}>
-          <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>Post Update</Text>
-          <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]} numberOfLines={1}>Create and edit updates</Text>
+        <View style={styles.headerLeft} collapsable={false}>
+          <Text style={[styles.headerTitle, { color: '#fff' }]} numberOfLines={1}>Post Update</Text>
         </View>
         <View style={styles.headerRight} collapsable={false}>
-          <View style={[styles.categoryChipSmall, { borderColor: currentCategory.color + '33', backgroundColor: currentCategory.color + '14' }]}>
-            <View style={[styles.categoryChipIconWrapSmall, { backgroundColor: currentCategory.color + '22' }]}>
-              <Ionicons name={currentCategory.icon as any} size={14} color={currentCategory.color} />
-            </View>
-            <Text style={[styles.categoryChipTextSmall, { color: theme.colors.text }]} numberOfLines={1}>{currentCategory.key}</Text>
+          <View style={styles.categoryBadgeHeader}>
+            <Text style={styles.categoryBadgeLabel} numberOfLines={1}>{category}</Text>
           </View>
         </View>
       </View>
@@ -1008,24 +1001,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingVertical: 16,
     minHeight: 64, // Fixed min height to prevent layout shifts
     borderBottomWidth: 0,
     shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
     shadowRadius: 4,
-    elevation: 1,
+    elevation: 4,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
   },
   closeButton: {
     padding: 6,
+  },
+  headerLeft: {
+    flex: 1,
   },
   headerCenter: {
     flex: 1,
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
     letterSpacing: 0.2,
   },
@@ -1035,8 +1033,28 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   headerRight: {
-    width: 120,
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    gap: 10,
+  },
+  headerSpacer: {
+    width: 40,
+    height: 33,
+    marginLeft: 4,
+  },
+  categoryBadgeHeader: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  categoryBadgeLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#fff',
   },
   categoryChipSmall: {
     flexDirection: 'row',

@@ -320,17 +320,15 @@ const SchoolUpdates = () => {
   }, [updates, query]);
 
   // Today's events (category Event occurring today) - using timezone-aware comparison
-  // const todaysEvents = useMemo(() => {
-  //   const todayKey = getPHDateKey(new Date());
-  //   return updates.filter(u => {
-  //     if (u.category !== 'Event') return false;
-  //     if (!u.isoDate) return false;
-  //     const eventKey = getPHDateKey(u.isoDate);
-  //     return eventKey === todayKey;
-  //   });
-  // }, [updates]);
-  // Temporarily return empty array to test "no events" state
-  const todaysEvents = useMemo(() => [], []);
+  const todaysEvents = useMemo(() => {
+    const todayKey = getPHDateKey(new Date());
+    return updates.filter(u => {
+      if (u.category !== 'Event') return false;
+      if (!u.isoDate) return false;
+      const eventKey = getPHDateKey(u.isoDate);
+      return eventKey === todayKey;
+    });
+  }, [updates]);
 
   // Upcoming updates (future dates)
   const upcomingUpdates = useMemo(() => {

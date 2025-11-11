@@ -46,6 +46,41 @@ const getPHDateKey = (d: Date | string) => {
   }
 };
 
+// Helper functions for tag colors
+const getTagColor = (tag: string) => {
+  switch (tag.toLowerCase()) {
+    case 'announcement':
+      return '#E8F0FF';
+    case 'academic':
+      return '#F0F9FF';
+    case 'event':
+      return '#FEF3C7';
+    case 'service':
+      return '#ECFDF5';
+    case 'infrastructure':
+      return '#FEF2F2';
+    default:
+      return '#E8F0FF';
+  }
+};
+
+const getTagTextColor = (tag: string) => {
+  switch (tag.toLowerCase()) {
+    case 'announcement':
+      return '#1A3E7A';
+    case 'academic':
+      return '#0369A1';
+    case 'event':
+      return '#D97706';
+    case 'service':
+      return '#059669';
+    case 'infrastructure':
+      return '#DC2626';
+    default:
+      return '#1A3E7A';
+  }
+};
+
 // Memoized Update Card Component
 const UpdateCard = memo(({ update, onPress, theme }: { update: any; onPress: () => void; theme: any }) => {
   const imageUrl = update.images?.[0] || update.image;
@@ -322,7 +357,12 @@ const SchoolUpdates = () => {
         </View>
       )}
 
-      <ScrollView ref={scrollRef} style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        ref={scrollRef} 
+        style={styles.content} 
+        contentContainerStyle={{ paddingBottom: 20 }}
+        showsVerticalScrollIndicator={false}
+      >
         <Animated.View
           style={{
             opacity: fadeAnim,
@@ -431,41 +471,6 @@ const SchoolUpdates = () => {
       <UserBottomNavBar />
     </View>
   );
-};
-
-// Helper functions for tag colors
-const getTagColor = (tag: string) => {
-  switch (tag.toLowerCase()) {
-    case 'announcement':
-      return '#E8F0FF';
-    case 'academic':
-      return '#F0F9FF';
-    case 'event':
-      return '#FEF3C7';
-    case 'service':
-      return '#ECFDF5';
-    case 'infrastructure':
-      return '#FEF2F2';
-    default:
-      return '#E8F0FF';
-  }
-};
-
-const getTagTextColor = (tag: string) => {
-  switch (tag.toLowerCase()) {
-    case 'announcement':
-      return '#1A3E7A';
-    case 'academic':
-      return '#0369A1';
-    case 'event':
-      return '#D97706';
-    case 'service':
-      return '#059669';
-    case 'infrastructure':
-      return '#DC2626';
-    default:
-      return '#1A3E7A';
-  }
 };
 
 const styles = StyleSheet.create({
@@ -753,23 +758,24 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   eventTitleOverlay: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
     color: '#FFFFFF',
     textShadowColor: 'rgba(0, 0, 0, 0.75)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
-    lineHeight: 24,
+    lineHeight: 26,
+    letterSpacing: 0.3,
   },
   eventDateOverlay: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
     color: '#FFFFFF',
     opacity: 0.95,
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
-    marginTop: 2,
+    marginTop: 4,
   },
   eventTagText: {
     fontSize: 11,

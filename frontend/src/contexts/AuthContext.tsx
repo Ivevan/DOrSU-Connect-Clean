@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
+import { API_BASE_URL } from '../config/api.config';
 import { getCurrentUser, User } from '../services/authService';
 
 interface AuthContextType {
@@ -58,6 +59,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const currentUser = getCurrentUser();
         if (currentUser?.email) {
           setFirebaseUser(currentUser);
+          // If no backend token yet, try exchanging Firebase ID token for backend JWT
+          if (!token) {
+            try {
+              const idToken = await currentUser.getIdToken();
+              const resp = await fetch(`${API_BASE_URL}/api/auth/firebase-login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idToken }),
+              });
+              const data = await resp.json();
+              if (resp.ok && data?.token) {
+                await AsyncStorage.setItem('userToken', data.token);
+                await AsyncStorage.setItem('userEmail', currentUser.email);
+                await AsyncStorage.setItem('userName', currentUser.displayName || currentUser.email);
+                setUserToken(data.token);
+                setUserEmail(currentUser.email);
+                setUserName(currentUser.displayName || currentUser.email);
+              }
+            } catch (ex) {
+              // ignore exchange failure; Firebase token fallback will still work
+            }
+          }
           setIsAuthenticated(true);
           return true;
         }

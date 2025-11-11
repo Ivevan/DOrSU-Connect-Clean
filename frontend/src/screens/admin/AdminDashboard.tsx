@@ -28,6 +28,161 @@ type RootStackParamList = {
   ManagePosts: undefined;
 };
 
+// Helper function to get Philippines timezone date key (moved outside component for performance)
+const getPHDateKey = (d: Date | string) => {
+  try {
+    const date = typeof d === 'string' ? new Date(d) : d;
+    const dtf = new Intl.DateTimeFormat('en-PH', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+    });
+    const parts = dtf.formatToParts(date);
+    const y = Number(parts.find(p => p.type === 'year')?.value);
+    const m = Number(parts.find(p => p.type === 'month')?.value) - 1;
+    const day = Number(parts.find(p => p.type === 'day')?.value);
+    return Date.UTC(y, m, day);
+  } catch {
+    const date = typeof d === 'string' ? new Date(d) : d;
+    return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+};
+
+// Helper functions for tag colors
+const getTagColor = (tag: string) => {
+  switch (tag.toLowerCase()) {
+    case 'announcement':
+      return '#E8F0FF';
+    case 'academic':
+      return '#F0F9FF';
+    case 'event':
+      return '#FEF3C7';
+    case 'service':
+      return '#ECFDF5';
+    case 'infrastructure':
+      return '#FEF2F2';
+    default:
+      return '#E8F0FF';
+  }
+};
+
+const getTagTextColor = (tag: string) => {
+  switch (tag.toLowerCase()) {
+    case 'announcement':
+      return '#1A3E7A';
+    case 'academic':
+      return '#0369A1';
+    case 'event':
+      return '#D97706';
+    case 'service':
+      return '#059669';
+    case 'infrastructure':
+      return '#DC2626';
+    default:
+      return '#1A3E7A';
+  }
+};
+
+// Animated No Events Component
+const NoEventsAnimation = memo(({ theme }: { theme: any }) => {
+  const floatAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(floatAnim, {
+            toValue: -6,
+            duration: 2000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(floatAnim, {
+            toValue: 0,
+            duration: 2000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(scaleAnim, {
+            toValue: 1.08,
+            duration: 2000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 1,
+            duration: 2000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [floatAnim, scaleAnim]);
+
+  return (
+    <Animated.View 
+      style={{
+        transform: [
+          { translateY: floatAnim },
+          { scale: scaleAnim }
+        ],
+      }}
+    >
+      <Ionicons name="calendar-clear-outline" size={100} color={theme.colors.textMuted} style={{ opacity: 0.4 }} />
+    </Animated.View>
+  );
+});
+
+// Event Card with Image Preview
+const TodaysEventCard = memo(({ event, onPress, theme }: { event: any; onPress: () => void; theme: any }) => {
+  const imageUrl = event.images?.[0] || event.image;
+  
+  return (
+    <Pressable style={[styles.todaysEventCardHorizontal, styles.todaysEventCardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
+      {imageUrl ? (
+        <Image 
+          source={{ uri: imageUrl }} 
+          style={styles.todaysEventImageHorizontal}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={[styles.todaysEventImagePlaceholder, { backgroundColor: theme.colors.surface }]}>
+          <Ionicons name="calendar-outline" size={40} color={theme.colors.textMuted} />
+        </View>
+      )}
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.7)']}
+        style={styles.todaysEventGradient}
+      >
+        <View style={styles.todaysEventOverlayContent}>
+          <View style={[styles.todaysEventTagOverlay, { backgroundColor: getTagColor(event.tag) }]}>
+            <Text style={[styles.todaysEventTagText, { color: getTagTextColor(event.tag) }]}>{event.tag}</Text>
+          </View>
+          <Text style={styles.todaysEventTitleOverlay} numberOfLines={2}>{event.title}</Text>
+          <View style={styles.todaysEventDateTimeRow}>
+            <Ionicons name="calendar-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+            <Text style={styles.todaysEventDateOverlay}>{event.date}</Text>
+            {event.time && (
+              <>
+                <Text style={styles.todaysEventTimeSeparator}>•</Text>
+                <Ionicons name="time-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                <Text style={styles.todaysEventDateOverlay}>{event.time}</Text>
+              </>
+            )}
+          </View>
+        </View>
+      </LinearGradient>
+    </Pressable>
+  );
+});
+
 const AdminDashboard = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
@@ -47,14 +202,15 @@ const AdminDashboard = () => {
   const headerHeightRef = useRef<number>(56); // More accurate initial estimate (12px padding * 2 + 20px font + some spacing)
   const [headerHeight, setHeaderHeight] = useState(56);
   
-  const [activeFilter, setActiveFilter] = useState<'week' | 'month' | 'semester'>('week');
+  const [query, setQuery] = useState('');
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [notificationCount, setNotificationCount] = useState(0);
+  const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'recent'>('all');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [previewUpdate, setPreviewUpdate] = useState<{ title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean } | null>(null);
+  const [previewUpdate, setPreviewUpdate] = useState<{ title: string; date: string; time?: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean; isoDate?: string } | null>(null);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
-  type DashboardUpdate = { title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean };
+  type DashboardUpdate = { title: string; date: string; time?: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean; isoDate?: string };
   type DashboardData = { totalUpdates: number; pinned: number; urgent: number; recentUpdates: DashboardUpdate[] };
   const [dashboardData, setDashboardData] = useState<DashboardData>({
     totalUpdates: 0,
@@ -81,12 +237,66 @@ const AdminDashboard = () => {
     );
   }, [dashboardData.recentUpdates, searchQuery]);
 
-  const handleFilterChange = useCallback((filter: 'week' | 'month' | 'semester') => {
-    setActiveFilter(filter);
-    setSearchQuery(''); // Clear search when filter changes
+  // Today's events (category Event occurring today) - using timezone-aware comparison
+  const todaysEvents = useMemo(() => {
+    const todayKey = getPHDateKey(new Date());
+    
+    return dashboardData.recentUpdates.filter(update => {
+      if (update.tag !== 'Event') return false;
+      if (!update.isoDate) return false;
+      
+      try {
+        // Use isoDate for accurate comparison (same as SchoolUpdates.tsx)
+        const eventKey = getPHDateKey(update.isoDate);
+        return eventKey === todayKey;
+      } catch {
+        return false;
+      }
+    });
+  }, [dashboardData.recentUpdates]);
+
+  // Upcoming updates (future dates)
+  const upcomingUpdates = useMemo(() => {
+    const todayKey = getPHDateKey(new Date());
+    return filteredUpdates.filter(u => {
+      if (!u.isoDate) return false;
+      const eventKey = getPHDateKey(u.isoDate);
+      return eventKey > todayKey;
+    });
+  }, [filteredUpdates]);
+
+  // Recent updates (today and past dates)
+  const recentUpdates = useMemo(() => {
+    const todayKey = getPHDateKey(new Date());
+    return filteredUpdates.filter(u => {
+      if (!u.isoDate) return false;
+      const eventKey = getPHDateKey(u.isoDate);
+      return eventKey <= todayKey;
+    });
+  }, [filteredUpdates]);
+
+  // Filtered by time (all, upcoming, or recent)
+  const displayedUpdates = useMemo(() => {
+    if (timeFilter === 'upcoming') return upcomingUpdates;
+    if (timeFilter === 'recent') return recentUpdates;
+    return filteredUpdates; // 'all'
+  }, [timeFilter, upcomingUpdates, recentUpdates, filteredUpdates]);
+
+  const handleSearchPress = useCallback(() => {
+    setIsSearchVisible(prev => {
+      if (prev) {
+        setSearchQuery(''); // Clear search when closing
+      }
+      return !prev;
+    });
   }, []);
 
-  // Placeholder: fetch dashboard data when filter changes
+  const handleNotificationPress = useCallback(() => {
+    // TODO: Implement notifications functionality
+    setNotificationCount(0); // Clear notifications when pressed
+  }, []);
+
+  // Fetch dashboard data
   useEffect(() => {
     let isCancelled = false;
     const fetchDashboard = async () => {
@@ -103,23 +313,9 @@ const AdminDashboard = () => {
     };
     fetchDashboard();
     return () => { isCancelled = true; };
-  }, [activeFilter]);
-
-  const handleSearchPress = useCallback(() => {
-    setIsSearchVisible(prev => {
-      if (prev) {
-        setSearchQuery(''); // Clear search when closing
-      }
-      return !prev;
-    });
   }, []);
 
-  const handleNotificationPress = useCallback(() => {
-    // TODO: Implement notifications functionality
-    setNotificationCount(0); // Clear notifications when pressed
-  }, []);
-
-  const handleUpdatePress = useCallback((update: { title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean }) => {
+  const handleUpdatePress = useCallback((update: { title: string; date: string; time?: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean; isoDate?: string }) => {
     // Open preview modal for all updates
     setPreviewUpdate(update);
     setActivePreviewIndex(0);
@@ -273,62 +469,30 @@ const AdminDashboard = () => {
           </Pressable>
         </View>
 
-        {/* Time Period Filters */}
-        <View 
-          style={[
-            styles.filtersContainer
-          ]}
-        >
-          <Pressable 
-            style={[styles.filterPill, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, activeFilter === 'week' && { backgroundColor: theme.colors.accent, borderColor: 'transparent' }]} 
-            onPress={() => handleFilterChange('week')}
-          >
-            <Text style={[styles.filterPillText, { color: theme.colors.text }, activeFilter === 'week' && { color: '#fff' }]}>Week</Text>
-          </Pressable>
-          <Pressable 
-            style={[styles.filterPill, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, activeFilter === 'month' && { backgroundColor: theme.colors.accent, borderColor: 'transparent' }]} 
-            onPress={() => handleFilterChange('month')}
-          >
-            <Text style={[styles.filterPillText, { color: theme.colors.text }, activeFilter === 'month' && { color: '#fff' }]}>Month</Text>
-          </Pressable>
-          <Pressable 
-            style={[styles.filterPill, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, activeFilter === 'semester' && { backgroundColor: theme.colors.accent, borderColor: 'transparent' }]} 
-            onPress={() => handleFilterChange('semester')}
-          >
-            <Text style={[styles.filterPillText, { color: theme.colors.text }, activeFilter === 'semester' && { color: '#fff' }]}>Semester</Text>
-          </Pressable>
-        </View>
-
-        {/* Stats Grid */}
-        <View 
-          style={[
-            styles.statsGrid
-          ]}
-        >
-          <View style={[styles.statCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={[styles.statIconContainer, { backgroundColor: isDarkMode ? '#1E3A8A' : '#E0F2FE' }]}>
-              <Ionicons name="bar-chart" size={24} color={isDarkMode ? '#60A5FA' : '#0284C7'} />
+        {/* Today's Events - Single Card Display */}
+        {!isLoadingDashboard && (
+          <View style={styles.todaysEventsSection}>
+            <View style={styles.todaysEventsHeader}>
+              <View style={[styles.sectionIconWrapper, { backgroundColor: theme.colors.accent + '15' }]}>
+                <Ionicons name="calendar-outline" size={20} color={theme.colors.accent} />
+              </View>
+              <View style={styles.sectionTitleWrapper}>
+                <Text style={[styles.todaysEventsTitle, { color: theme.colors.text }]}>Today's Events</Text>
+                <Text style={[styles.todaysEventsSubtitle, { color: theme.colors.textMuted }]}>
+                  {todaysEvents.length > 0 ? 'Happening now' : 'No events today'}
+                </Text>
+              </View>
             </View>
-            <Text style={[styles.statNumber, { color: isDarkMode ? '#60A5FA' : '#0284C7' }]}>{dashboardData.totalUpdates}</Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Total Updates</Text>
+            {todaysEvents.length > 0 ? (
+              <TodaysEventCard event={todaysEvents[0]} onPress={() => handleUpdatePress(todaysEvents[0])} theme={theme} />
+            ) : (
+              <View style={[styles.noEventsCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <NoEventsAnimation theme={theme} />
+                <Text style={[styles.noEventsText, { color: theme.colors.textMuted }]}>No events scheduled for today</Text>
+              </View>
+            )}
           </View>
-          
-          <View style={[styles.statCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={[styles.statIconContainer, { backgroundColor: isDarkMode ? '#92400E' : '#FEF3C7' }]}>
-              <Ionicons name="pin" size={24} color={isDarkMode ? '#FBBF24' : '#D97706'} />
-            </View>
-            <Text style={[styles.statNumber, { color: isDarkMode ? '#FBBF24' : '#D97706' }]}>{dashboardData.pinned}</Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Pinned</Text>
-          </View>
-          
-          <View style={[styles.statCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={[styles.statIconContainer, { backgroundColor: isDarkMode ? '#991B1B' : '#FEE2E2' }]}>
-              <Ionicons name="alert-circle" size={24} color={isDarkMode ? '#F87171' : '#DC2626'} />
-            </View>
-            <Text style={[styles.statNumber, { color: isDarkMode ? '#F87171' : '#DC2626' }]}>{dashboardData.urgent}</Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Urgent</Text>
-          </View>
-        </View>
+        )}
 
         {/* Recent Updates */}
         <View 
@@ -340,7 +504,44 @@ const AdminDashboard = () => {
             }
           ]}
         >
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Recent Updates</Text>
+          <View style={styles.sectionHeaderEnhanced}>
+            <View style={[styles.sectionIconWrapper, { backgroundColor: theme.colors.accent + '15' }]}>
+              <Ionicons 
+                name={timeFilter === 'upcoming' ? 'time-outline' : timeFilter === 'recent' ? 'calendar-outline' : 'grid-outline'} 
+                size={20} 
+                color={theme.colors.accent} 
+              />
+            </View>
+            <View style={styles.sectionTitleWrapper}>
+              <Text style={[styles.sectionTitleEnhanced, { color: theme.colors.text }]}>Updates</Text>
+              <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
+                {timeFilter === 'upcoming' ? 'Coming soon' : timeFilter === 'recent' ? 'Past events' : 'All events'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Time Filter Pills */}
+          <View style={styles.filtersContainer}>
+            <Pressable
+              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'all' && styles.filterPillActive]}
+              onPress={() => setTimeFilter('all')}
+            >
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'all' && styles.filterPillTextActive]}>All</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'upcoming' && styles.filterPillActive]}
+              onPress={() => setTimeFilter('upcoming')}
+            >
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'upcoming' && styles.filterPillTextActive]}>Upcoming</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'recent' && styles.filterPillActive]}
+              onPress={() => setTimeFilter('recent')}
+            >
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'recent' && styles.filterPillTextActive]}>Recent</Text>
+            </Pressable>
+          </View>
+          
           {dashboardError && (
             <Text style={{ color: '#DC2626', marginBottom: 8, fontSize: 12, fontWeight: '600' }}>{dashboardError}</Text>
           )}
@@ -354,10 +555,12 @@ const AdminDashboard = () => {
             </View>
           )}
           
-          {!isLoadingDashboard && filteredUpdates.length === 0 && !dashboardError && (
+          {!isLoadingDashboard && displayedUpdates.length === 0 && !dashboardError && (
             <View style={{ alignItems: 'center', paddingVertical: 16 }}>
               <Ionicons name="document-text-outline" size={40} color="#CBD5E1" />
-            <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>No updates yet</Text>
+            <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>
+              {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : 'No updates yet'}
+            </Text>
               <Pressable style={styles.emptyCtaBtn} onPress={() => navigation.navigate('PostUpdate')}>
                 <LinearGradient colors={[theme.colors.primary, '#1F2937']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.emptyCtaGradient}>
                   <Ionicons name="add" size={16} color="#fff" />
@@ -367,14 +570,23 @@ const AdminDashboard = () => {
             </View>
           )}
 
-          {!isLoadingDashboard && filteredUpdates.map((update, index) => (
+          {!isLoadingDashboard && displayedUpdates.map((update, index) => (
             <Pressable key={index} style={[styles.updateCard, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={() => handleUpdatePress(update)}>
-              <View style={styles.updateContent}>
-                <Text style={[styles.updateTitle, { color: theme.colors.text }]}>{update.title}</Text>
-                <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
-              </View>
-              <View style={[styles.updateTag, { backgroundColor: getTagColor(update.tag) }]}>
-                <Text style={[styles.updateTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
+              {(update.images?.[0] || update.image) && (
+                <Image 
+                  source={{ uri: update.images?.[0] || update.image }} 
+                  style={styles.updateImage}
+                  resizeMode="cover"
+                />
+              )}
+              <View style={styles.updateContentWrapper}>
+                <View style={styles.updateContent}>
+                  <Text style={[styles.updateTitle, { color: theme.colors.text }]}>{update.title}</Text>
+                  <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
+                </View>
+                <View style={[styles.updateTag, { backgroundColor: getTagColor(update.tag) }]}>
+                  <Text style={[styles.updateTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
+                </View>
               </View>
             </Pressable>
           ))}
@@ -412,41 +624,6 @@ const AdminDashboard = () => {
       </View>
     </View>
   );
-};
-
-// Helper functions for tag colors
-const getTagColor = (tag: string) => {
-  switch (tag.toLowerCase()) {
-    case 'announcement':
-      return '#E8F0FF';
-    case 'academic':
-      return '#F0F9FF';
-    case 'event':
-      return '#FEF3C7';
-    case 'service':
-      return '#ECFDF5';
-    case 'infrastructure':
-      return '#FEF2F2';
-    default:
-      return '#E8F0FF';
-  }
-};
-
-const getTagTextColor = (tag: string) => {
-  switch (tag.toLowerCase()) {
-    case 'announcement':
-      return '#1A3E7A';
-    case 'academic':
-      return '#0369A1';
-    case 'event':
-      return '#D97706';
-    case 'service':
-      return '#059669';
-    case 'infrastructure':
-      return '#DC2626';
-    default:
-      return '#1A3E7A';
-  }
 };
 
 const styles = StyleSheet.create({
@@ -636,15 +813,36 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 8,
   },
-  updateCard: {
+  sectionHeaderEnhanced: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    marginBottom: 16,
+    gap: 12,
+  },
+  sectionTitleEnhanced: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  filterPillActive: {
+    backgroundColor: themeStyle.colors.accent,
+    borderColor: 'transparent',
+  },
+  filterPillTextActive: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  updateCard: {
+    flexDirection: 'column',
     borderWidth: 1,
     borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
     marginBottom: 8,
+    overflow: 'hidden',
   },
   cardShadow: {
     shadowColor: '#000',
@@ -653,16 +851,28 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
+  updateImage: {
+    width: '100%',
+    height: 120,
+  },
+  updateContentWrapper: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+  },
   updateContent: {
     flex: 1,
   },
   updateTitle: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 22,
+    marginBottom: 6,
   },
   updateDate: {
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: 13,
+    fontWeight: '600',
   },
   updateTag: {
     paddingHorizontal: 10,
@@ -917,6 +1127,127 @@ const styles = StyleSheet.create({
   emptyCtaText: {
     color: '#fff',
     fontSize: 12,
+    fontWeight: '700',
+  },
+  // Today's Events Section Styles
+  todaysEventsSection: {
+    marginBottom: 12,
+  },
+  todaysEventsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 12,
+  },
+  todaysEventsTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  todaysEventsSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  sectionIconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionTitleWrapper: {
+    flex: 1,
+  },
+  noEventsCard: {
+    padding: 32,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  noEventsText: {
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  todaysEventCardHorizontal: {
+    width: '100%',
+    height: 220,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 0,
+  },
+  todaysEventCardShadow: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  todaysEventImageHorizontal: {
+    width: '100%',
+    height: '100%',
+  },
+  todaysEventImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  todaysEventGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '55%',
+    justifyContent: 'flex-end',
+    padding: 16,
+  },
+  todaysEventOverlayContent: {
+    gap: 4,
+  },
+  todaysEventTagOverlay: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  todaysEventTitleOverlay: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+    lineHeight: 26,
+    letterSpacing: 0.3,
+  },
+  todaysEventDateOverlay: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    opacity: 0.95,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  todaysEventDateTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  todaysEventTimeSeparator: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    opacity: 0.7,
+    marginHorizontal: 6,
+  },
+  todaysEventTagText: {
+    fontSize: 11,
     fontWeight: '700',
   },
   // fullscreen viewer styles removed

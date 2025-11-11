@@ -255,3 +255,35 @@ DOrSU has **1 Main Campus** and **5 Extension Campuses** across Davao Oriental:
 
 **Want info about programs at a specific campus? Just ask!**`;
 }
+
+// Generate vision and mission response (EXACT DATA ONLY - NO HALLUCINATIONS)
+export function generateVisionMissionResponse(isVisionOnly = false, isMissionOnly = false) {
+  if (isVisionOnly) {
+    return `**DOrSU's Vision:**
+
+"A university of excellence, innovation and inclusion."`;
+  }
+  
+  if (isMissionOnly) {
+    return `**DOrSU's Mission:**
+
+• To elevate knowledge generation, utilization and distribution.
+
+• To promote inclusive sustainable development through research-based higher quality education and technical-vocational skills.
+
+• To produce holistic, creative, and inclusive human resource responsive to global challenges while maintaining strong sense of nationhood.`;
+  }
+  
+  // Both vision and mission
+  return `**DOrSU's Vision:**
+
+"A university of excellence, innovation and inclusion."
+
+**DOrSU's Mission:**
+
+• To elevate knowledge generation, utilization and distribution.
+
+• To promote inclusive sustainable development through research-based higher quality education and technical-vocational skills.
+
+• To produce holistic, creative, and inclusive human resource responsive to global challenges while maintaining strong sense of nationhood.`;
+}

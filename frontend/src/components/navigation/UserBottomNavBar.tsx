@@ -114,6 +114,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderTopWidth: 0.5,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     elevation: 12,
     shadowColor: '#000',
     shadowOffset: {
@@ -131,6 +133,8 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: -1,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   tab: {
     alignItems: 'center',

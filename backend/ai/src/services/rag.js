@@ -499,6 +499,37 @@ export class OptimizedRAGService {
     // Check for basic "what is" queries
     const isBasicQuery = /^(what is|what's|tell me about)\s+(dorsu|davao oriental state university)/i.test(query.trim());
     
+    // Check for vision/mission queries - these need EXACT data retrieval
+    const isVisionMissionQuery = /\b(vision|mission|mandate|core values|graduate outcomes|quality policy)\b/i.test(query);
+    
+    // For vision/mission queries, prioritize exact section retrieval
+    if (isVisionMissionQuery) {
+      console.log(`🎯 VISION/MISSION QUERY: Prioritizing exact section retrieval for "${query.substring(0, 40)}..."`);
+      
+      // Force keyword search to get ALL vision/mission chunks
+      const visionMissionSections = ['vision_mission', 'visionMission', 'mandate', 'values', 'graduate_outcomes', 'quality_policy'];
+      const sectionChunks = this.faissOptimizedData.chunks.filter(chunk => 
+        visionMissionSections.some(section => 
+          chunk.section?.toLowerCase().includes(section.toLowerCase()) ||
+          chunk.type?.toLowerCase().includes(section.toLowerCase())
+        )
+      );
+      
+      if (sectionChunks.length > 0) {
+        console.log(`✓ Found ${sectionChunks.length} exact vision/mission chunks`);
+        relevantData = sectionChunks.map(chunk => ({
+          id: chunk.id,
+          section: chunk.section,
+          type: chunk.type,
+          text: chunk.text,
+          score: 100, // Highest priority
+          metadata: chunk.entities,
+          keywords: chunk.keywords,
+          source: 'exact_section_match'
+        }));
+      }
+    }
+    
     // For comprehensive/listing queries, get MORE chunks - prioritize completeness
     let relevantData;
     if ((isComprehensive && maxSections >= 8) || isListingQuery || hasPluralKeyword) {

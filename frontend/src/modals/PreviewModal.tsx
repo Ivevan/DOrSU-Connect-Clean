@@ -1,6 +1,7 @@
 import React, { memo, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, Modal } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Modal, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatDate, timeAgo } from '../utils/dateUtils';
 
@@ -8,6 +9,7 @@ interface PreviewUpdate {
   title: string;
   date: string;
   tag: string;
+  time?: string;
   image?: string;
   images?: string[];
   description?: string;
@@ -69,6 +71,13 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
 }) => {
   const { theme } = useTheme();
 
+  // Get image URL from update
+  const imageUrl = useMemo(() => {
+    if (update?.images && update.images.length > 0) return update.images[0];
+    if (update?.image) return update.image;
+    return null;
+  }, [update?.images, update?.image]);
+
   // Memoize tag colors and icon
   const tagColor = useMemo(() => getTagColor(update?.tag || ''), [update?.tag]);
   const tagTextColor = useMemo(() => getTagTextColor(update?.tag || ''), [update?.tag]);
@@ -84,37 +93,50 @@ const PreviewModal: React.FC<PreviewModalProps> = ({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <View style={[styles.previewCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-          <View style={styles.previewHeader}>
-            <View style={styles.previewHeaderLeft}>
-              <View style={[styles.tagChip, { backgroundColor: tagColor }]}> 
-                <Ionicons name={tagIcon as any} size={14} color={tagTextColor} />
-                <Text style={[styles.tagChipText, { color: tagTextColor }]}>{update?.tag}</Text>
-              </View>
-              <Text style={[styles.previewMetaInline, { color: theme.colors.textMuted }]}>{timeAgo(update?.date)}</Text>
+          {imageUrl ? (
+            <View style={styles.previewImageContainer}>
+              <Image 
+                source={{ uri: imageUrl }} 
+                style={styles.previewImage}
+                resizeMode="cover"
+              />
+              <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.7)']}
+                style={styles.previewImageGradient}
+              >
+                <View style={styles.previewImageOverlay}>
+                  <View style={[styles.tagChipOverlay, { backgroundColor: tagColor }]}>
+                    <Text style={[styles.tagChipText, { color: tagTextColor }]}>{update?.tag}</Text>
+                  </View>
+                  <Text style={styles.previewTitleOverlay} numberOfLines={2}>{update?.title}</Text>
+                  <View style={styles.previewDateTimeRow}>
+                    <Ionicons name="calendar-outline" size={14} color="#FFFFFF" />
+                    <Text style={styles.previewDateOverlay}>{formatDate(update?.date)}</Text>
+                    {update?.time && (
+                      <>
+                        <Text style={styles.previewDateSeparator}>•</Text>
+                        <Ionicons name="time-outline" size={14} color="#FFFFFF" />
+                        <Text style={styles.previewDateOverlay}>{update.time}</Text>
+                      </>
+                    )}
+                  </View>
+                </View>
+              </LinearGradient>
+              {update?.pinned && (
+                <View style={styles.pinnedRibbon}>
+                  <Ionicons name="pin" size={12} color="#fff" />
+                  <Text style={styles.pinnedRibbonText}>Pinned</Text>
+                </View>
+              )}
             </View>
-            <Pressable onPress={onClose} style={styles.previewCloseBtn}>
-              <Ionicons name="close" size={20} color={theme.colors.textMuted} />
-            </Pressable>
-          </View>
-          <View style={[styles.previewImagePlaceholder, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-            <Ionicons name="image-outline" size={28} color={theme.colors.textMuted} />
-            <Text style={[styles.previewImagePlaceholderText, { color: theme.colors.textMuted }]}>No image</Text>
-          </View>
-          {update?.pinned && (
-            <View style={styles.pinnedRibbon}>
-              <Ionicons name="pin" size={12} color="#fff" />
-              <Text style={styles.pinnedRibbonText}>Pinned</Text>
+          ) : (
+            <View style={[styles.previewImagePlaceholder, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <Ionicons name="image-outline" size={28} color={theme.colors.textMuted} />
+              <Text style={[styles.previewImagePlaceholderText, { color: theme.colors.textMuted }]}>No image</Text>
             </View>
           )}
           <View style={[styles.previewDivider, { backgroundColor: theme.colors.border }]} />
           <View style={styles.previewBody}>
-            <Text style={[styles.previewUpdateTitle, { color: theme.colors.text }]}>{update?.title}</Text>
-            <View style={styles.previewMetaRow}>
-              <View style={styles.previewMetaItem}>
-                <Ionicons name="calendar-outline" size={14} color={theme.colors.textMuted} />
-                <Text style={[styles.previewMetaText, { color: theme.colors.textMuted }]}>{formatDate(update?.date)}</Text>
-              </View>
-            </View>
             {!!update?.description && (
               <Text style={[styles.previewUpdateDescription, { color: theme.colors.text }]} numberOfLines={5}>
                 {update?.description}
@@ -151,7 +173,8 @@ const styles = StyleSheet.create({
     maxWidth: 400,
     borderRadius: 16,
     borderWidth: 1,
-    padding: 14,
+    padding: 0,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -162,7 +185,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 0,
   },
   previewHeaderLeft: {
     flexDirection: 'row',
@@ -173,8 +198,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 999,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -183,12 +208,12 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   tagChipText: {
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '800',
   },
   previewMetaInline: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
   },
   previewCloseBtn: {
     padding: 6,
@@ -204,21 +229,88 @@ const styles = StyleSheet.create({
     gap: 6,
     borderWidth: 1,
   },
+  previewImageContainer: {
+    position: 'relative',
+    width: '100%',
+    height: 220,
+    overflow: 'hidden',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  previewImageGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '60%',
+    justifyContent: 'flex-end',
+    padding: 16,
+  },
+  previewImageOverlay: {
+    gap: 6,
+  },
+  tagChipOverlay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  previewTitleOverlay: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+    lineHeight: 26,
+    letterSpacing: 0.3,
+  },
+  previewDateOverlay: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    opacity: 0.95,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  previewDateTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  previewDateSeparator: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    opacity: 0.7,
+  },
   previewImagePlaceholderText: {
     fontSize: 12,
     fontWeight: '600',
   },
   previewBody: {
-    marginBottom: 16,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 16,
   },
   previewDivider: {
-    height: 1,
-    marginVertical: 8,
+    height: 0,
   },
   previewUpdateTitle: {
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: '800',
     marginBottom: 8,
+    lineHeight: 26,
+    letterSpacing: 0.3,
   },
   previewMetaRow: {
     flexDirection: 'row',
@@ -231,17 +323,19 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   previewMetaText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
   },
   previewUpdateDescription: {
-    marginTop: 12,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '400',
   },
   previewActions: {
     flexDirection: 'row',
     gap: 8,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
   },
   previewSecondaryBtn: {
     flex: 1,
@@ -251,7 +345,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   previewSecondaryText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '700',
   },
   previewPrimaryBtn: {
@@ -265,7 +359,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   previewPrimaryText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '700',
     color: '#fff',
   },
@@ -278,8 +372,8 @@ const styles = StyleSheet.create({
   },
   pinnedRibbon: {
     position: 'absolute',
-    top: 10,
-    left: 10,
+    top: 16,
+    right: 16,
     backgroundColor: '#2563EB',
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -290,8 +384,8 @@ const styles = StyleSheet.create({
   },
   pinnedRibbonText: {
     color: '#fff',
-    fontSize: 10,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
   },
 });
 

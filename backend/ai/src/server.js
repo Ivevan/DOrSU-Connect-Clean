@@ -14,7 +14,8 @@ import {
   generateCampusesResponse,
   generateFacultiesResponse,
   generateOfficersResponse,
-  generateProgramListResponse
+  generateProgramListResponse,
+  generateVisionMissionResponse
 } from './services/structured-responses.js';
 import { buildSystemInstructions } from './services/system.js';
 import { GPUMonitor } from './utils/gpu-monitor.js';
@@ -330,8 +331,14 @@ const server = http.createServer(async (req, res) => {
         const campusesPattern = /\b(list|show|give me|give|what are|enumerate|tell me)\s+(all|the|me)?\s*(list of)?\s*(campus|campuses|extension)\b/i;
         const isCampusesQuery = campusesPattern.test(prompt);
         
+        // Vision/Mission (EXACT DATA REQUIRED)
+        const visionPattern = /\b(what is|what's|tell me|give me)\s+(the\s+)?(vision|mission|mission and vision|vision and mission)\s+(of\s+)?(dorsu|davao oriental state university)?\b/i;
+        const isVisionOnly = /\b(vision)\b/i.test(prompt) && !/\b(mission)\b/i.test(prompt);
+        const isMissionOnly = /\b(mission)\b/i.test(prompt) && !/\b(vision)\b/i.test(prompt);
+        const isVisionMissionQuery = visionPattern.test(prompt);
+        
         // Check if any fallback pattern matches
-        if (isProgramListQuery || isOfficersQuery || isFacultiesQuery || isCampusesQuery) {
+        if (isProgramListQuery || isOfficersQuery || isFacultiesQuery || isCampusesQuery || isVisionMissionQuery) {
           let fallbackType = '';
           let structuredResponse = '';
           
@@ -347,6 +354,9 @@ const server = http.createServer(async (req, res) => {
           } else if (isCampusesQuery) {
             fallbackType = 'campuses';
             structuredResponse = generateCampusesResponse();
+          } else if (isVisionMissionQuery) {
+            fallbackType = 'vision-mission';
+            structuredResponse = generateVisionMissionResponse(isVisionOnly, isMissionOnly);
           }
           
           Logger.info(`📋 ${fallbackType.toUpperCase()} list query detected - using structured fallback (no AI needed)`);

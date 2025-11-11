@@ -202,7 +202,7 @@ const AdminDashboard = () => {
   const headerHeightRef = useRef<number>(56); // More accurate initial estimate (12px padding * 2 + 20px font + some spacing)
   const [headerHeight, setHeaderHeight] = useState(56);
   
-  const [activeFilter, setActiveFilter] = useState<'week' | 'month' | 'semester'>('week');
+  const [query, setQuery] = useState('');
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [notificationCount, setNotificationCount] = useState(0);
@@ -282,12 +282,21 @@ const AdminDashboard = () => {
     return filteredUpdates; // 'all'
   }, [timeFilter, upcomingUpdates, recentUpdates, filteredUpdates]);
 
-  const handleFilterChange = useCallback((filter: 'week' | 'month' | 'semester') => {
-    setActiveFilter(filter);
-    setSearchQuery(''); // Clear search when filter changes
+  const handleSearchPress = useCallback(() => {
+    setIsSearchVisible(prev => {
+      if (prev) {
+        setSearchQuery(''); // Clear search when closing
+      }
+      return !prev;
+    });
   }, []);
 
-  // Placeholder: fetch dashboard data when filter changes
+  const handleNotificationPress = useCallback(() => {
+    // TODO: Implement notifications functionality
+    setNotificationCount(0); // Clear notifications when pressed
+  }, []);
+
+  // Fetch dashboard data
   useEffect(() => {
     let isCancelled = false;
     const fetchDashboard = async () => {
@@ -304,20 +313,6 @@ const AdminDashboard = () => {
     };
     fetchDashboard();
     return () => { isCancelled = true; };
-  }, [activeFilter]);
-
-  const handleSearchPress = useCallback(() => {
-    setIsSearchVisible(prev => {
-      if (prev) {
-        setSearchQuery(''); // Clear search when closing
-      }
-      return !prev;
-    });
-  }, []);
-
-  const handleNotificationPress = useCallback(() => {
-    // TODO: Implement notifications functionality
-    setNotificationCount(0); // Clear notifications when pressed
   }, []);
 
   const handleUpdatePress = useCallback((update: { title: string; date: string; time?: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean; isoDate?: string }) => {
@@ -472,63 +467,6 @@ const AdminDashboard = () => {
             <Ionicons name="add" size={20} color="white" />
             <Text style={styles.newUpdateText}>New Update</Text>
           </Pressable>
-        </View>
-
-        {/* Time Period Filters */}
-        <View 
-          style={[
-            styles.filtersContainer
-          ]}
-        >
-          <Pressable 
-            style={[styles.filterPill, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, activeFilter === 'week' && { backgroundColor: theme.colors.accent, borderColor: 'transparent' }]} 
-            onPress={() => handleFilterChange('week')}
-          >
-            <Text style={[styles.filterPillText, { color: theme.colors.text }, activeFilter === 'week' && { color: '#fff' }]}>Week</Text>
-          </Pressable>
-          <Pressable 
-            style={[styles.filterPill, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, activeFilter === 'month' && { backgroundColor: theme.colors.accent, borderColor: 'transparent' }]} 
-            onPress={() => handleFilterChange('month')}
-          >
-            <Text style={[styles.filterPillText, { color: theme.colors.text }, activeFilter === 'month' && { color: '#fff' }]}>Month</Text>
-          </Pressable>
-          <Pressable 
-            style={[styles.filterPill, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, activeFilter === 'semester' && { backgroundColor: theme.colors.accent, borderColor: 'transparent' }]} 
-            onPress={() => handleFilterChange('semester')}
-          >
-            <Text style={[styles.filterPillText, { color: theme.colors.text }, activeFilter === 'semester' && { color: '#fff' }]}>Semester</Text>
-          </Pressable>
-        </View>
-
-        {/* Stats Grid */}
-        <View 
-          style={[
-            styles.statsGrid
-          ]}
-        >
-          <View style={[styles.statCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={[styles.statIconContainer, { backgroundColor: isDarkMode ? '#1E3A8A' : '#E0F2FE' }]}>
-              <Ionicons name="bar-chart" size={24} color={isDarkMode ? '#60A5FA' : '#0284C7'} />
-            </View>
-            <Text style={[styles.statNumber, { color: isDarkMode ? '#60A5FA' : '#0284C7' }]}>{dashboardData.totalUpdates}</Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Total Updates</Text>
-          </View>
-          
-          <View style={[styles.statCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={[styles.statIconContainer, { backgroundColor: isDarkMode ? '#92400E' : '#FEF3C7' }]}>
-              <Ionicons name="pin" size={24} color={isDarkMode ? '#FBBF24' : '#D97706'} />
-            </View>
-            <Text style={[styles.statNumber, { color: isDarkMode ? '#FBBF24' : '#D97706' }]}>{dashboardData.pinned}</Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Pinned</Text>
-          </View>
-          
-          <View style={[styles.statCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={[styles.statIconContainer, { backgroundColor: isDarkMode ? '#991B1B' : '#FEE2E2' }]}>
-              <Ionicons name="alert-circle" size={24} color={isDarkMode ? '#F87171' : '#DC2626'} />
-            </View>
-            <Text style={[styles.statNumber, { color: isDarkMode ? '#F87171' : '#DC2626' }]}>{dashboardData.urgent}</Text>
-            <Text style={[styles.statLabel, { color: theme.colors.textMuted }]}>Urgent</Text>
-          </View>
         </View>
 
         {/* Today's Events - Single Card Display */}

@@ -282,6 +282,8 @@ const AdminDataService = {
       .map(p => ({
       title: p.title,
       date: p.date,
+      isoDate: p.isoDate,
+      time: p.time || '',
       tag: p.category,
       description: p.description,
       images: p.images,

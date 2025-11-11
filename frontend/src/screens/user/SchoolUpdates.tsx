@@ -192,7 +192,17 @@ const EventCard = memo(({ update, onPress, theme }: { update: any; onPress: () =
             <Text style={[styles.eventTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
           </View>
           <Text style={styles.eventTitleOverlay} numberOfLines={2}>{update.title}</Text>
-          <Text style={styles.eventDateOverlay}>{update.date}</Text>
+          <View style={styles.eventDateTimeRow}>
+            <Ionicons name="calendar-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+            <Text style={styles.eventDateOverlay}>{update.date}</Text>
+            {update.time && (
+              <>
+                <Text style={styles.eventTimeSeparator}>•</Text>
+                <Ionicons name="time-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                <Text style={styles.eventDateOverlay}>{update.time}</Text>
+              </>
+            )}
+          </View>
         </View>
       </LinearGradient>
     </Pressable>
@@ -872,7 +882,18 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0, 0, 0, 0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  eventDateTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginTop: 4,
+  },
+  eventTimeSeparator: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    opacity: 0.7,
+    marginHorizontal: 6,
   },
   eventTagText: {
     fontSize: 11,

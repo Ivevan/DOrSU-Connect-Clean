@@ -30,7 +30,7 @@ For detailed deployment instructions, see [RENDER_DEPLOYMENT.md](./RENDER_DEPLOY
 
 1. **Install Dependencies**
    ```bash
-   cd backend/ai
+   cd backend
    npm install
    ```
 
@@ -95,7 +95,7 @@ For detailed deployment instructions, see [RENDER_DEPLOYMENT.md](./RENDER_DEPLOY
 ## Project Structure
 
 ```
-backend/ai/
+backend/
 ├── src/
 │   ├── config/           # Configuration files
 │   │   └── mongodb.config.js
@@ -117,6 +117,8 @@ backend/ai/
 │   │   ├── query-analyzer.js   # Query analysis
 │   │   └── response-cleaner.js # Response cleaning
 │   └── server.js         # Main server file
+├── scripts/
+│   └── refresh-knowledge-base.js
 ├── package.json
 ├── .env.example
 └── README.md

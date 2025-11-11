@@ -546,7 +546,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const auth = authMiddleware(authService)(req);
+    const auth = await authMiddleware(authService, mongoService)(req);
     if (!auth.authenticated) {
       sendJson(res, 401, { error: auth.error || 'Unauthorized' });
       return;

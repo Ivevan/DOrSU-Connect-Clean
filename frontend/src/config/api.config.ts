@@ -27,7 +27,8 @@ const API_CONFIG = {
   
   // Production - Render deployment
   production: {
-    baseUrl: 'https://dorsu-connect.onrender.com',
+    //baseUrl: 'https://dorsu-connect.onrender.com',
+    baseUrl: 'https://dorsu-connect-clean.onrender.com',
   },
 };
 

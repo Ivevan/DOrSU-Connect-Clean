@@ -244,7 +244,7 @@ const AdminCalendar = () => {
     id: p.id,
     title: p.title,
     dateKey: parseAnyDateToKey(p.isoDate || p.date),
-    time: '',
+    time: p.time || '',
     type: p.category || 'Announcement',
     color: categoryToColors(p.category).dot,
     chip: categoryToColors(p.category),
@@ -260,7 +260,7 @@ const AdminCalendar = () => {
         id: p.id,
         title: p.title,
         dateKey: parseAnyDateToKey(p.isoDate || p.date),
-        time: '',
+        time: p.time || '',
         type: p.category || 'Announcement',
         color: categoryToColors(p.category).dot,
         chip: categoryToColors(p.category),
@@ -543,7 +543,6 @@ const AdminCalendar = () => {
         />
 
         {/* Day Summary removed by request (Events section already shows count) */}
-
 
         {/* Events Section */}
         <View

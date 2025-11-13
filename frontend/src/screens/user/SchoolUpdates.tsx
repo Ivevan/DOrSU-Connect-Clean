@@ -25,6 +25,62 @@ type RootStackParamList = {
 
 type UpdateCategory = 'Announcement' | 'Event' | 'Academic';
 
+// Animated No Events Component
+const NoEventsAnimation = memo(({ theme }: { theme: any }) => {
+  const floatAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(floatAnim, {
+            toValue: -6,
+            duration: 2000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(floatAnim, {
+            toValue: 0,
+            duration: 2000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.sequence([
+          Animated.timing(scaleAnim, {
+            toValue: 1.08,
+            duration: 2000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(scaleAnim, {
+            toValue: 1,
+            duration: 2000,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ]),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [floatAnim, scaleAnim]);
+
+  return (
+    <Animated.View 
+      style={{
+        transform: [
+          { translateY: floatAnim },
+          { scale: scaleAnim }
+        ],
+      }}
+    >
+      <Ionicons name="calendar-clear-outline" size={100} color={theme.colors.textMuted} style={{ opacity: 0.4 }} />
+    </Animated.View>
+  );
+});
+
 // Helper function to get Philippines timezone date key (moved outside component for performance)
 const getPHDateKey = (d: Date | string) => {
   try {
@@ -46,18 +102,112 @@ const getPHDateKey = (d: Date | string) => {
   }
 };
 
+// Helper functions for tag colors
+const getTagColor = (tag: string) => {
+  switch (tag.toLowerCase()) {
+    case 'announcement':
+      return '#E8F0FF';
+    case 'academic':
+      return '#F0F9FF';
+    case 'event':
+      return '#FEF3C7';
+    case 'service':
+      return '#ECFDF5';
+    case 'infrastructure':
+      return '#FEF2F2';
+    default:
+      return '#E8F0FF';
+  }
+};
+
+const getTagTextColor = (tag: string) => {
+  switch (tag.toLowerCase()) {
+    case 'announcement':
+      return '#1A3E7A';
+    case 'academic':
+      return '#0369A1';
+    case 'event':
+      return '#D97706';
+    case 'service':
+      return '#059669';
+    case 'infrastructure':
+      return '#DC2626';
+    default:
+      return '#1A3E7A';
+  }
+};
+
 // Memoized Update Card Component
-const UpdateCard = memo(({ update, onPress, theme }: { update: any; onPress: () => void; theme: any }) => (
-  <Pressable style={[styles.updateCard, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
-    <View style={styles.updateContent}>
-      <Text style={[styles.updateTitle, { color: theme.colors.text }]}>{update.title}</Text>
-      <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
-    </View>
-    <View style={[styles.updateTag, { backgroundColor: getTagColor(update.tag) }]}>
-      <Text style={[styles.updateTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
-    </View>
-  </Pressable>
-));
+const UpdateCard = memo(({ update, onPress, theme }: { update: any; onPress: () => void; theme: any }) => {
+  const imageUrl = update.images?.[0] || update.image;
+  
+  return (
+    <Pressable style={[styles.updateCard, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
+      {imageUrl && (
+        <Image 
+          source={{ uri: imageUrl }} 
+          style={styles.updateImage}
+          resizeMode="cover"
+        />
+      )}
+      <View style={styles.updateContentWrapper}>
+        <View style={styles.updateContent}>
+          <Text style={[styles.updateTitle, { color: theme.colors.text }]} numberOfLines={2}>{update.title}</Text>
+          <View style={styles.updateDateRow}>
+            <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} style={{ marginRight: 4 }} />
+            <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
+          </View>
+        </View>
+        <View style={[styles.updateTag, { backgroundColor: getTagColor(update.tag) }]}>
+          <Text style={[styles.updateTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+});
+
+// Event Card with Image Preview (Horizontal Scrollable)
+const EventCard = memo(({ update, onPress, theme }: { update: any; onPress: () => void; theme: any }) => {
+  const imageUrl = update.images?.[0] || update.image;
+  
+  return (
+    <Pressable style={[styles.eventCardHorizontal, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
+      {imageUrl ? (
+        <Image 
+          source={{ uri: imageUrl }} 
+          style={styles.eventImageHorizontal}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={[styles.eventImagePlaceholder, { backgroundColor: theme.colors.surface }]}>
+          <Ionicons name="calendar-outline" size={40} color={theme.colors.textMuted} />
+        </View>
+      )}
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.7)']}
+        style={styles.eventGradient}
+      >
+        <View style={styles.eventOverlayContent}>
+          <View style={[styles.eventTagOverlay, { backgroundColor: getTagColor(update.tag) }]}>
+            <Text style={[styles.eventTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
+          </View>
+          <Text style={styles.eventTitleOverlay} numberOfLines={2}>{update.title}</Text>
+          <View style={styles.eventDateTimeRow}>
+            <Ionicons name="calendar-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+            <Text style={styles.eventDateOverlay}>{update.date}</Text>
+            {update.time && (
+              <>
+                <Text style={styles.eventTimeSeparator}>•</Text>
+                <Ionicons name="time-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                <Text style={styles.eventDateOverlay}>{update.time}</Text>
+              </>
+            )}
+          </View>
+        </View>
+      </LinearGradient>
+    </Pressable>
+  );
+});
 
 const SchoolUpdates = () => {
   const insets = useSafeAreaInsets();
@@ -67,10 +217,11 @@ const SchoolUpdates = () => {
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
-  const [previewUpdate, setPreviewUpdate] = useState<{ title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean } | null>(null);
+  const [previewUpdate, setPreviewUpdate] = useState<{ title: string; date: string; tag: string; time?: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean } | null>(null);
   const [updates, setUpdates] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'recent'>('all');
   const scrollRef = useRef<ScrollView>(null);
   const searchRef = useRef<TextInput>(null);
 
@@ -124,7 +275,7 @@ const SchoolUpdates = () => {
     Alert.alert('Notifications', 'Notifications feature coming soon.');
   }, []);
 
-  const handleUpdatePress = useCallback((update: { title: string; date: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean }) => {
+  const handleUpdatePress = useCallback((update: { title: string; date: string; tag: string; time?: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean }) => {
     // Open preview modal for all updates
     setPreviewUpdate(update);
     setActivePreviewIndex(0);
@@ -149,19 +300,14 @@ const SchoolUpdates = () => {
           title: post.title,
           body: post.description,
           date: formatDate(post.isoDate || post.date),
+          time: post.time,
           isoDate: post.isoDate || post.date, // Store isoDate for accurate date comparison
           category: post.category as UpdateCategory,
           tag: post.category,
           description: post.description,
-          pinned: post.isPinned,
-          urgent: post.isUrgent,
           source: post.source,
           image: post.image,
           images: post.images,
-          tags: [
-            { label: post.category, color: getTagTextColor(post.category), bg: getTagColor(post.category) },
-            ...(post.isUrgent ? [{ label: 'Urgent', color: '#8B2C2C', bg: '#FDECEC' }] : [])
-          ]
         }));
         
         setUpdates(mappedUpdates);
@@ -193,6 +339,33 @@ const SchoolUpdates = () => {
       return eventKey === todayKey;
     });
   }, [updates]);
+
+  // Upcoming updates (future dates)
+  const upcomingUpdates = useMemo(() => {
+    const todayKey = getPHDateKey(new Date());
+    return filtered.filter(u => {
+      if (!u.isoDate) return false;
+      const eventKey = getPHDateKey(u.isoDate);
+      return eventKey > todayKey;
+    });
+  }, [filtered]);
+
+  // Recent updates (today and past dates)
+  const recentUpdates = useMemo(() => {
+    const todayKey = getPHDateKey(new Date());
+    return filtered.filter(u => {
+      if (!u.isoDate) return false;
+      const eventKey = getPHDateKey(u.isoDate);
+      return eventKey <= todayKey;
+    });
+  }, [filtered]);
+
+  // Filtered by time (all, upcoming, or recent)
+  const displayedUpdates = useMemo(() => {
+    if (timeFilter === 'upcoming') return upcomingUpdates;
+    if (timeFilter === 'recent') return recentUpdates;
+    return filtered; // 'all'
+  }, [timeFilter, upcomingUpdates, recentUpdates, filtered]);
 
   return (
     <View style={[styles.container, {
@@ -245,7 +418,12 @@ const SchoolUpdates = () => {
         </View>
       )}
 
-      <ScrollView ref={scrollRef} style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        ref={scrollRef} 
+        style={styles.content} 
+        contentContainerStyle={{ paddingBottom: 20 }}
+        showsVerticalScrollIndicator={false}
+      >
         <Animated.View
           style={{
             opacity: fadeAnim,
@@ -266,25 +444,70 @@ const SchoolUpdates = () => {
 
         {/* Totals removed */}
 
-        {/* Today's Events */}
-        <View style={[styles.recentUpdatesSection, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}> 
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Today's Events</Text>
-
-          {!isLoading && !error && todaysEvents.length === 0 && (
-            <View style={{ alignItems: 'center', paddingVertical: 12 }}>
-              <Ionicons name="calendar-outline" size={28} color={theme.colors.textMuted} />
-              <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>No events today</Text>
+        {/* Today's Events - Single Card Display */}
+        {!isLoading && !error && (
+          <View style={styles.todaysEventsSection}>
+            <View style={styles.todaysEventsHeader}>
+              <View style={[styles.sectionIconWrapper, { backgroundColor: theme.colors.accent + '15' }]}>
+                <Ionicons name="calendar-outline" size={20} color={theme.colors.accent} />
+              </View>
+              <View style={styles.sectionTitleWrapper}>
+                <Text style={[styles.todaysEventsTitle, { color: theme.colors.text }]}>Today's Events</Text>
+                <Text style={[styles.todaysEventsSubtitle, { color: theme.colors.textMuted }]}>
+                  {todaysEvents.length > 0 ? 'Happening now' : 'No events today'}
+                </Text>
+              </View>
             </View>
-          )}
+            {todaysEvents.length > 0 ? (
+              <EventCard update={todaysEvents[0]} onPress={() => handleUpdatePress(todaysEvents[0])} theme={theme} />
+            ) : (
+              <View style={[styles.noEventsCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+                <NoEventsAnimation theme={theme} />
+                <Text style={[styles.noEventsText, { color: theme.colors.textMuted }]}>No events scheduled for today</Text>
+              </View>
+            )}
+          </View>
+        )}
 
-          {!isLoading && !error && todaysEvents.map((update) => (
-            <UpdateCard key={update.id} update={update} onPress={() => handleUpdatePress(update)} theme={theme} />
-          ))}
-        </View>
-
-        {/* Recent Updates */}
+        {/* Updates Section (filtered by time) */}
         <View style={[styles.recentUpdatesSection, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Recent Updates</Text>
+          <View style={styles.sectionHeaderEnhanced}>
+            <View style={[styles.sectionIconWrapper, { backgroundColor: theme.colors.accent + '15' }]}>
+              <Ionicons 
+                name={timeFilter === 'upcoming' ? 'time-outline' : timeFilter === 'recent' ? 'calendar-outline' : 'grid-outline'} 
+                size={20} 
+                color={theme.colors.accent} 
+              />
+            </View>
+            <View style={styles.sectionTitleWrapper}>
+              <Text style={[styles.sectionTitleEnhanced, { color: theme.colors.text }]}>Updates</Text>
+              <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
+                {timeFilter === 'upcoming' ? 'Coming soon' : timeFilter === 'recent' ? 'Past events' : 'All events'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Time Filter Pills */}
+          <View style={styles.filtersContainer}>
+            <Pressable
+              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'all' && styles.filterPillActive]}
+              onPress={() => setTimeFilter('all')}
+            >
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'all' && styles.filterPillTextActive]}>All</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'upcoming' && styles.filterPillActive]}
+              onPress={() => setTimeFilter('upcoming')}
+            >
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'upcoming' && styles.filterPillTextActive]}>Upcoming</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'recent' && styles.filterPillActive]}
+              onPress={() => setTimeFilter('recent')}
+            >
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'recent' && styles.filterPillTextActive]}>Recent</Text>
+            </Pressable>
+          </View>
           
           {error && (
             <View style={{ alignItems: 'center', paddingVertical: 16 }}>
@@ -300,14 +523,16 @@ const SchoolUpdates = () => {
             </View>
           )}
           
-          {!isLoading && !error && filtered.length === 0 && (
+          {!isLoading && !error && displayedUpdates.length === 0 && (
             <View style={{ alignItems: 'center', paddingVertical: 16 }}>
               <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
-              <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>No updates found</Text>
+              <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>
+                {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : 'No updates found'}
+              </Text>
             </View>
           )}
 
-          {!isLoading && !error && filtered.map((update) => (
+          {!isLoading && !error && displayedUpdates.map((update) => (
             <UpdateCard key={update.id} update={update} onPress={() => handleUpdatePress(update)} theme={theme} />
           ))}
         </View>
@@ -324,41 +549,6 @@ const SchoolUpdates = () => {
       <UserBottomNavBar />
     </View>
   );
-};
-
-// Helper functions for tag colors
-const getTagColor = (tag: string) => {
-  switch (tag.toLowerCase()) {
-    case 'announcement':
-      return '#E8F0FF';
-    case 'academic':
-      return '#F0F9FF';
-    case 'event':
-      return '#FEF3C7';
-    case 'service':
-      return '#ECFDF5';
-    case 'infrastructure':
-      return '#FEF2F2';
-    default:
-      return '#E8F0FF';
-  }
-};
-
-const getTagTextColor = (tag: string) => {
-  switch (tag.toLowerCase()) {
-    case 'announcement':
-      return '#1A3E7A';
-    case 'academic':
-      return '#0369A1';
-    case 'event':
-      return '#D97706';
-    case 'service':
-      return '#059669';
-    case 'infrastructure':
-      return '#DC2626';
-    default:
-      return '#1A3E7A';
-  }
 };
 
 const styles = StyleSheet.create({
@@ -490,20 +680,48 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  sectionHeaderEnhanced: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  sectionIconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionTitleWrapper: {
+    flex: 1,
+  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 8,
   },
+  sectionTitleEnhanced: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
   updateCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
     borderWidth: 1,
     borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
     marginBottom: 8,
+    overflow: 'hidden',
   },
   cardShadow: {
     shadowColor: '#000',
@@ -512,16 +730,32 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
+  updateImage: {
+    width: '100%',
+    height: 120,
+  },
+  updateContentWrapper: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+  },
   updateContent: {
     flex: 1,
   },
   updateTitle: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 22,
+    marginBottom: 6,
+  },
+  updateDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   updateDate: {
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: 13,
+    fontWeight: '600',
   },
   updateTag: {
     paddingHorizontal: 10,
@@ -561,6 +795,109 @@ const styles = StyleSheet.create({
   },
   clearButton: {
     padding: 4,
+  },
+  todaysEventsSection: {
+    marginBottom: 16,
+  },
+  todaysEventsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 12,
+  },
+  todaysEventsTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    marginBottom: 2,
+  },
+  todaysEventsSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  noEventsCard: {
+    padding: 32,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
+  noEventsText: {
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  eventCardHorizontal: {
+    width: '100%',
+    height: 220,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 0,
+  },
+  eventImageHorizontal: {
+    width: '100%',
+    height: '100%',
+  },
+  eventImagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eventGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: '55%',
+    justifyContent: 'flex-end',
+    padding: 16,
+  },
+  eventOverlayContent: {
+    gap: 4,
+  },
+  eventTagOverlay: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  eventTitleOverlay: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+    lineHeight: 26,
+    letterSpacing: 0.3,
+  },
+  eventDateOverlay: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    opacity: 0.95,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  eventDateTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  eventTimeSeparator: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    opacity: 0.7,
+    marginHorizontal: 6,
+  },
+  eventTagText: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   
 });

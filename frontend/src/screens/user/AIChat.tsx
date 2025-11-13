@@ -34,7 +34,7 @@ const SUGGESTIONS = [
 const AIChat = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme: t } = useTheme();
-  const { getUserToken, userEmail } = useAuth();
+  const { getUserToken, userEmail, checkAuthStatus } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width } = useWindowDimensions();
   const isWide = width > 600;
@@ -57,9 +57,20 @@ const AIChat = () => {
     }
   }, [messages]);
 
-  // Load chat history on component mount
+  // Refresh auth status and load chat history on component mount
+  // This ensures we have the latest token, especially after Google sign-in
   useEffect(() => {
-    loadChatHistory();
+    const initializeChat = async () => {
+      try {
+        // Refresh auth status to ensure we have the latest token
+        await checkAuthStatus();
+        // Then load chat history
+        await loadChatHistory();
+      } catch (error) {
+        console.error('Failed to initialize chat:', error);
+      }
+    };
+    initializeChat();
   }, []);
 
   // Animate sidebar when opening/closing
@@ -93,13 +104,44 @@ const AIChat = () => {
   const saveChatHistory = async () => {
     try {
       const token = await getUserToken();
-      if (token && messages.length > 0 && sessionId.current) {
-        await AIService.saveChatHistory(sessionId.current, messages, token);
-        // Refresh chat history list
-        await loadChatHistory();
+      console.log('💾 saveChatHistory: Token available?', !!token, 'Token length:', token?.length || 0, 'Token prefix:', token?.substring(0, 30) || 'none', 'Messages:', messages.length, 'SessionId:', sessionId.current);
+      
+      if (!token) {
+        console.error('❌ saveChatHistory: No token available - cannot save chat history');
+        // Try to get Firebase token as fallback
+        const user = getCurrentUser();
+        if (user && typeof user.getIdToken === 'function') {
+          try {
+            const firebaseToken = await user.getIdToken(true); // Force refresh
+            console.log('✅ saveChatHistory: Using Firebase token as fallback, length:', firebaseToken?.length || 0);
+            if (messages.length > 0 && sessionId.current) {
+              await AIService.saveChatHistory(sessionId.current, messages, firebaseToken);
+              await loadChatHistory();
+            }
+          } catch (err) {
+            console.error('❌ saveChatHistory: Failed to get Firebase token:', err);
+          }
+        }
+        return;
+      }
+      
+      if (messages.length > 0 && sessionId.current) {
+        const success = await AIService.saveChatHistory(sessionId.current, messages, token);
+        if (success) {
+          console.log('✅ saveChatHistory: Chat history saved successfully');
+          // Refresh chat history list
+          await loadChatHistory();
+        } else {
+          console.error('❌ saveChatHistory: Failed to save - AIService returned false');
+        }
+      } else {
+        console.warn('⚠️ saveChatHistory: Skipping save - no messages or sessionId', {
+          messagesCount: messages.length,
+          sessionId: sessionId.current
+        });
       }
     } catch (error) {
-      console.error('Failed to save chat history:', error);
+      console.error('❌ saveChatHistory: Error saving chat history:', error);
     }
   };
 

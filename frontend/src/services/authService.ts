@@ -40,13 +40,24 @@ export type User = FirebaseAuthTypes.User;
 /**
  * Sign in with Google on Android (Native)
  * Uses @react-native-firebase/auth for reliable native authentication
+ * Forces account selection by signing out first
  */
 export const signInWithGoogleAndroid = async (): Promise<User> => {
   try {
     // Check if your device supports Google Play
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
+    // Sign out from Google Sign-In to force account selection
+    // This ensures the user can choose a different account each time
+    try {
+      await GoogleSignin.signOut();
+    } catch (signOutError) {
+      // Ignore sign out errors (user might not be signed in)
+      console.log('Sign out before sign in (expected):', signOutError);
+    }
+
     // Get the user's ID token from Google Sign-In
+    // This will now always show the account picker
     const { idToken } = await GoogleSignin.signIn();
 
     if (!idToken) {
@@ -92,6 +103,7 @@ export const signInWithGoogleAndroid = async (): Promise<User> => {
 
 /**
  * Sign in with Google on Web
+ * Forces account selection using prompt parameter
  */
 export const signInWithGoogleWeb = async (): Promise<User> => {
   try {
@@ -103,6 +115,12 @@ export const signInWithGoogleWeb = async (): Promise<User> => {
 
     // Create Google Auth Provider
     const provider = new GoogleAuthProvider();
+    
+    // Force account selection by setting prompt parameter
+    // This ensures the user can choose a different account each time
+    provider.setCustomParameters({
+      prompt: 'select_account'
+    });
     
     // Add scopes if needed
     provider.addScope('profile');

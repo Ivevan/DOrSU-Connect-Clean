@@ -84,6 +84,13 @@ class AIService {
    */
   async saveChatHistory(sessionId: string, messages: Message[], token: string): Promise<boolean> {
     try {
+      console.log('📤 AIService.saveChatHistory: Sending request', {
+        sessionId,
+        messagesCount: messages.length,
+        tokenLength: token?.length || 0,
+        tokenPrefix: token?.substring(0, 20) || 'none'
+      });
+
       const response = await fetch(`${this.baseUrl}/api/chat-history`, {
         method: 'POST',
         headers: {
@@ -96,14 +103,26 @@ class AIService {
         }),
       });
 
+      console.log('📥 AIService.saveChatHistory: Response status', response.status);
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error('❌ AIService.saveChatHistory: HTTP error', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        });
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
       }
 
       const data = await response.json();
-      return data.success;
+      console.log('✅ AIService.saveChatHistory: Response data', data);
+      return data.success === true;
     } catch (error) {
-      console.error('Failed to save chat history:', error);
+      console.error('❌ AIService.saveChatHistory: Failed to save chat history:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', error.message, error.stack);
+      }
       return false;
     }
   }

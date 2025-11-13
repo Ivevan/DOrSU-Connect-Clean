@@ -62,22 +62,63 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           // If no backend token yet, try exchanging Firebase ID token for backend JWT
           if (!token) {
             try {
-              const idToken = await currentUser.getIdToken();
+              // Force refresh the token to ensure it's valid
+              const idToken = await currentUser.getIdToken(true);
+              
+              // Validate token format before sending
+              if (!idToken || typeof idToken !== 'string' || idToken.length < 100) {
+                console.error('❌ AuthContext: Invalid token format received from Firebase');
+                throw new Error('Invalid token format');
+              }
+              
+              // Check if token looks like a JWT (has 3 parts separated by dots)
+              const tokenParts = idToken.split('.');
+              if (tokenParts.length !== 3) {
+                console.error('❌ AuthContext: Token does not appear to be a valid JWT');
+                throw new Error('Invalid token format - expected JWT');
+              }
+              
+              console.log('🔄 AuthContext: Attempting Firebase token exchange, token length:', idToken.length, 'parts:', tokenParts.length);
+              
               const resp = await fetch(`${API_BASE_URL}/api/auth/firebase-login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ idToken }),
               });
+              
               const data = await resp.json();
-              if (resp.ok && data?.token) {
+              if (resp.ok && data?.token && data?.user?.id) {
+                // Store backend JWT token (same as regular account creation)
                 await AsyncStorage.setItem('userToken', data.token);
+                
+                // Store MongoDB userId from backend response (CRITICAL - same as CreateAccount.tsx)
+                // This ensures Google users are saved to MongoDB just like regular users
+                await AsyncStorage.setItem('userId', String(data.user.id));
+                
+                // Store user info
                 await AsyncStorage.setItem('userEmail', currentUser.email);
-                await AsyncStorage.setItem('userName', currentUser.displayName || currentUser.email);
+                const userName = data?.user?.username || currentUser.displayName || currentUser.email;
+                await AsyncStorage.setItem('userName', userName);
+                
+                // Update state
                 setUserToken(data.token);
                 setUserEmail(currentUser.email);
-                setUserName(currentUser.displayName || currentUser.email);
+                setUserName(userName);
+                
+                console.log('✅ AuthContext: Google user saved to MongoDB and backend JWT stored', {
+                  userId: data.user.id,
+                  email: data.user.email
+                });
+              } else {
+                console.error('❌ AuthContext: Token exchange failed:', {
+                  status: resp.status,
+                  statusText: resp.statusText,
+                  error: data?.error,
+                  details: data?.details
+                });
               }
             } catch (ex) {
+              console.error('❌ AuthContext: Token exchange error:', ex);
               // ignore exchange failure; Firebase token fallback will still work
             }
           }
@@ -101,25 +142,59 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Get user token (for Firebase users, get ID token)
   const getUserToken = async (): Promise<string | null> => {
-    // First check if we have a backend token
-    const backendToken = await AsyncStorage.getItem('userToken');
-    if (backendToken) {
-      return backendToken;
-    }
-    
-    // If no backend token, check if we have a Firebase user
-    if (firebaseUser) {
-      try {
-        // Get Firebase ID token
-        const idToken = await firebaseUser.getIdToken();
-        return idToken;
-      } catch (error) {
-        console.error('Failed to get Firebase ID token:', error);
-        return null;
+    try {
+      // First check if we have a backend token (preferred - works for chat history)
+      const backendToken = await AsyncStorage.getItem('userToken');
+      if (backendToken) {
+        console.log('✅ getUserToken: Using backend JWT token, length:', backendToken.length);
+        return backendToken;
       }
+      
+      // If no backend token, try to exchange Firebase token for backend JWT first
+      try {
+        const currentUser = getCurrentUser();
+        if (currentUser && typeof currentUser.getIdToken === 'function') {
+          // Force refresh to get a valid token
+          const idToken = await currentUser.getIdToken(true);
+          console.log('🔄 getUserToken: No backend token, attempting token exchange with Firebase ID token...');
+          
+          // Try to exchange for backend JWT
+          const { API_BASE_URL } = require('../config/api.config');
+          const resp = await fetch(`${API_BASE_URL}/api/auth/firebase-login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken }),
+          });
+          
+          const data = await resp.json();
+          if (resp.ok && data?.token) {
+            // Store backend JWT token
+            await AsyncStorage.setItem('userToken', data.token);
+            if (data?.user?.id) {
+              await AsyncStorage.setItem('userId', String(data.user.id));
+            }
+            setUserToken(data.token);
+            console.log('✅ getUserToken: Token exchange successful, using backend JWT');
+            return data.token;
+          } else {
+            console.warn('⚠️ getUserToken: Token exchange failed, using Firebase ID token as fallback');
+          }
+          
+          // Fallback to Firebase ID token if exchange failed
+          console.log('✅ getUserToken: Using Firebase ID token (exchange failed or not attempted)');
+          setFirebaseUser(currentUser);
+          return idToken;
+        }
+      } catch (error) {
+        console.error('❌ getUserToken: Failed to get or exchange Firebase token:', error);
+      }
+      
+      console.warn('⚠️ getUserToken: No token available');
+      return null;
+    } catch (error) {
+      console.error('❌ getUserToken: Unexpected error:', error);
+      return null;
     }
-    
-    return null;
   };
 
   // Login function

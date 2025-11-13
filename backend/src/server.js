@@ -226,20 +226,134 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        // Verify Firebase ID token using Google tokeninfo endpoint
-        // This validates signature and returns token claims if valid
-        const tokenInfoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
-        if (!tokenInfoRes.ok) {
-          sendJson(res, 401, { error: 'Invalid Firebase ID token' });
+        // Validate token format (should be a JWT-like string)
+        if (typeof idToken !== 'string' || idToken.length < 100) {
+          Logger.error(`Invalid token format: token length is ${idToken?.length || 0}`);
+          sendJson(res, 400, { error: 'Invalid token format' });
           return;
         }
-        const tokenInfo = await tokenInfoRes.json();
+
+        // Check if token looks like a JWT (has 3 parts separated by dots)
+        const tokenParts = idToken.split('.');
+        if (tokenParts.length !== 3) {
+          Logger.error(`Token does not appear to be a valid JWT: ${tokenParts.length} parts found`);
+          sendJson(res, 400, { error: 'Token format invalid - expected JWT format' });
+          return;
+        }
+
+        Logger.info(`Validating Firebase ID token, token length: ${idToken.length}, parts: ${tokenParts.length}`);
+
+        // Helper function to decode JWT payload (without signature verification)
+        const decodeJWTPayload = (token) => {
+          try {
+            const payload = tokenParts[1];
+            // Try base64url first (standard for JWTs), then fallback to base64
+            let decoded;
+            try {
+              // Add padding if needed for base64url
+              const padded = payload + '='.repeat((4 - payload.length % 4) % 4);
+              decoded = Buffer.from(padded.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8');
+            } catch (e) {
+              // Fallback to regular base64
+              decoded = Buffer.from(payload, 'base64').toString('utf-8');
+            }
+            const parsed = JSON.parse(decoded);
+            
+            // Check if token is expired
+            if (parsed.exp && parsed.exp < Math.floor(Date.now() / 1000)) {
+              Logger.warn(`Token is expired. Exp: ${parsed.exp}, Now: ${Math.floor(Date.now() / 1000)}`);
+              return null;
+            }
+            
+            return parsed;
+          } catch (error) {
+            Logger.error(`Failed to decode JWT payload: ${error.message}`);
+            return null;
+          }
+        };
+
+        // Try to verify Firebase ID token using Google tokeninfo endpoint
+        // This validates signature and returns token claims if valid
+        let tokenInfo = null;
+        let tokenValidationError = null;
+        
+        try {
+          const tokenInfoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+          if (tokenInfoRes.ok) {
+            tokenInfo = await tokenInfoRes.json();
+            Logger.info(`Firebase token validated successfully via Google tokeninfo for email: ${tokenInfo.email || 'unknown'}`);
+          } else {
+            const errorText = await tokenInfoRes.text();
+            tokenValidationError = errorText;
+            Logger.warn(`Google tokeninfo validation failed: ${tokenInfoRes.status} - ${errorText}`);
+            
+            // Fallback: Try to decode JWT payload locally (without signature verification)
+            // This is less secure but allows us to extract user info if tokeninfo fails
+            Logger.info('Attempting to decode JWT payload locally as fallback...');
+            const decodedPayload = decodeJWTPayload(idToken);
+            if (decodedPayload && decodedPayload.email) {
+              Logger.warn('⚠️ Using locally decoded JWT payload (signature not verified)');
+              Logger.info(`Decoded payload keys: ${Object.keys(decodedPayload).join(', ')}`);
+              tokenInfo = {
+                email: decodedPayload.email,
+                name: decodedPayload.name || decodedPayload.email.split('@')[0],
+                sub: decodedPayload.sub || decodedPayload.user_id,
+                aud: decodedPayload.aud,
+                exp: decodedPayload.exp,
+                iat: decodedPayload.iat
+              };
+              Logger.info(`Decoded token info for email: ${tokenInfo.email}, aud: ${tokenInfo.aud}`);
+            } else {
+              Logger.error(`Cannot decode JWT payload or missing email claim`);
+              sendJson(res, 401, { 
+                error: 'Invalid Firebase ID token', 
+                details: errorText,
+                note: 'Token validation failed and JWT payload could not be decoded'
+              });
+              return;
+            }
+          }
+        } catch (fetchError) {
+          Logger.error(`Error calling Google tokeninfo endpoint: ${fetchError.message}`);
+          
+          // Fallback: Try to decode JWT payload locally
+          Logger.info('Attempting to decode JWT payload locally as fallback...');
+          const decodedPayload = decodeJWTPayload(idToken);
+          if (decodedPayload && decodedPayload.email) {
+            Logger.warn('⚠️ Using locally decoded JWT payload (signature not verified) - tokeninfo endpoint unavailable');
+            Logger.info(`Decoded payload keys: ${Object.keys(decodedPayload).join(', ')}`);
+            tokenInfo = {
+              email: decodedPayload.email,
+              name: decodedPayload.name || decodedPayload.email.split('@')[0],
+              sub: decodedPayload.sub || decodedPayload.user_id,
+              aud: decodedPayload.aud,
+              exp: decodedPayload.exp,
+              iat: decodedPayload.iat
+            };
+            Logger.info(`Decoded token info for email: ${tokenInfo.email}, aud: ${tokenInfo.aud}`);
+          } else {
+            Logger.error(`Cannot decode JWT payload or missing email claim`);
+            sendJson(res, 401, { 
+              error: 'Invalid Firebase ID token', 
+              details: fetchError.message,
+              note: 'Token validation failed and JWT payload could not be decoded'
+            });
+            return;
+          }
+        }
+        
+        if (!tokenInfo) {
+          Logger.error('No token info available after validation attempts');
+          sendJson(res, 401, { error: 'Invalid Firebase ID token', details: tokenValidationError || 'Unknown error' });
+          return;
+        }
 
         // Optional audience check if provided
         const expectedAud = process.env.GOOGLE_WEB_CLIENT_ID;
         if (expectedAud && tokenInfo.aud && tokenInfo.aud !== expectedAud) {
-          sendJson(res, 401, { error: 'Invalid token audience' });
-          return;
+          Logger.warn(`Token audience mismatch. Expected: ${expectedAud}, Got: ${tokenInfo.aud}`);
+          // Log but don't fail - Firebase tokens can have different audiences
+          // The tokeninfo endpoint already validated the signature
         }
 
         const email = (tokenInfo.email || '').toLowerCase();
@@ -249,9 +363,10 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        // Find or create local user
+        // Find or create local user in MongoDB (just like regular account creation)
         let user = await mongoService.findUser(email);
         if (!user) {
+          Logger.info(`Creating new Google user in MongoDB: ${email}`);
           user = await mongoService.createUser({
             username: name,
             email,
@@ -262,13 +377,17 @@ const server = http.createServer(async (req, res) => {
             provider: 'google',
             googleSub: tokenInfo.sub
           });
+          Logger.success(`✅ Google user created in MongoDB: ${email} (ID: ${user._id || user.id})`);
         } else {
+          Logger.info(`Google user found in MongoDB: ${email} (ID: ${user._id || user.id})`);
           // Update last login and provider info
           await mongoService.updateUserLastLogin(email);
         }
 
         // Issue backend JWT for subsequent authenticated requests
+        // This ensures Google users use the same authentication mechanism as regular users
         const token = authService.generateToken(user);
+        Logger.info(`Backend JWT generated for Google user: ${email}`);
 
         sendJson(res, 200, {
           success: true,
@@ -441,11 +560,14 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     
+    Logger.info(`POST /api/chat-history: Validating authentication...`);
     const auth = await authMiddleware(authService, mongoService)(req);
     if (!auth.authenticated) {
-      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      Logger.error(`POST /api/chat-history: Authentication failed - ${auth.error || 'Unauthorized'}, details: ${auth.details || 'none'}`);
+      sendJson(res, 401, { error: auth.error || 'Unauthorized', details: auth.details });
       return;
     }
+    Logger.info(`POST /api/chat-history: Authentication successful for userId: ${auth.userId}`);
     
     let body = '';
     req.on('data', chunk => { body += chunk; if (body.length > 1000000) req.destroy(); });

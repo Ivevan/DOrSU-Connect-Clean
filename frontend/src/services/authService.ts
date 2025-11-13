@@ -1,8 +1,5 @@
-import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
-import * as AuthSession from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
-import * as Crypto from 'expo-crypto';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { Platform } from 'react-native';
 
 // Web imports (only for web platform)
@@ -17,17 +14,22 @@ if (Platform.OS === 'web') {
 
 // Configure Google Sign-In for Android
 // Web Client ID from Google Cloud Console (auto-created by Firebase)
-const WEB_CLIENT_ID = '473603633094-s78o8vdig63os6dgpjtoiqkhscspfbua.apps.googleusercontent.com';
+const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '473603633094-s78o8vdig63os6dgpjtoiqkhscspfbua.apps.googleusercontent.com';
+// Android OAuth Client ID (type: Android) - optional for some setups
+const ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '473603633094-b8ipfi3qajlds4rm3kvvi4o3dgoabqq4.apps.googleusercontent.com';
 
-// Initialize Google Sign-In
-GoogleSignin.configure({
-  webClientId: WEB_CLIENT_ID, // Required for Android - use Web Client ID
-  offlineAccess: true, // If you want to access Google API on behalf of the user FROM YOUR SERVER
-  forceCodeForRefreshToken: true, // [Android] related to `serverAuthCode`, read the docs link below *.
-});
-
-// Complete authentication session for web
-WebBrowser.maybeCompleteAuthSession();
+// Initialize Google Sign-In (native only; web module is a stub)
+if (Platform.OS !== 'web') {
+  const googleConfig: any = {
+    webClientId: WEB_CLIENT_ID,
+    offlineAccess: true,
+    forceCodeForRefreshToken: true,
+  };
+  if (ANDROID_CLIENT_ID) {
+    googleConfig.androidClientId = ANDROID_CLIENT_ID;
+  }
+  GoogleSignin.configure(googleConfig);
+}
 
 // Auth state change listener type
 export type AuthStateListener = (user: FirebaseAuthTypes.User | null) => void;
@@ -38,13 +40,24 @@ export type User = FirebaseAuthTypes.User;
 /**
  * Sign in with Google on Android (Native)
  * Uses @react-native-firebase/auth for reliable native authentication
+ * Forces account selection by signing out first
  */
 export const signInWithGoogleAndroid = async (): Promise<User> => {
   try {
     // Check if your device supports Google Play
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
+    // Sign out from Google Sign-In to force account selection
+    // This ensures the user can choose a different account each time
+    try {
+      await GoogleSignin.signOut();
+    } catch (signOutError) {
+      // Ignore sign out errors (user might not be signed in)
+      console.log('Sign out before sign in (expected):', signOutError);
+    }
+
     // Get the user's ID token from Google Sign-In
+    // This will now always show the account picker
     const { idToken } = await GoogleSignin.signIn();
 
     if (!idToken) {
@@ -90,6 +103,7 @@ export const signInWithGoogleAndroid = async (): Promise<User> => {
 
 /**
  * Sign in with Google on Web
+ * Forces account selection using prompt parameter
  */
 export const signInWithGoogleWeb = async (): Promise<User> => {
   try {
@@ -97,55 +111,37 @@ export const signInWithGoogleWeb = async (): Promise<User> => {
       throw new Error('Firebase Auth is not initialized for web');
     }
 
-    const { signInWithCredential } = require('firebase/auth');
+    const { signInWithPopup } = require('firebase/auth');
 
-    // Create a random state string for security
-    const state = await Crypto.digestStringAsync(
-      Crypto.CryptoDigestAlgorithm.SHA256,
-      Math.random().toString()
-    );
-
-    // Create the auth request
-    const request = new AuthSession.AuthRequest({
-      clientId: WEB_CLIENT_ID,
-      scopes: ['openid', 'profile', 'email'],
-      responseType: AuthSession.ResponseType.IdToken,
-      state,
-      redirectUri: AuthSession.makeRedirectUri({
-        scheme: 'dorsuconnect',
-        path: 'auth/callback',
-      }),
+    // Create Google Auth Provider
+    const provider = new GoogleAuthProvider();
+    
+    // Force account selection by setting prompt parameter
+    // This ensures the user can choose a different account each time
+    provider.setCustomParameters({
+      prompt: 'select_account'
     });
+    
+    // Add scopes if needed
+    provider.addScope('profile');
+    provider.addScope('email');
 
-    // Get the discovery document
-    const discovery = await AuthSession.fetchDiscoveryAsync(
-      'https://accounts.google.com'
-    );
-
-    // Start the authentication session
-    const result = await request.promptAsync(discovery, {
-      showInRecents: true,
-    });
-
-    if (result.type === 'success') {
-      const { id_token } = result.params;
-      
-      if (!id_token) {
-        throw new Error('No ID token received');
-      }
-
-      // Create a Google credential with the token
-      const googleCredential = GoogleAuthProvider.credential(id_token);
-
-      // Sign in to Firebase with the Google credential
-      const userCredential = await signInWithCredential(webFirebaseAuth, googleCredential);
-      
-      return userCredential.user;
-    } else {
-      throw new Error('Authentication was cancelled or failed');
-    }
+    // Sign in with popup (recommended for web)
+    const result = await signInWithPopup(webFirebaseAuth, provider);
+    
+    return result.user;
   } catch (error: any) {
     console.error('Google Web Sign-In Error:', error);
+    
+    // Handle specific Firebase errors
+    if (error.code === 'auth/popup-closed-by-user') {
+      throw new Error('Sign-in popup was closed before completing');
+    } else if (error.code === 'auth/popup-blocked') {
+      throw new Error('Sign-in popup was blocked by the browser. Please allow popups for this site.');
+    } else if (error.code === 'auth/cancelled-popup-request') {
+      throw new Error('Sign-in was cancelled');
+    }
+    
     throw new Error(error.message || 'Google sign-in failed');
   }
 };
@@ -247,6 +243,14 @@ export const getGoogleSignInErrorMessage = (error: any): string => {
       return 'Sign-in is already in progress';
     case statusCodes.PLAY_SERVICES_NOT_AVAILABLE:
       return 'Google Play Services not available. Please update Google Play Services.';
+    // Web-specific errors
+    case 'auth/popup-closed-by-user':
+      return 'Sign-in popup was closed before completing';
+    case 'auth/popup-blocked':
+      return 'Sign-in popup was blocked by the browser. Please allow popups for this site.';
+    case 'auth/cancelled-popup-request':
+      return 'Sign-in was cancelled';
+    // Common Firebase errors
     case 'auth/network-request-failed':
       return 'Network error. Please check your internet connection.';
     case 'auth/invalid-credential':

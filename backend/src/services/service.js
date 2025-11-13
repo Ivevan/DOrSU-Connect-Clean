@@ -36,7 +36,7 @@ export class LlamaService {
       'llama-3.3-70b-versatile',              // Primary: Fast + High Quality
       'llama-3.1-8b-instant',                 // Fallback 1: Faster, smaller
       'meta-llama/llama-4-scout-17b-16e-instruct', // Fallback 2
-      'openai/gpt-oss-120b'                   // Fallback 3
+      'openai/gpt-oss-120b'                   // Fallback 4
     ];
     this.currentModelIndex = 0;
     

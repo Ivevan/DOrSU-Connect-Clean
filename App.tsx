@@ -1,10 +1,11 @@
-import React from 'react';
 import { StatusBar } from 'expo-status-bar';
+import React from 'react';
 import { StyleSheet } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import AppNavigator from './frontend/src/navigation/AppNavigator';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { AuthProvider } from './frontend/src/contexts/AuthContext';
 import { ThemeProvider } from './frontend/src/contexts/ThemeContext';
+import AppNavigator from './frontend/src/navigation/AppNavigator';
 
 const Root = () => {
   // Animation overlay disabled for instant theme switching
@@ -20,9 +21,11 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ThemeProvider>
-          <Root />
-        </ThemeProvider>
+        <AuthProvider>
+          <ThemeProvider>
+            <Root />
+          </ThemeProvider>
+        </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

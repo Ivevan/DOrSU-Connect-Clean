@@ -1,12 +1,15 @@
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, Dimensions, Platform, StatusBar, Image, Animated, Easing, KeyboardAvoidingView, ScrollView } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import React, { useRef } from 'react';
 import { MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useRef } from 'react';
+import { Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { API_BASE_URL } from '../../config/api.config';
 import { lightTheme as theme } from '../../config/theme';
+import SuccessModal from '../../modals/SuccessModal';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -46,6 +49,8 @@ const CreateAccount = () => {
   const [showPassword, setShowPassword] = React.useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
+  const [showSuccessModal, setShowSuccessModal] = React.useState(false);
+  const [validationWarning, setValidationWarning] = React.useState('');
   
   // Input focus states
   const usernameFocus = useRef(new Animated.Value(0)).current;
@@ -143,6 +148,75 @@ const CreateAccount = () => {
   };
 
   const handleSignUp = async () => {
+    // Clear previous warnings
+    setValidationWarning('');
+    
+    // Validation
+    if (!username.trim()) {
+      setValidationWarning('⚠️ Please enter a username');
+      return;
+    }
+    if (!email.trim()) {
+      setValidationWarning('⚠️ Please enter an email address');
+      return;
+    }
+    
+    // Email format validation
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      setValidationWarning('⚠️ Please enter a valid email address');
+      return;
+    }
+    
+    // Block temporary/disposable email services
+    const tempEmailDomains = [
+      'tempmail.com', 'guerrillamail.com', '10minutemail.com', 'throwaway.email',
+      'mailinator.com', 'maildrop.cc', 'temp-mail.org', 'yopmail.com',
+      'fakeinbox.com', 'trashmail.com', 'getnada.com', 'mailnesia.com',
+      'dispostable.com', 'throwawaymail.com', 'tempinbox.com', 'emailondeck.com',
+      'sharklasers.com', 'guerrillamail.info', 'grr.la', 'guerrillamail.biz',
+      'guerrillamail.de', 'spam4.me', 'mailtemp.com', 'tempsky.com'
+    ];
+    
+    const emailDomain = email.toLowerCase().split('@')[1];
+    if (tempEmailDomains.includes(emailDomain)) {
+      setValidationWarning('⚠️ Temporary or disposable email addresses are not allowed. Please use a valid institutional or personal email.');
+      return;
+    }
+    
+    // Strong password validation
+    if (password.length < 8) {
+      setValidationWarning('⚠️ Password must be at least 8 characters long');
+      return;
+    }
+    
+    // Check for alphanumeric (letters + numbers + special chars)
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumber = /[0-9]/.test(password);
+    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>_\-+=\[\]\\/'`~;]/.test(password);
+    
+    if (!hasUpperCase) {
+      setValidationWarning('⚠️ Password must contain at least one uppercase letter (A-Z)');
+      return;
+    }
+    if (!hasLowerCase) {
+      setValidationWarning('⚠️ Password must contain at least one lowercase letter (a-z)');
+      return;
+    }
+    if (!hasNumber) {
+      setValidationWarning('⚠️ Password must contain at least one number (0-9)');
+      return;
+    }
+    if (!hasSpecialChar) {
+      setValidationWarning('⚠️ Password must contain at least one special character (!@#$%^&*...)');
+      return;
+    }
+    
+    if (password !== confirmPassword) {
+      setValidationWarning('⚠️ Passwords do not match');
+      return;
+    }
+
     setIsLoading(true);
     const startLoadingAnimation = () => {
       Animated.loop(
@@ -155,12 +229,60 @@ const CreateAccount = () => {
     };
     startLoadingAnimation();
     
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      // Call backend API to register user
+      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username,
+          email,
+          password,
+        }),
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Registration failed');
+      }
+      
+      // Store user data and token locally
+      await AsyncStorage.setItem('userToken', data.token);
+      await AsyncStorage.setItem('userEmail', data.user.email);
+      await AsyncStorage.setItem('userName', data.user.username);
+      await AsyncStorage.setItem('userId', data.user.id);
+      
       setIsLoading(false);
       loadingRotation.stopAnimation();
-    navigation.navigate('GetStarted');
-    }, 2000);
+      
+      // Show success modal
+      setShowSuccessModal(true);
+      
+      // Navigate after modal shows
+      setTimeout(() => {
+        setShowSuccessModal(false);
+        navigation.navigate('SchoolUpdates' as any);
+      }, 2500);
+    } catch (error: any) {
+      setIsLoading(false);
+      loadingRotation.stopAnimation();
+      
+      let errorMessage = 'Failed to create account';
+      
+      if (error.message.includes('already exists')) {
+        errorMessage = 'This email is already registered';
+      } else if (error.message.includes('Invalid')) {
+        errorMessage = 'Invalid email or password format';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      setValidationWarning(`⚠️ ${errorMessage}`);
+      console.error('Sign up error:', error);
+    }
   };
 
   const KeyboardWrapper = Platform.OS === 'ios' ? KeyboardAvoidingView : View;
@@ -586,6 +708,14 @@ const CreateAccount = () => {
             </Animated.View>
           </View>
 
+          {/* Validation Warning */}
+          {validationWarning ? (
+            <View style={styles.warningContainer}>
+              <MaterialIcons name="warning" size={18} color="#F59E0B" />
+              <Text style={styles.warningText}>{validationWarning}</Text>
+            </View>
+          ) : null}
+
           <Animated.View style={{ transform: [{ scale: signUpButtonScale }] }}>
           <TouchableOpacity 
               style={[styles.signUpButton, isLoading && styles.signUpButtonDisabled]}
@@ -594,12 +724,14 @@ const CreateAccount = () => {
               accessibilityRole="button"
               accessibilityLabel={isLoading ? "Creating account..." : "Sign up"}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              activeOpacity={0.8}
             >
               <LinearGradient
                 colors={isLoading ? ['#6B7280', '#9CA3AF'] : ['#1F2937', '#374151']}
                 style={styles.signUpButtonGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
+                pointerEvents="none"
               >
                 {isLoading ? (
                   <>
@@ -633,6 +765,7 @@ const CreateAccount = () => {
             <TouchableOpacity 
               onPress={() => navigation.navigate('SignIn')}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.signUpLinkButton}
             >
               <Text style={styles.signUpLink}>Sign In</Text>
             </TouchableOpacity>
@@ -641,6 +774,16 @@ const CreateAccount = () => {
           </Animated.View>
         </ScrollView>
       </KeyboardWrapper>
+      
+      {/* Success Modal */}
+      <SuccessModal
+        visible={showSuccessModal}
+        onClose={() => setShowSuccessModal(false)}
+        title="Account Created!"
+        message="Welcome to DOrSU Connect. Your account has been successfully created."
+        icon="checkmark-circle"
+        iconColor="#10B981"
+      />
     </View>
   );
 };
@@ -946,6 +1089,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
+    ...Platform.select({
+      web: {
+        cursor: 'pointer',
+        userSelect: 'none',
+      },
+    }),
   },
   signUpButtonDisabled: {
     opacity: 0.7,
@@ -989,6 +1138,31 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0.2,
+  },
+  signUpLinkButton: {
+    ...Platform.select({
+      web: {
+        cursor: 'pointer',
+      },
+    }),
+  },
+  warningContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    borderLeftWidth: 3,
+    borderLeftColor: '#F59E0B',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    gap: 8,
+  },
+  warningText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#92400E',
+    fontWeight: '500',
+    lineHeight: 18,
   },
 });
 

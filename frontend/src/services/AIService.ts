@@ -34,6 +34,13 @@ export interface ChatRequest {
   temperature?: number;
 }
 
+export interface ChatHistoryItem {
+  id: string;
+  title: string;
+  preview: string;
+  timestamp: Date;
+}
+
 class AIService {
   // Use configuration from api.config.ts
   private baseUrl: string = apiConfig.baseUrl;
@@ -69,6 +76,142 @@ class AIService {
     } catch (error) {
       console.error('AI Service Error:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Save chat history to the backend
+   */
+  async saveChatHistory(sessionId: string, messages: Message[], token: string): Promise<boolean> {
+    try {
+      console.log('📤 AIService.saveChatHistory: Sending request', {
+        sessionId,
+        messagesCount: messages.length,
+        tokenLength: token?.length || 0,
+        tokenPrefix: token?.substring(0, 20) || 'none'
+      });
+
+      const response = await fetch(`${this.baseUrl}/api/chat-history`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          sessionId,
+          messages
+        }),
+      });
+
+      console.log('📥 AIService.saveChatHistory: Response status', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ AIService.saveChatHistory: HTTP error', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        });
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ AIService.saveChatHistory: Response data', data);
+      return data.success === true;
+    } catch (error) {
+      console.error('❌ AIService.saveChatHistory: Failed to save chat history:', error);
+      if (error instanceof Error) {
+        console.error('Error details:', error.message, error.stack);
+      }
+      return false;
+    }
+  }
+
+  /**
+   * Get chat history list from the backend
+   */
+  async getChatHistory(token: string): Promise<ChatHistoryItem[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/chat-history`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        // Convert timestamp strings back to Date objects
+        return data.history.map((item: any) => ({
+          ...item,
+          timestamp: new Date(item.timestamp)
+        }));
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('Failed to get chat history:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get a specific chat session from the backend
+   */
+  async getChatSession(sessionId: string, token: string): Promise<Message[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/chat-session/${sessionId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        // Convert timestamp strings back to Date objects
+        return data.messages.map((msg: any) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp)
+        }));
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('Failed to get chat session:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Delete a specific chat session
+   */
+  async deleteChatSession(sessionId: string, token: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/chat-session/${sessionId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return !!data.success;
+    } catch (error) {
+      console.error('Failed to delete chat session:', error);
+      return false;
     }
   }
 
@@ -113,4 +256,3 @@ class AIService {
 }
 
 export default new AIService();
-

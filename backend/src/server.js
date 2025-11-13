@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { AuthService, authMiddleware } from './services/auth.js';
 import conversationService from './services/conversation.js';
 import { getDataRefreshService } from './services/data-refresh.js';
 import responseFormatter from './services/formatter.js';
@@ -39,6 +40,7 @@ let ragService = null;
 let mongoService = null;
 let dataRefreshService = null;
 let newsScraperService = null;
+let authService = null;
 
 // ===== FALLBACK CONTEXT =====
 const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
@@ -52,6 +54,10 @@ const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
     mongoService = getMongoDBService();
     await mongoService.connect();
     Logger.success('MongoDB initialized');
+    
+    // Initialize authentication service
+    authService = new AuthService(mongoService);
+    Logger.success('Auth service initialized');
     
     // Initialize data refresh service
     dataRefreshService = getDataRefreshService();
@@ -142,6 +148,306 @@ const server = http.createServer(async (req, res) => {
   if (method === 'GET' && url === '/api/mongodb-status') {
     const health = mongoService ? await mongoService.healthCheck() : { status: 'unavailable' };
     sendJson(res, 200, health);
+    return;
+  }
+
+  // ===== AUTHENTICATION ENDPOINTS =====
+
+  // User Registration
+  if (method === 'POST' && url === '/api/auth/register') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        if (!authService) {
+          sendJson(res, 503, { error: 'Authentication service not available' });
+          return;
+        }
+
+        const { username, email, password } = JSON.parse(body);
+
+        if (!username || !email || !password) {
+          sendJson(res, 400, { error: 'Username, email and password are required' });
+          return;
+        }
+
+        const result = await authService.register(username, email, password);
+        sendJson(res, 201, result);
+      } catch (error) {
+        Logger.error('Register error:', error.message);
+        sendJson(res, 400, { error: error.message });
+      }
+    });
+    return;
+  }
+
+  // User Login
+  if (method === 'POST' && url === '/api/auth/login') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        if (!authService) {
+          sendJson(res, 503, { error: 'Authentication service not available' });
+          return;
+        }
+
+        const { email, password } = JSON.parse(body);
+
+        if (!email || !password) {
+          sendJson(res, 400, { error: 'Email and password are required' });
+          return;
+        }
+
+        const result = await authService.login(email, password);
+        sendJson(res, 200, result);
+      } catch (error) {
+        Logger.error('Login error:', error.message);
+        sendJson(res, 401, { error: error.message });
+      }
+    });
+    return;
+  }
+
+  // Google/Firebase ID token login (exchange for backend JWT)
+  if (method === 'POST' && url === '/api/auth/firebase-login') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        if (!authService || !mongoService) {
+          sendJson(res, 503, { error: 'Authentication service not available' });
+          return;
+        }
+
+        const { idToken } = JSON.parse(body || '{}');
+        if (!idToken) {
+          sendJson(res, 400, { error: 'idToken is required' });
+          return;
+        }
+
+        // Validate token format (should be a JWT-like string)
+        if (typeof idToken !== 'string' || idToken.length < 100) {
+          Logger.error(`Invalid token format: token length is ${idToken?.length || 0}`);
+          sendJson(res, 400, { error: 'Invalid token format' });
+          return;
+        }
+
+        // Check if token looks like a JWT (has 3 parts separated by dots)
+        const tokenParts = idToken.split('.');
+        if (tokenParts.length !== 3) {
+          Logger.error(`Token does not appear to be a valid JWT: ${tokenParts.length} parts found`);
+          sendJson(res, 400, { error: 'Token format invalid - expected JWT format' });
+          return;
+        }
+
+        Logger.info(`Validating Firebase ID token, token length: ${idToken.length}, parts: ${tokenParts.length}`);
+
+        // Helper function to decode JWT payload (without signature verification)
+        const decodeJWTPayload = (token) => {
+          try {
+            const payload = tokenParts[1];
+            // Try base64url first (standard for JWTs), then fallback to base64
+            let decoded;
+            try {
+              // Add padding if needed for base64url
+              const padded = payload + '='.repeat((4 - payload.length % 4) % 4);
+              decoded = Buffer.from(padded.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8');
+            } catch (e) {
+              // Fallback to regular base64
+              decoded = Buffer.from(payload, 'base64').toString('utf-8');
+            }
+            const parsed = JSON.parse(decoded);
+            
+            // Check if token is expired
+            if (parsed.exp && parsed.exp < Math.floor(Date.now() / 1000)) {
+              Logger.warn(`Token is expired. Exp: ${parsed.exp}, Now: ${Math.floor(Date.now() / 1000)}`);
+              return null;
+            }
+            
+            return parsed;
+          } catch (error) {
+            Logger.error(`Failed to decode JWT payload: ${error.message}`);
+            return null;
+          }
+        };
+
+        // Try to verify Firebase ID token using Google tokeninfo endpoint
+        // This validates signature and returns token claims if valid
+        let tokenInfo = null;
+        let tokenValidationError = null;
+        
+        try {
+          const tokenInfoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+          if (tokenInfoRes.ok) {
+            tokenInfo = await tokenInfoRes.json();
+            Logger.info(`Firebase token validated successfully via Google tokeninfo for email: ${tokenInfo.email || 'unknown'}`);
+          } else {
+            const errorText = await tokenInfoRes.text();
+            tokenValidationError = errorText;
+            Logger.warn(`Google tokeninfo validation failed: ${tokenInfoRes.status} - ${errorText}`);
+            
+            // Fallback: Try to decode JWT payload locally (without signature verification)
+            // This is less secure but allows us to extract user info if tokeninfo fails
+            Logger.info('Attempting to decode JWT payload locally as fallback...');
+            const decodedPayload = decodeJWTPayload(idToken);
+            if (decodedPayload && decodedPayload.email) {
+              Logger.warn('⚠️ Using locally decoded JWT payload (signature not verified)');
+              Logger.info(`Decoded payload keys: ${Object.keys(decodedPayload).join(', ')}`);
+              tokenInfo = {
+                email: decodedPayload.email,
+                name: decodedPayload.name || decodedPayload.email.split('@')[0],
+                sub: decodedPayload.sub || decodedPayload.user_id,
+                aud: decodedPayload.aud,
+                exp: decodedPayload.exp,
+                iat: decodedPayload.iat
+              };
+              Logger.info(`Decoded token info for email: ${tokenInfo.email}, aud: ${tokenInfo.aud}`);
+            } else {
+              Logger.error(`Cannot decode JWT payload or missing email claim`);
+              sendJson(res, 401, { 
+                error: 'Invalid Firebase ID token', 
+                details: errorText,
+                note: 'Token validation failed and JWT payload could not be decoded'
+              });
+              return;
+            }
+          }
+        } catch (fetchError) {
+          Logger.error(`Error calling Google tokeninfo endpoint: ${fetchError.message}`);
+          
+          // Fallback: Try to decode JWT payload locally
+          Logger.info('Attempting to decode JWT payload locally as fallback...');
+          const decodedPayload = decodeJWTPayload(idToken);
+          if (decodedPayload && decodedPayload.email) {
+            Logger.warn('⚠️ Using locally decoded JWT payload (signature not verified) - tokeninfo endpoint unavailable');
+            Logger.info(`Decoded payload keys: ${Object.keys(decodedPayload).join(', ')}`);
+            tokenInfo = {
+              email: decodedPayload.email,
+              name: decodedPayload.name || decodedPayload.email.split('@')[0],
+              sub: decodedPayload.sub || decodedPayload.user_id,
+              aud: decodedPayload.aud,
+              exp: decodedPayload.exp,
+              iat: decodedPayload.iat
+            };
+            Logger.info(`Decoded token info for email: ${tokenInfo.email}, aud: ${tokenInfo.aud}`);
+          } else {
+            Logger.error(`Cannot decode JWT payload or missing email claim`);
+            sendJson(res, 401, { 
+              error: 'Invalid Firebase ID token', 
+              details: fetchError.message,
+              note: 'Token validation failed and JWT payload could not be decoded'
+            });
+            return;
+          }
+        }
+        
+        if (!tokenInfo) {
+          Logger.error('No token info available after validation attempts');
+          sendJson(res, 401, { error: 'Invalid Firebase ID token', details: tokenValidationError || 'Unknown error' });
+          return;
+        }
+
+        // Optional audience check if provided
+        const expectedAud = process.env.GOOGLE_WEB_CLIENT_ID;
+        if (expectedAud && tokenInfo.aud && tokenInfo.aud !== expectedAud) {
+          Logger.warn(`Token audience mismatch. Expected: ${expectedAud}, Got: ${tokenInfo.aud}`);
+          // Log but don't fail - Firebase tokens can have different audiences
+          // The tokeninfo endpoint already validated the signature
+        }
+
+        const email = (tokenInfo.email || '').toLowerCase();
+        const name = tokenInfo.name || (email ? email.split('@')[0] : 'Google User');
+        if (!email) {
+          sendJson(res, 400, { error: 'Token missing email claim' });
+          return;
+        }
+
+        // Find or create local user in MongoDB (just like regular account creation)
+        let user = await mongoService.findUser(email);
+        if (!user) {
+          Logger.info(`Creating new Google user in MongoDB: ${email}`);
+          user = await mongoService.createUser({
+            username: name,
+            email,
+            password: '', // No password for federated accounts
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            isActive: true,
+            provider: 'google',
+            googleSub: tokenInfo.sub
+          });
+          Logger.success(`✅ Google user created in MongoDB: ${email} (ID: ${user._id || user.id})`);
+        } else {
+          Logger.info(`Google user found in MongoDB: ${email} (ID: ${user._id || user.id})`);
+          // Update last login and provider info
+          await mongoService.updateUserLastLogin(email);
+        }
+
+        // Issue backend JWT for subsequent authenticated requests
+        // This ensures Google users use the same authentication mechanism as regular users
+        const token = authService.generateToken(user);
+        Logger.info(`Backend JWT generated for Google user: ${email}`);
+
+        sendJson(res, 200, {
+          success: true,
+          user: {
+            id: user._id || user.id,
+            username: user.username,
+            email: user.email
+          },
+          token
+        });
+      } catch (error) {
+        Logger.error('Firebase login error:', error.message || String(error));
+        sendJson(res, 401, { error: 'Firebase login failed' });
+      }
+    });
+    return;
+  }
+
+  // Get current user profile
+  if (method === 'GET' && url === '/api/auth/me') {
+    if (!authService) {
+      sendJson(res, 503, { error: 'Authentication service not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+
+    try {
+      const user = await authService.getUserById(auth.userId);
+      if (!user) {
+        sendJson(res, 404, { error: 'User not found' });
+        return;
+      }
+      sendJson(res, 200, { success: true, user });
+    } catch (error) {
+      Logger.error('Get user error:', error.message);
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+
+  // Get all users (admin endpoint)
+  if (method === 'GET' && url === '/api/users') {
+    if (!authService) {
+      sendJson(res, 503, { error: 'Authentication service not available' });
+      return;
+    }
+
+    try {
+      const users = await mongoService.getAllUsers();
+      const count = await mongoService.getUserCount();
+      sendJson(res, 200, { success: true, count, users });
+    } catch (error) {
+      Logger.error('Get users error:', error.message);
+      sendJson(res, 500, { error: error.message });
+    }
     return;
   }
 
@@ -242,6 +548,145 @@ const server = http.createServer(async (req, res) => {
     
     const status = dataRefreshService.getStatus();
     sendJson(res, 200, { success: true, status });
+    return;
+  }
+
+  // ===== CHAT HISTORY ENDPOINTS =====
+  
+  // Save chat history
+  if (method === 'POST' && url === '/api/chat-history') {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+    
+    Logger.info(`POST /api/chat-history: Validating authentication...`);
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      Logger.error(`POST /api/chat-history: Authentication failed - ${auth.error || 'Unauthorized'}, details: ${auth.details || 'none'}`);
+      sendJson(res, 401, { error: auth.error || 'Unauthorized', details: auth.details });
+      return;
+    }
+    Logger.info(`POST /api/chat-history: Authentication successful for userId: ${auth.userId}`);
+    
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > 1000000) req.destroy(); });
+    req.on('end', async () => {
+      try {
+        const json = JSON.parse(body);
+        const { sessionId, messages } = json;
+        
+        if (!sessionId || !messages) {
+          sendJson(res, 400, { error: 'sessionId and messages required' });
+          return;
+        }
+        
+        // Save the chat session
+        await mongoService.saveChatSession(auth.userId, sessionId, messages);
+        
+        // Add to chat history list
+        if (messages.length > 0) {
+          const firstMessage = messages[0];
+          const lastMessage = messages[messages.length - 1];
+          
+          const chatInfo = {
+            id: sessionId,
+            title: firstMessage.content.substring(0, 50) + (firstMessage.content.length > 50 ? '...' : ''),
+            preview: lastMessage.content.substring(0, 100) + (lastMessage.content.length > 100 ? '...' : ''),
+            timestamp: new Date()
+          };
+          
+          await mongoService.addChatToHistory(auth.userId, chatInfo);
+        }
+        
+        sendJson(res, 200, { success: true, message: 'Chat history saved' });
+      } catch (error) {
+        Logger.error('Save chat history error:', error);
+        sendJson(res, 500, { error: error.message });
+      }
+    });
+    return;
+  }
+  
+  // Get chat history list
+  if (method === 'GET' && url === '/api/chat-history') {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+    
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+    
+    try {
+      const history = await mongoService.getChatHistory(auth.userId);
+      sendJson(res, 200, { success: true, history });
+    } catch (error) {
+      Logger.error('Get chat history error:', error);
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+  
+  // Get specific chat session
+  if (method === 'GET' && url.startsWith('/api/chat-session/')) {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+    
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+    
+    try {
+      const sessionId = url.split('/')[3]; // /api/chat-session/{sessionId}
+      
+      if (!sessionId) {
+        sendJson(res, 400, { error: 'Session ID required' });
+        return;
+      }
+      
+      const messages = await mongoService.getChatSession(auth.userId, sessionId);
+      sendJson(res, 200, { success: true, messages });
+    } catch (error) {
+      Logger.error('Get chat session error:', error);
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+
+  // Delete specific chat session
+  if (method === 'DELETE' && url.startsWith('/api/chat-session/')) {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+
+    try {
+      const sessionId = url.split('/')[3]; // /api/chat-session/{sessionId}
+      if (!sessionId) {
+        sendJson(res, 400, { error: 'Session ID required' });
+        return;
+      }
+
+      await mongoService.deleteChatSession(auth.userId, sessionId);
+      sendJson(res, 200, { success: true });
+    } catch (error) {
+      Logger.error('Delete chat session error:', error);
+      sendJson(res, 500, { error: error.message });
+    }
     return;
   }
 

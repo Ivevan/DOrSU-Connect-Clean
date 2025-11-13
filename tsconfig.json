@@ -1,17 +1,31 @@
 {
-  "extends": "expo/tsconfig.base",
-  
+  "extends": "./node_modules/expo/tsconfig.base.json",
   "compilerOptions": {
     "strict": true,
-    "jsx": "react-jsx",
-    "typeRoots": ["./node_modules/@types", "./frontend/src/types"]
+    "forceConsistentCasingInFileNames": true,
+    "typeRoots": ["./node_modules/@types", "./frontend/src/types"],
+    "baseUrl": ".",
+    "paths": {
+      "@frontend/*": ["./frontend/src/*"],
+      "@backend/*": ["./backend/src/*"]
+    }
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    "frontend/src/types/**/*.d.ts"
+    "App.tsx",
+    "index.ts",
+    "frontend/**/*.ts",
+    "frontend/**/*.tsx",
+    "frontend/src/types/**/*.d.ts",
+    "backend/**/*.js"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "android",
+    "ios",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/__tests__"
   ]
 }

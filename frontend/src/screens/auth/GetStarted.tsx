@@ -1,19 +1,20 @@
-import { StyleSheet, Text, View, TouchableOpacity, Dimensions, Platform, StatusBar, Image, Animated, Easing, Alert } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import React, { useRef } from 'react';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useRef } from 'react';
+import { Alert, Animated, Dimensions, Easing, Image, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { lightTheme as theme } from '../../config/theme';
-import { signInWithGoogle, getGoogleSignInErrorMessage } from '../../services/authService';
+import { getGoogleSignInErrorMessage, signInWithGoogle } from '../../services/authService';
 
 type RootStackParamList = {
   GetStarted: undefined;
   SignIn: undefined;
   CreateAccount: undefined;
   AdminDashboard: undefined;
+  SchoolUpdates: undefined;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'GetStarted'>;
@@ -286,6 +287,95 @@ const GetStarted = () => {
 
     try {
       const user = await signInWithGoogle();
+      
+      // Save Google user data to AsyncStorage for persistence
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      if (user.email) {
+        await AsyncStorage.setItem('userEmail', user.email);
+      }
+      if (user.displayName) {
+        await AsyncStorage.setItem('userName', user.displayName);
+      }
+      if (user.photoURL) {
+        await AsyncStorage.setItem('userPhoto', user.photoURL);
+      }
+      // Mark as Google Sign-In user
+      await AsyncStorage.setItem('authProvider', 'google');
+
+      // Exchange Firebase ID token for backend JWT and save user to MongoDB
+      // This ensures Google users are treated exactly like regular accounts
+      // The backend will create/find the user in MongoDB and return a backend JWT
+      let tokenExchangeSuccess = false;
+      try {
+        // Force refresh the token to ensure it's valid
+        const idToken = await user.getIdToken(true);
+        
+        // Validate token format before sending
+        if (!idToken || typeof idToken !== 'string' || idToken.length < 100) {
+          console.error('❌ GetStarted: Invalid token format received from Firebase');
+          throw new Error('Invalid token format');
+        }
+        
+        // Check if token looks like a JWT (has 3 parts separated by dots)
+        const tokenParts = idToken.split('.');
+        if (tokenParts.length !== 3) {
+          console.error('❌ GetStarted: Token does not appear to be a valid JWT');
+          throw new Error('Invalid token format - expected JWT');
+        }
+        
+        console.log('🔄 GetStarted: Attempting Firebase token exchange, token length:', idToken.length, 'parts:', tokenParts.length);
+        
+        const { API_BASE_URL } = require('../../config/api.config');
+        const resp = await fetch(`${API_BASE_URL}/api/auth/firebase-login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken }),
+        });
+        
+        const data = await resp.json();
+        if (resp.ok && data?.token && data?.user?.id) {
+          // Store backend JWT token (same as regular account creation)
+          await AsyncStorage.setItem('userToken', data.token);
+          
+          // Store MongoDB userId from backend response (CRITICAL - same as CreateAccount.tsx)
+          // This ensures Google users are saved to MongoDB just like regular users
+          await AsyncStorage.setItem('userId', String(data.user.id));
+          
+          // Store user info from backend response
+          await AsyncStorage.setItem('userEmail', data.user.email || user.email);
+          if (data?.user?.username) {
+            await AsyncStorage.setItem('userName', data.user.username);
+          }
+          
+          tokenExchangeSuccess = true;
+          console.log('✅ GetStarted: Google user saved to MongoDB and backend JWT stored', {
+            userId: data.user.id,
+            email: data.user.email,
+            username: data.user.username
+          });
+        } else {
+          console.error('❌ GetStarted: Firebase login exchange failed:', {
+            status: resp.status,
+            statusText: resp.statusText,
+            error: data?.error,
+            details: data?.details
+          });
+          // Don't throw here - we'll still navigate, but chat history might not work
+        }
+      } catch (ex: unknown) {
+        const msg = ex instanceof Error ? ex.message : String(ex);
+        console.error('❌ GetStarted: Failed to exchange Firebase token:', msg);
+        // Don't throw here - we'll still navigate, but chat history might not work
+      }
+      
+      // If token exchange failed, show a warning but still allow navigation
+      // The AuthContext will try to exchange the token again on mount
+      if (!tokenExchangeSuccess) {
+        console.warn('⚠️ Token exchange failed - chat history may not work until token is exchanged');
+      }
+      
+      // Note: AuthContext will pick up the Firebase user via checkAuthStatus() 
+      // which is called on mount, ensuring getUserToken() can work properly
       
       // Success
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

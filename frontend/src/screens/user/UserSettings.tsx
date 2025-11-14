@@ -27,6 +27,9 @@ type RootStackParamList = {
   PrivacyPolicy: undefined;
   Licenses: undefined;
   About: undefined;
+  AccountSettings: undefined;
+  GeneralSettings: undefined;
+  EmailSettings: undefined;
 };
 
 const UserSettings = () => {
@@ -636,109 +639,7 @@ const UserSettings = () => {
             styles.settingsContainer
           ]}
         >
-          {/* General Section */}
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 50 : 40}
-            tint={isDarkMode ? 'dark' : 'light'}
-            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
-          >
-            <Text style={[styles.sectionTitle, { color: t.colors.text }]}>General</Text>
-            
-            <View style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="moon-outline" size={20} color="#FF9500" />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Dark Mode</Text>
-              </View>
-              <Switch
-                value={isDarkMode}
-                onValueChange={(value) => {
-                  // Trigger haptic feedback immediately
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  // Toggle theme - state updates immediately, animation runs in background
-                  toggleTheme();
-                }}
-                trackColor={{ false: t.colors.border, true: t.colors.accent }}
-                thumbColor={t.colors.surface}
-                // Optimize switch performance
-                ios_backgroundColor={t.colors.border}
-              />
-            </View>
-
-            <TouchableOpacity style={styles.settingItemLast}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="language-outline" size={20} color="#FF9500" />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Language</Text>
-              </View>
-              <View style={styles.settingRight}>
-                <Text style={[styles.settingValue, { color: t.colors.textMuted }]}>{language}</Text>
-                <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-              </View>
-            </TouchableOpacity>
-          </BlurView>
-
-          {/* Account Section */}
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 50 : 40}
-            tint={isDarkMode ? 'dark' : 'light'}
-            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
-          >
-            <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Account</Text>
-            
-            <TouchableOpacity style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="person-outline" size={20} color="#FF9500" />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Profile</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="key-outline" size={20} color="#FF9500" />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Change Password</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.settingItemLast}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="notifications-outline" size={20} color="#FF9500" />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Notifications</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-            </TouchableOpacity>
-          </BlurView>
-
-          {/* Email Section */}
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 50 : 40}
-            tint={isDarkMode ? 'dark' : 'light'}
-            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
-          >
-            <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Email</Text>
-            
-            <TouchableOpacity style={styles.settingItemLast}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="mail-outline" size={20} color="#FF9500" />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>{userEmail}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-            </TouchableOpacity>
-          </BlurView>
-
-          {/* About Section */}
+          {/* All Settings Section */}
           <BlurView
             intensity={Platform.OS === 'ios' ? 50 : 40}
             tint={isDarkMode ? 'dark' : 'light'}
@@ -746,6 +647,40 @@ const UserSettings = () => {
           >
             <TouchableOpacity 
               style={styles.sectionTitleButton}
+              onPress={() => navigation.navigate('GeneralSettings')}
+            >
+              <Text style={[styles.sectionTitle, { color: t.colors.text }]}>General</Text>
+              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.sectionTitleButton}
+              onPress={() => navigation.navigate('AccountSettings')}
+            >
+              <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Account</Text>
+              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.sectionTitleButton}
+              onPress={() => navigation.navigate('EmailSettings')}
+            >
+              <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Email</Text>
+              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.sectionTitleButton}
+              onPress={() => {
+                // TODO: Navigate to feedback screen or open feedback form
+              }}
+            >
+              <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Give Feedback</Text>
+              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.sectionTitleButtonLast}
               onPress={() => navigation.navigate('About')}
             >
               <Text style={[styles.sectionTitle, { color: t.colors.text }]}>About</Text>
@@ -932,16 +867,26 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
     color: theme.colors.text,
-    marginBottom: theme.spacing(1.5),
+    marginBottom: 0,
   },
   sectionTitleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: theme.spacing(1.5),
+    paddingVertical: theme.spacing(2),
+    marginBottom: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  sectionTitleButtonLast: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: theme.spacing(2),
+    marginBottom: 0,
   },
   settingItem: {
     flexDirection: 'row',

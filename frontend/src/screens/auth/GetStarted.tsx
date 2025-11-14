@@ -15,6 +15,7 @@ type RootStackParamList = {
   CreateAccount: undefined;
   AdminDashboard: undefined;
   SchoolUpdates: undefined;
+  AIChat: undefined;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'GetStarted'>;
@@ -450,11 +451,11 @@ const GetStarted = () => {
         style={[styles.skipButton, { top: insets.top + 12, right: 16 }]}
         onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          navigation.navigate('SchoolUpdates');
+          navigation.navigate('AIChat');
         }}
         accessibilityRole="button"
-        accessibilityLabel="Skip to user screen"
-        accessibilityHint="Double tap to go directly to the user screen"
+        accessibilityLabel="Skip to AI Chat"
+        accessibilityHint="Double tap to go directly to the AI Chat screen"
       >
         <MaterialIcons name="dashboard" size={24} color="#1F2937" />
       </TouchableOpacity>

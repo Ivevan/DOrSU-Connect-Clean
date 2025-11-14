@@ -58,16 +58,16 @@ const AppNavigator = () => {
         const userEmail = await AsyncStorage.getItem('userEmail');
         const authProvider = await AsyncStorage.getItem('authProvider');
         
-        // If user has valid session, skip to main app
+        // If user has valid session, skip to main app (AIChat instead of SchoolUpdates)
         if ((userToken && userEmail) || (userEmail && authProvider === 'google')) {
-          setInitialRoute('SchoolUpdates');
+          setInitialRoute('AIChat');
         } else {
           // Check for Firebase auth (if user logged in with Google)
           try {
             const { getCurrentUser } = require('../services/authService');
             const currentUser = getCurrentUser();
             if (currentUser?.email) {
-              setInitialRoute('SchoolUpdates');
+              setInitialRoute('AIChat');
             } else {
               setInitialRoute('SplashScreen');
             }

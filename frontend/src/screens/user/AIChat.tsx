@@ -714,7 +714,11 @@ const AIChat = () => {
             style={styles.menuButton}
             accessibilityLabel="Open chat history"
           >
-            <Ionicons name="menu" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+            <View style={styles.customHamburger}>
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineLong, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+            </View>
           </TouchableOpacity>
         </View>
         <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>New Conversation</Text>
@@ -1136,6 +1140,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  customHamburger: {
+    width: 24,
+    height: 18,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  hamburgerLine: {
+    height: 2.5,
+    borderRadius: 2,
+  },
+  hamburgerLineShort: {
+    width: 18,
+  },
+  hamburgerLineLong: {
+    width: 24,
+  },
   headerTitle: {
     fontSize: 17,
     fontWeight: '600',
@@ -1291,15 +1311,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255, 149, 0, 0.15)',
-    elevation: 3,
-    ...(Platform.OS === 'web'
-      ? { boxShadow: '0px 4px 12px rgba(255, 149, 0, 0.1)' }
-      : {
-          shadowColor: '#FF9500',
-          shadowOpacity: 0.15,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 4 },
-        }),
   },
   promptCardBlur: {
     width: '100%',
@@ -1343,10 +1354,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderWidth: 1,
     gap: 8,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
   },
   attachButton: {
     width: 36,

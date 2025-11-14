@@ -857,6 +857,8 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing(2),
     gap: theme.spacing(2),
     minHeight: 100, // Fixed minimum height to prevent layout shifts
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   profileAvatarContainer: {
     position: 'relative',
@@ -942,7 +944,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radii.md,
     padding: theme.spacing(1.5),
-    ...theme.shadow1,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   sectionTitle: {
     fontSize: 15,

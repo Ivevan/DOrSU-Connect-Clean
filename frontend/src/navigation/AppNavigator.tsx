@@ -23,6 +23,9 @@ import AIChat from '../screens/user/AIChat';
 import Calendar from '../screens/user/Calendar';
 import SchoolUpdates from '../screens/user/SchoolUpdates';
 import UserSettings from '../screens/user/UserSettings';
+import AccountSettings from '../screens/user/AccountSettings';
+import GeneralSettings from '../screens/user/GeneralSettings';
+import EmailSettings from '../screens/user/EmailSettings';
 
 const Stack = createNativeStackNavigator();
 
@@ -155,6 +158,30 @@ const AppNavigator = () => {
             animationDuration: 0,
             // Optimize for faster navigation
             freezeOnBlur: false,
+          }}
+        />
+        <Stack.Screen 
+          name="AccountSettings" 
+          component={AccountSettings}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
+        />
+        <Stack.Screen 
+          name="GeneralSettings" 
+          component={GeneralSettings}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
+        />
+        <Stack.Screen 
+          name="EmailSettings" 
+          component={EmailSettings}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
           }}
         />
         <Stack.Screen 

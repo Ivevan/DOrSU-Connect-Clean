@@ -2,10 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import * as React from 'react';
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { Animated, Image, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../config/theme';
 import { useThemeActions, useThemeValues } from '../../contexts/ThemeContext';
@@ -103,40 +105,111 @@ const UserSettings = () => {
     return null;
   }, [currentUser, backendUserPhoto]);
   
-  // Lock header height to prevent layout shifts
-  const headerHeightRef = useRef<number>(64);
-  const [headerHeight, setHeaderHeight] = useState(64);
+  // ... existing code ...
+  
+  // Animated floating background orbs (Copilot-style)
+  const floatAnim1 = useRef(new Animated.Value(0)).current;
+  const cloudAnim1 = useRef(new Animated.Value(0)).current;
+  const cloudAnim2 = useRef(new Animated.Value(0)).current;
+  const lightSpot1 = useRef(new Animated.Value(0)).current;
+  const lightSpot2 = useRef(new Animated.Value(0)).current;
+  const lightSpot3 = useRef(new Animated.Value(0)).current;
 
-  // Animation values for smooth entrance - DISABLED FOR DEBUGGING
-  const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
-  const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
+  // Animate floating background orbs on mount
+  useEffect(() => {
+    const animations = [
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(floatAnim1, {
+            toValue: 1,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(floatAnim1, {
+            toValue: 0,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(cloudAnim1, {
+            toValue: 1,
+            duration: 15000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cloudAnim1, {
+            toValue: 0,
+            duration: 15000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(cloudAnim2, {
+            toValue: 1,
+            duration: 17000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cloudAnim2, {
+            toValue: 0,
+            duration: 17000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot1, {
+            toValue: 1,
+            duration: 6000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot1, {
+            toValue: 0,
+            duration: 6000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot2, {
+            toValue: 1,
+            duration: 7000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot2, {
+            toValue: 0,
+            duration: 7000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot3, {
+            toValue: 1,
+            duration: 5500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot3, {
+            toValue: 0,
+            duration: 5500,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+    ];
 
-  // Use useFocusEffect to only update when screen is focused, preventing layout shifts during navigation
-  useFocusEffect(
-    useCallback(() => {
-      // Subscribe to auth changes immediately but with a small delay to prevent blocking navigation
-      let unsubscribe: (() => void) | null = null;
-      // Use setTimeout instead of InteractionManager to reduce delay
-      const timeoutId = setTimeout(() => {
-        unsubscribe = onAuthStateChange((user) => {
-          // Only update if user actually changed to avoid unnecessary re-renders
-          setCurrentUser(prevUser => {
-            if (prevUser?.uid !== user?.uid) {
-              return user;
-            }
-            return prevUser;
-          });
-        });
-      }, 50); // Small delay to allow screen to render first
-      
-      return () => {
-        clearTimeout(timeoutId);
-        if (unsubscribe) {
-          unsubscribe();
-        }
-      };
-    }, [])
-  );
+    animations.forEach(anim => anim.start());
+
+    return () => {
+      animations.forEach(anim => anim.stop());
+    };
+  }, [floatAnim1, cloudAnim1, cloudAnim2, lightSpot1, lightSpot2, lightSpot3]);
   
   // Function to handle logout
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
@@ -197,48 +270,299 @@ const UserSettings = () => {
   
   return (
     <View style={[styles.container, {
-      backgroundColor: t.colors.background,
+      backgroundColor: 'transparent',
     }]} collapsable={false}>
       <StatusBar
-        backgroundColor={t.colors.primary}
-        barStyle={'light-content'}
-        translucent={false}
-        hidden={false}
+        backgroundColor="transparent"
+        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        translucent={true}
       />
 
-      {/* Safe Area Top Spacer - Fixed position */}
-      <View style={[styles.safeAreaTop, { 
-        height: safeInsets.top,
-        backgroundColor: t.colors.primary,
-      }]} collapsable={false} />
+      {/* Background Gradient Layer */}
+      <LinearGradient
+        colors={[
+          isDarkMode
+            ? '#0B1220'
+            : '#FBF8F3',
+          isDarkMode
+            ? '#111827'
+            : '#F8F5F0',
+          isDarkMode
+            ? '#1F2937'
+            : '#F5F2ED'
+        ]}
+        style={styles.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+      />
+      
+      {/* Blur overlay on entire background - very subtle */}
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 5 : 3}
+        tint="default"
+        style={styles.backgroundGradient}
+      />
+
+      {/* Animated Floating Background Orbs (Copilot-style) */}
+      <View style={styles.floatingBgContainer} pointerEvents="none">
+        {/* Light Spot 1 - Top right gentle glow */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              top: '8%',
+              right: '12%',
+              transform: [
+                {
+                  translateX: lightSpot1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -15],
+                  }),
+                },
+                {
+                  translateY: lightSpot1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 12],
+                  }),
+                },
+                {
+                  scale: lightSpot1.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.08, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot1}>
+            <LinearGradient
+              colors={['rgba(255, 220, 180, 0.35)', 'rgba(255, 200, 150, 0.18)', 'rgba(255, 230, 200, 0.08)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.2, y: 0.2 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Light Spot 2 - Middle left soft circle */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              top: '45%',
+              left: '8%',
+              transform: [
+                {
+                  translateX: lightSpot2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 18],
+                  }),
+                },
+                {
+                  translateY: lightSpot2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -10],
+                  }),
+                },
+                {
+                  scale: lightSpot2.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.06, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot2}>
+            <LinearGradient
+              colors={['rgba(255, 210, 170, 0.28)', 'rgba(255, 200, 160, 0.15)', 'rgba(255, 220, 190, 0.06)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.3, y: 0.3 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Light Spot 3 - Bottom right amber glow */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              bottom: '12%',
+              right: '8%',
+              transform: [
+                {
+                  translateX: lightSpot3.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 12],
+                  }),
+                },
+                {
+                  translateY: lightSpot3.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -15],
+                  }),
+                },
+                {
+                  scale: lightSpot3.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.07, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot3}>
+            <LinearGradient
+              colors={['rgba(255, 200, 140, 0.32)', 'rgba(255, 190, 130, 0.16)', 'rgba(255, 210, 160, 0.07)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.4, y: 0.4 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Cloud Patch 1 - Top left soft light patch */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              top: '15%',
+              left: '10%',
+              transform: [
+                {
+                  translateX: cloudAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 20],
+                  }),
+                },
+                {
+                  translateY: cloudAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -15],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.cloudPatch1}>
+            <LinearGradient
+              colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.22)', 'rgba(255, 230, 200, 0.1)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Cloud Patch 2 - Bottom right gentle tone */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              bottom: '20%',
+              right: '15%',
+              transform: [
+                {
+                  translateX: cloudAnim2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -25],
+                  }),
+                },
+                {
+                  translateY: cloudAnim2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 10],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.cloudPatch2}>
+            <LinearGradient
+              colors={['rgba(255, 200, 150, 0.35)', 'rgba(255, 210, 170, 0.18)', 'rgba(255, 230, 200, 0.08)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Orb 1 - Soft Orange Glow (Center area) */}
+        <Animated.View
+          style={[
+            styles.floatingOrbWrapper,
+            {
+              top: '35%',
+              left: '50%',
+              marginLeft: -250,
+              transform: [
+                {
+                  translateX: floatAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-30, 30],
+                  }),
+                },
+                {
+                  translateY: floatAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-20, 20],
+                  }),
+                },
+                {
+                  scale: floatAnim1.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.05, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.floatingOrb1}>
+            <LinearGradient
+              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+            <BlurView
+              intensity={Platform.OS === 'ios' ? 60 : 45}
+              tint="default"
+              style={StyleSheet.absoluteFillObject}
+            />
+          </View>
+        </Animated.View>
+      </View>
 
       {/* Header - Fixed position to prevent layout shifts */}
       <View 
         style={[styles.header, { 
-          backgroundColor: t.colors.primary,
+          backgroundColor: 'transparent',
           top: safeInsets.top,
+          marginLeft: safeInsets.left,
+          marginRight: safeInsets.right,
         }]}
-        onLayout={(e) => {
-          const { height } = e.nativeEvent.layout;
-          if (height > 0 && height !== headerHeightRef.current) {
-            headerHeightRef.current = height;
-            setHeaderHeight(height);
-          }
-        }}
         collapsable={false}
       >
-        <View style={styles.headerLeft} collapsable={false}>
-          <Text style={styles.headerTitle} numberOfLines={1}>Settings</Text>
-        </View>
-        <View style={styles.headerRight} collapsable={false}>
-          <View style={styles.headerSpacer} />
-          <View style={styles.headerSpacer} />
-        </View>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="chevron-back" size={28} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Settings</Text>
       </View>
 
       <ScrollView 
         style={[styles.scrollView, {
-          marginTop: safeInsets.top + headerHeight,
+          marginTop: safeInsets.top + 64,
           marginBottom: 0,
         }]}
         contentContainerStyle={[styles.scrollContent, {
@@ -251,11 +575,13 @@ const UserSettings = () => {
         scrollEventThrottle={16}
       >
         {/* User Profile Section - Fixed height to prevent layout shifts */}
-        <View 
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 50 : 40}
+          tint={isDarkMode ? 'dark' : 'light'}
           style={[
             styles.profileSection,
             {
-              backgroundColor: t.colors.card,
+              backgroundColor: 'rgba(255, 255, 255, 0.3)',
               minHeight: 100, // Fixed minimum height to prevent layout shifts
             }
           ]}
@@ -301,7 +627,7 @@ const UserSettings = () => {
               </Text>
             </View>
           </View>
-        </View>
+        </BlurView>
 
         {/* Settings Categories */}
         <View 
@@ -310,7 +636,11 @@ const UserSettings = () => {
           ]}
         >
           {/* General Section */}
-          <View style={[styles.sectionCard, { backgroundColor: t.colors.card }]}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
+          >
             <Text style={[styles.sectionTitle, { color: t.colors.text }]}>General</Text>
             
             <View style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
@@ -347,10 +677,14 @@ const UserSettings = () => {
                 <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
               </View>
             </TouchableOpacity>
-          </View>
+          </BlurView>
 
           {/* Email Section */}
-          <View style={[styles.sectionCard, { backgroundColor: t.colors.card }]}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
+          >
             <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Email</Text>
             
             <TouchableOpacity style={styles.settingItemLast}>
@@ -362,10 +696,14 @@ const UserSettings = () => {
               </View>
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
-          </View>
+          </BlurView>
 
           {/* About Section */}
-          <View style={[styles.sectionCard, { backgroundColor: t.colors.card }]}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
+          >
             <Text style={[styles.sectionTitle, { color: t.colors.text }]}>About</Text>
             
             <TouchableOpacity 
@@ -429,7 +767,7 @@ const UserSettings = () => {
               </View>
               <Text style={[styles.settingValue, { color: t.colors.textMuted }]}>v1.0.0</Text>
             </View>
-          </View>
+          </BlurView>
 
           {/* Sign Out Button */}
           <TouchableOpacity 
@@ -476,44 +814,33 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 999,
-    backgroundColor: theme.colors.primary,
+    backgroundColor: 'transparent',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    justifyContent: 'flex-start',
   },
-  scrollView: {
-    flex: 1,
-  },
-  headerLeft: {
-    flex: 1,
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: -0.3,
+    marginLeft: 8,
   },
-  headerRight: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  headerSpacer: {
-    width: 40,
-    height: 33,
-    marginLeft: 4,
+  scrollView: {
+    paddingHorizontal: theme.spacing(1.5),
+    paddingTop: theme.spacing(2),
   },
   scrollContent: {
     paddingHorizontal: theme.spacing(1.5),
-    paddingTop: theme.spacing(2),
+    paddingBottom: 20,
   },
   bottomNavContainer: {
     position: 'absolute',
@@ -680,6 +1007,75 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.3,
+  },
+  backgroundGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: -1,
+  },
+  floatingBgContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+    zIndex: 0,
+  },
+  cloudWrapper: {
+    position: 'absolute',
+  },
+  cloudPatch1: {
+    width: 350,
+    height: 350,
+    borderRadius: 175,
+    opacity: 0.25,
+    overflow: 'hidden',
+  },
+  cloudPatch2: {
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    opacity: 0.22,
+    overflow: 'hidden',
+  },
+  lightSpot1: {
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    opacity: 0.2,
+    overflow: 'hidden',
+  },
+  lightSpot2: {
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    opacity: 0.18,
+    overflow: 'hidden',
+  },
+  lightSpot3: {
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    opacity: 0.16,
+    overflow: 'hidden',
+  },
+  floatingOrbWrapper: {
+    position: 'absolute',
+    width: 500,
+    height: 500,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  floatingOrb1: {
+    width: 500,
+    height: 500,
+    borderRadius: 250,
+    opacity: 0.15,
+    overflow: 'hidden',
   },
 });
 

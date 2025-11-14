@@ -770,7 +770,7 @@ const styles = StyleSheet.create({
   profileSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.surface,
+    backgroundColor: 'transparent',
     borderRadius: theme.radii.md,
     padding: theme.spacing(2.5),
     marginBottom: theme.spacing(2),
@@ -778,6 +778,7 @@ const styles = StyleSheet.create({
     minHeight: 100, // Fixed minimum height to prevent layout shifts
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
+    overflow: 'hidden',
   },
   profileAvatarContainer: {
     position: 'relative',

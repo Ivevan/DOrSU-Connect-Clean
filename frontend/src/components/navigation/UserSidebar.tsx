@@ -1,8 +1,8 @@
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useEffect, useRef } from 'react';
-import { Animated, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
 import AIService, { ChatHistoryItem } from '../../services/AIService';
@@ -91,8 +91,12 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
         {/* Sidebar Header with Logo */}
         <View style={styles.sidebarHeader}>
           <View style={styles.sidebarLogoSection}>
-            <View style={[styles.sidebarLogo, { backgroundColor: '#FF9500' }]}>
-              <MaterialIcons name="school" size={24} color="#FFF" />
+            <View style={styles.sidebarLogo}>
+              <Image 
+                source={require('../../../../assets/DOrSU.png')} 
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
             </View>
             <Text style={[styles.sidebarTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>
               DOrSU AI
@@ -275,6 +279,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  logoImage: {
+    width: 40,
+    height: 40,
   },
   sidebarTitle: {
     fontSize: 20,

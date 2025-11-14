@@ -8,6 +8,7 @@ import { ActivityIndicator, Animated, Image, Linking, Modal, Pressable, ScrollVi
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
+import UserSidebar from '../../components/navigation/UserSidebar';
 import { theme } from '../../config/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -47,7 +48,6 @@ const AIChat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
-  const sidebarAnim = useRef(new Animated.Value(-320)).current;
   const sessionId = useRef<string>('');
 
   // Animated floating background orbs (Copilot-style)
@@ -59,6 +59,11 @@ const AIChat = () => {
   const lightSpot1 = useRef(new Animated.Value(0)).current;
   const lightSpot2 = useRef(new Animated.Value(0)).current;
   const lightSpot3 = useRef(new Animated.Value(0)).current;
+
+  // Typing indicator animations
+  const typingDot1 = useRef(new Animated.Value(0)).current;
+  const typingDot2 = useRef(new Animated.Value(0)).current;
+  const typingDot3 = useRef(new Animated.Value(0)).current;
 
   // User state from Firebase Auth - Initialize with current user to prevent layout shift
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -167,15 +172,6 @@ const AIChat = () => {
     }, [])
   );
 
-  // Animate sidebar when opening/closing
-  useEffect(() => {
-    Animated.timing(sidebarAnim, {
-      toValue: isHistoryOpen ? 0 : -320,
-      duration: 300,
-      useNativeDriver: Platform.OS !== 'web',
-    }).start();
-  }, [isHistoryOpen, sidebarAnim]);
-
   // Animate floating background orbs on mount
   useEffect(() => {
     const animations = [
@@ -267,6 +263,64 @@ const AIChat = () => {
 
     animations.forEach(anim => anim.start());
   }, []);
+
+  // Animate typing indicator dots when loading
+  useEffect(() => {
+    if (isLoading) {
+      const typingAnimations = [
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(typingDot1, {
+              toValue: 1,
+              duration: 400,
+              useNativeDriver: true,
+            }),
+            Animated.timing(typingDot1, {
+              toValue: 0,
+              duration: 400,
+              useNativeDriver: true,
+            }),
+          ])
+        ),
+        Animated.loop(
+          Animated.sequence([
+            Animated.delay(150),
+            Animated.timing(typingDot2, {
+              toValue: 1,
+              duration: 400,
+              useNativeDriver: true,
+            }),
+            Animated.timing(typingDot2, {
+              toValue: 0,
+              duration: 400,
+              useNativeDriver: true,
+            }),
+          ])
+        ),
+        Animated.loop(
+          Animated.sequence([
+            Animated.delay(300),
+            Animated.timing(typingDot3, {
+              toValue: 1,
+              duration: 400,
+              useNativeDriver: true,
+            }),
+            Animated.timing(typingDot3, {
+              toValue: 0,
+              duration: 400,
+              useNativeDriver: true,
+            }),
+          ])
+        ),
+      ];
+      typingAnimations.forEach(anim => anim.start());
+    } else {
+      // Reset animations when not loading
+      typingDot1.setValue(0);
+      typingDot2.setValue(0);
+      typingDot3.setValue(0);
+    }
+  }, [isLoading, typingDot1, typingDot2, typingDot3]);
 
   // Save chat when messages change (only if there are messages)
   useEffect(() => {
@@ -742,163 +796,26 @@ const AIChat = () => {
         </View>
       </View>
       
-      {/* Chat History Sidebar - Copilot Style */}
-      <Animated.View 
-        style={[
-          styles.sidebar, 
-          { 
-            transform: [{ translateX: sidebarAnim }],
-            backgroundColor: isDarkMode ? '#1F2937' : '#F5F2ED',
-            paddingTop: insets.top,
+      {/* User Sidebar Component */}
+      <UserSidebar
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        chatHistory={chatHistory}
+        onChatSelect={loadChatFromHistory}
+        onNewConversation={() => {
+          sessionId.current = '';
+          setMessages([]);
+        }}
+        getUserToken={getUserToken}
+        sessionId={sessionId.current}
+        onDeleteChat={(chatId) => {
+          setChatHistory(prev => prev.filter(h => h.id !== chatId));
+          if (sessionId.current === chatId) {
+            sessionId.current = '';
+            setMessages([]);
           }
-        ]}
-      >
-        {/* Sidebar Header with Logo */}
-        <View style={styles.sidebarHeader}>
-          <View style={styles.sidebarLogoSection}>
-            <View style={[styles.sidebarLogo, { backgroundColor: '#FF9500' }]}>
-              <MaterialIcons name="school" size={24} color="#FFF" />
-            </View>
-            <Text style={[styles.sidebarTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>DOrSU AI</Text>
-          </View>
-          <View style={styles.sidebarHeaderButtons}>
-            <TouchableOpacity 
-              style={styles.sidebarIconButton}
-              onPress={() => navigation.navigate('UserSettings')}
-              accessibilityLabel="User settings"
-            >
-              <Ionicons name="person-circle-outline" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.sidebarIconButton}
-              onPress={() => {
-                sessionId.current = '';
-                setMessages([]);
-                setIsHistoryOpen(false);
-              }}
-              accessibilityLabel="New conversation"
-            >
-              <Ionicons name="create-outline" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
-            </TouchableOpacity>
-            <TouchableOpacity 
-              onPress={() => setIsHistoryOpen(false)} 
-              style={styles.sidebarIconButton}
-              accessibilityLabel="Close sidebar"
-            >
-              <View style={styles.customHamburger} pointerEvents="none">
-                <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
-                <View style={[styles.hamburgerLine, styles.hamburgerLineLong, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
-                <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
-              </View>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Navigation Menu */}
-        <View style={styles.sidebarMenu}>
-          <TouchableOpacity 
-            style={[styles.sidebarMenuItem, { backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.1)' : 'rgba(255, 149, 0, 0.08)' }]}
-            onPress={() => {
-              sessionId.current = '';
-              setMessages([]);
-              setIsHistoryOpen(false);
-            }}
-          >
-            <Ionicons name="home" size={24} color="#FF9500" />
-            <Text style={[styles.sidebarMenuText, { color: '#FF9500', fontWeight: '600' }]}>Conversation</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.sidebarMenuItem}
-            onPress={() => {
-              setIsHistoryOpen(false);
-              navigation.navigate('SchoolUpdates');
-            }}
-          >
-            <Ionicons name="compass-outline" size={24} color={isDarkMode ? '#9CA3AF' : '#6B7280'} />
-            <Text style={[styles.sidebarMenuText, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>Discover</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.sidebarMenuItem}
-            onPress={() => {
-              setIsHistoryOpen(false);
-              navigation.navigate('Calendar');
-            }}
-          >
-            <Ionicons name="copy-outline" size={24} color={isDarkMode ? '#9CA3AF' : '#6B7280'} />
-            <Text style={[styles.sidebarMenuText, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>Calendar</Text>
-          </TouchableOpacity>
-        </View>
-        
-        {/* Chat History Section */}
-        <View style={styles.sidebarHistorySection}>
-          <Text style={[styles.sidebarSectionTitle, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>Recent Chats</Text>
-          <ScrollView style={styles.sidebarContent} showsVerticalScrollIndicator={false}>
-            {chatHistory.length === 0 ? (
-              <View style={styles.emptyHistoryContainer}>
-                <Ionicons name="chatbubbles-outline" size={40} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
-                <Text style={[styles.emptyHistoryText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-                  No chat history yet
-                </Text>
-              </View>
-            ) : (
-              chatHistory.map((chat, idx) => (
-                <View key={`${chat.id}:${idx}`} style={styles.historyItem}>
-                  <TouchableOpacity 
-                    style={[styles.historyItemButton, { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)' }]}
-                    onPress={() => loadChatFromHistory(chat.id)}
-                  >
-                    <Text style={[styles.historyTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]} numberOfLines={1}>
-                      {chat.title}
-                    </Text>
-                    <Text style={[styles.historyPreview, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]} numberOfLines={1}>
-                      {chat.preview}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.deleteHistoryBtn}
-                    onPress={async () => {
-                      try {
-                        let token = await getUserToken();
-                        if (!token) {
-                          const user = getCurrentUser();
-                          if (user && typeof user.getIdToken === 'function') {
-                            token = await user.getIdToken();
-                          }
-                        }
-                        if (!token) return;
-                        const ok = await AIService.deleteChatSession(chat.id, token);
-                        if (ok) {
-                          setChatHistory(prev => prev.filter(h => h.id !== chat.id));
-                          if (sessionId.current === chat.id) {
-                            sessionId.current = '';
-                            setMessages([]);
-                          }
-                        }
-                      } catch (e) {
-                        console.error('Failed to delete chat:', e);
-                      }
-                    }}
-                    accessibilityLabel="Delete chat"
-                  >
-                    <Ionicons name="trash-outline" size={16} color={isDarkMode ? '#9CA3AF' : '#6B7280'} />
-                  </TouchableOpacity>
-                </View>
-              ))
-            )}
-          </ScrollView>
-        </View>
-      </Animated.View>
-      
-      {/* Overlay for sidebar */}
-      {isHistoryOpen && (
-        <TouchableOpacity 
-          style={styles.sidebarOverlay} 
-          onPress={() => setIsHistoryOpen(false)}
-          activeOpacity={1}
-        />
-      )}
+        }}
+      />
       
       {/* Info Modal */}
       <Modal visible={isInfoOpen} transparent animationType="fade" onRequestClose={() => setIsInfoOpen(false)}>
@@ -978,21 +895,19 @@ const AIChat = () => {
                     <MaterialIcons name="auto-awesome" size={14} color="#FFF" />
                   </View>
                 )}
-                <View
-                  style={[
-                    styles.messageBubble,
-                    message.role === 'user'
-                      ? { backgroundColor: isDarkMode ? '#2563EB' : '#2563EB' }
-                      : { backgroundColor: isDarkMode ? '#1F2937' : '#F8FAFC', borderColor: isDarkMode ? '#374151' : '#E5E7EB', borderWidth: 1 },
-                  ]}
-                >
-                  {message.role === 'user' ? (
-                    <Text
-                      style={[styles.messageText, { color: '#FFFFFF' }]}
-                    >
+                {message.role === 'user' ? (
+                  <View
+                    style={[
+                      styles.messageBubble,
+                      { backgroundColor: isDarkMode ? '#2563EB' : '#2563EB' }
+                    ]}
+                  >
+                    <Text style={[styles.messageText, { color: '#FFFFFF' }]}>
                       {message.content}
                     </Text>
-                  ) : (
+                  </View>
+                ) : (
+                  <View style={[styles.messageBubble, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}>
                     <Markdown
                       style={getMarkdownStyles(t)}
                       onLinkPress={(url: string) => {
@@ -1002,8 +917,8 @@ const AIChat = () => {
                     >
                       {message.content}
                     </Markdown>
-                  )}
-                </View>
+                  </View>
+                )}
               </View>
             ))}
             {isLoading && (
@@ -1011,8 +926,69 @@ const AIChat = () => {
                 <View style={[styles.aiAvatar, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
                   <MaterialIcons name="auto-awesome" size={14} color="#FFF" />
                 </View>
-                <View style={[styles.messageBubble, { backgroundColor: isDarkMode ? '#1F2937' : '#F8FAFC', borderColor: isDarkMode ? '#374151' : '#E5E7EB', borderWidth: 1 }]}>
-                  <ActivityIndicator size="small" color={isDarkMode ? '#3B82F6' : '#2563EB'} />
+                <View style={[styles.typingBubbleContainer, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}>
+                  <BlurView
+                    intensity={Platform.OS === 'ios' ? 50 : 40}
+                    tint={isDarkMode ? 'dark' : 'light'}
+                    style={styles.typingBlurView}
+                  >
+                    <View style={styles.typingIndicator}>
+                      <Animated.View 
+                        style={[
+                          styles.typingDot, 
+                          { 
+                            backgroundColor: isDarkMode ? '#9CA3AF' : '#6B7280',
+                            opacity: typingDot1.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0.3, 1]
+                            }),
+                            transform: [{
+                              translateY: typingDot1.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [0, -4]
+                              })
+                            }]
+                          }
+                        ]} 
+                      />
+                      <Animated.View 
+                        style={[
+                          styles.typingDot, 
+                          { 
+                            backgroundColor: isDarkMode ? '#9CA3AF' : '#6B7280',
+                            opacity: typingDot2.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0.3, 1]
+                            }),
+                            transform: [{
+                              translateY: typingDot2.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [0, -4]
+                              })
+                            }]
+                          }
+                        ]} 
+                      />
+                      <Animated.View 
+                        style={[
+                          styles.typingDot, 
+                          { 
+                            backgroundColor: isDarkMode ? '#9CA3AF' : '#6B7280',
+                            opacity: typingDot3.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0.3, 1]
+                            }),
+                            transform: [{
+                              translateY: typingDot3.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [0, -4]
+                              })
+                            }]
+                          }
+                        ]} 
+                      />
+                    </View>
+                  </BlurView>
                 </View>
               </View>
             )}
@@ -1258,131 +1234,6 @@ const styles = StyleSheet.create({
     color: '#FFF',
     letterSpacing: -0.3,
   },
-  // Sidebar styles
-  sidebar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    bottom: 0,
-    width: 320,
-    zIndex: 20,
-    elevation: 20,
-  },
-  sidebarOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 15,
-  },
-  sidebarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-  },
-  sidebarLogoSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  sidebarLogo: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sidebarTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-  },
-  sidebarHeaderButtons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  sidebarIconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sidebarMenu: {
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 16,
-    gap: 4,
-  },
-  sidebarMenuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    gap: 12,
-  },
-  sidebarMenuText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  sidebarHistorySection: {
-    flex: 1,
-    paddingTop: 8,
-  },
-  sidebarSectionTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-  },
-  sidebarContent: {
-    flex: 1,
-    paddingHorizontal: 12,
-  },
-  historyItem: {
-    marginBottom: 4,
-    position: 'relative',
-  },
-  historyItemButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-  },
-  historyTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  historyPreview: {
-    fontSize: 13,
-  },
-  deleteHistoryBtn: {
-    position: 'absolute',
-    right: 8,
-    top: 8,
-    padding: 6,
-    borderRadius: 6,
-  },
-  emptyHistoryContainer: {
-    alignItems: 'center',
-    paddingVertical: 40,
-    paddingHorizontal: 20,
-  },
-  emptyHistoryText: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginTop: 12,
-    textAlign: 'center',
-  },
   emptyScrollContent: {
     alignItems: 'center',
   },
@@ -1516,6 +1367,9 @@ const styles = StyleSheet.create({
   },
   assistantMessageRow: {
     justifyContent: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
   },
   aiAvatar: {
     width: 28,
@@ -1531,10 +1385,50 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 20,
   },
+  aiMessageCard: {
+    overflow: 'hidden',
+  },
+  aiMessageBlur: {
+    borderRadius: 20,
+  },
+  aiMessageContent: {
+  },
   messageText: {
     fontSize: 15,
     lineHeight: 22,
     letterSpacing: 0.1,
+  },
+  typingBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  typingBubbleContainer: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    maxWidth: '75%',
+  },
+  typingBlurView: {
+    borderRadius: 20,
+  },
+  typingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  typingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  typingText: {
+    fontSize: 12,
+    fontWeight: '500',
+    letterSpacing: 0.2,
   },
   infoModalOverlay: {
     flex: 1,

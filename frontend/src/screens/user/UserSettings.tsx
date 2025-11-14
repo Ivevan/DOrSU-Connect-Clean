@@ -7,7 +7,6 @@ import * as React from 'react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Animated, Image, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import { theme } from '../../config/theme';
 import { useThemeActions, useThemeValues } from '../../contexts/ThemeContext';
 import LogoutModal from '../../modals/LogoutModal';
@@ -243,7 +242,7 @@ const UserSettings = () => {
           marginBottom: 0,
         }]}
         contentContainerStyle={[styles.scrollContent, {
-          paddingBottom: safeInsets.bottom + 80, // Bottom nav bar height + safe area
+          paddingBottom: safeInsets.bottom + 20,
         }]} 
         showsVerticalScrollIndicator={false}
         removeClippedSubviews={true}
@@ -449,14 +448,6 @@ const UserSettings = () => {
           </TouchableOpacity>
         </View>
       </ScrollView>
-
-      {/* Bottom Navigation Bar - Fixed position */}
-      <View style={[styles.bottomNavContainer, {
-        bottom: 0,
-        paddingBottom: safeInsets.bottom,
-      }]} collapsable={false}>
-        <UserBottomNavBar />
-      </View>
 
       <LogoutModal
         visible={isLogoutOpen}

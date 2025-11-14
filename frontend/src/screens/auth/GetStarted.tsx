@@ -445,6 +445,20 @@ const GetStarted = () => {
         animated={true}
       />
       
+      {/* Skip to User Screen Button - Top Right */}
+      <TouchableOpacity
+        style={[styles.skipButton, { top: insets.top + 12, right: 16 }]}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          navigation.navigate('SchoolUpdates');
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Skip to user screen"
+        accessibilityHint="Double tap to go directly to the user screen"
+      >
+        <MaterialIcons name="dashboard" size={24} color="#1F2937" />
+      </TouchableOpacity>
+
       {/* Gradient Background */}
       <Animated.View style={[styles.gradientBackgroundContainer, { opacity: backgroundOpacity }]}>
         <LinearGradient
@@ -1239,6 +1253,20 @@ const styles = StyleSheet.create({
     lineHeight: 16, // Reduced line height
     textTransform: 'uppercase',
     marginBottom: theme.spacing(2),
+  },
+  skipButton: {
+    position: 'absolute',
+    zIndex: 100,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 12,
+    padding: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(31, 41, 55, 0.1)',
   },
   sparkleContainer: {
     position: 'absolute',

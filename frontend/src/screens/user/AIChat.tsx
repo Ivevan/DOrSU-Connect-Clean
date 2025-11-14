@@ -1,8 +1,10 @@
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Linking, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View, Platform } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Animated, Image, Linking, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View, Platform } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
@@ -10,7 +12,7 @@ import { theme } from '../../config/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import AIService, { ChatHistoryItem, Message } from '../../services/AIService';
-import { getCurrentUser } from '../../services/authService';
+import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import { formatAIResponse, getMarkdownStyles } from '../../utils/markdownFormatter';
 
 type RootStackParamList = {
@@ -34,7 +36,7 @@ const SUGGESTIONS = [
 const AIChat = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme: t } = useTheme();
-  const { getUserToken, userEmail, checkAuthStatus } = useAuth();
+  const { getUserToken, userEmail: authUserEmail, checkAuthStatus } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width } = useWindowDimensions();
   const isWide = width > 600;
@@ -47,6 +49,69 @@ const AIChat = () => {
   const scrollViewRef = useRef<ScrollView>(null);
   const sidebarAnim = useRef(new Animated.Value(-300)).current;
   const sessionId = useRef<string>('');
+
+  // Animated floating background orbs (Copilot-style)
+  const floatAnim1 = useRef(new Animated.Value(0)).current;
+  const floatAnim2 = useRef(new Animated.Value(0)).current;
+  const floatAnim3 = useRef(new Animated.Value(0)).current;
+
+  // User state from Firebase Auth - Initialize with current user to prevent layout shift
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    try {
+      return getCurrentUser();
+    } catch {
+      return null;
+    }
+  });
+  
+  // Backend auth user data from AsyncStorage
+  const [backendUserName, setBackendUserName] = useState<string | null>(null);
+  const [backendUserEmail, setBackendUserEmail] = useState<string | null>(null);
+  const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
+
+  // Load backend user data on mount and screen focus
+  useFocusEffect(
+    useCallback(() => {
+      const loadBackendUserData = async () => {
+        try {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const userName = await AsyncStorage.getItem('userName');
+          const userEmail = await AsyncStorage.getItem('userEmail');
+          const userPhoto = await AsyncStorage.getItem('userPhoto');
+          setBackendUserName(userName);
+          setBackendUserEmail(userEmail);
+          setBackendUserPhoto(userPhoto);
+        } catch (error) {
+          console.error('Failed to load backend user data:', error);
+        }
+      };
+      loadBackendUserData();
+    }, [])
+  );
+  
+  // Get user display name, email, and photo (memoized) - Check backend first, then Firebase
+  const userName = useMemo(() => {
+    // Priority: Backend username -> Firebase displayName -> Firebase email username -> Backend email username -> Default
+    if (backendUserName) return backendUserName;
+    if (currentUser?.displayName) return currentUser.displayName;
+    if (currentUser?.email) return currentUser.email.split('@')[0];
+    if (backendUserEmail) return backendUserEmail.split('@')[0];
+    return 'User';
+  }, [currentUser, backendUserName, backendUserEmail]);
+  
+  const userEmail = useMemo(() => {
+    // Priority: Backend email -> Firebase email -> Default
+    if (backendUserEmail) return backendUserEmail;
+    if (currentUser?.email) return currentUser.email;
+    return 'No email';
+  }, [currentUser, backendUserEmail]);
+  
+  const userPhoto = useMemo(() => {
+    // Priority: Backend photo -> Firebase photo -> Default
+    if (backendUserPhoto) return backendUserPhoto;
+    if (currentUser?.photoURL) return currentUser.photoURL;
+    return null;
+  }, [currentUser, backendUserPhoto]);
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
@@ -73,6 +138,30 @@ const AIChat = () => {
     initializeChat();
   }, []);
 
+  // Subscribe to auth changes when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      let unsubscribe: (() => void) | null = null;
+      const timeoutId = setTimeout(() => {
+        unsubscribe = onAuthStateChange((user) => {
+          setCurrentUser(prevUser => {
+            if (prevUser?.uid !== user?.uid) {
+              return user;
+            }
+            return prevUser;
+          });
+        });
+      }, 50);
+      
+      return () => {
+        clearTimeout(timeoutId);
+        if (unsubscribe) {
+          unsubscribe();
+        }
+      };
+    }, [])
+  );
+
   // Animate sidebar when opening/closing
   useEffect(() => {
     Animated.timing(sidebarAnim, {
@@ -81,6 +170,56 @@ const AIChat = () => {
       useNativeDriver: Platform.OS !== 'web',
     }).start();
   }, [isHistoryOpen, sidebarAnim]);
+
+  // Animate floating background orbs on mount
+  useEffect(() => {
+    const animations = [
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(floatAnim1, {
+            toValue: 1,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(floatAnim1, {
+            toValue: 0,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(floatAnim2, {
+            toValue: 1,
+            duration: 10000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(floatAnim2, {
+            toValue: 0,
+            duration: 10000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(floatAnim3, {
+            toValue: 1,
+            duration: 12000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(floatAnim3, {
+            toValue: 0,
+            duration: 12000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+    ];
+
+    animations.forEach(anim => anim.start());
+  }, []);
 
   // Save chat when messages change (only if there are messages)
   useEffect(() => {
@@ -99,6 +238,15 @@ const AIChat = () => {
     } catch (error) {
       console.error('Failed to load chat history:', error);
     }
+  };
+
+  const getUserInitials = () => {
+    if (!userName) return '?';
+    const names = userName.split(' ');
+    if (names.length >= 2) {
+      return (names[0][0] + names[1][0]).toUpperCase();
+    }
+    return userName.substring(0, 2).toUpperCase();
   };
 
   const saveChatHistory = async () => {
@@ -239,29 +387,191 @@ const AIChat = () => {
   };
 
   return (
-    <View style={[styles.container, {
-      backgroundColor: t.colors.background,
-      paddingTop: insets.top,
-      paddingBottom: 0, // Remove bottom padding since UserBottomNavBar handles it
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    }]}>
+    <View style={styles.container}>
       <StatusBar
-        backgroundColor={t.colors.primary}
-        barStyle={'light-content'}
-        translucent={false}
+        backgroundColor="transparent"
+        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        translucent={true}
       />
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: t.colors.primary }]}>
+
+      {/* Background Gradient Layer */}
+      <LinearGradient
+        colors={
+          isDarkMode
+            ? ['#0B1220', '#111827', '#1F2937']
+            : ['#F8FAFC', '#FFFFFF', '#F1F5F9']
+        }
+        style={styles.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      />
+
+      {/* Animated Floating Background Orbs (Copilot-style) */}
+      <View style={styles.floatingBgContainer} pointerEvents="none">
+        {/* Orb 1 - Orange (Main Copilot color) */}
+        <Animated.View
+          style={[
+            styles.floatingOrbWrapper,
+            {
+              top: '10%',
+              right: '20%',
+              transform: [
+                {
+                  translateX: floatAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-50, 100],
+                  }),
+                },
+                {
+                  translateY: floatAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -80],
+                  }),
+                },
+                {
+                  scale: floatAnim1.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.2, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={['#FF9500', '#FF6B00', '#FF9500']}
+            style={styles.floatingOrb1}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <BlurView
+              intensity={Platform.OS === 'ios' ? 60 : 50}
+              tint={isDarkMode ? 'dark' : 'light'}
+              style={styles.blurOverlay}
+            />
+          </LinearGradient>
+        </Animated.View>
+
+        {/* Orb 2 - Blue */}
+        <Animated.View
+          style={[
+            styles.floatingOrbWrapper,
+            {
+              bottom: '20%',
+              left: '10%',
+              transform: [
+                {
+                  translateX: floatAnim2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [80, -60],
+                  }),
+                },
+                {
+                  translateY: floatAnim2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-40, 60],
+                  }),
+                },
+                {
+                  scale: floatAnim2.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 0.9, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={['#3B82F6', '#2563EB', '#3B82F6']}
+            style={styles.floatingOrb2}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <BlurView
+              intensity={Platform.OS === 'ios' ? 55 : 45}
+              tint={isDarkMode ? 'dark' : 'light'}
+              style={styles.blurOverlay}
+            />
+          </LinearGradient>
+        </Animated.View>
+
+        {/* Orb 3 - Purple */}
+        <Animated.View
+          style={[
+            styles.floatingOrbWrapper,
+            {
+              top: '50%',
+              right: '5%',
+              transform: [
+                {
+                  translateX: floatAnim3.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [20, -80],
+                  }),
+                },
+                {
+                  translateY: floatAnim3.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [60, -40],
+                  }),
+                },
+                {
+                  scale: floatAnim3.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.1, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={['#8B5CF6', '#7C3AED', '#8B5CF6']}
+            style={styles.floatingOrb3}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <BlurView
+              intensity={Platform.OS === 'ios' ? 50 : 40}
+              tint={isDarkMode ? 'dark' : 'light'}
+              style={styles.blurOverlay}
+            />
+          </LinearGradient>
+        </Animated.View>
+      </View>
+      {/* Header - Copilot Style */}
+      <View style={[styles.header, { 
+        marginTop: insets.top,
+        marginLeft: insets.left,
+        marginRight: insets.right,
+      }]}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity onPress={() => setIsHistoryOpen(true)} style={styles.menuButton}>
-            <Ionicons name="menu" size={24} color="#fff" />
+          <TouchableOpacity 
+            onPress={() => setIsHistoryOpen(true)} 
+            style={styles.menuButton}
+            accessibilityLabel="Open chat history"
+          >
+            <Ionicons name="menu" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>DOrSU AI</Text>
         </View>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>New Conversation</Text>
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.headerButton} onPress={() => setIsInfoOpen(true)} accessibilityLabel="AI chat information">
-            <Ionicons name="information-circle-outline" size={24} color="#fff" />
+          <TouchableOpacity 
+            style={styles.profileButton} 
+            onPress={() => navigation.navigate('UserSettings')} 
+            accessibilityLabel="User profile - Go to settings"
+          >
+            {userPhoto ? (
+              <Image 
+                source={{ uri: userPhoto }} 
+                style={styles.profileImage}
+              />
+            ) : (
+              <View style={[styles.profileIconCircle, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
+                <Text style={styles.profileInitials}>{getUserInitials()}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -399,8 +709,12 @@ const AIChat = () => {
       {/* Main Content - Chat Messages */}
       <ScrollView 
         ref={scrollViewRef}
-        contentContainerStyle={[
-          styles.scrollContent,
+        contentContainerStyle={[{
+          paddingHorizontal: 16 + insets.left,
+          paddingTop: 12,
+          paddingBottom: 20,
+          paddingRight: 16 + insets.right,
+        },
           messages.length === 0 && styles.emptyScrollContent
         ]} 
         keyboardShouldPersistTaps="handled"
@@ -422,21 +736,26 @@ const AIChat = () => {
               <View
                 key={message.id}
                 style={[
-                  styles.messageContainer,
-                  message.role === 'user' ? styles.userMessage : styles.assistantMessage,
+                  styles.messageRow,
+                  message.role === 'user' ? styles.userMessageRow : styles.assistantMessageRow,
                 ]}
               >
+                {message.role === 'assistant' && (
+                  <View style={[styles.aiAvatar, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
+                    <MaterialIcons name="auto-awesome" size={14} color="#FFF" />
+                  </View>
+                )}
                 <View
                   style={[
                     styles.messageBubble,
                     message.role === 'user'
-                      ? { backgroundColor: t.colors.primary }
-                      : { backgroundColor: t.colors.card, borderColor: t.colors.border, borderWidth: 1 },
+                      ? { backgroundColor: isDarkMode ? '#2563EB' : '#2563EB' }
+                      : { backgroundColor: isDarkMode ? '#1F2937' : '#F8FAFC', borderColor: isDarkMode ? '#374151' : '#E5E7EB', borderWidth: 1 },
                   ]}
                 >
                   {message.role === 'user' ? (
                     <Text
-                      style={[styles.messageText, { color: '#fff' }]}
+                      style={[styles.messageText, { color: '#FFFFFF' }]}
                     >
                       {message.content}
                     </Text>
@@ -455,9 +774,12 @@ const AIChat = () => {
               </View>
             ))}
             {isLoading && (
-              <View style={[styles.messageContainer, styles.assistantMessage]}>
-                <View style={[styles.messageBubble, { backgroundColor: t.colors.card, borderColor: t.colors.border, borderWidth: 1 }]}>
-                  <ActivityIndicator size="small" color={t.colors.primary} />
+              <View style={styles.assistantMessageRow}>
+                <View style={[styles.aiAvatar, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
+                  <MaterialIcons name="auto-awesome" size={14} color="#FFF" />
+                </View>
+                <View style={[styles.messageBubble, { backgroundColor: isDarkMode ? '#1F2937' : '#F8FAFC', borderColor: isDarkMode ? '#374151' : '#E5E7EB', borderWidth: 1 }]}>
+                  <ActivityIndicator size="small" color={isDarkMode ? '#3B82F6' : '#2563EB'} />
                 </View>
               </View>
             )}
@@ -467,7 +789,9 @@ const AIChat = () => {
 
       {/* Suggestions - Only show when no messages */}
       {messages.length === 0 && (
-        <View style={styles.suggestionsContainer}>
+        <View style={[styles.suggestionsContainer, {
+          paddingHorizontal: 12 + insets.left,
+        }]}>
           {[SUGGESTIONS[0], SUGGESTIONS[1], SUGGESTIONS[2]].map((txt, idx) => (
             <TouchableOpacity
               key={idx}
@@ -484,33 +808,48 @@ const AIChat = () => {
         </View>
       )}
 
-      {/* Message Input Bar */}
-      <View style={[styles.inputBar, { backgroundColor: t.colors.background, borderTopColor: t.colors.border }]}>
-        <TextInput
-          style={[styles.input, { backgroundColor: t.colors.surface, borderColor: t.colors.border, color: t.colors.text }]}
-          placeholder="Type a message to DOrSU AI"
-          placeholderTextColor={t.colors.textMuted}
-          value={inputText}
-          onChangeText={setInputText}
-          onSubmitEditing={() => handleSendMessage()}
-          editable={!isLoading}
-          multiline
-        />
-        <TouchableOpacity 
-          style={[
-            styles.sendBtn, 
-            { backgroundColor: t.colors.primary },
-            (isLoading || !inputText.trim()) && styles.sendBtnDisabled
-          ]}
-          onPress={() => handleSendMessage()}
-          disabled={isLoading || !inputText.trim()}
-        >
-          {isLoading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Ionicons name="arrow-up" size={18} color="#fff" />
+      {/* Message Input Bar - Copilot Style Floating */}
+      <View style={[styles.inputBarContainer, { 
+        paddingLeft: 16 + insets.left,
+        paddingRight: 16 + insets.right,
+        paddingBottom: 12 + insets.bottom,
+      }]}>
+        <View style={[styles.inputBar, {
+          backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
+          borderColor: isDarkMode ? '#374151' : '#E5E7EB',
+          shadowColor: '#000',
+        }]}>
+          <TextInput
+            style={[styles.input, { color: isDarkMode ? '#F9FAFB' : '#111827' }]}
+            placeholder="Message Copilot"
+            placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
+            value={inputText}
+            onChangeText={setInputText}
+            onSubmitEditing={() => handleSendMessage()}
+            editable={!isLoading}
+            multiline
+            maxLength={2000}
+          />
+          
+          {inputText.trim() && (
+            <TouchableOpacity 
+              style={[
+                styles.sendBtn, 
+                { backgroundColor: '#2563EB' },
+                isLoading && styles.sendBtnDisabled
+              ]}
+              onPress={() => handleSendMessage()}
+              disabled={isLoading}
+              accessibilityLabel="Send message"
+            >
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="arrow-up" size={20} color="#fff" />
+              )}
+            </TouchableOpacity>
           )}
-        </TouchableOpacity>
+        </View>
       </View>
       <UserBottomNavBar />
     </View>
@@ -520,53 +859,104 @@ const AIChat = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.surfaceAlt,
+  },
+  backgroundGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: -1,
+  },
+  // Floating background orbs container (Copilot-style)
+  floatingBgContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+    zIndex: 0,
+  },
+  floatingOrbWrapper: {
+    position: 'absolute',
+  },
+  floatingOrb1: {
+    width: 350,
+    height: 350,
+    borderRadius: 175,
+    opacity: 0.4,
+  },
+  floatingOrb2: {
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    opacity: 0.35,
+  },
+  floatingOrb3: {
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+    opacity: 0.3,
+  },
+  blurOverlay: {
+    flex: 1,
+    borderRadius: 200,
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    marginBottom: 6,
-    elevation: 4,
+    paddingVertical: 14,
+    backgroundColor: 'transparent',
     zIndex: 10,
-    ...(Platform.OS === 'web'
-      ? { boxShadow: '0px 3px 8px rgba(0,0,0,0.08)' }
-      : {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 3 },
-          shadowOpacity: 0.08,
-          shadowRadius: 8,
-        }),
   },
   headerLeft: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    width: 40,
   },
   menuButton: {
-    padding: 8,
-    marginRight: 8,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
-  headerButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    marginLeft: 4,
-    position: 'relative',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: -0.3,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+  },
+  headerRight: {
+    width: 40,
+    alignItems: 'flex-end',
+  },
+  profileButton: {
+    width: 32,
+    height: 32,
+  },
+  profileImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  profileIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileInitials: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFF',
+    letterSpacing: -0.3,
   },
   // Sidebar styles
   sidebar: {
@@ -651,11 +1041,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
   },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 20,
-  },
   emptyScrollContent: {
     alignItems: 'center',
   },
@@ -685,7 +1070,6 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     marginBottom: 8,
-    paddingHorizontal: 12,
   },
   promptCard: {
     flexDirection: 'row',
@@ -723,54 +1107,94 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  inputBarContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.surfaceAlt,
-    paddingHorizontal: 12,
+    borderRadius: 28,
+    paddingHorizontal: 8,
     paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
+    borderWidth: 1,
+    gap: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  attachButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachmentButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderWidth: 1,
+    gap: 8,
   },
   input: {
     flex: 1,
-    backgroundColor: theme.colors.surface,
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
     fontSize: 15,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    lineHeight: 20,
+    paddingVertical: 6,
+    maxHeight: 100,
   },
   sendBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: theme.colors.primary,
-    borderRadius: 14,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sendBtnDisabled: {
-    opacity: 0.5,
+    opacity: 0.4,
   },
-  messageContainer: {
-    marginBottom: 12,
-    paddingHorizontal: 4,
-  },
-  userMessage: {
-    alignItems: 'flex-end',
-  },
-  assistantMessage: {
+  messageRow: {
+    flexDirection: 'row',
     alignItems: 'flex-start',
+    marginBottom: 16,
+    paddingHorizontal: 4,
+    gap: 10,
+  },
+  userMessageRow: {
+    justifyContent: 'flex-end',
+  },
+  assistantMessageRow: {
+    justifyContent: 'flex-start',
+  },
+  aiAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
   },
   messageBubble: {
-    maxWidth: '80%',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 16,
+    maxWidth: '75%',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 20,
   },
   messageText: {
     fontSize: 15,
-    lineHeight: 20,
+    lineHeight: 22,
+    letterSpacing: 0.1,
   },
   infoModalOverlay: {
     flex: 1,

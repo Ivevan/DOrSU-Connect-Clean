@@ -396,14 +396,27 @@ const AIChat = () => {
 
       {/* Background Gradient Layer */}
       <LinearGradient
-        colors={
+        colors={[
           isDarkMode
-            ? ['#0B1220', '#111827', '#1F2937']
-            : ['#F8FAFC', '#FFFFFF', '#F1F5F9']
-        }
+            ? '#0B1220'
+            : '#F8FAFC',
+          isDarkMode
+            ? '#111827'
+            : '#FFFFFF',
+          isDarkMode
+            ? '#1F2937'
+            : '#F1F5F9'
+        ]}
         style={styles.backgroundGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
+      />
+      
+      {/* Blur overlay on entire background */}
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 20 : 15}
+        tint={isDarkMode ? 'dark' : 'light'}
+        style={styles.backgroundGradient}
       />
 
       {/* Animated Floating Background Orbs (Copilot-style) */}
@@ -438,106 +451,19 @@ const AIChat = () => {
             },
           ]}
         >
-          <LinearGradient
-            colors={['#FF9500', '#FF6B00', '#FF9500']}
-            style={styles.floatingOrb1}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <BlurView
-              intensity={Platform.OS === 'ios' ? 60 : 50}
-              tint={isDarkMode ? 'dark' : 'light'}
-              style={styles.blurOverlay}
+          <View style={styles.floatingOrb1}>
+            <LinearGradient
+              colors={['#FF9500', '#FF7A00', '#FF9500']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
             />
-          </LinearGradient>
-        </Animated.View>
-
-        {/* Orb 2 - Blue */}
-        <Animated.View
-          style={[
-            styles.floatingOrbWrapper,
-            {
-              bottom: '20%',
-              left: '10%',
-              transform: [
-                {
-                  translateX: floatAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [80, -60],
-                  }),
-                },
-                {
-                  translateY: floatAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [-40, 60],
-                  }),
-                },
-                {
-                  scale: floatAnim2.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 0.9, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <LinearGradient
-            colors={['#3B82F6', '#2563EB', '#3B82F6']}
-            style={styles.floatingOrb2}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
             <BlurView
-              intensity={Platform.OS === 'ios' ? 55 : 45}
-              tint={isDarkMode ? 'dark' : 'light'}
-              style={styles.blurOverlay}
+              intensity={Platform.OS === 'ios' ? 150 : 120}
+              tint="default"
+              style={StyleSheet.absoluteFillObject}
             />
-          </LinearGradient>
-        </Animated.View>
-
-        {/* Orb 3 - Purple */}
-        <Animated.View
-          style={[
-            styles.floatingOrbWrapper,
-            {
-              top: '50%',
-              right: '5%',
-              transform: [
-                {
-                  translateX: floatAnim3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [20, -80],
-                  }),
-                },
-                {
-                  translateY: floatAnim3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [60, -40],
-                  }),
-                },
-                {
-                  scale: floatAnim3.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.1, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <LinearGradient
-            colors={['#8B5CF6', '#7C3AED', '#8B5CF6']}
-            style={styles.floatingOrb3}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <BlurView
-              intensity={Platform.OS === 'ios' ? 50 : 40}
-              tint={isDarkMode ? 'dark' : 'light'}
-              style={styles.blurOverlay}
-            />
-          </LinearGradient>
+          </View>
         </Animated.View>
       </View>
       {/* Header - Copilot Style */}
@@ -814,41 +740,45 @@ const AIChat = () => {
         paddingRight: 16 + insets.right,
         paddingBottom: 12 + insets.bottom,
       }]}>
-        <View style={[styles.inputBar, {
-          backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
-          borderColor: isDarkMode ? '#374151' : '#E5E7EB',
-          shadowColor: '#000',
+        <View style={[styles.inputBarOuter, {
+          borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
         }]}>
-          <TextInput
-            style={[styles.input, { color: isDarkMode ? '#F9FAFB' : '#111827' }]}
-            placeholder="Message DOrSU AI"
-            placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
-            value={inputText}
-            onChangeText={setInputText}
-            onSubmitEditing={() => handleSendMessage()}
-            editable={!isLoading}
-            multiline
-            maxLength={2000}
-          />
-          
-          {inputText.trim() && (
-            <TouchableOpacity 
-              style={[
-                styles.sendBtn, 
-                { backgroundColor: '#2563EB' },
-                isLoading && styles.sendBtnDisabled
-              ]}
-              onPress={() => handleSendMessage()}
-              disabled={isLoading}
-              accessibilityLabel="Send message"
-            >
-              {isLoading ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Ionicons name="arrow-up" size={20} color="#fff" />
-              )}
-            </TouchableOpacity>
-          )}
+          <View style={[styles.inputBar, {
+            backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
+            borderColor: isDarkMode ? '#374151' : '#E5E7EB',
+            shadowColor: '#000',
+          }]}>
+            <TextInput
+              style={[styles.input, { color: isDarkMode ? '#F9FAFB' : '#111827' }]}
+              placeholder="Message DOrSU AI"
+              placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
+              value={inputText}
+              onChangeText={setInputText}
+              onSubmitEditing={() => handleSendMessage()}
+              editable={!isLoading}
+              multiline
+              maxLength={2000}
+            />
+            
+            {inputText.trim() && (
+              <TouchableOpacity 
+                style={[
+                  styles.sendBtn, 
+                  { backgroundColor: '#2563EB' },
+                  isLoading && styles.sendBtnDisabled
+                ]}
+                onPress={() => handleSendMessage()}
+                disabled={isLoading}
+                accessibilityLabel="Send message"
+              >
+                {isLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Ionicons name="arrow-up" size={20} color="#fff" />
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
       <UserBottomNavBar />
@@ -882,10 +812,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
   floatingOrb1: {
-    width: 350,
-    height: 350,
-    borderRadius: 175,
-    opacity: 0.4,
+    width: 450,
+    height: 450,
+    borderRadius: 225,
+    opacity: 0.2,
+    overflow: 'hidden',
   },
   floatingOrb2: {
     width: 300,
@@ -1110,6 +1041,11 @@ const styles = StyleSheet.create({
   inputBarContainer: {
     paddingHorizontal: 16,
     paddingVertical: 12,
+  },
+  inputBarOuter: {
+    borderRadius: 30,
+    borderWidth: 2,
+    padding: 2,
   },
   inputBar: {
     flexDirection: 'row',

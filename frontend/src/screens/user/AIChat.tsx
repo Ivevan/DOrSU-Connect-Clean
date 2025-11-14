@@ -821,7 +821,7 @@ const AIChat = () => {
         }]}>
           <TextInput
             style={[styles.input, { color: isDarkMode ? '#F9FAFB' : '#111827' }]}
-            placeholder="Message Copilot"
+            placeholder="Message DOrSU AI"
             placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
             value={inputText}
             onChangeText={setInputText}

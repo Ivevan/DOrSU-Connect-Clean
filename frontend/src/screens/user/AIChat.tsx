@@ -54,6 +54,11 @@ const AIChat = () => {
   const floatAnim1 = useRef(new Animated.Value(0)).current;
   const floatAnim2 = useRef(new Animated.Value(0)).current;
   const floatAnim3 = useRef(new Animated.Value(0)).current;
+  const cloudAnim1 = useRef(new Animated.Value(0)).current;
+  const cloudAnim2 = useRef(new Animated.Value(0)).current;
+  const lightSpot1 = useRef(new Animated.Value(0)).current;
+  const lightSpot2 = useRef(new Animated.Value(0)).current;
+  const lightSpot3 = useRef(new Animated.Value(0)).current;
 
   // User state from Firebase Auth - Initialize with current user to prevent layout shift
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -190,28 +195,70 @@ const AIChat = () => {
       ),
       Animated.loop(
         Animated.sequence([
-          Animated.timing(floatAnim2, {
+          Animated.timing(cloudAnim1, {
             toValue: 1,
-            duration: 10000,
+            duration: 15000,
             useNativeDriver: true,
           }),
-          Animated.timing(floatAnim2, {
+          Animated.timing(cloudAnim1, {
             toValue: 0,
-            duration: 10000,
+            duration: 15000,
             useNativeDriver: true,
           }),
         ])
       ),
       Animated.loop(
         Animated.sequence([
-          Animated.timing(floatAnim3, {
+          Animated.timing(cloudAnim2, {
+            toValue: 1,
+            duration: 20000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cloudAnim2, {
+            toValue: 0,
+            duration: 20000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot1, {
             toValue: 1,
             duration: 12000,
             useNativeDriver: true,
           }),
-          Animated.timing(floatAnim3, {
+          Animated.timing(lightSpot1, {
             toValue: 0,
             duration: 12000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot2, {
+            toValue: 1,
+            duration: 18000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot2, {
+            toValue: 0,
+            duration: 18000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot3, {
+            toValue: 1,
+            duration: 14000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot3, {
+            toValue: 0,
+            duration: 14000,
             useNativeDriver: true,
           }),
         ])
@@ -399,52 +446,241 @@ const AIChat = () => {
         colors={[
           isDarkMode
             ? '#0B1220'
-            : '#F8FAFC',
+            : '#FBF8F3',
           isDarkMode
             ? '#111827'
-            : '#FFFFFF',
+            : '#F8F5F0',
           isDarkMode
             ? '#1F2937'
-            : '#F1F5F9'
+            : '#F5F2ED'
         ]}
         style={styles.backgroundGradient}
         start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        end={{ x: 0, y: 1 }}
       />
       
-      {/* Blur overlay on entire background */}
+      {/* Blur overlay on entire background - very subtle */}
       <BlurView
-        intensity={Platform.OS === 'ios' ? 20 : 15}
-        tint={isDarkMode ? 'dark' : 'light'}
+        intensity={Platform.OS === 'ios' ? 5 : 3}
+        tint="default"
         style={styles.backgroundGradient}
       />
 
       {/* Animated Floating Background Orbs (Copilot-style) */}
       <View style={styles.floatingBgContainer} pointerEvents="none">
-        {/* Orb 1 - Orange (Main Copilot color) */}
+        {/* Light Spot 1 - Top right gentle glow */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              top: '8%',
+              right: '12%',
+              transform: [
+                {
+                  translateX: lightSpot1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -15],
+                  }),
+                },
+                {
+                  translateY: lightSpot1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 12],
+                  }),
+                },
+                {
+                  scale: lightSpot1.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.08, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot1}>
+            <LinearGradient
+              colors={['rgba(255, 220, 180, 0.35)', 'rgba(255, 200, 150, 0.18)', 'rgba(255, 230, 200, 0.08)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.2, y: 0.2 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Light Spot 2 - Middle left soft circle */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              top: '45%',
+              left: '8%',
+              transform: [
+                {
+                  translateX: lightSpot2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 18],
+                  }),
+                },
+                {
+                  translateY: lightSpot2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -10],
+                  }),
+                },
+                {
+                  scale: lightSpot2.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.06, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot2}>
+            <LinearGradient
+              colors={['rgba(255, 210, 170, 0.28)', 'rgba(255, 200, 160, 0.15)', 'rgba(255, 220, 190, 0.06)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.3, y: 0.3 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Light Spot 3 - Bottom center blurry glow */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              bottom: '12%',
+              left: '55%',
+              transform: [
+                {
+                  translateX: lightSpot3.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -20],
+                  }),
+                },
+                {
+                  translateY: lightSpot3.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 8],
+                  }),
+                },
+                {
+                  scale: lightSpot3.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.1, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot3}>
+            <LinearGradient
+              colors={['rgba(255, 190, 140, 0.25)', 'rgba(255, 180, 130, 0.12)', 'rgba(255, 210, 170, 0.05)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.4, y: 0.4 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Cloud variation 1 - Top left soft light patch */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              top: '15%',
+              left: '10%',
+              transform: [
+                {
+                  translateX: cloudAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 20],
+                  }),
+                },
+                {
+                  translateY: cloudAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -15],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.cloudPatch1}>
+            <LinearGradient
+              colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.22)', 'rgba(255, 230, 200, 0.1)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Cloud variation 2 - Bottom right gentle tone */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              bottom: '20%',
+              right: '15%',
+              transform: [
+                {
+                  translateX: cloudAnim2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -25],
+                  }),
+                },
+                {
+                  translateY: cloudAnim2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 10],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.cloudPatch2}>
+            <LinearGradient
+              colors={['rgba(255, 190, 140, 0.32)', 'rgba(255, 200, 160, 0.18)', 'rgba(255, 220, 190, 0.08)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.3, y: 0.3 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Orb 1 - Soft Orange Glow (Center area) */}
         <Animated.View
           style={[
             styles.floatingOrbWrapper,
             {
-              top: '10%',
-              right: '20%',
+              top: '35%',
+              left: '50%',
+              marginLeft: -250,
               transform: [
                 {
                   translateX: floatAnim1.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [-50, 100],
+                    outputRange: [-30, 30],
                   }),
                 },
                 {
                   translateY: floatAnim1.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [0, -80],
+                    outputRange: [-20, 20],
                   }),
                 },
                 {
                   scale: floatAnim1.interpolate({
                     inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.2, 1],
+                    outputRange: [1, 1.05, 1],
                   }),
                 },
               ],
@@ -453,13 +689,13 @@ const AIChat = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['#FF9500', '#FF7A00', '#FF9500']}
+              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             />
             <BlurView
-              intensity={Platform.OS === 'ios' ? 150 : 120}
+              intensity={Platform.OS === 'ios' ? 60 : 45}
               tint="default"
               style={StyleSheet.absoluteFillObject}
             />
@@ -721,14 +957,22 @@ const AIChat = () => {
           {[SUGGESTIONS[0], SUGGESTIONS[1], SUGGESTIONS[2]].map((txt, idx) => (
             <TouchableOpacity
               key={idx}
-              style={[styles.promptCard, { backgroundColor: t.colors.card, borderColor: t.colors.border }, isWide && { maxWidth: 640 }]}
+              style={[styles.promptCard, isWide && { maxWidth: 640 }]}
               activeOpacity={0.9}
               onPress={() => handleSuggestionPress(txt)}
             >
-              <View style={[styles.promptIconWrap, { backgroundColor: t.colors.surfaceAlt }]}>
-                <Ionicons name="reorder-three" size={16} color={t.colors.accent} />
-              </View>
-              <Text style={[styles.promptCardText, { color: t.colors.text }]}>{txt}</Text>
+              <BlurView
+                intensity={Platform.OS === 'ios' ? 50 : 40}
+                tint={isDarkMode ? 'dark' : 'light'}
+                style={styles.promptCardBlur}
+              >
+                <View style={styles.promptCardContent}>
+                  <View style={[styles.promptIconWrap, { backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.15)' : 'rgba(255, 149, 0, 0.1)' }]}>
+                    <Ionicons name="reorder-three" size={16} color="#FF9500" />
+                  </View>
+                  <Text style={[styles.promptCardText, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>{txt}</Text>
+                </View>
+              </BlurView>
             </TouchableOpacity>
           ))}
         </View>
@@ -811,11 +1055,49 @@ const styles = StyleSheet.create({
   floatingOrbWrapper: {
     position: 'absolute',
   },
-  floatingOrb1: {
-    width: 450,
-    height: 450,
-    borderRadius: 225,
+  cloudWrapper: {
+    position: 'absolute',
+  },
+  cloudPatch1: {
+    width: 350,
+    height: 350,
+    borderRadius: 175,
+    opacity: 0.25,
+    overflow: 'hidden',
+  },
+  cloudPatch2: {
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    opacity: 0.22,
+    overflow: 'hidden',
+  },
+  lightSpot1: {
+    width: 280,
+    height: 280,
+    borderRadius: 140,
     opacity: 0.2,
+    overflow: 'hidden',
+  },
+  lightSpot2: {
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    opacity: 0.18,
+    overflow: 'hidden',
+  },
+  lightSpot3: {
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    opacity: 0.16,
+    overflow: 'hidden',
+  },
+  floatingOrb1: {
+    width: 500,
+    height: 500,
+    borderRadius: 250,
+    opacity: 0.5,
     overflow: 'hidden',
   },
   floatingOrb2: {
@@ -1003,31 +1285,37 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   promptCard: {
+    width: '100%',
+    borderRadius: 16,
+    marginBottom: 8,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 149, 0, 0.15)',
+    elevation: 3,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0px 4px 12px rgba(255, 149, 0, 0.1)' }
+      : {
+          shadowColor: '#FF9500',
+          shadowOpacity: 0.15,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 4 },
+        }),
+  },
+  promptCardBlur: {
+    width: '100%',
+    borderRadius: 16,
+  },
+  promptCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    width: '100%',
-    backgroundColor: theme.colors.surface,
-    borderRadius: 16,
     paddingVertical: 12,
     paddingHorizontal: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    elevation: 2,
-    ...(Platform.OS === 'web'
-      ? { boxShadow: '0px 3px 6px rgba(0,0,0,0.06)' }
-      : {
-          shadowColor: '#000',
-          shadowOpacity: 0.06,
-          shadowRadius: 6,
-          shadowOffset: { width: 0, height: 3 },
-        }),
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
   },
   promptIconWrap: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#E8F0FF',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,

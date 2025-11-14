@@ -26,6 +26,7 @@ import UserSettings from '../screens/user/UserSettings';
 import AccountSettings from '../screens/user/AccountSettings';
 import GeneralSettings from '../screens/user/GeneralSettings';
 import EmailSettings from '../screens/user/EmailSettings';
+import About from '../screens/user/About';
 
 const Stack = createNativeStackNavigator();
 
@@ -179,6 +180,14 @@ const AppNavigator = () => {
         <Stack.Screen 
           name="EmailSettings" 
           component={EmailSettings}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
+        />
+        <Stack.Screen 
+          name="About" 
+          component={About}
           options={{
             headerShown: false,
             animationDuration: 0,

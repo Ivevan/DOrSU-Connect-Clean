@@ -26,6 +26,7 @@ type RootStackParamList = {
   TermsOfUse: undefined;
   PrivacyPolicy: undefined;
   Licenses: undefined;
+  About: undefined;
 };
 
 const UserSettings = () => {
@@ -150,12 +151,12 @@ const UserSettings = () => {
         Animated.sequence([
           Animated.timing(cloudAnim2, {
             toValue: 1,
-            duration: 17000,
+            duration: 20000,
             useNativeDriver: true,
           }),
           Animated.timing(cloudAnim2, {
             toValue: 0,
-            duration: 17000,
+            duration: 20000,
             useNativeDriver: true,
           }),
         ])
@@ -164,12 +165,12 @@ const UserSettings = () => {
         Animated.sequence([
           Animated.timing(lightSpot1, {
             toValue: 1,
-            duration: 6000,
+            duration: 12000,
             useNativeDriver: true,
           }),
           Animated.timing(lightSpot1, {
             toValue: 0,
-            duration: 6000,
+            duration: 12000,
             useNativeDriver: true,
           }),
         ])
@@ -178,12 +179,12 @@ const UserSettings = () => {
         Animated.sequence([
           Animated.timing(lightSpot2, {
             toValue: 1,
-            duration: 7000,
+            duration: 18000,
             useNativeDriver: true,
           }),
           Animated.timing(lightSpot2, {
             toValue: 0,
-            duration: 7000,
+            duration: 18000,
             useNativeDriver: true,
           }),
         ])
@@ -192,12 +193,12 @@ const UserSettings = () => {
         Animated.sequence([
           Animated.timing(lightSpot3, {
             toValue: 1,
-            duration: 5500,
+            duration: 14000,
             useNativeDriver: true,
           }),
           Animated.timing(lightSpot3, {
             toValue: 0,
-            duration: 5500,
+            duration: 14000,
             useNativeDriver: true,
           }),
         ])
@@ -385,30 +386,30 @@ const UserSettings = () => {
           </View>
         </Animated.View>
 
-        {/* Light Spot 3 - Bottom right amber glow */}
+        {/* Light Spot 3 - Bottom center blurry glow */}
         <Animated.View
           style={[
             styles.cloudWrapper,
             {
               bottom: '12%',
-              right: '8%',
+              left: '55%',
               transform: [
                 {
                   translateX: lightSpot3.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [0, 12],
+                    outputRange: [0, -20],
                   }),
                 },
                 {
                   translateY: lightSpot3.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [0, -15],
+                    outputRange: [0, 8],
                   }),
                 },
                 {
                   scale: lightSpot3.interpolate({
                     inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.07, 1],
+                    outputRange: [1, 1.1, 1],
                   }),
                 },
               ],
@@ -417,7 +418,7 @@ const UserSettings = () => {
         >
           <View style={styles.lightSpot3}>
             <LinearGradient
-              colors={['rgba(255, 200, 140, 0.32)', 'rgba(255, 190, 130, 0.16)', 'rgba(255, 210, 160, 0.07)']}
+              colors={['rgba(255, 190, 140, 0.25)', 'rgba(255, 180, 130, 0.12)', 'rgba(255, 210, 170, 0.05)']}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0.4, y: 0.4 }}
               end={{ x: 1, y: 1 }}
@@ -485,9 +486,9 @@ const UserSettings = () => {
         >
           <View style={styles.cloudPatch2}>
             <LinearGradient
-              colors={['rgba(255, 200, 150, 0.35)', 'rgba(255, 210, 170, 0.18)', 'rgba(255, 230, 200, 0.08)']}
+              colors={['rgba(255, 190, 140, 0.32)', 'rgba(255, 200, 160, 0.18)', 'rgba(255, 220, 190, 0.08)']}
               style={StyleSheet.absoluteFillObject}
-              start={{ x: 0, y: 0 }}
+              start={{ x: 0.3, y: 0.3 }}
               end={{ x: 1, y: 1 }}
             />
           </View>
@@ -646,7 +647,7 @@ const UserSettings = () => {
             <View style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="moon-outline" size={20} color={t.colors.accent} />
+                  <Ionicons name="moon-outline" size={20} color="#FF9500" />
                 </View>
                 <Text style={[styles.settingTitle, { color: t.colors.text }]}>Dark Mode</Text>
               </View>
@@ -668,7 +669,7 @@ const UserSettings = () => {
             <TouchableOpacity style={styles.settingItemLast}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="language-outline" size={20} color={t.colors.accent} />
+                  <Ionicons name="language-outline" size={20} color="#FF9500" />
                 </View>
                 <Text style={[styles.settingTitle, { color: t.colors.text }]}>Language</Text>
               </View>
@@ -676,6 +677,45 @@ const UserSettings = () => {
                 <Text style={[styles.settingValue, { color: t.colors.textMuted }]}>{language}</Text>
                 <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
               </View>
+            </TouchableOpacity>
+          </BlurView>
+
+          {/* Account Section */}
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
+          >
+            <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Account</Text>
+            
+            <TouchableOpacity style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
+                  <Ionicons name="person-outline" size={20} color="#FF9500" />
+                </View>
+                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Profile</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
+                  <Ionicons name="key-outline" size={20} color="#FF9500" />
+                </View>
+                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Change Password</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.settingItemLast}>
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
+                  <Ionicons name="notifications-outline" size={20} color="#FF9500" />
+                </View>
+                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Notifications</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
           </BlurView>
 
@@ -690,7 +730,7 @@ const UserSettings = () => {
             <TouchableOpacity style={styles.settingItemLast}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="mail-outline" size={20} color={t.colors.accent} />
+                  <Ionicons name="mail-outline" size={20} color="#FF9500" />
                 </View>
                 <Text style={[styles.settingTitle, { color: t.colors.text }]}>{userEmail}</Text>
               </View>
@@ -704,69 +744,13 @@ const UserSettings = () => {
             tint={isDarkMode ? 'dark' : 'light'}
             style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
           >
-            <Text style={[styles.sectionTitle, { color: t.colors.text }]}>About</Text>
-            
             <TouchableOpacity 
-              style={[styles.settingItem, { borderBottomColor: t.colors.border }]}
-              onPress={() => navigation.navigate('UserHelpCenter')}
+              style={styles.sectionTitleButton}
+              onPress={() => navigation.navigate('About')}
             >
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="help-circle-outline" size={20} color={t.colors.accent} />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Help Center</Text>
-              </View>
+              <Text style={[styles.sectionTitle, { color: t.colors.text }]}>About</Text>
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.settingItem, { borderBottomColor: t.colors.border }]}
-              onPress={() => navigation.navigate('TermsOfUse')}
-            >
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="document-text-outline" size={20} color={t.colors.accent} />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Terms of Use</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.settingItem, { borderBottomColor: t.colors.border }]}
-              onPress={() => navigation.navigate('PrivacyPolicy')}
-            >
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="shield-checkmark-outline" size={20} color={t.colors.accent} />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Privacy Policy</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.settingItem, { borderBottomColor: t.colors.border }]}
-              onPress={() => navigation.navigate('Licenses')}
-            >
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="document-outline" size={20} color={t.colors.accent} />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Licenses</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-            </TouchableOpacity>
-
-            <View style={styles.settingItemLast}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="information-circle-outline" size={20} color={t.colors.accent} />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>DOrSU Connect</Text>
-              </View>
-              <Text style={[styles.settingValue, { color: t.colors.textMuted }]}>v1.0.0</Text>
-            </View>
           </BlurView>
 
           {/* Sign Out Button */}
@@ -953,6 +937,12 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginBottom: theme.spacing(1.5),
   },
+  sectionTitleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing(1.5),
+  },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -960,6 +950,12 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing(1.5),
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
+  },
+  settingItemNoBorder: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: theme.spacing(1.5),
   },
   settingItemLast: {
     flexDirection: 'row',
@@ -1077,7 +1073,7 @@ const styles = StyleSheet.create({
     width: 500,
     height: 500,
     borderRadius: 250,
-    opacity: 0.15,
+    opacity: 0.5,
     overflow: 'hidden',
   },
 });

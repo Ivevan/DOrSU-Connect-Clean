@@ -47,7 +47,7 @@ const AIChat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
-  const sidebarAnim = useRef(new Animated.Value(-300)).current;
+  const sidebarAnim = useRef(new Animated.Value(-320)).current;
   const sessionId = useRef<string>('');
 
   // Animated floating background orbs (Copilot-style)
@@ -170,7 +170,7 @@ const AIChat = () => {
   // Animate sidebar when opening/closing
   useEffect(() => {
     Animated.timing(sidebarAnim, {
-      toValue: isHistoryOpen ? 0 : -300,
+      toValue: isHistoryOpen ? 0 : -320,
       duration: 300,
       useNativeDriver: Platform.OS !== 'web',
     }).start();
@@ -714,7 +714,7 @@ const AIChat = () => {
             style={styles.menuButton}
             accessibilityLabel="Open chat history"
           >
-            <View style={styles.customHamburger}>
+            <View style={styles.customHamburger} pointerEvents="none">
               <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
               <View style={[styles.hamburgerLine, styles.hamburgerLineLong, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
               <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
@@ -742,86 +742,153 @@ const AIChat = () => {
         </View>
       </View>
       
-      {/* Chat History Sidebar */}
+      {/* Chat History Sidebar - Copilot Style */}
       <Animated.View 
         style={[
           styles.sidebar, 
           { 
             transform: [{ translateX: sidebarAnim }],
-            backgroundColor: t.colors.background,
-            borderRightColor: t.colors.border
+            backgroundColor: isDarkMode ? '#1F2937' : '#F5F2ED',
+            paddingTop: insets.top,
           }
         ]}
       >
+        {/* Sidebar Header with Logo */}
         <View style={styles.sidebarHeader}>
-          <Text style={[styles.sidebarTitle, { color: t.colors.text }]}>Chat History</Text>
-          <TouchableOpacity onPress={() => setIsHistoryOpen(false)} style={styles.closeSidebarButton}>
-            <Ionicons name="close" size={24} color={t.colors.text} />
+          <View style={styles.sidebarLogoSection}>
+            <View style={[styles.sidebarLogo, { backgroundColor: '#FF9500' }]}>
+              <MaterialIcons name="school" size={24} color="#FFF" />
+            </View>
+            <Text style={[styles.sidebarTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>DOrSU AI</Text>
+          </View>
+          <View style={styles.sidebarHeaderButtons}>
+            <TouchableOpacity 
+              style={styles.sidebarIconButton}
+              onPress={() => navigation.navigate('UserSettings')}
+              accessibilityLabel="User settings"
+            >
+              <Ionicons name="person-circle-outline" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.sidebarIconButton}
+              onPress={() => {
+                sessionId.current = '';
+                setMessages([]);
+                setIsHistoryOpen(false);
+              }}
+              accessibilityLabel="New conversation"
+            >
+              <Ionicons name="create-outline" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+            </TouchableOpacity>
+            <TouchableOpacity 
+              onPress={() => setIsHistoryOpen(false)} 
+              style={styles.sidebarIconButton}
+              accessibilityLabel="Close sidebar"
+            >
+              <View style={styles.customHamburger} pointerEvents="none">
+                <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+                <View style={[styles.hamburgerLine, styles.hamburgerLineLong, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+                <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Navigation Menu */}
+        <View style={styles.sidebarMenu}>
+          <TouchableOpacity 
+            style={[styles.sidebarMenuItem, { backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.1)' : 'rgba(255, 149, 0, 0.08)' }]}
+            onPress={() => {
+              sessionId.current = '';
+              setMessages([]);
+              setIsHistoryOpen(false);
+            }}
+          >
+            <Ionicons name="home" size={24} color="#FF9500" />
+            <Text style={[styles.sidebarMenuText, { color: '#FF9500', fontWeight: '600' }]}>Conversation</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.sidebarMenuItem}
+            onPress={() => {
+              setIsHistoryOpen(false);
+              navigation.navigate('SchoolUpdates');
+            }}
+          >
+            <Ionicons name="compass-outline" size={24} color={isDarkMode ? '#9CA3AF' : '#6B7280'} />
+            <Text style={[styles.sidebarMenuText, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>Discover</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.sidebarMenuItem}
+            onPress={() => {
+              setIsHistoryOpen(false);
+              navigation.navigate('Calendar');
+            }}
+          >
+            <Ionicons name="copy-outline" size={24} color={isDarkMode ? '#9CA3AF' : '#6B7280'} />
+            <Text style={[styles.sidebarMenuText, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>Calendar</Text>
           </TouchableOpacity>
         </View>
         
-        <ScrollView style={styles.sidebarContent}>
-          {chatHistory.length === 0 ? (
-            <View style={styles.emptyHistoryContainer}>
-              <Ionicons name="chatbubbles-outline" size={48} color={t.colors.textMuted} />
-              <Text style={[styles.emptyHistoryText, { color: t.colors.textMuted }]}>
-                No chat history yet
-              </Text>
-              <Text style={[styles.emptyHistorySubtext, { color: t.colors.textMuted }]}>
-                Your conversations will appear here
-              </Text>
-            </View>
-          ) : (
-            chatHistory.map((chat, idx) => (
-              <View key={`${chat.id}:${idx}`} style={[styles.historyItem, { borderBottomColor: t.colors.border }]}>
-                <TouchableOpacity onPress={() => loadChatFromHistory(chat.id)}>
-                  <Text style={[styles.historyTitle, { color: t.colors.text }]} numberOfLines={1}>
-                    {chat.title}
-                  </Text>
-                  <Text style={[styles.historyPreview, { color: t.colors.textMuted }]} numberOfLines={1}>
-                    {chat.preview}
-                  </Text>
-                  <View style={styles.historyFooter}>
-                    <Text style={[styles.historyDate, { color: t.colors.textMuted }]}>
-                      {formatDate(new Date(chat.timestamp))}
-                    </Text>
-                    <Text style={[styles.historyTime, { color: t.colors.textMuted }]}>
-                      {formatTime(new Date(chat.timestamp))}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.deleteHistoryBtn}
-                  onPress={async () => {
-                    try {
-                      let token = await getUserToken();
-                      if (!token) {
-                        const user = getCurrentUser();
-                        if (user && typeof user.getIdToken === 'function') {
-                          token = await user.getIdToken();
-                        }
-                      }
-                      if (!token) return;
-                      const ok = await AIService.deleteChatSession(chat.id, token);
-                      if (ok) {
-                        setChatHistory(prev => prev.filter(h => h.id !== chat.id));
-                        if (sessionId.current === chat.id) {
-                          sessionId.current = '';
-                          setMessages([]);
-                        }
-                      }
-                    } catch (e) {
-                      console.error('Failed to delete chat:', e);
-                    }
-                  }}
-                  accessibilityLabel="Delete chat"
-                >
-                  <Ionicons name="trash-outline" size={18} color={t.colors.textMuted} />
-                </TouchableOpacity>
+        {/* Chat History Section */}
+        <View style={styles.sidebarHistorySection}>
+          <Text style={[styles.sidebarSectionTitle, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>Recent Chats</Text>
+          <ScrollView style={styles.sidebarContent} showsVerticalScrollIndicator={false}>
+            {chatHistory.length === 0 ? (
+              <View style={styles.emptyHistoryContainer}>
+                <Ionicons name="chatbubbles-outline" size={40} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
+                <Text style={[styles.emptyHistoryText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+                  No chat history yet
+                </Text>
               </View>
-            ))
-          )}
-        </ScrollView>
+            ) : (
+              chatHistory.map((chat, idx) => (
+                <View key={`${chat.id}:${idx}`} style={styles.historyItem}>
+                  <TouchableOpacity 
+                    style={[styles.historyItemButton, { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)' }]}
+                    onPress={() => loadChatFromHistory(chat.id)}
+                  >
+                    <Text style={[styles.historyTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]} numberOfLines={1}>
+                      {chat.title}
+                    </Text>
+                    <Text style={[styles.historyPreview, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]} numberOfLines={1}>
+                      {chat.preview}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.deleteHistoryBtn}
+                    onPress={async () => {
+                      try {
+                        let token = await getUserToken();
+                        if (!token) {
+                          const user = getCurrentUser();
+                          if (user && typeof user.getIdToken === 'function') {
+                            token = await user.getIdToken();
+                          }
+                        }
+                        if (!token) return;
+                        const ok = await AIService.deleteChatSession(chat.id, token);
+                        if (ok) {
+                          setChatHistory(prev => prev.filter(h => h.id !== chat.id));
+                          if (sessionId.current === chat.id) {
+                            sessionId.current = '';
+                            setMessages([]);
+                          }
+                        }
+                      } catch (e) {
+                        console.error('Failed to delete chat:', e);
+                      }
+                    }}
+                    accessibilityLabel="Delete chat"
+                  >
+                    <Ionicons name="trash-outline" size={16} color={isDarkMode ? '#9CA3AF' : '#6B7280'} />
+                  </TouchableOpacity>
+                </View>
+              ))
+            )}
+          </ScrollView>
+        </View>
       </Animated.View>
       
       {/* Overlay for sidebar */}
@@ -1134,9 +1201,9 @@ const styles = StyleSheet.create({
     width: 40,
   },
   menuButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1197,8 +1264,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     bottom: 0,
-    width: 300,
-    borderRightWidth: 1,
+    width: 320,
     zIndex: 20,
     elevation: 20,
   },
@@ -1215,63 +1281,106 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+  },
+  sidebarLogoSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  sidebarLogo: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sidebarTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
+    letterSpacing: -0.3,
   },
-  closeSidebarButton: {
-    padding: 4,
+  sidebarHeaderButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sidebarIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sidebarMenu: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 16,
+    gap: 4,
+  },
+  sidebarMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    gap: 12,
+  },
+  sidebarMenuText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  sidebarHistorySection: {
+    flex: 1,
+    paddingTop: 8,
+  },
+  sidebarSectionTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
   },
   sidebarContent: {
     flex: 1,
+    paddingHorizontal: 12,
   },
   historyItem: {
-    padding: 16,
-    borderBottomWidth: 1,
+    marginBottom: 4,
+    position: 'relative',
+  },
+  historyItemButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
   },
   historyTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     marginBottom: 4,
   },
   historyPreview: {
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  historyFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    fontSize: 13,
   },
   deleteHistoryBtn: {
     position: 'absolute',
-    right: 12,
-    top: 14,
+    right: 8,
+    top: 8,
     padding: 6,
-    borderRadius: 8,
-  },
-  historyDate: {
-    fontSize: 12,
-  },
-  historyTime: {
-    fontSize: 12,
+    borderRadius: 6,
   },
   emptyHistoryContainer: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
+    paddingVertical: 40,
+    paddingHorizontal: 20,
   },
   emptyHistoryText: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyHistorySubtext: {
     fontSize: 14,
+    fontWeight: '500',
+    marginTop: 12,
     textAlign: 'center',
   },
   emptyScrollContent: {

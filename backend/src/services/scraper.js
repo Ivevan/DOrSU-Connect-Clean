@@ -219,10 +219,8 @@ export class NewsScraperService {
 
       Logger.success(`✅ Scraped ${limitedNews.length} news items from DOrSU website`);
 
-      // Save to MongoDB if available
-      if (this.mongoService && limitedNews.length > 0) {
-        await this.saveNewsToMongo(limitedNews);
-      }
+      // Note: News is no longer saved to MongoDB - scraped on-demand only
+      // Keeping cache for fallback scenarios only
 
       return {
         success: true,
@@ -308,34 +306,207 @@ export class NewsScraperService {
   }
 
   /**
-   * Get news from cache or MongoDB
+   * Get news - always scrapes fresh on-demand (no MongoDB/cache)
    */
-  async getNews() {
+  async getNews(forceFresh = true) {
     try {
-      // Try MongoDB first
-      if (this.mongoService) {
-        const collection = this.mongoService.db.collection('news');
-        const newsFromDb = await collection.find({}).sort({ scrapedAt: -1 }).limit(15).toArray();
-        
-        if (newsFromDb.length > 0) {
-          Logger.info(`📰 Retrieved ${newsFromDb.length} news items from MongoDB`);
-          return newsFromDb;
-        }
+      // Always scrape fresh when user asks for news
+      if (forceFresh) {
+        Logger.info('📰 Scraping fresh news on-demand...');
+        const result = await this.scrapeNews();
+        return result.news || [];
       }
 
-      // Fallback to cached news
+      // Fallback: use cached news only if forceFresh is false (shouldn't happen in normal flow)
       if (this.cachedNews.length > 0) {
         Logger.info(`📰 Retrieved ${this.cachedNews.length} news items from cache`);
         return this.cachedNews;
       }
 
-      // If no cached news, scrape fresh
+      // If no cached news and forceFresh is false, scrape fresh anyway
       const result = await this.scrapeNews();
       return result.news || [];
 
     } catch (error) {
       Logger.error('Failed to get news:', error.message);
-      return this.cachedNews;
+      return this.cachedNews.length > 0 ? this.cachedNews : [];
+    }
+  }
+
+  /**
+   * Get latest N news items sorted by date
+   */
+  async getLatestNews(count = 3) {
+    try {
+      // Always scrape fresh
+      const result = await this.scrapeNews();
+      const news = result.news || [];
+      
+      // Sort by date (newest first)
+      // Parse dates and sort
+      const sortedNews = news.sort((a, b) => {
+        const dateA = this.parseDate(a.date);
+        const dateB = this.parseDate(b.date);
+        return dateB - dateA; // Newest first
+      });
+      
+      // Return top N items
+      return sortedNews.slice(0, count);
+    } catch (error) {
+      Logger.error('Failed to get latest news:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Parse date string to Date object for sorting
+   */
+  parseDate(dateString) {
+    if (!dateString || dateString === 'Recent') {
+      return new Date(); // Treat "Recent" as today
+    }
+    
+    try {
+      // Try parsing various date formats
+      const parsed = new Date(dateString);
+      if (!isNaN(parsed.getTime())) {
+        return parsed;
+      }
+      
+      // If parsing fails, return current date
+      return new Date();
+    } catch (error) {
+      return new Date();
+    }
+  }
+
+  /**
+   * Scrape a single news article page and extract full content
+   */
+  async scrapeNewsArticle(url) {
+    try {
+      Logger.info(`📄 Scraping news article: ${url}`);
+      
+      const response = await axios.get(url, {
+        timeout: 15000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+
+      const $ = cheerio.load(response.data);
+      
+      // Extract article title
+      let title = $('h1, .entry-title, .post-title, article h1').first().text().trim();
+      if (!title || title.length < 5) {
+        title = $('title').text().trim();
+      }
+      
+      // Clean title
+      title = title.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+      
+      // Extract article content - try multiple selectors
+      let content = '';
+      const contentSelectors = [
+        '.entry-content',
+        '.post-content',
+        '.article-content',
+        'article .content',
+        '.content article',
+        'main article',
+        'article p',
+        '.post p'
+      ];
+      
+      for (const selector of contentSelectors) {
+        const selected = $(selector);
+        if (selected.length > 0) {
+          // Get all paragraphs
+          selected.find('p').each((i, elem) => {
+            const text = $(elem).text().trim();
+            if (text && text.length > 20) { // Only meaningful paragraphs
+              content += text + '\n\n';
+            }
+          });
+          
+          // If we got good content, break
+          if (content.length > 100) {
+            break;
+          }
+        }
+      }
+      
+      // Fallback: get all paragraphs if no specific selector worked
+      if (content.length < 100) {
+        $('article p, main p, .content p').each((i, elem) => {
+          const text = $(elem).text().trim();
+          if (text && text.length > 20 && !text.toLowerCase().includes('cookie') && !text.toLowerCase().includes('privacy')) {
+            content += text + '\n\n';
+          }
+        });
+      }
+      
+      // Extract date
+      let date = $('.date, .post-date, time, .published, .entry-date').first().text().trim();
+      if (!date || date.length < 5) {
+        date = 'Recent';
+      }
+      
+      // Extract author
+      let author = $('.author, .by-author, .entry-author').first().text().trim();
+      if (!author) {
+        author = 'DOrSU-PIO';
+      }
+      
+      // Clean content
+      content = content.replace(/\s+/g, ' ').replace(/\n\s*\n/g, '\n\n').trim();
+      
+      // Limit content length (to avoid token limits)
+      if (content.length > 5000) {
+        content = content.substring(0, 5000) + '...';
+      }
+      
+      if (!content || content.length < 50) {
+        Logger.warn(`⚠️ Could not extract meaningful content from ${url}`);
+        return null;
+      }
+      
+      Logger.success(`✅ Scraped article: ${title.substring(0, 50)}... (${content.length} chars)`);
+      
+      return {
+        title,
+        content,
+        date,
+        author,
+        url,
+        scrapedAt: new Date().toISOString()
+      };
+      
+    } catch (error) {
+      Logger.error(`❌ Failed to scrape news article ${url}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Get news item by index (for summarization)
+   */
+  async getNewsItemByIndex(index) {
+    try {
+      // Get latest news (fresh scrape)
+      const news = await this.getLatestNews(10); // Get up to 10 for indexing
+      
+      // Convert 1-based index to 0-based
+      const itemIndex = parseInt(index) - 1;
+      
+      if (itemIndex >= 0 && itemIndex < news.length) {
+        return news[itemIndex];
+      }
+      
+      return null;
+    } catch (error) {
+      Logger.error('Failed to get news item by index:', error.message);
+      return null;
     }
   }
 
@@ -365,19 +536,23 @@ export class NewsScraperService {
   }
 
   /**
-   * Start auto-scraping (runs periodically)
+   * Start auto-scraping (runs periodically) - Now optional, mainly for caching
    */
   startAutoScraping() {
-    // Initial scrape
-    this.scrapeNews();
+    // Initial scrape for caching (optional)
+    this.scrapeNews().catch(err => {
+      Logger.warn('Initial news scrape failed (this is okay - will scrape on-demand):', err.message);
+    });
 
-    // Set up periodic scraping (every hour)
+    // Set up periodic scraping for cache (every hour) - optional background refresh
     setInterval(async () => {
-      Logger.info('⏰ Auto-scraping DOrSU news...');
-      await this.scrapeNews();
+      Logger.info('⏰ Background cache refresh for DOrSU news...');
+      await this.scrapeNews().catch(err => {
+        Logger.warn('Background news scrape failed:', err.message);
+      });
     }, this.scrapeInterval);
 
-    Logger.success('🔄 Auto-scraping enabled (every 1 hour)');
+    Logger.success('🔄 News cache refresh enabled (every 1 hour) - News will be scraped fresh on-demand');
   }
 
   /**

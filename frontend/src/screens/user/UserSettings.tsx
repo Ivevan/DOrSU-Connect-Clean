@@ -12,7 +12,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../config/theme';
 import { useThemeActions, useThemeValues } from '../../contexts/ThemeContext';
 import LogoutModal from '../../modals/LogoutModal';
-import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
+import ConfirmationModal from '../../modals/ConfirmationModal';
+import { getCurrentUser, onAuthStateChange, User, deleteAccount } from '../../services/authService';
+import { useAuth } from '../../contexts/AuthContext';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -38,6 +40,7 @@ const UserSettings = () => {
   const { isDarkMode, theme: t } = useThemeValues();
   const { toggleTheme } = useThemeActions();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { getUserToken } = useAuth();
   const scrollRef = useRef<ScrollView>(null);
   
   // Memoize safe area insets to prevent recalculation during navigation
@@ -219,6 +222,10 @@ const UserSettings = () => {
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
   const sheetY = useRef(new Animated.Value(300)).current;
 
+  // Function to handle delete account
+  const [isDeleteAccountOpen, setIsDeleteAccountOpen] = useState(false);
+  const deleteAccountSheetY = useRef(new Animated.Value(300)).current;
+
   const openLogout = useCallback(() => {
     setIsLogoutOpen(true);
     setTimeout(() => {
@@ -271,6 +278,63 @@ const UserSettings = () => {
       navigation.navigate('GetStarted');
     }
   }, [closeLogout, navigation, currentUser]);
+
+  const openDeleteAccount = useCallback(() => {
+    setIsDeleteAccountOpen(true);
+    setTimeout(() => {
+      Animated.timing(deleteAccountSheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    }, 0);
+  }, [deleteAccountSheetY]);
+
+  const closeDeleteAccount = useCallback(() => {
+    Animated.timing(deleteAccountSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
+      setIsDeleteAccountOpen(false);
+    });
+  }, [deleteAccountSheetY]);
+
+  const confirmDeleteAccount = useCallback(async () => {
+    try {
+      const token = await getUserToken();
+      if (!token) {
+        console.error('No token available for account deletion');
+        closeDeleteAccount();
+        return;
+      }
+
+      const success = await deleteAccount(token);
+      if (success) {
+        // Clear all local storage
+        await AsyncStorage.multiRemove(['userToken', 'userEmail', 'userName', 'userId', 'userPhoto', 'authProvider']);
+        
+        // Sign out from Firebase if user is signed in
+        if (currentUser) {
+          try {
+            const { getFirebaseAuth } = require('../../config/firebase');
+            const auth = getFirebaseAuth();
+            
+            const isJSSDK = auth.signOut !== undefined;
+            if (isJSSDK) {
+              const { signOut } = require('firebase/auth');
+              await signOut(auth);
+            } else {
+              await auth.signOut();
+            }
+          } catch (firebaseError) {
+            console.error('Firebase sign out error:', firebaseError);
+          }
+        }
+        
+        closeDeleteAccount();
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'GetStarted' }],
+        });
+      }
+    } catch (error) {
+      console.error('Delete account error:', error);
+      closeDeleteAccount();
+    }
+  }, [closeDeleteAccount, navigation, currentUser, getUserToken]);
   
   return (
     <View style={[styles.container, {
@@ -700,8 +764,25 @@ const UserSettings = () => {
             onPress={handleLogout}
             activeOpacity={0.7}
           >
-            <Ionicons name="log-out-outline" size={22} color="#EF4444" />
+            <Ionicons name="log-out-outline" size={18} color="#EF4444" />
             <Text style={[styles.signOutText, { color: '#EF4444' }]}>Sign out</Text>
+          </TouchableOpacity>
+
+          {/* Delete Account Button */}
+          <TouchableOpacity 
+            style={[
+              styles.deleteAccountButton, 
+              { 
+                backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)',
+                borderColor: isDarkMode ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.2)',
+                marginTop: 12,
+              }
+            ]}
+            onPress={openDeleteAccount}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="trash-outline" size={18} color="#EF4444" />
+            <Text style={[styles.deleteAccountText, { color: '#EF4444' }]}>Delete Account</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -711,6 +792,20 @@ const UserSettings = () => {
         onClose={closeLogout}
         onConfirm={confirmLogout}
         sheetY={sheetY}
+      />
+
+      <ConfirmationModal
+        visible={isDeleteAccountOpen}
+        onClose={closeDeleteAccount}
+        onConfirm={confirmDeleteAccount}
+        title="Delete Account"
+        message="Are you sure you want to delete your account? This action cannot be undone. All your data, including chat history, will be permanently deleted from the knowledge base."
+        confirmText="Delete Account"
+        cancelText="Cancel"
+        icon="trash-outline"
+        iconColor="#EF4444"
+        confirmButtonColor="#EF4444"
+        sheetY={deleteAccountSheetY}
       />
     </View>
   );
@@ -940,18 +1035,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: theme.spacing(2.5),
-    paddingHorizontal: theme.spacing(3),
+    paddingVertical: theme.spacing(1.5),
+    paddingHorizontal: theme.spacing(2),
     borderRadius: theme.radii.md,
     marginTop: theme.spacing(2),
     marginBottom: 0,
-    gap: theme.spacing(1.5),
+    gap: theme.spacing(1),
     borderWidth: 1,
   },
   signOutText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
+  },
+  deleteAccountButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: theme.spacing(1.5),
+    paddingHorizontal: theme.spacing(2),
+    borderRadius: theme.radii.md,
+    marginBottom: 0,
+    gap: theme.spacing(1),
+    borderWidth: 1,
+  },
+  deleteAccountText: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
   backgroundGradient: {
     position: 'absolute',

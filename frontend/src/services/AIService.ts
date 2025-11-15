@@ -55,13 +55,20 @@ class AIService {
   /**
    * Send a message to the AI and get a response
    */
-  async sendMessage(prompt: string): Promise<ChatResponse> {
+  async sendMessage(prompt: string, token?: string): Promise<ChatResponse> {
     try {
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      
+      // Include token if provided (for query tracking)
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
       const response = await fetch(`${this.baseUrl}/api/chat`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           prompt,
         } as ChatRequest),
@@ -216,6 +223,30 @@ class AIService {
   }
 
   /**
+   * Delete all chat history
+   */
+  async deleteAllChatHistory(token: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/chat-history`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return !!data.success;
+    } catch (error) {
+      console.error('Failed to delete all chat history:', error);
+      return false;
+    }
+  }
+
+  /**
    * Check if the AI backend is healthy
    */
   async healthCheck(): Promise<boolean> {
@@ -231,6 +262,36 @@ class AIService {
   /**
    * Get MongoDB status
    */
+  /**
+   * Get top frequently asked questions for the current user
+   */
+  async getTopQueries(token: string): Promise<string[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/top-queries`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+      });
+
+      if (!response.ok) {
+        // If 404, the endpoint might not be available yet - return empty array
+        if (response.status === 404) {
+          console.warn('Top queries endpoint not found (404) - returning empty array');
+          return [];
+        }
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data.queries || [];
+    } catch (error) {
+      console.error('Failed to get top queries:', error);
+      // Return empty array on error - will fall back to default suggestions
+      return [];
+    }
+  }
+
   async getMongoDBStatus(): Promise<any> {
     try {
       const response = await fetch(`${this.baseUrl}/api/mongodb-status`);

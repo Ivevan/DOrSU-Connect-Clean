@@ -237,6 +237,33 @@ const AdminDashboard = () => {
     });
   }, [allUpdates]);
 
+  // Upcoming updates (future dates)
+  const upcomingUpdates = useMemo(() => {
+    const todayKey = getPHDateKey(new Date());
+    return allUpdates.filter(u => {
+      if (!u.isoDate) return false;
+      const eventKey = getPHDateKey(u.isoDate);
+      return eventKey > todayKey;
+    });
+  }, [allUpdates]);
+
+  // Recent updates (today and past dates)
+  const recentUpdates = useMemo(() => {
+    const todayKey = getPHDateKey(new Date());
+    return allUpdates.filter(u => {
+      if (!u.isoDate) return false;
+      const eventKey = getPHDateKey(u.isoDate);
+      return eventKey <= todayKey;
+    });
+  }, [allUpdates]);
+
+  // Filtered updates based on selected time filter
+  const displayedUpdates = useMemo(() => {
+    if (timeFilter === 'upcoming') return upcomingUpdates;
+    if (timeFilter === 'recent') return recentUpdates;
+    return allUpdates; // 'all'
+  }, [timeFilter, upcomingUpdates, recentUpdates, allUpdates]);
+
   // Load current user and subscribe to auth changes
   useEffect(() => {
     const user = getCurrentUser();
@@ -788,14 +815,42 @@ const AdminDashboard = () => {
             <View style={[styles.updatesSectionContent, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
               <View style={styles.sectionHeaderEnhanced}>
                 <View style={[styles.sectionIconWrapper, { backgroundColor: theme.colors.accent + '15' }]}>
-                  <Ionicons name="time-outline" size={20} color={theme.colors.accent} />
+                  <Ionicons 
+                    name={timeFilter === 'upcoming' ? 'time-outline' : timeFilter === 'recent' ? 'calendar-outline' : 'grid-outline'} 
+                    size={20} 
+                    color={theme.colors.accent} 
+                  />
                 </View>
                 <View style={styles.sectionTitleWrapper}>
-                  <Text style={[styles.sectionTitleEnhanced, { color: theme.colors.text }]}>Recent Updates</Text>
-                  <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>Latest posts and announcements</Text>
+                  <Text style={[styles.sectionTitleEnhanced, { color: theme.colors.text }]}>Updates</Text>
+                  <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
+                    {timeFilter === 'upcoming' ? 'Coming soon' : timeFilter === 'recent' ? 'Past events' : 'All events'}
+                  </Text>
                 </View>
               </View>
 
+              {/* Time Filter Pills */}
+              <View style={styles.filtersContainer}>
+                <Pressable
+                  style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'all' && styles.filterPillActive]}
+                  onPress={() => setTimeFilter('all')}
+                >
+                  <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'all' && styles.filterPillTextActive]}>All</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'upcoming' && styles.filterPillActive]}
+                  onPress={() => setTimeFilter('upcoming')}
+                >
+                  <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'upcoming' && styles.filterPillTextActive]}>Upcoming</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'recent' && styles.filterPillActive]}
+                  onPress={() => setTimeFilter('recent')}
+                >
+                  <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'recent' && styles.filterPillTextActive]}>Recent</Text>
+                </Pressable>
+              </View>
+              
               {dashboardError && (
                 <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                   <Ionicons name="alert-circle-outline" size={40} color="#DC2626" />
@@ -810,16 +865,16 @@ const AdminDashboard = () => {
                 </View>
               )}
 
-              {!isLoadingDashboard && !dashboardError && dashboardData.recentUpdates.length === 0 && (
+              {!isLoadingDashboard && !dashboardError && displayedUpdates.length === 0 && (
                 <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                   <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
                   <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>
-                    No recent updates found
+                    {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : 'No updates found'}
                   </Text>
                 </View>
               )}
 
-              {!isLoadingDashboard && !dashboardError && dashboardData.recentUpdates.map((update) => (
+              {!isLoadingDashboard && !dashboardError && displayedUpdates.map((update) => (
                 <View key={update.id} style={[styles.updateCard, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
                   {update.images?.[0] && (
                     <Image 
@@ -847,7 +902,12 @@ const AdminDashboard = () => {
         </View>
       </ScrollView>
 
-      <AdminBottomNavBar />
+      <AdminBottomNavBar
+        activeTab="dashboard"
+        onChatPress={() => navigation.navigate('AdminAIChat')}
+        onDashboardPress={() => navigation.navigate('AdminDashboard')}
+        onCalendarPress={() => navigation.navigate('AdminCalendar')}
+      />
     </View>
   );
 };
@@ -1239,6 +1299,27 @@ const styles = StyleSheet.create({
   eventTagText: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  filtersContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  filterPill: {
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  filterPillActive: {
+    backgroundColor: '#FF9500',
+  },
+  filterPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  filterPillTextActive: {
+    color: '#FFF',
   },
 });
 

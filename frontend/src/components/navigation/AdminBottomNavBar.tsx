@@ -8,15 +8,15 @@ import { BlurView } from 'expo-blur';
 interface AdminBottomNavBarProps {
   onDashboardPress?: () => void;
   onChatPress?: () => void;
-  onSettingsPress?: () => void;
-  activeTab?: 'dashboard' | 'chat' | 'settings';
+  onCalendarPress?: () => void;
+  activeTab?: 'dashboard' | 'chat' | 'calendar';
 }
 
 const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
   onDashboardPress,
   onChatPress,
-  onSettingsPress,
-  activeTab = 'dashboard',
+  onCalendarPress,
+  activeTab = 'chat',
 }) => {
   const insets = useSafeAreaInsets();
   const { isDarkMode } = useTheme();
@@ -36,27 +36,27 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
         <View style={[styles.navContent, {
           backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
         }]}>
-          <TouchableOpacity style={styles.tab} onPress={onDashboardPress}>
-            <Ionicons 
-              name={activeTab === 'dashboard' ? 'home' : 'home-outline'} 
-              size={28} 
-              color={activeTab === 'dashboard' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
-            />
-          </TouchableOpacity>
-
           <TouchableOpacity style={styles.tab} onPress={onChatPress}>
             <Ionicons 
-              name={activeTab === 'chat' ? 'compass' : 'compass-outline'} 
+              name={activeTab === 'chat' ? 'home' : 'home-outline'} 
               size={28} 
               color={activeTab === 'chat' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.tab} onPress={onSettingsPress}>
+          <TouchableOpacity style={styles.tab} onPress={onDashboardPress}>
             <Ionicons 
-              name={activeTab === 'settings' ? 'copy' : 'copy-outline'} 
+              name={activeTab === 'dashboard' ? 'compass' : 'compass-outline'} 
               size={28} 
-              color={activeTab === 'settings' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              color={activeTab === 'dashboard' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.tab} onPress={onCalendarPress}>
+            <Ionicons 
+              name={activeTab === 'calendar' ? 'calendar' : 'calendar-outline'} 
+              size={28} 
+              color={activeTab === 'calendar' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />
           </TouchableOpacity>
         </View>

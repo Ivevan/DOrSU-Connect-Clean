@@ -909,10 +909,10 @@ const AdminAIChat = () => {
       </View>
 
       <AdminBottomNavBar
-        activeTab="dashboard"
-        onDashboardPress={() => navigation.navigate('AdminAIChat')}
-        onChatPress={() => navigation.navigate('AdminDashboard')}
-        onSettingsPress={() => navigation.navigate('AdminCalendar')}
+        activeTab="chat"
+        onChatPress={() => navigation.navigate('AdminAIChat')}
+        onDashboardPress={() => navigation.navigate('AdminDashboard')}
+        onCalendarPress={() => navigation.navigate('AdminCalendar')}
       />
     </View>
   );

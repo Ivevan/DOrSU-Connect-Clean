@@ -4,7 +4,6 @@ import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Switch
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -172,10 +171,6 @@ const AdminSettings = () => {
     navigation.navigate('GetStarted');
   }, [closeLogout, navigation]);
 
-  const handleDashboardPress = useCallback(() => navigation.navigate('AdminAIChat'), [navigation]);
-  const handleChatPress = useCallback(() => navigation.navigate('AdminDashboard'), [navigation]);
-  const handleSettingsPress = useCallback(() => navigation.navigate('AdminCalendar'), [navigation]);
-
   // Navigation handlers for About section
   const handleUserHelpCenterPress = useCallback(() => navigation.navigate('UserHelpCenter'), [navigation]);
   const handleTermsOfUsePress = useCallback(() => navigation.navigate('TermsOfUse'), [navigation]);
@@ -315,7 +310,7 @@ const AdminSettings = () => {
       <ScrollView
         ref={scrollRef}
         style={[styles.scrollView, { marginTop: insets.top + 56 }]}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 20 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 80 }]}
         showsVerticalScrollIndicator={false}
         removeClippedSubviews={true}
         keyboardShouldPersistTaps="handled"
@@ -442,19 +437,6 @@ const AdminSettings = () => {
         </View>
       </ScrollView>
 
-      {/* Bottom Navigation Bar */}
-      <View style={[styles.bottomNavContainer, {
-        bottom: 0,
-        paddingBottom: insets.bottom,
-      }]} collapsable={false}>
-        <AdminBottomNavBar
-          activeTab="settings"
-          onDashboardPress={handleDashboardPress}
-          onChatPress={handleChatPress}
-          onSettingsPress={handleSettingsPress}
-        />
-      </View>
-
       <LogoutModal
         visible={isLogoutOpen}
         onClose={closeLogout}
@@ -501,12 +483,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: themeConfig.spacing(1.5),
     paddingVertical: themeConfig.spacing(2),
-  },
-  bottomNavContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 998,
   },
   profileSection: {
     flexDirection: 'row',

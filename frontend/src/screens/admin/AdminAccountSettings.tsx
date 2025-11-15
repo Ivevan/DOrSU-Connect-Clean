@@ -373,7 +373,7 @@ const AdminAccountSettings = () => {
         >
           <Ionicons name="chevron-back" size={28} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Admin Account</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Account</Text>
       </View>
 
       <ScrollView
@@ -381,12 +381,13 @@ const AdminAccountSettings = () => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Account Information Section */}
         <BlurView
           intensity={Platform.OS === 'ios' ? 50 : 40}
           tint={isDarkMode ? 'dark' : 'light'}
           style={styles.sectionCard}
         >
-          <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Account Information</Text>
+          <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Account</Text>
 
           <TouchableOpacity 
             style={[styles.settingItem, { borderBottomColor: t.colors.border }]}

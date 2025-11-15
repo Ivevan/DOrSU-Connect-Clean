@@ -25,6 +25,9 @@ type RootStackParamList = {
   AdminAIChat: undefined;
   AdminSettings: undefined;
   AdminAccountSettings: undefined;
+  AdminGeneralSettings: undefined;
+  AdminEmailSettings: undefined;
+  AdminAbout: undefined;
   AdminCalendar: undefined;
   PostUpdate: undefined;
   ManagePosts: undefined;
@@ -369,132 +372,59 @@ const AdminSettings = () => {
 
         {/* Settings Sections */}
         <View style={styles.settingsContainer}>
-          {/* Account Section */}
+          {/* All Settings Section */}
           <BlurView
             intensity={Platform.OS === 'ios' ? 50 : 40}
             tint={isDarkMode ? 'dark' : 'light'}
             style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
           >
             <TouchableOpacity 
-              style={styles.sectionTitleButtonLast}
+              style={styles.sectionTitleButton}
+              onPress={() => {
+                navigation.navigate('AdminGeneralSettings');
+              }}
+            >
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>General</Text>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.sectionTitleButton}
               onPress={() => {
                 navigation.navigate('AdminAccountSettings');
               }}
             >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Account Settings</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Account</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
-          </BlurView>
 
-          {/* All Settings Section - Matching UserSettings layout */}
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 50 : 40}
-            tint={isDarkMode ? 'dark' : 'light'}
-            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
-          >
             <TouchableOpacity 
               style={styles.sectionTitleButton}
               onPress={() => {
-                // App Settings - Dark Mode
-                toggleTheme();
+                navigation.navigate('AdminEmailSettings');
               }}
             >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Dark Mode</Text>
-              <Switch
-                value={isDarkMode}
-                onValueChange={(value) => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  toggleTheme();
-                }}
-                trackColor={{ false: theme.colors.border, true: '#FF9500' }}
-                thumbColor={theme.colors.surface}
-                ios_backgroundColor={theme.colors.border}
-              />
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Email</Text>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity 
               style={styles.sectionTitleButton}
               onPress={() => {
-                setNotificationsEnabled(!notificationsEnabled);
+                // TODO: Navigate to feedback screen or open feedback form
               }}
             >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Notifications</Text>
-              <Switch
-                value={notificationsEnabled}
-                onValueChange={(value) => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  setNotificationsEnabled(value);
-                }}
-                trackColor={{ false: theme.colors.border, true: '#FF9500' }}
-                thumbColor={notificationsEnabled ? theme.colors.surface : theme.colors.surface}
-              />
-            </TouchableOpacity>
-          </BlurView>
-
-          {/* Admin Options - Matching UserSettings simple list layout */}
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 50 : 40}
-            tint={isDarkMode ? 'dark' : 'light'}
-            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
-          >
-            <TouchableOpacity 
-              style={styles.sectionTitleButton}
-              onPress={() => {
-                // Manage Posts
-                navigation.navigate('ManagePosts');
-              }}
-            >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Manage Posts</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Give Feedback</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity 
               style={styles.sectionTitleButtonLast}
               onPress={() => {
-                // Post Update
-                navigation.navigate('PostUpdate');
+                navigation.navigate('AdminAbout');
               }}
             >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Create Post</Text>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
-            </TouchableOpacity>
-          </BlurView>
-
-          {/* About & Legal Section */}
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 50 : 40}
-            tint={isDarkMode ? 'dark' : 'light'}
-            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
-          >
-            <TouchableOpacity 
-              style={styles.sectionTitleButton}
-              onPress={handleUserHelpCenterPress}
-            >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Help Center</Text>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.sectionTitleButton}
-              onPress={handleTermsOfUsePress}
-            >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Terms of Use</Text>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.sectionTitleButton}
-              onPress={handlePrivacyPolicyPress}
-            >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Privacy Policy</Text>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.sectionTitleButtonLast}
-              onPress={handleLicensesPress}
-            >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Licenses</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>About</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
           </BlurView>

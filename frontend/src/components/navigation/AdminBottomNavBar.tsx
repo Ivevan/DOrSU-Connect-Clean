@@ -46,7 +46,7 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
 
           <TouchableOpacity style={styles.tab} onPress={onChatPress}>
             <Ionicons 
-              name="ellipse" 
+              name={activeTab === 'chat' ? 'compass' : 'compass-outline'} 
               size={28} 
               color={activeTab === 'chat' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />

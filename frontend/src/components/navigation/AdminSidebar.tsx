@@ -240,6 +240,46 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
               Calendar
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.sidebarMenuItem}
+            onPress={() => {
+              onClose();
+              navigation.navigate('PostUpdate');
+            }}
+          >
+            <Ionicons 
+              name={currentScreen === 'PostUpdate' ? 'create' : 'create-outline'} 
+              size={24} 
+              color={currentScreen === 'PostUpdate' ? '#FF9500' : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+            />
+            <Text style={[styles.sidebarMenuText, { 
+              color: currentScreen === 'PostUpdate' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              fontWeight: currentScreen === 'PostUpdate' ? '600' : '500'
+            }]}>
+              Post Update
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.sidebarMenuItem}
+            onPress={() => {
+              onClose();
+              navigation.navigate('ManagePosts');
+            }}
+          >
+            <Ionicons 
+              name={currentScreen === 'ManagePosts' ? 'list' : 'list-outline'} 
+              size={24} 
+              color={currentScreen === 'ManagePosts' ? '#FF9500' : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+            />
+            <Text style={[styles.sidebarMenuText, { 
+              color: currentScreen === 'ManagePosts' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              fontWeight: currentScreen === 'ManagePosts' ? '600' : '500'
+            }]}>
+              Manage Posts
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Chat History Section */}

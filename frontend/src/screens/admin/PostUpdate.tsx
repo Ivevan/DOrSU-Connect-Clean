@@ -547,7 +547,7 @@ const PostUpdate: React.FC = () => {
             backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.1)',
             borderColor: isDarkMode ? 'rgba(99, 102, 241, 0.3)' : 'rgba(99, 102, 241, 0.2)',
           }]}>
-            <Text style={[styles.categoryBadgeLabel, { color: isDarkMode ? '#A5B4FC' : '#6366F1' }]} numberOfLines={1}>{category}</Text>
+            <Text style={[styles.categoryBadgeLabel, { color: isDarkMode ? '#A5B4FC' : '#6366F1' }]} numberOfLines={1} ellipsizeMode="tail">{category}</Text>
           </View>
         </View>
       </View>
@@ -558,7 +558,7 @@ const PostUpdate: React.FC = () => {
           marginBottom: 0,
         }]}
         contentContainerStyle={[styles.content, {
-          paddingBottom: 140, // Fixed footer height
+          paddingBottom: 20, // Minimal spacing above footer
           paddingTop: 12,
         }]}
         keyboardShouldPersistTaps="handled"
@@ -1217,7 +1217,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   headerRight: {
-    width: 40,
+    minWidth: 40,
     alignItems: 'flex-end',
   },
   headerSpacer: {
@@ -1231,10 +1231,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
+    maxWidth: 150,
   },
   categoryBadgeLabel: {
     fontSize: 11,
     fontWeight: '700',
+    textAlign: 'center',
   },
   categoryChipSmall: {
     flexDirection: 'row',

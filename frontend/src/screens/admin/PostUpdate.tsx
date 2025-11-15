@@ -510,12 +510,6 @@ const PostUpdate: React.FC = () => {
         />
       </View>
       
-      {/* Safe Area Top Spacer - Fixed position */}
-      <View style={[styles.safeAreaTop, {
-        height: safeInsets.top,
-        backgroundColor: theme.colors.primary,
-      }]} collapsable={false} />
-      
       {/* Header - Clean transparent style matching AIChat */}
       <View
         style={[styles.header, {
@@ -999,25 +993,18 @@ const PostUpdate: React.FC = () => {
         </View>
       </ScrollView>
 
-      {/* Footer with Action Buttons - Fixed position */}
-      <BlurView
-        intensity={Platform.OS === 'ios' ? 60 : 50}
-        tint={isDarkMode ? 'dark' : 'light'}
-        style={[styles.footer, { 
-          backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.7)' : 'rgba(255, 255, 255, 0.7)',
-          borderTopColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          paddingBottom: 16 + safeInsets.bottom 
-        }]}
-      >
-        {/* Background layer to prevent transparency below footer */}
-        <View style={[styles.footerBackground, { backgroundColor: theme.colors.background, height: safeInsets.bottom }]} collapsable={false} />
+      {/* Footer with Action Buttons - AIChat style */}
+      <View style={[styles.footerContainer, { 
+        paddingLeft: 16 + safeInsets.left,
+        paddingRight: 16 + safeInsets.right,
+        paddingBottom: 12 + safeInsets.bottom,
+      }]}>
         {/* Show Preview Button */}
         <TouchableOpacity 
-          style={[styles.previewBtn, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]} 
+          style={[styles.previewBtn, { 
+            backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.1)',
+            borderColor: isDarkMode ? 'rgba(99, 102, 241, 0.3)' : 'rgba(99, 102, 241, 0.2)'
+          }]} 
           onPress={handleShowPreview} 
           activeOpacity={0.7}
           accessibilityRole="button" 
@@ -1025,17 +1012,16 @@ const PostUpdate: React.FC = () => {
           accessibilityHint="Opens a preview of your update"
         >
           <Ionicons name="eye" size={18} color="#6366F1" style={styles.previewIcon} />
-          <Text style={styles.previewText}>Show Preview</Text>
+          <Text style={[styles.previewText, { color: '#6366F1' }]}>Show Preview</Text>
         </TouchableOpacity>
 
         {/* Action Buttons */}
         <View style={styles.actionButtons}>
           <TouchableOpacity 
-            style={[
-              styles.actionBtn,
-              styles.cancelOutlined,
-              { borderColor: '#DC2626', backgroundColor: '#DC2626' }
-            ]} 
+            style={[styles.actionBtn, {
+              backgroundColor: '#DC2626',
+              borderWidth: 0,
+            }]} 
             onPress={handleCancel} 
             activeOpacity={0.7}
             accessibilityRole="button" 
@@ -1043,15 +1029,13 @@ const PostUpdate: React.FC = () => {
             accessibilityHint="Discard your changes and go back"
           >
             <Ionicons name="close-circle" size={18} color="#fff" style={styles.actionIcon} />
-            <Text style={[styles.cancelOutlinedText, { color: '#fff' }]}>Cancel</Text>
+            <Text style={[styles.buttonText, { color: '#fff' }]}>Cancel</Text>
           </TouchableOpacity>
           <TouchableOpacity 
-            style={[
-              styles.actionBtn, 
-              styles.publishFilled,
-              { backgroundColor: isFormValid ? '#059669' : theme.colors.border },
-              !isFormValid && styles.publishFilledDisabled
-            ]} 
+            style={[styles.actionBtn, {
+              backgroundColor: isFormValid ? '#2563EB' : (isDarkMode ? '#374151' : '#E5E7EB'),
+              borderWidth: 0,
+            }]} 
             onPress={handlePublish} 
             activeOpacity={isFormValid ? 0.7 : 1}
             disabled={!isFormValid}
@@ -1062,17 +1046,15 @@ const PostUpdate: React.FC = () => {
             <Ionicons 
               name="checkmark-circle" 
               size={18} 
-              color={isFormValid ? "#fff" : theme.colors.textMuted} 
+              color={isFormValid ? "#fff" : (isDarkMode ? '#6B7280' : '#9CA3AF')} 
               style={styles.actionIcon} 
             />
-            <Text style={[
-              styles.publishFilledText,
-              { color: isFormValid ? "#fff" : theme.colors.textMuted },
-              !isFormValid && styles.publishFilledTextDisabled
-            ]}>Publish</Text>
+            <Text style={[styles.buttonText, {
+              color: isFormValid ? "#fff" : (isDarkMode ? '#6B7280' : '#9CA3AF')
+            }]}>Publish</Text>
           </TouchableOpacity>
         </View>
-      </BlurView>
+      </View>
     </View>
   );
 };
@@ -1518,48 +1500,48 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 16,
   },
-  footer: {
-    borderTopWidth: 1,
+  footerContainer: {
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 16,
-    zIndex: 998,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: -2 },
-    shadowRadius: 12,
-    elevation: 3,
-    overflow: 'hidden',
-  },
-  footerBackground: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    zIndex: -1,
+    paddingTop: 12,
+    backgroundColor: 'transparent',
   },
   previewBtn: {
     borderWidth: 1,
     paddingVertical: 12,
-    borderRadius: 10,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 8,
     flexDirection: 'row',
     gap: 8,
   },
   previewIcon: {
-    marginRight: 4,
+    marginRight: 0,
   },
   previewText: {
     fontSize: 14,
-    color: '#6366F1',
     fontWeight: '600',
   },
   actionButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 0,
+    gap: 8,
+  },
+  actionBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 16,
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    justifyContent: 'center',
+  },
+  actionIcon: {
+    marginRight: 0,
+  },
+  buttonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   cancelBtn: {
     flex: 1,
@@ -1786,18 +1768,6 @@ const styles = StyleSheet.create({
   removeBtn: {
     padding: 6,
     borderRadius: 12,
-  },
-  actionBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'center',
-  },
-  actionIcon: {
-    marginRight: 4,
   },
   cancelOutlined: {
     borderWidth: 1,

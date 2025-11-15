@@ -891,9 +891,17 @@ const SchoolUpdates = () => {
                 </BlurView>
               </View>
             ) : (
-              <View style={[styles.noEventsCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                <NoEventsAnimation theme={theme} />
-                <Text style={[styles.noEventsText, { color: theme.colors.textMuted }]}>No events scheduled for today</Text>
+              <View style={[styles.noEventsContainer, { borderColor: theme.colors.border }]}>
+                <BlurView
+                  intensity={Platform.OS === 'ios' ? 20 : 15}
+                  tint={isDarkMode ? 'dark' : 'light'}
+                  style={styles.noEventsBlur}
+                >
+                  <View style={[styles.noEventsCard, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}>
+                    <NoEventsAnimation theme={theme} />
+                    <Text style={[styles.noEventsText, { color: theme.colors.textMuted }]}>No events scheduled for today</Text>
+                  </View>
+                </BlurView>
               </View>
             )}
           </View>
@@ -1363,10 +1371,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  noEventsContainer: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  noEventsBlur: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
   noEventsCard: {
     padding: 32,
     borderRadius: 12,
-    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,

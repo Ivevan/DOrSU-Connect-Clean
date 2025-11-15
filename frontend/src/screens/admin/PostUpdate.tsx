@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import * as FileSystem from 'expo-file-system';
 import AdminDataService from '../../services/AdminDataService';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -91,6 +92,11 @@ const PostUpdate: React.FC = () => {
   // Animation values - DISABLED FOR PERFORMANCE DEBUGGING
   const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
   const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
+  
+  // Animated floating background orbs (Copilot-style)
+  const lightSpot1 = useRef(new Animated.Value(0)).current;
+  const lightSpot2 = useRef(new Animated.Value(0)).current;
+  const lightSpot3 = useRef(new Animated.Value(0)).current;
 
   // Inline, dependency-free date data
   const months = useMemo(() => [
@@ -113,6 +119,55 @@ const PostUpdate: React.FC = () => {
   const [tmpMonth, setTmpMonth] = useState<number>(current.getMonth());
   const [tmpYear, setTmpYear] = useState<number>(current.getFullYear());
   const [tmpDay, setTmpDay] = useState<number>(current.getDate());
+  
+  // Animate floating background orbs on mount
+  useEffect(() => {
+    const animations = [
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot1, {
+            toValue: 1,
+            duration: 6000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot1, {
+            toValue: 0,
+            duration: 6000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot2, {
+            toValue: 1,
+            duration: 7000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot2, {
+            toValue: 0,
+            duration: 7000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot3, {
+            toValue: 1,
+            duration: 9000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot3, {
+            toValue: 0,
+            duration: 9000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+    ];
+    animations.forEach(anim => anim.start());
+  }, []);
 
   const getDaysInMonth = (year: number, monthIdx: number) => {
     return new Date(year, monthIdx + 1, 0).getDate();
@@ -402,14 +457,58 @@ const PostUpdate: React.FC = () => {
 
   return (
     <View style={[styles.container, {
-      backgroundColor: theme.colors.background,
+      backgroundColor: 'transparent',
     }]} collapsable={false}>
       <StatusBar 
-        backgroundColor={theme.colors.primary}
-        barStyle={isDarkMode ? "light-content" : "light-content"}
-        translucent={false}
+        backgroundColor="transparent"
+        barStyle={isDarkMode ? "light-content" : "dark-content"}
+        translucent={true}
         hidden={false}
       />
+      
+      {/* Warm Gradient Background */}
+      <LinearGradient
+        colors={isDarkMode ? ['#1F1F1F', '#2A2A2A', '#1A1A1A'] : ['#FBF8F3', '#F8F5F0', '#F5F2ED']}
+        style={styles.backgroundGradient}
+      />
+      
+      {/* Animated Floating Orbs */}
+      <View style={styles.floatingBgContainer} pointerEvents="none">
+        {/* Light spots for subtle glow */}
+        <Animated.View
+          style={[
+            styles.lightSpot1,
+            {
+              opacity: lightSpot1.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.3, 0.6],
+              }),
+            },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.lightSpot2,
+            {
+              opacity: lightSpot2.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.2, 0.5],
+              }),
+            },
+          ]}
+        />
+        <Animated.View
+          style={[
+            styles.lightSpot3,
+            {
+              opacity: lightSpot3.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.25, 0.55],
+              }),
+            },
+          ]}
+        />
+      </View>
       
       {/* Safe Area Top Spacer - Fixed position */}
       <View style={[styles.safeAreaTop, {
@@ -417,11 +516,12 @@ const PostUpdate: React.FC = () => {
         backgroundColor: theme.colors.primary,
       }]} collapsable={false} />
       
-      {/* Header - Fixed position to prevent layout shifts */}
+      {/* Header - Clean transparent style matching AIChat */}
       <View
         style={[styles.header, {
-          backgroundColor: theme.colors.primary,
-          top: safeInsets.top,
+          backgroundColor: 'transparent',
+          marginTop: safeInsets.top,
+          borderBottomWidth: 0,
         }]}
         onLayout={(e) => {
           const { height } = e.nativeEvent.layout;
@@ -431,28 +531,44 @@ const PostUpdate: React.FC = () => {
             setHeaderHeight(height);
           }
         }}
-        collapsable={false}
       >
-        <View style={styles.headerLeft} collapsable={false}>
-          <Text style={[styles.headerTitle, { color: '#fff' }]} numberOfLines={1}>Post Update</Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            onPress={() => {
+              if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
+                navigation.goBack();
+              } else {
+                (navigation as any).navigate('AdminDashboard');
+              }
+            }}
+            style={styles.backButton}
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="arrow-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+          </TouchableOpacity>
         </View>
-        <View style={styles.headerRight} collapsable={false}>
-          <View style={styles.categoryBadgeHeader}>
-            <Text style={styles.categoryBadgeLabel} numberOfLines={1}>{category}</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]} numberOfLines={1}>Post Update</Text>
+        <View style={styles.headerRight}>
+          <View style={[styles.categoryBadgeHeader, {
+            backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.1)',
+            borderColor: isDarkMode ? 'rgba(99, 102, 241, 0.3)' : 'rgba(99, 102, 241, 0.2)',
+          }]}>
+            <Text style={[styles.categoryBadgeLabel, { color: isDarkMode ? '#A5B4FC' : '#6366F1' }]} numberOfLines={1}>{category}</Text>
           </View>
         </View>
       </View>
 
       <ScrollView
         style={[styles.scrollView, {
-          marginTop: safeInsets.top + headerHeight,
+          marginTop: 0,
           marginBottom: 0,
         }]}
         contentContainerStyle={[styles.content, {
           paddingBottom: 140, // Fixed footer height
+          paddingTop: 12,
         }]}
         keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={true}
+        showsVerticalScrollIndicator={false}
         bounces={true}
         removeClippedSubviews={true}
         scrollEventThrottle={16}
@@ -460,27 +576,44 @@ const PostUpdate: React.FC = () => {
         <View style={styles.contentInner}>
         
         {/* Title Field */}
-        <View style={styles.inputContainer}>
-          <Text style={[styles.label, { color: theme.colors.text }]}>Title <Text style={{ color: '#E53935' }}>*</Text></Text>
-          <View style={styles.inputWrapper}>
-            <TextInput
-              style={[styles.textInput, styles.textInputElevated, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.text }]}
-              placeholder="Enter announcement title"
-              value={title}
-              onChangeText={setTitle}
-              placeholderTextColor={theme.colors.textMuted}
-              maxLength={100}
-            />
-            <Text style={[styles.charCounter, { color: theme.colors.textMuted }]}>{title.length}/100</Text>
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 50 : 40}
+          tint={isDarkMode ? 'dark' : 'light'}
+          style={[styles.cardContainer, {
+            backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.6)',
+            borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+          }]}
+        >
+          <View style={styles.inputContainer}>
+            <Text style={[styles.label, { color: theme.colors.text }]}>Title <Text style={{ color: '#E53935' }}>*</Text></Text>
+            <View style={styles.inputWrapper}>
+              <TextInput
+                style={[styles.textInput, styles.textInputElevated, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)', color: theme.colors.text }]}
+                placeholder="Enter announcement title"
+                value={title}
+                onChangeText={setTitle}
+                placeholderTextColor={theme.colors.textMuted}
+                maxLength={100}
+              />
+              <Text style={[styles.charCounter, { color: theme.colors.textMuted }]}>{title.length}/100</Text>
+            </View>
           </View>
-        </View>
+        </BlurView>
 
         {/* Category and Date Row */}
-        <View style={styles.rowContainer}>
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 50 : 40}
+          tint={isDarkMode ? 'dark' : 'light'}
+          style={[styles.cardContainer, {
+            backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.6)',
+            borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+          }]}
+        >
+          <View style={styles.rowContainer}>
           {/* Category Dropdown */}
           <View style={styles.halfInputContainer}>
             <Text style={[styles.label, { color: theme.colors.text }]}>Category</Text>
-            <TouchableOpacity style={[styles.dropdownContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={openCategoryMenu}>
+            <TouchableOpacity style={[styles.dropdownContainer, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)' }]} onPress={openCategoryMenu}>
               <Text style={[styles.dropdownText, { color: theme.colors.text }]} numberOfLines={1}>{category}</Text>
               <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
             </TouchableOpacity>
@@ -489,25 +622,34 @@ const PostUpdate: React.FC = () => {
           {/* Date Field */}
           <View style={styles.halfInputContainer}>
             <Text style={[styles.label, { color: theme.colors.text }]}>Date</Text>
-            <TouchableOpacity style={[styles.dateContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={onPressDate}>
+            <TouchableOpacity style={[styles.dateContainer, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)' }]} onPress={onPressDate}>
               <Text style={[styles.dateText, { color: theme.colors.text }]}>{date || 'dd/mm/yyyy'}</Text>
               <Ionicons name="calendar" size={18} color={theme.colors.textMuted} />
             </TouchableOpacity>
           </View>
-        </View>
+          </View>
+        </BlurView>
 
         {/* Event Time Available */}
-        <View style={styles.inputContainer}>
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 50 : 40}
+          tint={isDarkMode ? 'dark' : 'light'}
+          style={[styles.cardContainer, {
+            backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.6)',
+            borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+          }]}
+        >
+          <View style={styles.inputContainer}>
           <Text style={[styles.label, { color: theme.colors.text }]}>Event Time Available</Text>
           <View style={styles.timeRangeContainer}>
-            <TouchableOpacity style={[styles.timeInputWrapper, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={onPressStartTime}>
+            <TouchableOpacity style={[styles.timeInputWrapper, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)' }]} onPress={onPressStartTime}>
               <Text style={[styles.timeText, { color: time.split(' - ')[0] ? theme.colors.text : theme.colors.textMuted }]}>
                 {time.split(' - ')[0] || 'Start Time'}
               </Text>
               <Ionicons name="time-outline" size={18} color={theme.colors.textMuted} />
             </TouchableOpacity>
             <Text style={[styles.timeSeparator, { color: theme.colors.textMuted }]}>-</Text>
-            <TouchableOpacity style={[styles.timeInputWrapper, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={onPressEndTime}>
+            <TouchableOpacity style={[styles.timeInputWrapper, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)' }]} onPress={onPressEndTime}>
               <Text style={[styles.timeText, { color: time.split(' - ')[1] ? theme.colors.text : theme.colors.textMuted }]}>
                 {time.split(' - ')[1] || 'End Time'}
               </Text>
@@ -515,6 +657,7 @@ const PostUpdate: React.FC = () => {
             </TouchableOpacity>
           </View>
         </View>
+        </BlurView>
 
         {/* Category Menu (enhanced) */}
         <Modal visible={isCategoryOpen} transparent animationType="fade" onRequestClose={closeCategoryMenu}>
@@ -789,65 +932,87 @@ const PostUpdate: React.FC = () => {
         />
 
         {/* Description Field */}
-        <View style={styles.inputContainer}>
-          <Text style={[styles.label, { color: theme.colors.text }]}>Description</Text>
-          <View style={styles.textAreaWrapper}>
-            <TextInput
-              style={[styles.textInput, styles.textArea, styles.textInputElevated, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, color: theme.colors.text }]}
-              placeholder="Enter announcement details"
-              value={description}
-              onChangeText={setDescription}
-              placeholderTextColor={theme.colors.textMuted}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-              maxLength={500}
-            />
-            <Text style={[styles.charCounter, { bottom: 8, color: theme.colors.textMuted }]}>{description.length}/500</Text>
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 50 : 40}
+          tint={isDarkMode ? 'dark' : 'light'}
+          style={[styles.cardContainer, {
+            backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.6)',
+            borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+          }]}
+        >
+          <View style={styles.inputContainer}>
+            <Text style={[styles.label, { color: theme.colors.text }]}>Description</Text>
+            <View style={styles.textAreaWrapper}>
+              <TextInput
+                style={[styles.textInput, styles.textArea, styles.textInputElevated, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)', color: theme.colors.text }]}
+                placeholder="Enter announcement details"
+                value={description}
+                onChangeText={setDescription}
+                placeholderTextColor={theme.colors.textMuted}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+                maxLength={500}
+              />
+              <Text style={[styles.charCounter, { bottom: 8, color: theme.colors.textMuted }]}>{description.length}/500</Text>
+            </View>
           </View>
-        </View>
+        </BlurView>
 
         {/* Attachment Section */}
-        <View style={styles.inputContainer}>
-          <Text style={[styles.label, { color: theme.colors.text }]}>Attachments</Text>
-          <TouchableOpacity style={[styles.dashedUpload, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceAlt }]} onPress={handleAddAttachment}>
-            <Ionicons name="attach" size={18} color={theme.colors.textMuted} />
-            <Text style={[styles.dashedUploadText, { color: theme.colors.textMuted }]}>Add Attachment</Text>
-          </TouchableOpacity>
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 50 : 40}
+          tint={isDarkMode ? 'dark' : 'light'}
+          style={[styles.cardContainer, {
+            backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.6)',
+            borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+          }]}
+        >
+          <View style={styles.inputContainer}>
+            <Text style={[styles.label, { color: theme.colors.text }]}>Attachments</Text>
+            <TouchableOpacity style={[styles.dashedUpload, { borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.15)', backgroundColor: 'transparent' }]} onPress={handleAddAttachment}>
+              <Ionicons name="attach" size={18} color={theme.colors.textMuted} />
+              <Text style={[styles.dashedUploadText, { color: theme.colors.textMuted }]}>Add Attachment</Text>
+            </TouchableOpacity>
 
-          {pickedFile && (
-            <View style={[styles.fileCard, { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border }]}>
-              <View style={styles.fileLeft}>
-                <View style={styles.fileIconWrap}>
-                  <Ionicons name="attach" size={14} color="#1976D2" />
+            {pickedFile && (
+              <View style={[styles.fileCard, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.3)' : 'rgba(249, 250, 251, 0.5)', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)' }]}>
+                <View style={styles.fileLeft}>
+                  <View style={styles.fileIconWrap}>
+                    <Ionicons name="attach" size={14} color="#1976D2" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.fileName, { color: theme.colors.text }]} numberOfLines={1}>{pickedFile.name}</Text>
+                    {!!pickedFile.size && (
+                      <Text style={[styles.fileSize, { color: theme.colors.textMuted }]}>{(pickedFile.size / 1024).toFixed(0)} KB</Text>
+                    )}
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.fileName, { color: theme.colors.text }]} numberOfLines={1}>{pickedFile.name}</Text>
-                  {!!pickedFile.size && (
-                    <Text style={[styles.fileSize, { color: theme.colors.textMuted }]}>{(pickedFile.size / 1024).toFixed(0)} KB</Text>
-                  )}
-                </View>
+                <TouchableOpacity onPress={() => setPickedFile(null)} style={[styles.removeBtn, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.6)' : 'rgba(255, 255, 255, 0.6)' }]}>
+                  <Ionicons name="close" size={16} color={theme.colors.textMuted} />
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity onPress={() => setPickedFile(null)} style={[styles.removeBtn, { backgroundColor: theme.colors.surface }]}>
-                <Ionicons name="close" size={16} color={theme.colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+            )}
+          </View>
+        </BlurView>
 
         </View>
       </ScrollView>
 
       {/* Footer with Action Buttons - Fixed position */}
-      <View style={[styles.footer, { 
-        backgroundColor: theme.colors.background,
-        borderTopColor: theme.colors.border,
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        paddingBottom: 16 + safeInsets.bottom 
-      }]} collapsable={false}>
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 60 : 50}
+        tint={isDarkMode ? 'dark' : 'light'}
+        style={[styles.footer, { 
+          backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.7)' : 'rgba(255, 255, 255, 0.7)',
+          borderTopColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          paddingBottom: 16 + safeInsets.bottom 
+        }]}
+      >
         {/* Background layer to prevent transparency below footer */}
         <View style={[styles.footerBackground, { backgroundColor: theme.colors.background, height: safeInsets.bottom }]} collapsable={false} />
         {/* Show Preview Button */}
@@ -907,7 +1072,7 @@ const PostUpdate: React.FC = () => {
             ]}>Publish</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </BlurView>
     </View>
   );
 };
@@ -952,6 +1117,50 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingBottom: 0,
   },
+  backgroundGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 0,
+  },
+  floatingBgContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1,
+    overflow: 'hidden',
+  },
+  lightSpot1: {
+    position: 'absolute',
+    top: '8%',
+    right: '15%',
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(251, 191, 36, 0.08)',
+  },
+  lightSpot2: {
+    position: 'absolute',
+    bottom: '20%',
+    left: '5%',
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(34, 197, 94, 0.08)',
+  },
+  lightSpot3: {
+    position: 'absolute',
+    bottom: '10%',
+    right: '10%',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+  },
   safeAreaTop: {
     position: 'absolute',
     top: 0,
@@ -993,39 +1202,32 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   header: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 999,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 16,
-    minHeight: 64, // Fixed min height to prevent layout shifts
-    borderBottomWidth: 0,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-    elevation: 4,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-  },
-  closeButton: {
-    padding: 6,
+    paddingVertical: 14,
+    backgroundColor: 'transparent',
+    zIndex: 10,
   },
   headerLeft: {
-    flex: 1,
+    width: 40,
   },
-  headerCenter: {
-    flex: 1,
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 0.2,
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: -0.3,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
   },
   headerSubtitle: {
     fontSize: 11,
@@ -1033,8 +1235,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   headerRight: {
-    flexDirection: 'row',
-    gap: 10,
+    width: 40,
+    alignItems: 'flex-end',
   },
   headerSpacer: {
     width: 40,
@@ -1042,19 +1244,15 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   categoryBadgeHeader: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    minWidth: 80,
     alignItems: 'center',
   },
   categoryBadgeLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    color: '#fff',
   },
   categoryChipSmall: {
     flexDirection: 'row',
@@ -1095,6 +1293,14 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 360,
     alignSelf: 'center',
+    gap: 16,
+  },
+  cardContainer: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 0,
+    overflow: 'hidden',
   },
   sectionTitle: {
     fontSize: 16,
@@ -1103,7 +1309,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   inputContainer: {
-    marginBottom: 10,
+    marginBottom: 0,
   },
   label: {
     fontSize: 13,
@@ -1112,7 +1318,7 @@ const styles = StyleSheet.create({
   },
   textInput: {
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 10,
     fontSize: 14,
   },
@@ -1123,7 +1329,7 @@ const styles = StyleSheet.create({
   rowContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 0,
     gap: 8,
   },
   halfInputContainer: {
@@ -1143,9 +1349,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 44,
   },
   timeSeparator: {
     fontSize: 16,
@@ -1175,9 +1382,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 44,
   },
   dropdownText: {
     fontSize: 14,
@@ -1218,9 +1426,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 44,
   },
   dateText: {
     fontSize: 14,
@@ -1316,10 +1525,11 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     zIndex: 998,
     shadowColor: '#000',
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.05,
     shadowOffset: { width: 0, height: -2 },
-    shadowRadius: 8,
+    shadowRadius: 12,
     elevation: 3,
+    overflow: 'hidden',
   },
   footerBackground: {
     position: 'absolute',
@@ -1553,7 +1763,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingVertical: 8,
     paddingHorizontal: 10,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',

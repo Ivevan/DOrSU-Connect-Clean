@@ -13,6 +13,7 @@ import {
   Modal,
   Pressable,
   Animated,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -21,6 +22,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ConfirmationModal from '../../modals/ConfirmationModal';
 import OptionsModal from '../../modals/OptionsModal';
 import InfoModal from '../../modals/InfoModal';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 
 type RootStackParamList = {
   AdminDashboard: undefined;
@@ -93,6 +96,10 @@ const ManagePosts: React.FC = () => {
   const pinSheetY = useRef(new Animated.Value(300)).current;
   const deleteSheetY = useRef(new Animated.Value(300)).current;
   
+  // Animated background orbs (Copilot-style) - Simplified
+  const bgFade1 = useRef(new Animated.Value(0)).current;
+  const bgFade2 = useRef(new Animated.Value(0)).current;
+  
   // Inline, dependency-free date data
   const months = useMemo(() => [
     'January','February','March','April','May','June','July','August','September','October','November','December'
@@ -153,8 +160,16 @@ const ManagePosts: React.FC = () => {
       try {
         setIsLoadingPosts(true);
         setPostsError(null);
-        const json: Post[] = await AdminDataService.getPosts();
-        if (!isCancelled) setPosts(json);
+        const json = await AdminDataService.getPosts();
+        if (!isCancelled) {
+          // Map the API response to include isPinned and isUrgent fields
+          const mappedPosts: Post[] = json.map((post: any) => ({
+            ...post,
+            isPinned: post.isPinned || false,
+            isUrgent: post.isUrgent || false,
+          }));
+          setPosts(mappedPosts);
+        }
       } catch (e: any) {
         if (!isCancelled) setPostsError(e?.message || 'Failed to load posts');
       } finally {
@@ -364,6 +379,41 @@ const ManagePosts: React.FC = () => {
     }
   }, [filteredPosts, selectedSort]);
 
+  // Animate floating background orbs on mount
+  useEffect(() => {
+    const animations = [
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(bgFade1, {
+            toValue: 1,
+            duration: 10000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(bgFade1, {
+            toValue: 0,
+            duration: 10000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(bgFade2, {
+            toValue: 1,
+            duration: 15000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(bgFade2, {
+            toValue: 0,
+            duration: 15000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+    ];
+    animations.forEach(anim => anim.start());
+  }, []);
+  
   // Measure header height immediately on layout
   useLayoutEffect(() => {
     // Set initial header height estimate
@@ -374,26 +424,75 @@ const ManagePosts: React.FC = () => {
 
   return (
     <View style={[styles.container, {
-      backgroundColor: theme.colors.background,
+      backgroundColor: 'transparent',
     }]} collapsable={false}>
       <StatusBar 
-        backgroundColor={theme.colors.background}
+        backgroundColor="transparent"
         barStyle={isDarkMode ? "light-content" : "dark-content"} 
-        translucent={false}
+        translucent={true}
         hidden={false}
       />
       
-      {/* Safe Area Top Spacer - Fixed position */}
-      <View style={[styles.safeAreaTop, {
-        height: safeInsets.top,
-        backgroundColor: theme.colors.background,
-      }]} collapsable={false} />
+      {/* Warm Gradient Background */}
+      <LinearGradient
+        colors={isDarkMode ? ['#1F1F1F', '#2A2A2A', '#1A1A1A'] : ['#FBF8F3', '#F8F5F0', '#F5F2ED']}
+        style={styles.backgroundGradient}
+      />
       
-      {/* Header - Fixed position to prevent layout shifts */}
+      {/* Simplified Animated Background */}
+      <View style={styles.floatingBgContainer} pointerEvents="none">
+        {/* Subtle gradient overlays */}
+        <Animated.View
+          style={[
+            styles.gradientOverlay1,
+            {
+              opacity: bgFade1.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.15, 0.3],
+              }),
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.2)', 'transparent']}
+            style={StyleSheet.absoluteFillObject}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+        </Animated.View>
+
+        <Animated.View
+          style={[
+            styles.gradientOverlay2,
+            {
+              opacity: bgFade2.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.1, 0.25],
+              }),
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={['transparent', 'rgba(255, 180, 130, 0.3)', 'rgba(255, 200, 160, 0.15)']}
+            style={StyleSheet.absoluteFillObject}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+        </Animated.View>
+      </View>
+      
+      {/* Status Bar Background Overlay */}
+      <View style={[styles.statusBarOverlay, {
+        height: safeInsets.top,
+        backgroundColor: isDarkMode ? 'rgba(31, 31, 31, 0.95)' : 'rgba(251, 248, 243, 0.95)',
+      }]} />
+      
+      {/* Header - Clean transparent style matching AIChat */}
       <View
         style={[styles.header, {
-          backgroundColor: theme.colors.background,
-          top: safeInsets.top,
+          backgroundColor: isDarkMode ? 'rgba(31, 31, 31, 0.95)' : 'rgba(251, 248, 243, 0.95)',
+          marginTop: safeInsets.top,
+          borderBottomWidth: 0,
         }]}
         onLayout={(e) => {
           const { height } = e.nativeEvent.layout;
@@ -405,19 +504,18 @@ const ManagePosts: React.FC = () => {
         }}
         collapsable={false}
       >
-        <TouchableOpacity onPress={() => {
-          if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
-            navigation.goBack();
-          } else {
-            (navigation as any).navigate('AdminDashboard');
-          }
-        }} style={styles.closeButton} accessibilityRole="button" accessibilityLabel="Go back" accessibilityHint="Returns to the previous screen">
-          <Ionicons name="chevron-back" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter} collapsable={false}>
-          <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>Manage Posts</Text>
-          <Text style={[styles.headerSubtitle, { color: theme.colors.textMuted }]} numberOfLines={1}>View and manage all updates</Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity onPress={() => {
+            if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
+              navigation.goBack();
+            } else {
+              (navigation as any).navigate('AdminDashboard');
+            }
+          }} style={styles.backButton} accessibilityRole="button" accessibilityLabel="Go back" accessibilityHint="Returns to the previous screen">
+            <Ionicons name="arrow-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+          </TouchableOpacity>
         </View>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]} numberOfLines={1}>Manage Posts</Text>
         <View style={styles.headerRight} collapsable={false}>
           <TouchableOpacity style={[styles.newButton, { backgroundColor: theme.colors.primary }]} onPress={handleNewPost}>
             <Ionicons name="add" size={20} color="#fff" />
@@ -428,29 +526,27 @@ const ManagePosts: React.FC = () => {
 
       <ScrollView
         style={[styles.scrollView, {
-          marginTop: safeInsets.top + headerHeight,
+          marginTop: 0,
         }]}
         contentContainerStyle={[styles.content, {
-          paddingTop: 12,
+          paddingTop: safeInsets.top + headerHeight + 12,
           paddingBottom: 12 + safeInsets.bottom,
         }]}
         keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={true}
+        showsVerticalScrollIndicator={false}
         bounces={true}
         removeClippedSubviews={true}
         scrollEventThrottle={16}
       >
 
         {/* Filter Posts Section */}
-        <View 
-          style={[
-            styles.filterContainer,
-            {
-              backgroundColor: theme.colors.card,
-              borderColor: theme.colors.border,
-            }
-          ]}
-          collapsable={false}
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 50 : 40}
+          tint={isDarkMode ? 'dark' : 'light'}
+          style={[styles.filterContainer, {
+            backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.6)',
+            borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+          }]}
         >
           <View style={styles.filterHeaderRow}>
             <Text style={[styles.filterTitle, { color: theme.colors.text }]}>Filter Posts</Text>
@@ -479,7 +575,9 @@ const ManagePosts: React.FC = () => {
           </View>
           
           {/* Search Bar */}
-          <View style={[styles.searchContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+          <View style={[styles.searchContainer, {
+            borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)',
+          }]}>
             <Ionicons name="search" size={20} color={theme.colors.textMuted} style={styles.searchIcon} />
             <TextInput
               style={[styles.searchInput, { color: theme.colors.text }]}
@@ -503,7 +601,9 @@ const ManagePosts: React.FC = () => {
             <TouchableOpacity 
               style={[
                 styles.categoryContainer, 
-                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                {
+                  borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)',
+                },
                 selectedCategory !== 'All Categories' && { borderColor: theme.colors.primary, backgroundColor: isDarkMode ? theme.colors.surfaceAlt : '#F0F8FF', borderWidth: 2 }
               ]} 
               onPress={handleCategoryChange}
@@ -535,7 +635,9 @@ const ManagePosts: React.FC = () => {
             <TouchableOpacity 
               style={[
                 styles.dateFilterBtn, 
-                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                {
+                  borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)',
+                },
                 filterDate !== '' && { borderColor: theme.colors.primary, backgroundColor: isDarkMode ? theme.colors.surfaceAlt : '#F0F8FF', borderWidth: 2 }
               ]} 
               onPress={handleFilterByDate}
@@ -565,7 +667,9 @@ const ManagePosts: React.FC = () => {
             <TouchableOpacity 
               style={[
                 styles.sortContainer, 
-                { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
+                {
+                  borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)',
+                },
                 selectedSort !== 'Newest' && { borderColor: theme.colors.primary, backgroundColor: isDarkMode ? theme.colors.surfaceAlt : '#F0F8FF', borderWidth: 2 }
               ]} 
               onPress={openSortMenu}
@@ -594,21 +698,24 @@ const ManagePosts: React.FC = () => {
               )}
             </TouchableOpacity>
           </View>
-        </View>
+        </BlurView>
 
         {/* Posts List */}
-        <View 
-          style={[
-            styles.postsContainer,
-          ]}
-          collapsable={false}
-        >
+        <View style={styles.postsContainer} collapsable={false}>
           <Text style={[styles.postsTitle, { color: theme.colors.text }]}>Posts ({sortedPosts.length})</Text>
           
           {isLoading ? (
             // Skeleton Loaders
             Array.from({ length: 4 }).map((_, index) => (
-              <View key={`skeleton-${index}`} style={[styles.postCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+              <BlurView
+                key={`skeleton-${index}`}
+                intensity={Platform.OS === 'ios' ? 50 : 40}
+                tint={isDarkMode ? 'dark' : 'light'}
+                style={[styles.postCard, {
+                  backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.6)',
+                  borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                }]}
+              >
                 <View style={styles.postHeader}>
                   <View style={styles.postTitleContainer}>
                     <View style={styles.skeletonTitle} />
@@ -622,11 +729,19 @@ const ManagePosts: React.FC = () => {
                   </View>
                 </View>
                 <View style={styles.skeletonDate} />
-              </View>
+              </BlurView>
             ))
           ) : isLoadingPosts ? (
             Array.from({ length: 4 }).map((_, index) => (
-              <View key={`loading-${index}`} style={[styles.postCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} />
+              <BlurView
+                key={`loading-${index}`}
+                intensity={Platform.OS === 'ios' ? 50 : 40}
+                tint={isDarkMode ? 'dark' : 'light'}
+                style={[styles.postCard, {
+                  backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.6)',
+                  borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                }]}
+              />
             ))
           ) : postsError ? (
             <View style={styles.emptyStateContainer}>
@@ -656,8 +771,18 @@ const ManagePosts: React.FC = () => {
             </View>
                       ) : (
               // Actual Posts
-              sortedPosts.map((post) => (
-            <View key={post.id} style={[styles.postCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+              sortedPosts.map((post) => {
+                const categoryOption = CATEGORY_OPTIONS.find(o => o.key === post.category) || CATEGORY_OPTIONS[1];
+                return (
+            <BlurView
+              key={post.id}
+              intensity={Platform.OS === 'ios' ? 50 : 40}
+              tint={isDarkMode ? 'dark' : 'light'}
+              style={[styles.postCard, {
+                backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.6)',
+                borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+              }]}
+            >
               <View style={styles.postHeader}>
                   <View style={styles.postTitleContainer}>
                   <Text style={[styles.postTitle, { color: theme.colors.text }]}>{post.title}</Text>
@@ -674,8 +799,8 @@ const ManagePosts: React.FC = () => {
                           <Text style={styles.urgentText}>Urgent</Text>
                         </View>
                       )}
-                      <View style={styles.categoryTag}>
-                        <Ionicons name="folder" size={10} color="#fff" />
+                      <View style={[styles.categoryTag, { backgroundColor: categoryOption.color }]}>
+                        <Ionicons name={categoryOption.icon as any} size={10} color="#fff" />
                         <Text style={styles.categoryTagText}>{post.category}</Text>
                       </View>
                     </View>
@@ -694,8 +819,9 @@ const ManagePosts: React.FC = () => {
                 <View style={styles.postMetadata}>
                 <Text style={[styles.postDate, { color: theme.colors.textMuted }]}>Posted: {post.date}</Text>
                 </View>
-              </View>
-            ))
+              </BlurView>
+            );
+              })
           )}
         </View>
       </ScrollView>
@@ -714,12 +840,6 @@ const ManagePosts: React.FC = () => {
             iconColor: '#059669'
           },
           {
-            id: 'pin',
-            label: activePostForOptions?.isPinned ? 'Unpin Post' : 'Pin Post',
-            icon: activePostForOptions?.isPinned ? 'pin' : 'pin-outline',
-            iconColor: '#1A3E7A'
-          },
-          {
             id: 'delete',
             label: 'Delete Post',
             icon: 'trash',
@@ -733,9 +853,6 @@ const ManagePosts: React.FC = () => {
               case 'edit':
                 closeMoreOptionsModal();
                 handleEditPost(activePostForOptions.id);
-                break;
-              case 'pin':
-                openPinConfirm(activePostForOptions.id);
                 break;
               case 'delete':
                 openDeleteConfirm(activePostForOptions.id);
@@ -957,12 +1074,50 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingBottom: 0,
   },
+  backgroundGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 0,
+  },
+  floatingBgContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1,
+    overflow: 'hidden',
+  },
+  gradientOverlay1: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  gradientOverlay2: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   safeAreaTop: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     zIndex: 1000,
+  },
+  statusBarOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 998,
   },
   scrollView: {
     flex: 1,
@@ -971,38 +1126,28 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+    top: 0,
     zIndex: 999,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingBottom: 12,
-    minHeight: 64, // Fixed min height to prevent layout shifts
-    borderBottomWidth: 0,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 4,
-    elevation: 1,
+    paddingTop: 12,
+    minHeight: 64,
   },
-  closeButton: {
+  headerLeft: {
+    width: 40,
+    alignItems: 'flex-start',
+  },
+  backButton: {
     padding: 6,
   },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
-  },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
-    color: '#111',
-    letterSpacing: 0.2,
-  },
-  headerSubtitle: {
-    fontSize: 11,
-    color: '#667085',
-    marginTop: 2,
-    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: 0.3,
   },
   headerRight: {
     width: 120,
@@ -1046,17 +1191,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   filterContainer: {
-    backgroundColor: '#FFFFFF',
-    padding: 12,
-    borderRadius: 12,
+    padding: 16,
+    borderRadius: 20,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#EFEFEF',
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 6,
-    elevation: 2,
+    overflow: 'hidden',
   },
   filterTitle: {
     fontSize: 14,
@@ -1116,12 +1255,11 @@ const styles = StyleSheet.create({
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent',
     borderRadius: 12,
     paddingHorizontal: 15,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
     paddingVertical: 10,
   },
   searchIcon: {
@@ -1151,12 +1289,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent',
     paddingHorizontal: 15,
     paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
     width: '100%',
   },
   sortFilterLeft: {
@@ -1181,13 +1318,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#fff',
-    paddingHorizontal: 15,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
     flex: 1,
+    gap: 8,
   },
   activeFilterContainer: {
     borderColor: '#1976D2',
@@ -1210,16 +1347,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#333',
     fontWeight: '600',
+    flex: 1,
+    flexShrink: 1,
   },
   dateFilterBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent',
     paddingHorizontal: 15,
     paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E0E0E0',
   },
   dateFilterText: {
     fontSize: 13,
@@ -1237,17 +1375,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   postCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#EFEFEF',
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 6,
-    elevation: 2,
+    overflow: 'hidden',
   },
   postHeader: {
     flexDirection: 'row',
@@ -1295,7 +1427,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   categoryTag: {
-    backgroundColor: '#2E7D32',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
@@ -1303,12 +1434,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     borderWidth: 1,
-    borderColor: '#1B5E20',
-    shadowColor: '#2E7D32',
-    shadowOpacity: 0.4,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 6,
-    elevation: 4,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   categoryTagText: {
     fontSize: 11,
@@ -1361,6 +1487,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     gap: 8,
+    minWidth: 0,
   },
   categoryFilterIconWrap: {
     width: 20,

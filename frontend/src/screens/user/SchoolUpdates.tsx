@@ -879,7 +879,17 @@ const SchoolUpdates = () => {
               </View>
             </View>
             {todaysEvents.length > 0 ? (
-              <EventCard update={todaysEvents[0]} onPress={() => handleUpdatePress(todaysEvents[0])} theme={theme} />
+              <View style={[styles.eventCardContainer, { borderColor: theme.colors.border }]}>
+                <BlurView
+                  intensity={Platform.OS === 'ios' ? 20 : 15}
+                  tint={isDarkMode ? 'dark' : 'light'}
+                  style={styles.eventCardBlur}
+                >
+                  <View style={{ backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.5)' : 'rgba(255, 255, 255, 0.5)' }}>
+                    <EventCard update={todaysEvents[0]} onPress={() => handleUpdatePress(todaysEvents[0])} theme={theme} />
+                  </View>
+                </BlurView>
+              </View>
             ) : (
               <View style={[styles.noEventsCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
                 <NoEventsAnimation theme={theme} />
@@ -890,7 +900,13 @@ const SchoolUpdates = () => {
         )}
 
         {/* Updates Section (filtered by time) */}
-        <View style={[styles.recentUpdatesSection, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+        <View style={[styles.recentUpdatesSection, { borderColor: theme.colors.border }]}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 20 : 15}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={styles.updatesSectionBlur}
+          >
+            <View style={[styles.updatesSectionContent, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
           <View style={styles.sectionHeaderEnhanced}>
             <View style={[styles.sectionIconWrapper, { backgroundColor: theme.colors.accent + '15' }]}>
               <Ionicons 
@@ -955,6 +971,8 @@ const SchoolUpdates = () => {
           {!isLoading && !error && displayedUpdates.map((update) => (
             <UpdateCard key={update.id} update={update} onPress={() => handleUpdatePress(update)} theme={theme} />
           ))}
+            </View>
+          </BlurView>
         </View>
         </Animated.View>
       </ScrollView>
@@ -1188,15 +1206,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   recentUpdatesSection: {
-    borderWidth: 0,
+    borderWidth: 1,
     borderRadius: 12,
-    padding: 12,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    overflow: 'hidden',
+  },
+  updatesSectionBlur: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  updatesSectionContent: {
+    padding: 12,
+    borderRadius: 12,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1316,6 +1337,15 @@ const styles = StyleSheet.create({
   },
   todaysEventsSection: {
     marginBottom: 16,
+  },
+  eventCardContainer: {
+    borderWidth: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  eventCardBlur: {
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   todaysEventsHeader: {
     flexDirection: 'row',

@@ -497,13 +497,7 @@ const SchoolUpdates = () => {
   }, [timeFilter, upcomingUpdates, recentUpdates, filtered]);
 
   return (
-    <View style={[styles.container, {
-      backgroundColor: theme.colors.background,
-      paddingTop: insets.top,
-      paddingBottom: 0, // Remove bottom padding since UserBottomNavBar now handles it
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    }]}>
+    <View style={styles.container}>
       <StatusBar
         backgroundColor="transparent"
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
@@ -843,7 +837,11 @@ const SchoolUpdates = () => {
       <ScrollView 
         ref={scrollRef} 
         style={styles.content} 
-        contentContainerStyle={{ paddingBottom: 20 }}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 12,
+          paddingBottom: 20,
+        }}
         showsVerticalScrollIndicator={false}
       >
         <Animated.View
@@ -1115,9 +1113,6 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 20,
   },
   welcomeSection: {
     flexDirection: 'row',

@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Animated, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -40,9 +40,13 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
   onDeleteChat,
 }) => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute();
   const { isDarkMode } = useTheme();
   const insets = useSafeAreaInsets();
   const sidebarAnim = useRef(new Animated.Value(-320)).current;
+
+  // Determine current active screen
+  const currentScreen = route.name as keyof RootStackParamList;
 
   // User state
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -169,7 +173,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
         {/* Navigation Menu */}
         <View style={styles.sidebarMenu}>
           <TouchableOpacity
-            style={[styles.sidebarMenuItem, { backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.1)' : 'rgba(255, 149, 0, 0.08)' }]}
+            style={styles.sidebarMenuItem}
             onPress={() => {
               if (onNewConversation) {
                 onNewConversation();
@@ -178,8 +182,15 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
               navigation.navigate('AIChat');
             }}
           >
-            <Ionicons name="home" size={24} color="#FF9500" />
-            <Text style={[styles.sidebarMenuText, { color: '#FF9500', fontWeight: '600' }]}>
+            <Ionicons 
+              name={currentScreen === 'AIChat' ? 'home' : 'home-outline'} 
+              size={24} 
+              color={currentScreen === 'AIChat' ? '#FF9500' : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+            />
+            <Text style={[styles.sidebarMenuText, { 
+              color: currentScreen === 'AIChat' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              fontWeight: currentScreen === 'AIChat' ? '600' : '500'
+            }]}>
               Conversation
             </Text>
           </TouchableOpacity>
@@ -191,8 +202,15 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
               navigation.navigate('SchoolUpdates');
             }}
           >
-            <Ionicons name="compass-outline" size={24} color={isDarkMode ? '#9CA3AF' : '#6B7280'} />
-            <Text style={[styles.sidebarMenuText, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>
+            <Ionicons 
+              name={currentScreen === 'SchoolUpdates' ? 'compass' : 'compass-outline'} 
+              size={24} 
+              color={currentScreen === 'SchoolUpdates' ? '#FF9500' : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+            />
+            <Text style={[styles.sidebarMenuText, { 
+              color: currentScreen === 'SchoolUpdates' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              fontWeight: currentScreen === 'SchoolUpdates' ? '600' : '500'
+            }]}>
               Discover
             </Text>
           </TouchableOpacity>
@@ -204,8 +222,15 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
               navigation.navigate('Calendar');
             }}
           >
-            <Ionicons name="copy-outline" size={24} color={isDarkMode ? '#9CA3AF' : '#6B7280'} />
-            <Text style={[styles.sidebarMenuText, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>
+            <Ionicons 
+              name={currentScreen === 'Calendar' ? 'copy' : 'copy-outline'} 
+              size={24} 
+              color={currentScreen === 'Calendar' ? '#FF9500' : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+            />
+            <Text style={[styles.sidebarMenuText, { 
+              color: currentScreen === 'Calendar' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              fontWeight: currentScreen === 'Calendar' ? '600' : '500'
+            }]}>
               Calendar
             </Text>
           </TouchableOpacity>

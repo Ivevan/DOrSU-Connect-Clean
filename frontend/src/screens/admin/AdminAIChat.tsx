@@ -280,14 +280,10 @@ const AdminAIChat = () => {
       </View>
 
       <AdminBottomNavBar
-        activeTab="chat"
-        onDashboardPress={() => navigation.navigate('AdminDashboard')}
-        onChatPress={() => navigation.navigate('AdminAIChat')}
-        onCalendarPress={() => navigation.navigate('AdminCalendar')}
-        onSettingsPress={() => navigation.navigate('AdminSettings')}  
-        onAddPress={() => {}}
-        onPostUpdatePress={() => navigation.navigate('PostUpdate')}
-        onManagePostPress={() => navigation.navigate('ManagePosts')}
+        activeTab="dashboard"
+        onDashboardPress={() => navigation.navigate('AdminAIChat')}
+        onChatPress={() => navigation.navigate('AdminDashboard')}
+        onSettingsPress={() => navigation.navigate('AdminCalendar')}
       />
     </View>
   );

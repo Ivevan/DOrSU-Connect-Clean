@@ -740,14 +740,10 @@ const AdminCalendar = () => {
         paddingBottom: safeInsets.bottom,
       }]} collapsable={false}>
         <AdminBottomNavBar
-        activeTab="calendar"
-        onDashboardPress={() => navigation.navigate('AdminDashboard')}
-        onChatPress={() => navigation.navigate('AdminAIChat')}
-        onAddPress={() => { /* future: open create flow */ }}
-        onCalendarPress={() => navigation.navigate('AdminCalendar')}
-        onSettingsPress={() => navigation.navigate('AdminSettings')}
-        onPostUpdatePress={() => navigation.navigate('PostUpdate')}
-        onManagePostPress={() => navigation.navigate('ManagePosts')}
+        activeTab="settings"
+        onDashboardPress={() => navigation.navigate('AdminAIChat')}
+        onChatPress={() => navigation.navigate('AdminDashboard')}
+        onSettingsPress={() => navigation.navigate('AdminCalendar')}
         />
       </View>
     </View>

@@ -172,14 +172,9 @@ const AdminSettings = () => {
     navigation.navigate('GetStarted');
   }, [closeLogout, navigation]);
 
-  // Navigation handlers for AdminBottomNavBar
-  const handleDashboardPress = useCallback(() => navigation.navigate('AdminDashboard'), [navigation]);
-  const handleChatPress = useCallback(() => navigation.navigate('AdminAIChat'), [navigation]);
-  const handleCalendarPress = useCallback(() => navigation.navigate('AdminCalendar'), [navigation]);
-  const handleSettingsPress = useCallback(() => navigation.navigate('AdminSettings'), [navigation]);
-  const handlePostUpdatePress = useCallback(() => navigation.navigate('PostUpdate'), [navigation]);
-  const handleManagePostPress = useCallback(() => navigation.navigate('ManagePosts'), [navigation]);
-  const handleAddPress = useCallback(() => { /* future: open create flow */ }, []);
+  const handleDashboardPress = useCallback(() => navigation.navigate('AdminAIChat'), [navigation]);
+  const handleChatPress = useCallback(() => navigation.navigate('AdminDashboard'), [navigation]);
+  const handleSettingsPress = useCallback(() => navigation.navigate('AdminCalendar'), [navigation]);
 
   // Navigation handlers for About section
   const handleUserHelpCenterPress = useCallback(() => navigation.navigate('UserHelpCenter'), [navigation]);
@@ -456,11 +451,7 @@ const AdminSettings = () => {
           activeTab="settings"
           onDashboardPress={handleDashboardPress}
           onChatPress={handleChatPress}
-          onAddPress={handleAddPress}
-          onCalendarPress={handleCalendarPress}
           onSettingsPress={handleSettingsPress}
-          onPostUpdatePress={handlePostUpdatePress}
-          onManagePostPress={handleManagePostPress}
         />
       </View>
 

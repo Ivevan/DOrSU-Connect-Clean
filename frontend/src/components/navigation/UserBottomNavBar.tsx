@@ -5,6 +5,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeValues } from '../../contexts/ThemeContext';
+import { BlurView } from 'expo-blur';
 
 // Keep in sync with app navigator
  type RootStackParamList = {
@@ -41,33 +42,41 @@ const Bar: React.FC<BarProps> = ({
   
   return (
     <View style={[styles.container, { 
-      backgroundColor: 'transparent',
       paddingBottom: insets.bottom,
     }]} collapsable={false}>
-      
-      <TouchableOpacity style={styles.tab} onPress={onHomePress}>
-        <Ionicons 
-          name={activeTab === 'home' ? 'home' : 'home-outline'} 
-          size={28} 
-          color={activeTab === 'home' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
-        />
-      </TouchableOpacity>
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 50 : 40}
+        tint={isDarkMode ? 'dark' : 'light'}
+        style={styles.blurBackground}
+      >
+        <View style={[styles.navContent, {
+          backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
+        }]}>
+          <TouchableOpacity style={styles.tab} onPress={onHomePress}>
+            <Ionicons 
+              name={activeTab === 'home' ? 'home' : 'home-outline'} 
+              size={28} 
+              color={activeTab === 'home' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+            />
+          </TouchableOpacity>
 
-      <TouchableOpacity style={styles.tab} onPress={onDiscoveryPress}>
-        <Ionicons 
-          name={activeTab === 'discovery' ? 'compass' : 'compass-outline'} 
-          size={28} 
-          color={activeTab === 'discovery' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
-        />
-      </TouchableOpacity>
+          <TouchableOpacity style={styles.tab} onPress={onDiscoveryPress}>
+            <Ionicons 
+              name={activeTab === 'discovery' ? 'compass' : 'compass-outline'} 
+              size={28} 
+              color={activeTab === 'discovery' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+            />
+          </TouchableOpacity>
 
-      <TouchableOpacity style={styles.tab} onPress={onCalendarPress}>
-        <Ionicons 
-          name={activeTab === 'calendar' ? 'copy' : 'copy-outline'} 
-          size={28} 
-          color={activeTab === 'calendar' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
-        />
-      </TouchableOpacity>
+          <TouchableOpacity style={styles.tab} onPress={onCalendarPress}>
+            <Ionicons 
+              name={activeTab === 'calendar' ? 'copy' : 'copy-outline'} 
+              size={28} 
+              color={activeTab === 'calendar' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+            />
+          </TouchableOpacity>
+        </View>
+      </BlurView>
     </View>
   );
 };
@@ -102,16 +111,23 @@ const UserBottomNavBar = () => {
 
 const styles = StyleSheet.create({
   container: {
+    position: 'relative',
+    backgroundColor: 'transparent',
+  },
+  blurBackground: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  navContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
     paddingVertical: 8,
     paddingHorizontal: 40,
-    borderTopWidth: 0,
-    elevation: 0,
-    shadowOpacity: 0,
-    position: 'relative',
-    backgroundColor: 'transparent',
   },
   backgroundLayer: {
     position: 'absolute',

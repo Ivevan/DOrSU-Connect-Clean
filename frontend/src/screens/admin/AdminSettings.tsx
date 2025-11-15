@@ -24,6 +24,7 @@ type RootStackParamList = {
   AdminDashboard: undefined;
   AdminAIChat: undefined;
   AdminSettings: undefined;
+  AdminAccountSettings: undefined;
   AdminCalendar: undefined;
   PostUpdate: undefined;
   ManagePosts: undefined;
@@ -366,27 +367,39 @@ const AdminSettings = () => {
           </View>
         </BlurView>
 
-        {/* Settings Categories */}
-        <View
-          style={[
-            styles.settingsContainer
-          ]}
-        >
-          {/* App Settings */}
+        {/* Settings Sections */}
+        <View style={styles.settingsContainer}>
+          {/* Account Section */}
           <BlurView
             intensity={Platform.OS === 'ios' ? 50 : 40}
             tint={isDarkMode ? 'dark' : 'light'}
             style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
           >
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>App Settings</Text>
-            
-            <View style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="moon-outline" size={20} color="#FF9500" />
-                </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Dark Mode</Text>
-              </View>
+            <TouchableOpacity 
+              style={styles.sectionTitleButtonLast}
+              onPress={() => {
+                navigation.navigate('AdminAccountSettings');
+              }}
+            >
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Account Settings</Text>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+          </BlurView>
+
+          {/* All Settings Section - Matching UserSettings layout */}
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
+          >
+            <TouchableOpacity 
+              style={styles.sectionTitleButton}
+              onPress={() => {
+                // App Settings - Dark Mode
+                toggleTheme();
+              }}
+            >
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Dark Mode</Text>
               <Switch
                 value={isDarkMode}
                 onValueChange={(value) => {
@@ -397,112 +410,93 @@ const AdminSettings = () => {
                 thumbColor={theme.colors.surface}
                 ios_backgroundColor={theme.colors.border}
               />
-            </View>
+            </TouchableOpacity>
 
-            <View style={styles.settingItemLast}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="notifications-outline" size={20} color="#FF9500" />
-                </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Notifications</Text>
-              </View>
+            <TouchableOpacity 
+              style={styles.sectionTitleButton}
+              onPress={() => {
+                setNotificationsEnabled(!notificationsEnabled);
+              }}
+            >
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Notifications</Text>
               <Switch
                 value={notificationsEnabled}
-                onValueChange={setNotificationsEnabled}
+                onValueChange={(value) => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  setNotificationsEnabled(value);
+                }}
                 trackColor={{ false: theme.colors.border, true: '#FF9500' }}
                 thumbColor={notificationsEnabled ? theme.colors.surface : theme.colors.surface}
               />
-            </View>
+            </TouchableOpacity>
           </BlurView>
 
-          {/* Email Section */}
+          {/* Admin Options - Matching UserSettings simple list layout */}
           <BlurView
             intensity={Platform.OS === 'ios' ? 50 : 40}
             tint={isDarkMode ? 'dark' : 'light'}
             style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
           >
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Email</Text>
-            
-            <TouchableOpacity style={styles.settingItemLast}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="mail-outline" size={20} color="#FF9500" />
-                </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>admin@dorsu.edu.ph</Text>
-              </View>
+            <TouchableOpacity 
+              style={styles.sectionTitleButton}
+              onPress={() => {
+                // Manage Posts
+                navigation.navigate('ManagePosts');
+              }}
+            >
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Manage Posts</Text>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.sectionTitleButtonLast}
+              onPress={() => {
+                // Post Update
+                navigation.navigate('PostUpdate');
+              }}
+            >
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Create Post</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
           </BlurView>
 
-          {/* About Section */}
+          {/* About & Legal Section */}
           <BlurView
             intensity={Platform.OS === 'ios' ? 50 : 40}
             tint={isDarkMode ? 'dark' : 'light'}
             style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
           >
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>About</Text>
-            
             <TouchableOpacity 
-              style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}
+              style={styles.sectionTitleButton}
               onPress={handleUserHelpCenterPress}
             >
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="help-circle-outline" size={20} color="#FF9500" />
-                </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Help Center</Text>
-              </View>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Help Center</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}
+              style={styles.sectionTitleButton}
               onPress={handleTermsOfUsePress}
             >
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="document-text-outline" size={20} color="#FF9500" />
-                </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Terms of Use</Text>
-              </View>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Terms of Use</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}
+              style={styles.sectionTitleButton}
               onPress={handlePrivacyPolicyPress}
             >
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="shield-checkmark-outline" size={20} color="#FF9500" />
-                </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Privacy Policy</Text>
-              </View>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Privacy Policy</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}
+              style={styles.sectionTitleButtonLast}
               onPress={handleLicensesPress}
             >
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="document-outline" size={20} color="#FF9500" />
-                </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Licenses</Text>
-              </View>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Licenses</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
-
-            <View style={styles.settingItemLast}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="information-circle-outline" size={20} color="#FF9500" />
-                </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>DOrSU Connect</Text>
-              </View>
-              <Text style={[styles.settingValue, { color: theme.colors.textMuted }]}>v1.0.0</Text>
-            </View>
           </BlurView>
 
           {/* Sign Out Button */}
@@ -688,13 +682,28 @@ const styles = StyleSheet.create({
     padding: themeConfig.spacing(1.5),
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
-    overflow: 'hidden',
   },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
     color: themeConfig.colors.text,
-    marginBottom: themeConfig.spacing(1.5),
+    marginBottom: 0,
+  },
+  sectionTitleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: themeConfig.spacing(2),
+    marginBottom: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  sectionTitleButtonLast: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: themeConfig.spacing(2),
+    marginBottom: 0,
   },
   settingItem: {
     flexDirection: 'row',

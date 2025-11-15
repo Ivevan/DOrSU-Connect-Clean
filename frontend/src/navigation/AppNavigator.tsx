@@ -13,6 +13,7 @@ import AdminAIChat from '../screens/admin/AdminAIChat';
 import AdminCalendar from '../screens/admin/AdminCalendar';
 import AdminDashboard from '../screens/admin/AdminDashboard';
 import AdminSettings from '../screens/admin/AdminSettings';
+import AdminAccountSettings from '../screens/admin/AdminAccountSettings';
 import ManagePosts from '../screens/admin/ManagePosts';
 import PostUpdate from '../screens/admin/PostUpdate';
 import CreateAccount from '../screens/auth/CreateAccount';
@@ -212,6 +213,14 @@ const AppNavigator = () => {
         <Stack.Screen 
           name="AdminSettings" 
           component={AdminSettings}
+        />
+        <Stack.Screen 
+          name="AdminAccountSettings" 
+          component={AdminAccountSettings}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
         />
         <Stack.Screen 
           name="AdminCalendar" 

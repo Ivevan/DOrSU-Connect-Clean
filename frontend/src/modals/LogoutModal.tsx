@@ -1,8 +1,10 @@
 import React, { memo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Animated, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 
 interface LogoutModalProps {
   visible: boolean;
@@ -18,32 +20,66 @@ const LogoutModal: React.FC<LogoutModalProps> = ({
   sheetY,
 }) => {
   const insets = useSafeAreaInsets();
-  const { theme: t } = useTheme();
+  const { theme: t, isDarkMode } = useTheme();
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
+      {/* Background Overlay with Gradient */}
+      <LinearGradient
+        colors={[
+          isDarkMode ? 'rgba(0, 0, 0, 0.5)' : 'rgba(0, 0, 0, 0.4)',
+          isDarkMode ? 'rgba(0, 0, 0, 0.6)' : 'rgba(0, 0, 0, 0.5)',
+        ]}
+        style={styles.modalOverlay}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
         <TouchableOpacity style={styles.overlayTouch} activeOpacity={1} onPress={onClose} />
-        <Animated.View style={[styles.sheet, { transform: [{ translateY: sheetY }], backgroundColor: t.colors.surface }] }>
-          <View style={styles.sheetHandle} />
-          <View style={styles.sheetHeaderRow}>
-            <View style={styles.sheetIconCircle}>
-              <Ionicons name="log-out-outline" size={20} color={t.colors.accent} />
+        <Animated.View style={[styles.sheetContainer, { transform: [{ translateY: sheetY }] }]}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 60 : 50}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={styles.blurContainer}
+          >
+            <View style={[styles.sheet, { 
+              backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.85)' : 'rgba(255, 255, 255, 0.85)',
+              borderTopColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.3)'
+            }]}>
+              <View style={styles.sheetHandle} />
+              
+              {/* Icon Container */}
+              <View style={styles.iconContainer}>
+                <View style={[styles.iconBackground, { 
+                  backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)'
+                }]}>
+                  <Ionicons name="log-out" size={32} color="#EF4444" />
+                </View>
+              </View>
+              
+              <Text style={[styles.sheetTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Logout</Text>
+              <Text style={[styles.sheetMessage, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>
+                Are you sure you want to logout of DOrSU Connect?
+              </Text>
+              
+              <View style={styles.sheetActions}>
+                <TouchableOpacity 
+                  style={[styles.actionBtn, styles.actionSecondary, { 
+                    backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                    borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)'
+                  }]} 
+                  onPress={onClose}
+                >
+                  <Text style={[styles.actionSecondaryText, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.actionBtn, styles.actionPrimary]} onPress={onConfirm}>
+                  <Text style={styles.actionPrimaryText}>Logout</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ height: insets.bottom }} />
             </View>
-            <Text style={[styles.sheetTitle, { color: t.colors.text }]}>Logout</Text>
-          </View>
-          <Text style={[styles.sheetMessage, { color: t.colors.textMuted }]}>Are you sure you want to logout of DOrSU Connect?</Text>
-          <View style={styles.sheetActions}>
-            <TouchableOpacity style={[styles.actionBtn, styles.actionSecondary, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]} onPress={onClose}>
-              <Text style={[styles.actionSecondaryText, { color: t.colors.text }]}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.actionBtn, styles.actionPrimary, { backgroundColor: t.colors.accent }]} onPress={onConfirm}>
-              <Text style={[styles.actionPrimaryText, { color: t.colors.surface }]}>Logout</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={{ height: insets.bottom }} />
+          </BlurView>
         </Animated.View>
-      </View>
+      </LinearGradient>
     </Modal>
   );
 };
@@ -56,7 +92,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.35)'
   },
   overlayTouch: {
     position: 'absolute',
@@ -65,79 +100,82 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
   },
+  sheetContainer: {
+    overflow: 'hidden',
+  },
+  blurContainer: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: 'hidden',
+  },
   sheet: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     paddingHorizontal: 24,
     paddingTop: 16,
     paddingBottom: 32,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 8,
+    borderTopWidth: 1,
   },
   sheetHandle: {
     alignSelf: 'center',
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#E5E7EB',
-    marginBottom: 16,
+    backgroundColor: 'rgba(156, 163, 175, 0.4)',
+    marginBottom: 20,
   },
-  sheetHeaderRow: {
-    flexDirection: 'row',
+  iconContainer: {
     alignItems: 'center',
-    gap: 16,
     marginBottom: 16,
   },
-  sheetIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#EEF2FF',
+  iconBackground: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
   },
   sheetTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#000000',
+    fontSize: 20,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 12,
+    letterSpacing: 0.3,
   },
   sheetMessage: {
-    fontSize: 13,
-    color: '#6B7280',
-    marginBottom: 24,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: 28,
+    fontWeight: '400',
   },
   sheetActions: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 12,
   },
   actionBtn: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
+    paddingVertical: 12,
     borderRadius: 10,
   },
   actionSecondary: {
-    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
   },
   actionSecondaryText: {
-    color: '#000000',
-    fontWeight: '700',
-    fontSize: 13,
+    fontWeight: '600',
+    fontSize: 14,
+    letterSpacing: 0.2,
   },
   actionPrimary: {
-    backgroundColor: '#2563EB',
+    backgroundColor: '#EF4444',
   },
   actionPrimaryText: {
     color: '#FFFFFF',
-    fontWeight: '700',
-    fontSize: 13,
+    fontWeight: '600',
+    fontSize: 14,
+    letterSpacing: 0.2,
   },
 });
 

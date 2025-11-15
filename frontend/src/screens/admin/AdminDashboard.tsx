@@ -1,16 +1,16 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo, memo } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Pressable, SafeAreaView, TextInput, Image, FlatList, Animated, Easing } from 'react-native';
+import React, { useMemo, useState, useRef, useEffect, useCallback, memo } from 'react';
+import { View, Text, StyleSheet, StatusBar, Platform, ScrollView, Animated, Easing, TouchableOpacity, Image, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import AdminDataService from '../../services/AdminDataService';
+import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
-import { useNavigation } from '@react-navigation/native';
+import AdminSidebar from '../../components/navigation/AdminSidebar';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { theme as themeStyle } from '../../config/theme';
+import { Ionicons } from '@expo/vector-icons';
 import { useThemeValues } from '../../contexts/ThemeContext';
-import { formatDate, timeAgo } from '../../utils/dateUtils';
-import PreviewModal from '../../modals/PreviewModal';
+import AdminDataService from '../../services/AdminDataService';
+import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -22,10 +22,24 @@ type RootStackParamList = {
   Calendar: undefined;
   AdminDashboard: undefined;
   AdminAIChat: undefined;
-  AdminSettings: undefined;
   AdminCalendar: undefined;
+  AdminSettings: undefined;
   PostUpdate: undefined;
   ManagePosts: undefined;
+};
+
+type DashboardUpdate = { 
+  id: string;
+  title: string; 
+  date: string; 
+  time?: string; 
+  tag: string; 
+  image?: string; 
+  images?: string[]; 
+  description?: string; 
+  source?: string; 
+  pinned?: boolean; 
+  isoDate?: string 
 };
 
 // Helper function to get Philippines timezone date key (moved outside component for performance)
@@ -140,40 +154,40 @@ const NoEventsAnimation = memo(({ theme }: { theme: any }) => {
   );
 });
 
-// Event Card with Image Preview
-const TodaysEventCard = memo(({ event, onPress, theme }: { event: any; onPress: () => void; theme: any }) => {
-  const imageUrl = event.images?.[0] || event.image;
+// Event Card with Image Preview (Horizontal Scrollable)
+const EventCard = memo(({ update, onPress, theme }: { update: any; onPress: () => void; theme: any }) => {
+  const imageUrl = update.images?.[0] || update.image;
   
   return (
-    <Pressable style={[styles.todaysEventCardHorizontal, styles.todaysEventCardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
+    <Pressable style={[styles.eventCardHorizontal, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
       {imageUrl ? (
         <Image 
           source={{ uri: imageUrl }} 
-          style={styles.todaysEventImageHorizontal}
+          style={styles.eventImageHorizontal}
           resizeMode="cover"
         />
       ) : (
-        <View style={[styles.todaysEventImagePlaceholder, { backgroundColor: theme.colors.surface }]}>
+        <View style={[styles.eventImagePlaceholder, { backgroundColor: theme.colors.surface }]}>
           <Ionicons name="calendar-outline" size={40} color={theme.colors.textMuted} />
         </View>
       )}
       <LinearGradient
         colors={['transparent', 'rgba(0,0,0,0.7)']}
-        style={styles.todaysEventGradient}
+        style={styles.eventGradient}
       >
-        <View style={styles.todaysEventOverlayContent}>
-          <View style={[styles.todaysEventTagOverlay, { backgroundColor: getTagColor(event.tag) }]}>
-            <Text style={[styles.todaysEventTagText, { color: getTagTextColor(event.tag) }]}>{event.tag}</Text>
+        <View style={styles.eventOverlayContent}>
+          <View style={[styles.eventTagOverlay, { backgroundColor: getTagColor(update.tag) }]}>
+            <Text style={[styles.eventTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
           </View>
-          <Text style={styles.todaysEventTitleOverlay} numberOfLines={2}>{event.title}</Text>
-          <View style={styles.todaysEventDateTimeRow}>
+          <Text style={styles.eventTitleOverlay} numberOfLines={2}>{update.title}</Text>
+          <View style={styles.eventDateTimeRow}>
             <Ionicons name="calendar-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-            <Text style={styles.todaysEventDateOverlay}>{event.date}</Text>
-            {event.time && (
+            <Text style={styles.eventDateOverlay}>{update.date}</Text>
+            {update.time && (
               <>
-                <Text style={styles.todaysEventTimeSeparator}>•</Text>
+                <Text style={styles.eventTimeSeparator}>•</Text>
                 <Ionicons name="time-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                <Text style={styles.todaysEventDateOverlay}>{event.time}</Text>
+                <Text style={styles.eventDateOverlay}>{update.time}</Text>
               </>
             )}
           </View>
@@ -189,288 +203,567 @@ const AdminDashboard = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const scrollRef = useRef<ScrollView>(null);
   
-  // Memoize safe area insets to prevent recalculation during navigation
-  const safeInsets = useMemo(() => ({
-    top: insets.top,
-    bottom: insets.bottom,
-    left: insets.left,
-    right: insets.right,
-  }), [insets.top, insets.bottom, insets.left, insets.right]);
+  // Auth state
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const userName = useMemo(() => currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Admin', [currentUser]);
   
-  // Lock header height to prevent layout shifts
-  // Use a more accurate initial estimate based on typical header height
-  const headerHeightRef = useRef<number>(56); // More accurate initial estimate (12px padding * 2 + 20px font + some spacing)
-  const [headerHeight, setHeaderHeight] = useState(56);
-  
-  const [query, setQuery] = useState('');
-  const [isSearchVisible, setIsSearchVisible] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [notificationCount, setNotificationCount] = useState(0);
+  // Dashboard data
   const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'recent'>('all');
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [previewUpdate, setPreviewUpdate] = useState<{ title: string; date: string; time?: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean; isoDate?: string } | null>(null);
-  const [activePreviewIndex, setActivePreviewIndex] = useState(0);
-  type DashboardUpdate = { title: string; date: string; time?: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean; isoDate?: string };
-  type DashboardData = { totalUpdates: number; pinned: number; urgent: number; recentUpdates: DashboardUpdate[] };
-  const [dashboardData, setDashboardData] = useState<DashboardData>({
-    totalUpdates: 0,
-    pinned: 0,
-    urgent: 0,
-    recentUpdates: [],
+  const [dashboardData, setDashboardData] = useState({
+    recentUpdates: [] as DashboardUpdate[],
   });
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
-
-  // Animation values - DISABLED FOR PERFORMANCE DEBUGGING
-  const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
-  const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
-
-  // Note: awaiting real data; dashboardData can be set from API by filter
-
-  // Filter updates based on search query - memoized for performance
-  const filteredUpdates = useMemo(() => {
-    if (!searchQuery.trim()) return dashboardData.recentUpdates;
-    const query = searchQuery.toLowerCase();
-    return dashboardData.recentUpdates.filter(update =>
-      update.title.toLowerCase().includes(query) ||
-      update.tag.toLowerCase().includes(query)
-    );
-  }, [dashboardData.recentUpdates, searchQuery]);
+  const [allUpdates, setAllUpdates] = useState<DashboardUpdate[]>([]);
+  
+  // Animated floating background orbs (Copilot-style)
+  const floatAnim1 = useRef(new Animated.Value(0)).current;
+  const cloudAnim1 = useRef(new Animated.Value(0)).current;
+  const cloudAnim2 = useRef(new Animated.Value(0)).current;
+  const lightSpot1 = useRef(new Animated.Value(0)).current;
+  const lightSpot2 = useRef(new Animated.Value(0)).current;
+  const lightSpot3 = useRef(new Animated.Value(0)).current;
 
   // Today's events (category Event occurring today) - using timezone-aware comparison
   const todaysEvents = useMemo(() => {
     const todayKey = getPHDateKey(new Date());
-    
-    return dashboardData.recentUpdates.filter(update => {
-      if (update.tag !== 'Event') return false;
-      if (!update.isoDate) return false;
-      
-      try {
-        // Use isoDate for accurate comparison (same as SchoolUpdates.tsx)
-        const eventKey = getPHDateKey(update.isoDate);
-        return eventKey === todayKey;
-      } catch {
-        return false;
-      }
+    return allUpdates.filter(u => {
+      if (u.tag.toLowerCase() !== 'event') return false;
+      if (!u.isoDate) return false;
+      const eventKey = getPHDateKey(u.isoDate);
+      return eventKey === todayKey;
     });
-  }, [dashboardData.recentUpdates]);
+  }, [allUpdates]);
 
   // Upcoming updates (future dates)
   const upcomingUpdates = useMemo(() => {
     const todayKey = getPHDateKey(new Date());
-    return filteredUpdates.filter(u => {
+    return allUpdates.filter(u => {
       if (!u.isoDate) return false;
       const eventKey = getPHDateKey(u.isoDate);
       return eventKey > todayKey;
     });
-  }, [filteredUpdates]);
+  }, [allUpdates]);
 
   // Recent updates (today and past dates)
   const recentUpdates = useMemo(() => {
     const todayKey = getPHDateKey(new Date());
-    return filteredUpdates.filter(u => {
+    return allUpdates.filter(u => {
       if (!u.isoDate) return false;
       const eventKey = getPHDateKey(u.isoDate);
       return eventKey <= todayKey;
     });
-  }, [filteredUpdates]);
+  }, [allUpdates]);
 
-  // Filtered by time (all, upcoming, or recent)
+  // Filtered updates based on selected time filter
   const displayedUpdates = useMemo(() => {
     if (timeFilter === 'upcoming') return upcomingUpdates;
     if (timeFilter === 'recent') return recentUpdates;
-    return filteredUpdates; // 'all'
-  }, [timeFilter, upcomingUpdates, recentUpdates, filteredUpdates]);
+    return allUpdates; // 'all'
+  }, [timeFilter, upcomingUpdates, recentUpdates, allUpdates]);
 
-  const handleSearchPress = useCallback(() => {
-    setIsSearchVisible(prev => {
-      if (prev) {
-        setSearchQuery(''); // Clear search when closing
-      }
-      return !prev;
-    });
+  // Load current user and subscribe to auth changes
+  useEffect(() => {
+    const user = getCurrentUser();
+    setCurrentUser(user);
+    const unsubscribe = onAuthStateChange((u) => setCurrentUser(u));
+    return () => unsubscribe();
   }, []);
 
-  const handleNotificationPress = useCallback(() => {
-    // TODO: Implement notifications functionality
-    setNotificationCount(0); // Clear notifications when pressed
+  // Load backend user photo on screen focus
+  useFocusEffect(
+    useCallback(() => {
+      const loadBackendUserData = async () => {
+        try {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const userPhoto = await AsyncStorage.getItem('userPhoto');
+          setBackendUserPhoto(userPhoto);
+        } catch (error) {
+          console.error('Failed to load backend user data:', error);
+        }
+      };
+      loadBackendUserData();
+    }, [])
+  );
+
+  const getUserInitials = () => {
+    if (!userName) return '?';
+    const names = userName.split(' ');
+    if (names.length >= 2) {
+      return (names[0][0] + names[1][0]).toUpperCase();
+    }
+    return userName.substring(0, 2).toUpperCase();
+  };
+
+  // Animate floating background orbs on mount
+  useEffect(() => {
+    const animations = [
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(floatAnim1, {
+            toValue: 1,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(floatAnim1, {
+            toValue: 0,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(cloudAnim1, {
+            toValue: 1,
+            duration: 15000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cloudAnim1, {
+            toValue: 0,
+            duration: 15000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(cloudAnim2, {
+            toValue: 1,
+            duration: 20000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cloudAnim2, {
+            toValue: 0,
+            duration: 20000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot1, {
+            toValue: 1,
+            duration: 12000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot1, {
+            toValue: 0,
+            duration: 12000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot2, {
+            toValue: 1,
+            duration: 18000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot2, {
+            toValue: 0,
+            duration: 18000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot3, {
+            toValue: 1,
+            duration: 14000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot3, {
+            toValue: 0,
+            duration: 14000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+    ];
+
+    animations.forEach(anim => anim.start());
   }, []);
 
   // Fetch dashboard data
   useEffect(() => {
-    let isCancelled = false;
-    const fetchDashboard = async () => {
+    const fetchDashboardData = async () => {
       try {
         setIsLoadingDashboard(true);
         setDashboardError(null);
-        const json: DashboardData = await AdminDataService.getDashboard();
-        if (!isCancelled) setDashboardData(json);
-      } catch (e: any) {
-        if (!isCancelled) setDashboardError(e?.message || 'Failed to load');
+        
+        // Fetch dashboard statistics
+        const dashboardStats = await AdminDataService.getDashboard();
+        
+        // Fetch recent updates
+        const posts = await AdminDataService.getPosts();
+        const allUpdatesData = posts.map(post => ({
+          id: post.id,
+          title: post.title,
+          date: new Date(post.date).toLocaleDateString(),
+          tag: post.category,
+          description: post.description,
+          image: post.image,
+          images: post.images,
+          pinned: (post as any).pinned || false,
+          isoDate: post.date,
+        }));
+        
+        setAllUpdates(allUpdatesData);
+        setDashboardData({
+          recentUpdates: allUpdatesData.slice(0, 5),
+        });
+      } catch (err: any) {
+        setDashboardError(err?.message || 'Failed to load dashboard data');
+        console.error('Dashboard data fetch error:', err);
       } finally {
-        if (!isCancelled) setIsLoadingDashboard(false);
+        setIsLoadingDashboard(false);
       }
     };
-    fetchDashboard();
-    return () => { isCancelled = true; };
-  }, []);
 
-  const handleUpdatePress = useCallback((update: { title: string; date: string; time?: string; tag: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean; isoDate?: string }) => {
-    // Open preview modal for all updates
-    setPreviewUpdate(update);
-    setActivePreviewIndex(0);
-    setIsPreviewOpen(true);
+    fetchDashboardData();
   }, []);
-
-  // Minimal shimmer component for skeletons
-  const Shimmer = ({ height, borderRadius }: { height: number; borderRadius: number }) => {
-    const translateX = React.useRef(new Animated.Value(-100)).current;
-    useEffect(() => {
-      const loop = Animated.loop(
-        Animated.timing(translateX, {
-          toValue: 300,
-          duration: 1200,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        })
-      );
-      loop.start();
-      return () => loop.stop();
-    }, [translateX]);
-    return (
-      <View style={{ height, borderRadius, overflow: 'hidden', backgroundColor: theme.colors.surface }}>
-        <Animated.View style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: 120,
-          transform: [{ translateX }],
-        }}>
-          <LinearGradient
-            colors={isDarkMode ? ["rgba(255,255,255,0)", "rgba(255,255,255,0.1)", "rgba(255,255,255,0)"] : ["rgba(255,255,255,0)", "rgba(255,255,255,0.6)", "rgba(255,255,255,0)"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={{ flex: 1 }}
-          />
-        </Animated.View>
-      </View>
-    );
-  };
 
   return (
-    <View style={[styles.container, {
-      backgroundColor: theme.colors.background,
-    }]} collapsable={false}>
+    <View style={styles.container}>
       <StatusBar
-        backgroundColor={theme.colors.primary}
-        barStyle="light-content"
-        translucent={false}
-        hidden={false}
+        backgroundColor="transparent"
+        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        translucent={true}
       />
 
-      {/* Safe Area Top Spacer - Fixed position */}
-      <View style={[styles.safeAreaTop, {
-        height: safeInsets.top,
-        backgroundColor: theme.colors.primary,
-      }]} collapsable={false} />
+      {/* Background Gradient Layer */}
+      <LinearGradient
+        colors={[
+          isDarkMode
+            ? '#0B1220'
+            : '#FBF8F3',
+          isDarkMode
+            ? '#111827'
+            : '#F8F5F0',
+          isDarkMode
+            ? '#1F2937'
+            : '#F5F2ED'
+        ]}
+        style={styles.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+      />
+        
+      {/* Blur overlay on entire background - very subtle */}
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 5 : 3}
+        tint="default"
+        style={styles.backgroundGradient}
+      />
 
-      {/* Header - Fixed position to prevent layout shifts */}
-      <View
-        style={[styles.header, {
-          backgroundColor: theme.colors.primary,
-          top: safeInsets.top,
-        }]}
-        onLayout={(e) => {
-          const { height } = e.nativeEvent.layout;
-          // Only update if height actually changed to prevent unnecessary re-renders
-          if (height > 0 && Math.abs(height - headerHeightRef.current) > 1) {
-            headerHeightRef.current = height;
-            setHeaderHeight(height);
-          }
-        }}
-        collapsable={false}
-      >
-        <View style={styles.headerLeft} collapsable={false}>
-          <Text style={styles.headerTitle} numberOfLines={1}>DOrSU Connect</Text>
-        </View>
-        <View style={styles.headerRight} collapsable={false}>
-          <Pressable style={styles.headerButton} onPress={handleNotificationPress}>
-            <Ionicons name="notifications-outline" size={24} color="white" />
-            {notificationCount > 0 && (
-              <View style={styles.notificationBadge}>
-                <Text style={styles.notificationBadgeText}>{notificationCount}</Text>
-              </View>
-            )}
-          </Pressable>
-          <Pressable style={styles.headerButton} onPress={handleSearchPress}>
-            <Ionicons name={isSearchVisible ? "close-outline" : "search-outline"} size={24} color="white" />
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Search Bar - Fixed position below header */}
-      {isSearchVisible && (
-        <View
-          style={[styles.searchContainer, {
-            backgroundColor: theme.colors.background,
-            borderBottomColor: theme.colors.border,
-            top: safeInsets.top + headerHeight,
-          }]}
-          collapsable={false}
-        >
-          <View style={[styles.searchInputContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-            <Ionicons name="search" size={20} color={theme.colors.textMuted} style={styles.searchIcon} />
-            <TextInput
-              style={[styles.searchInput, { color: theme.colors.text }]}
-              placeholder="Search updates..."
-              placeholderTextColor={theme.colors.textMuted}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoFocus={true}
-            />
-            {searchQuery.length > 0 && (
-              <Pressable onPress={() => setSearchQuery('')} style={styles.clearButton}>
-                <Ionicons name="close-circle" size={20} color={theme.colors.textMuted} />
-              </Pressable>
-            )}
-          </View>
-        </View>
-      )}
-
-      <ScrollView
-        ref={scrollRef}
-        style={[styles.content, {
-          marginTop: safeInsets.top + headerHeight + (isSearchVisible ? 60 : 0), // Account for search bar height
-          marginBottom: 0,
-        }]}
-        contentContainerStyle={[styles.scrollContent, {
-          paddingBottom: safeInsets.bottom + 80, // Bottom nav bar height + safe area
-        }]}
-        showsVerticalScrollIndicator={false}
-        removeClippedSubviews={true}
-        keyboardShouldPersistTaps="handled"
-        bounces={true}
-        scrollEventThrottle={16}
-      >
-        {/* Welcome Section */}
-        <View 
+      {/* Animated Floating Background Orbs (Copilot-style) */}
+      <View style={styles.floatingBgContainer} pointerEvents="none">
+        {/* Light Spot 1 - Top right gentle glow */}
+        <Animated.View
           style={[
-            styles.welcomeSection
+            styles.cloudWrapper,
+            {
+              top: '8%',
+              right: '12%',
+              transform: [
+                {
+                  translateX: lightSpot1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -15],
+                  }),
+                },
+                {
+                  translateY: lightSpot1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 12],
+                  }),
+                },
+                {
+                  scale: lightSpot1.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.08, 1],
+                  }),
+                },
+              ],
+            },
           ]}
         >
-          <View style={styles.welcomeText}>
-            <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>Welcome back, Admin</Text>
-            <Text style={[styles.welcomeSubtitle, { color: theme.colors.textMuted }]}>Here's a quick overview of today</Text>
+          <View style={styles.lightSpot1}>
+            <LinearGradient
+              colors={['rgba(255, 220, 180, 0.35)', 'rgba(255, 200, 150, 0.18)', 'rgba(255, 230, 200, 0.08)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.2, y: 0.2 }}
+              end={{ x: 1, y: 1 }}
+            />
           </View>
-          <Pressable style={styles.newUpdateButton} onPress={() => navigation.navigate('PostUpdate')}>
-            <Ionicons name="add" size={20} color="white" />
-            <Text style={styles.newUpdateText}>New Update</Text>
-          </Pressable>
+        </Animated.View>
+
+        {/* Light Spot 2 - Middle left soft circle */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              top: '45%',
+              left: '8%',
+              transform: [
+                {
+                  translateX: lightSpot2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 18],
+                  }),
+                },
+                {
+                  translateY: lightSpot2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -10],
+                  }),
+                },
+                {
+                  scale: lightSpot2.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.06, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot2}>
+            <LinearGradient
+              colors={['rgba(255, 210, 170, 0.28)', 'rgba(255, 200, 160, 0.15)', 'rgba(255, 220, 190, 0.06)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.3, y: 0.3 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Light Spot 3 - Bottom center blurry glow */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              bottom: '12%',
+              left: '55%',
+              transform: [
+                {
+                  translateX: lightSpot3.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -20],
+                  }),
+                },
+                {
+                  translateY: lightSpot3.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 8],
+                  }),
+                },
+                {
+                  scale: lightSpot3.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.1, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot3}>
+            <LinearGradient
+              colors={['rgba(255, 190, 140, 0.25)', 'rgba(255, 180, 130, 0.12)', 'rgba(255, 210, 170, 0.05)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.4, y: 0.4 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Cloud variation 1 - Top left soft light patch */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              top: '15%',
+              left: '10%',
+              transform: [
+                {
+                  translateX: cloudAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 20],
+                  }),
+                },
+                {
+                  translateY: cloudAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -15],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.cloudPatch1}>
+            <LinearGradient
+              colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.22)', 'rgba(255, 230, 200, 0.1)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Cloud variation 2 - Bottom right gentle tone */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              bottom: '20%',
+              right: '15%',
+              transform: [
+                {
+                  translateX: cloudAnim2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -25],
+                  }),
+                },
+                {
+                  translateY: cloudAnim2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 10],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.cloudPatch2}>
+            <LinearGradient
+              colors={['rgba(255, 190, 140, 0.32)', 'rgba(255, 200, 160, 0.18)', 'rgba(255, 220, 190, 0.08)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.3, y: 0.3 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Orb 1 - Soft Orange Glow (Center area) */}
+        <Animated.View
+          style={[
+            styles.floatingOrbWrapper,
+            {
+              top: '35%',
+              left: '50%',
+              marginLeft: -250,
+              transform: [
+                {
+                  translateX: floatAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-30, 30],
+                  }),
+                },
+                {
+                  translateY: floatAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-20, 20],
+                  }),
+                },
+                {
+                  scale: floatAnim1.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.05, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.floatingOrb1}>
+            <LinearGradient
+              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+            <BlurView
+              intensity={Platform.OS === 'ios' ? 60 : 45}
+              tint="default"
+              style={StyleSheet.absoluteFillObject}
+            />
+          </View>
+        </Animated.View>
+      </View>
+
+      {/* Header - Copilot Style */}
+      <View style={[styles.header, { 
+        marginTop: insets.top,
+        marginLeft: insets.left,
+        marginRight: insets.right,
+      }]}>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity 
+            onPress={() => setIsHistoryOpen(true)} 
+            style={styles.menuButton}
+            accessibilityLabel="Open menu"
+          >
+            <View style={styles.customHamburger} pointerEvents="none">
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineLong, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+            </View>
+          </TouchableOpacity>
+        </View>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Dashboard</Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity 
+            style={styles.profileButton} 
+            onPress={() => navigation.navigate('AdminSettings')} 
+            accessibilityLabel="Admin profile - Go to settings"
+          >
+            {backendUserPhoto ? (
+              <Image 
+                source={{ uri: backendUserPhoto }} 
+                style={styles.profileImage}
+              />
+            ) : (
+              <View style={[styles.profileIconCircle, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
+                <Text style={styles.profileInitials}>{getUserInitials()}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+      
+      {/* Admin Sidebar Component */}
+      <AdminSidebar
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+      />
+
+      {/* Main Content */}
+      <ScrollView 
+        ref={scrollRef} 
+        style={styles.content} 
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 12,
+          paddingBottom: 20,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.welcomeSection}>
+          <View style={styles.welcomeText}>
+            <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>Hello {userName},</Text>
+            <Text style={[styles.welcomeSubtitle, { color: theme.colors.textMuted }]}>Here's your admin dashboard</Text>
+          </View>
         </View>
 
         {/* Today's Events - Single Card Display */}
-        {!isLoadingDashboard && (
+        {!isLoadingDashboard && !dashboardError && (
           <View style={styles.todaysEventsSection}>
             <View style={styles.todaysEventsHeader}>
               <View style={[styles.sectionIconWrapper, { backgroundColor: theme.colors.accent + '15' }]}>
@@ -484,144 +777,137 @@ const AdminDashboard = () => {
               </View>
             </View>
             {todaysEvents.length > 0 ? (
-              <TodaysEventCard event={todaysEvents[0]} onPress={() => handleUpdatePress(todaysEvents[0])} theme={theme} />
+              <View style={[styles.eventCardContainer, { borderColor: theme.colors.border }]}>
+                <BlurView
+                  intensity={Platform.OS === 'ios' ? 20 : 15}
+                  tint={isDarkMode ? 'dark' : 'light'}
+                  style={styles.eventCardBlur}
+                >
+                  <View style={{ backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.5)' : 'rgba(255, 255, 255, 0.5)' }}>
+                    <EventCard update={todaysEvents[0]} onPress={() => {}} theme={theme} />
+                  </View>
+                </BlurView>
+              </View>
             ) : (
-              <View style={[styles.noEventsCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-                <NoEventsAnimation theme={theme} />
-                <Text style={[styles.noEventsText, { color: theme.colors.textMuted }]}>No events scheduled for today</Text>
+              <View style={[styles.noEventsContainer, { borderColor: theme.colors.border }]}>
+                <BlurView
+                  intensity={Platform.OS === 'ios' ? 20 : 15}
+                  tint={isDarkMode ? 'dark' : 'light'}
+                  style={styles.noEventsBlur}
+                >
+                  <View style={[styles.noEventsCard, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}>
+                    <NoEventsAnimation theme={theme} />
+                    <Text style={[styles.noEventsText, { color: theme.colors.textMuted }]}>No events scheduled for today</Text>
+                  </View>
+                </BlurView>
               </View>
             )}
           </View>
         )}
 
-        {/* Recent Updates */}
-        <View 
-          style={[
-            styles.recentUpdatesSection,
-            {
-              backgroundColor: theme.colors.card,
-              borderColor: theme.colors.border
-            }
-          ]}
-        >
-          <View style={styles.sectionHeaderEnhanced}>
-            <View style={[styles.sectionIconWrapper, { backgroundColor: theme.colors.accent + '15' }]}>
-              <Ionicons 
-                name={timeFilter === 'upcoming' ? 'time-outline' : timeFilter === 'recent' ? 'calendar-outline' : 'grid-outline'} 
-                size={20} 
-                color={theme.colors.accent} 
-              />
-            </View>
-            <View style={styles.sectionTitleWrapper}>
-              <Text style={[styles.sectionTitleEnhanced, { color: theme.colors.text }]}>Updates</Text>
-              <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
-                {timeFilter === 'upcoming' ? 'Coming soon' : timeFilter === 'recent' ? 'Past events' : 'All events'}
-              </Text>
-            </View>
-          </View>
+        {/* Recent Updates Section */}
+        <View style={[styles.recentUpdatesSection, { borderColor: theme.colors.border }]}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 20 : 15}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={styles.updatesSectionBlur}
+          >
+            <View style={[styles.updatesSectionContent, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
+              <View style={styles.sectionHeaderEnhanced}>
+                <View style={[styles.sectionIconWrapper, { backgroundColor: theme.colors.accent + '15' }]}>
+                  <Ionicons 
+                    name={timeFilter === 'upcoming' ? 'time-outline' : timeFilter === 'recent' ? 'calendar-outline' : 'grid-outline'} 
+                    size={20} 
+                    color={theme.colors.accent} 
+                  />
+                </View>
+                <View style={styles.sectionTitleWrapper}>
+                  <Text style={[styles.sectionTitleEnhanced, { color: theme.colors.text }]}>Updates</Text>
+                  <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
+                    {timeFilter === 'upcoming' ? 'Coming soon' : timeFilter === 'recent' ? 'Past events' : 'All events'}
+                  </Text>
+                </View>
+              </View>
 
-          {/* Time Filter Pills */}
-          <View style={styles.filtersContainer}>
-            <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'all' && styles.filterPillActive]}
-              onPress={() => setTimeFilter('all')}
-            >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'all' && styles.filterPillTextActive]}>All</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'upcoming' && styles.filterPillActive]}
-              onPress={() => setTimeFilter('upcoming')}
-            >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'upcoming' && styles.filterPillTextActive]}>Upcoming</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'recent' && styles.filterPillActive]}
-              onPress={() => setTimeFilter('recent')}
-            >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'recent' && styles.filterPillTextActive]}>Recent</Text>
-            </Pressable>
-          </View>
-          
-          {dashboardError && (
-            <Text style={{ color: '#DC2626', marginBottom: 8, fontSize: 12, fontWeight: '600' }}>{dashboardError}</Text>
-          )}
-          {isLoadingDashboard && (
-            <View style={{ gap: 8 }}>
-              {Array.from({ length: 3 }).map((_, i) => (
-                <View key={`skeleton-${i}`} style={[styles.updateCard, styles.cardShadow]}>
-                  <Shimmer height={44} borderRadius={10} />
+              {/* Time Filter Pills */}
+              <View style={styles.filtersContainer}>
+                <Pressable
+                  style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'all' && styles.filterPillActive]}
+                  onPress={() => setTimeFilter('all')}
+                >
+                  <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'all' && styles.filterPillTextActive]}>All</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'upcoming' && styles.filterPillActive]}
+                  onPress={() => setTimeFilter('upcoming')}
+                >
+                  <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'upcoming' && styles.filterPillTextActive]}>Upcoming</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'recent' && styles.filterPillActive]}
+                  onPress={() => setTimeFilter('recent')}
+                >
+                  <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'recent' && styles.filterPillTextActive]}>Recent</Text>
+                </Pressable>
+              </View>
+              
+              {dashboardError && (
+                <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+                  <Ionicons name="alert-circle-outline" size={40} color="#DC2626" />
+                  <Text style={{ marginTop: 6, fontSize: 12, color: '#DC2626', fontWeight: '600' }}>{dashboardError}</Text>
+                </View>
+              )}
+
+              {isLoadingDashboard && (
+                <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+                  <Ionicons name="hourglass-outline" size={40} color={theme.colors.textMuted} />
+                  <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>Loading dashboard...</Text>
+                </View>
+              )}
+
+              {!isLoadingDashboard && !dashboardError && displayedUpdates.length === 0 && (
+                <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+                  <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
+                  <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>
+                    {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : 'No updates found'}
+                  </Text>
+                </View>
+              )}
+
+              {!isLoadingDashboard && !dashboardError && displayedUpdates.map((update) => (
+                <View key={update.id} style={[styles.updateCard, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+                  {update.images?.[0] && (
+                    <Image 
+                      source={{ uri: update.images[0] }} 
+                      style={styles.updateImage}
+                      resizeMode="cover"
+                    />
+                  )}
+                  <View style={styles.updateContentWrapper}>
+                    <View style={styles.updateContent}>
+                      <Text style={[styles.updateTitle, { color: theme.colors.text }]} numberOfLines={2}>{update.title}</Text>
+                      <View style={styles.updateDateRow}>
+                        <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} style={{ marginRight: 4 }} />
+                        <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
+                      </View>
+                    </View>
+                    <View style={[styles.updateTag, { backgroundColor: getTagColor(update.tag) }]}>
+                      <Text style={[styles.updateTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
+                    </View>
+                  </View>
                 </View>
               ))}
             </View>
-          )}
-          
-          {!isLoadingDashboard && displayedUpdates.length === 0 && !dashboardError && (
-            <View style={{ alignItems: 'center', paddingVertical: 16 }}>
-              <Ionicons name="document-text-outline" size={40} color="#CBD5E1" />
-            <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>
-              {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : 'No updates yet'}
-            </Text>
-              <Pressable style={styles.emptyCtaBtn} onPress={() => navigation.navigate('PostUpdate')}>
-                <LinearGradient colors={[theme.colors.primary, '#1F2937']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.emptyCtaGradient}>
-                  <Ionicons name="add" size={16} color="#fff" />
-                  <Text style={styles.emptyCtaText}>Create first update</Text>
-                </LinearGradient>
-              </Pressable>
-            </View>
-          )}
-
-          {!isLoadingDashboard && displayedUpdates.map((update, index) => (
-            <Pressable key={index} style={[styles.updateCard, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={() => handleUpdatePress(update)}>
-              {(update.images?.[0] || update.image) && (
-                <Image 
-                  source={{ uri: update.images?.[0] || update.image }} 
-                  style={styles.updateImage}
-                  resizeMode="cover"
-                />
-              )}
-              <View style={styles.updateContentWrapper}>
-                <View style={styles.updateContent}>
-                  <Text style={[styles.updateTitle, { color: theme.colors.text }]}>{update.title}</Text>
-                  <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
-                </View>
-                <View style={[styles.updateTag, { backgroundColor: getTagColor(update.tag) }]}>
-                  <Text style={[styles.updateTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
-                </View>
-              </View>
-            </Pressable>
-          ))}
+          </BlurView>
         </View>
       </ScrollView>
-      
-      {/* Preview Modal */}
-      <PreviewModal
-        visible={isPreviewOpen}
-        update={previewUpdate}
-        onClose={() => setIsPreviewOpen(false)}
-      />
 
-      {/* Fullscreen viewer removed per request */}
-
-      {/* Bottom Navigation Bar - Fixed position */}
-      <View style={[styles.bottomNavContainer, {
-        bottom: 0,
-        paddingBottom: safeInsets.bottom,
-      }]} collapsable={false}>
-        <AdminBottomNavBar
+      <AdminBottomNavBar
         activeTab="dashboard"
-        onDashboardPress={() => navigation.navigate('AdminDashboard')}
         onChatPress={() => navigation.navigate('AdminAIChat')}
-        onAddPress={() => { /* future: open create flow */ }}
+        onDashboardPress={() => navigation.navigate('AdminDashboard')}
         onCalendarPress={() => navigation.navigate('AdminCalendar')}
-        onSettingsPress={() => navigation.navigate('AdminSettings')}
-        onPostUpdatePress={() => {
-          navigation.navigate('PostUpdate');
-        }}
-        onManagePostPress={() => {
-          navigation.navigate('ManagePosts');
-        }}
-        />
-      </View>
+      />
     </View>
   );
 };
@@ -629,94 +915,131 @@ const AdminDashboard = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: themeStyle.colors.surfaceAlt,
   },
-  safeAreaTop: {
+  backgroundGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  floatingBgContainer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: -1,
+  },
+  cloudWrapper: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 1000,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    overflow: 'hidden',
+  },
+  lightSpot1: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+  },
+  lightSpot2: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+  },
+  lightSpot3: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+  },
+  cloudPatch1: {
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+  },
+  cloudPatch2: {
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+  },
+  floatingOrbWrapper: {
+    position: 'absolute',
+    width: 500,
+    height: 500,
+    borderRadius: 250,
+    overflow: 'hidden',
+  },
+  floatingOrb1: {
+    width: 500,
+    height: 500,
+    borderRadius: 250,
+    overflow: 'hidden',
   },
   header: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 999,
-    backgroundColor: themeStyle.colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    minHeight: 56, // Fixed min height to prevent layout shifts
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: 'transparent',
+    zIndex: 10,
   },
   headerLeft: {
-    flex: 1,
+    width: 40,
+  },
+  menuButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customHamburger: {
+    width: 24,
+    height: 18,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  hamburgerLine: {
+    height: 2.5,
+    borderRadius: 2,
+  },
+  hamburgerLineShort: {
+    width: 18,
+  },
+  hamburgerLineLong: {
+    width: 24,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: -0.3,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
   },
   headerRight: {
-    flexDirection: 'row',
-    gap: 10,
+    width: 40,
+    alignItems: 'flex-end',
   },
-  headerButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    marginLeft: 4,
-    position: 'relative', // Added for notification badge positioning
+  profileButton: {
+    width: 32,
+    height: 32,
   },
-  notificationBadge: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-    backgroundColor: '#FF4444',
-    borderRadius: 10,
-    width: 20,
-    height: 20,
-    justifyContent: 'center',
+  profileImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  profileIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'white',
+    justifyContent: 'center',
   },
-  notificationBadgeText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
+  profileInitials: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFF',
+    letterSpacing: -0.3,
   },
   content: {
     flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
-  bottomNavContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 998,
-  },
-  searchContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 998,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
   },
   welcomeSection: {
     flexDirection: 'row',
@@ -736,35 +1059,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontWeight: '600',
   },
-  newUpdateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: themeStyle.colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    gap: 6,
-  },
-  newUpdateText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  filtersContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-  },
-  filterPill: {
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  filterPillText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
   statsGrid: {
     flexDirection: 'row',
     gap: 10,
@@ -772,15 +1066,13 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    borderWidth: 0,
     borderRadius: 12,
+    overflow: 'hidden',
+  },
+  statCardContent: {
     padding: 12,
+    borderRadius: 12,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.09,
-    shadowRadius: 8,
-    elevation: 4,
   },
   statIconContainer: {
     width: 40,
@@ -798,26 +1090,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   recentUpdatesSection: {
-    borderWidth: 0,
+    borderWidth: 1,
     borderRadius: 12,
-    padding: 12,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    overflow: 'hidden',
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 8,
+  updatesSectionBlur: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  updatesSectionContent: {
+    padding: 12,
+    borderRadius: 12,
   },
   sectionHeaderEnhanced: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
     gap: 12,
+  },
+  sectionIconWrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionTitleWrapper: {
+    flex: 1,
   },
   sectionTitleEnhanced: {
     fontSize: 18,
@@ -829,309 +1129,68 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  filterPillActive: {
-    backgroundColor: themeStyle.colors.accent,
-    borderColor: 'transparent',
-  },
-  filterPillTextActive: {
-    color: '#fff',
-    fontWeight: '700',
-  },
   updateCard: {
     flexDirection: 'column',
     borderWidth: 1,
     borderRadius: 10,
-    marginBottom: 8,
+    marginBottom: 12,
     overflow: 'hidden',
   },
   cardShadow: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
     elevation: 2,
   },
   updateImage: {
     width: '100%',
-    height: 120,
+    height: 140,
   },
   updateContentWrapper: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
     padding: 12,
   },
   updateContent: {
     flex: 1,
+    marginRight: 8,
   },
   updateTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    lineHeight: 22,
-    marginBottom: 6,
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  updateDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   updateDate: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
   updateTag: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
-    backgroundColor: '#E8F0FF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
   },
   updateTagText: {
     fontSize: 11,
     fontWeight: '700',
     color: '#1A3E7A',
   },
-  searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-  },
-  clearButton: {
-    padding: 4,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 16,
-  },
-  previewCard: {
-    width: '100%',
-    maxWidth: 400,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  previewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  previewHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  tagChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  tagChipText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  previewMetaInline: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  previewTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#111',
-  },
-  previewCloseBtn: {
-    padding: 6,
-    borderRadius: 10,
-  },
-  previewImagePlaceholder: {
-    width: '100%',
-    height: 160,
-    borderRadius: 12,
-    marginBottom: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    borderWidth: 1,
-  },
-  previewImagePlaceholderText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  previewBody: {
+  todaysEventsSection: {
     marginBottom: 16,
   },
-  previewDivider: {
-    height: 1,
-    marginVertical: 8,
-  },
-  previewUpdateTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    marginBottom: 8,
-  },
-  previewMetaRow: {
-    flexDirection: 'row',
-    gap: 12,
-    alignItems: 'center',
-  },
-  previewMetaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  previewMetaText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  previewUpdateDescription: {
-    marginTop: 12,
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  previewActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  previewSecondaryBtn: {
-    flex: 1,
+  eventCardContainer: {
     borderWidth: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  previewSecondaryText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  previewPrimaryBtn: {
-    flex: 1,
-    backgroundColor: 'transparent',
-    paddingVertical: 0,
-    borderRadius: 8,
-  },
-  previewPrimaryGradient: {
-    flex: 1,
-    borderRadius: 8,
-    paddingVertical: 8,
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  previewButtonShadow: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  previewPrimaryText: {
-    fontSize: 12,
-    color: '#fff',
-    fontWeight: '700',
-  },
-  pinnedRibbon: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    backgroundColor: themeStyle.colors.primary,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  pinnedRibbonText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  previewCarouselWrap: {
-    width: '100%',
-    height: 180,
-    borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-  },
-  previewImagePressable: {
-    width: '100%',
-    height: '100%',
-  },
-  previewImage: {
-    width: '100%',
-    height: '100%',
-  },
-  previewImageGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 60,
-  },
-  carouselDots: {
-    position: 'absolute',
-    bottom: 8,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    gap: 6,
-    backgroundColor: 'rgba(0,0,0,0.25)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  carouselDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    opacity: 0.6,
-  },
-  emptyCtaBtn: {
-    marginTop: 10,
-    borderRadius: 10,
+    borderRadius: 16,
     overflow: 'hidden',
   },
-  emptyCtaGradient: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  emptyCtaText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  // Today's Events Section Styles
-  todaysEventsSection: {
-    marginBottom: 12,
+  eventCardBlur: {
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   todaysEventsHeader: {
     flexDirection: 'row',
@@ -1149,20 +1208,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  sectionIconWrapper: {
-    width: 40,
-    height: 40,
+  noEventsContainer: {
+    borderWidth: 1,
     borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  sectionTitleWrapper: {
-    flex: 1,
+  noEventsBlur: {
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   noEventsCard: {
     padding: 32,
     borderRadius: 12,
-    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
@@ -1172,31 +1229,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
-  todaysEventCardHorizontal: {
+  eventCardHorizontal: {
     width: '100%',
     height: 220,
     borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 0,
   },
-  todaysEventCardShadow: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  todaysEventImageHorizontal: {
+  eventImageHorizontal: {
     width: '100%',
     height: '100%',
   },
-  todaysEventImagePlaceholder: {
+  eventImagePlaceholder: {
     width: '100%',
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  todaysEventGradient: {
+  eventGradient: {
     position: 'absolute',
     bottom: 0,
     left: 0,
@@ -1205,17 +1255,17 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     padding: 16,
   },
-  todaysEventOverlayContent: {
+  eventOverlayContent: {
     gap: 4,
   },
-  todaysEventTagOverlay: {
+  eventTagOverlay: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
     alignSelf: 'flex-start',
     marginBottom: 8,
   },
-  todaysEventTitleOverlay: {
+  eventTitleOverlay: {
     fontSize: 20,
     fontWeight: '800',
     color: '#FFFFFF',
@@ -1225,7 +1275,7 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     letterSpacing: 0.3,
   },
-  todaysEventDateOverlay: {
+  eventDateOverlay: {
     fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
@@ -1234,23 +1284,43 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  todaysEventDateTimeRow: {
+  eventDateTimeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 4,
   },
-  todaysEventTimeSeparator: {
+  eventTimeSeparator: {
     fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
     opacity: 0.7,
     marginHorizontal: 6,
   },
-  todaysEventTagText: {
+  eventTagText: {
     fontSize: 11,
     fontWeight: '700',
   },
-  // fullscreen viewer styles removed
+  filtersContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  filterPill: {
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  filterPillActive: {
+    backgroundColor: '#FF9500',
+  },
+  filterPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  filterPillTextActive: {
+    color: '#FFF',
+  },
 });
 
 export default AdminDashboard;

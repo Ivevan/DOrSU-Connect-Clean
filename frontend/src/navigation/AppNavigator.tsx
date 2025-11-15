@@ -13,6 +13,10 @@ import AdminAIChat from '../screens/admin/AdminAIChat';
 import AdminCalendar from '../screens/admin/AdminCalendar';
 import AdminDashboard from '../screens/admin/AdminDashboard';
 import AdminSettings from '../screens/admin/AdminSettings';
+import AdminAccountSettings from '../screens/admin/AdminAccountSettings';
+import AdminGeneralSettings from '../screens/admin/AdminGeneralSettings';
+import AdminEmailSettings from '../screens/admin/AdminEmailSettings';
+import AdminAbout from '../screens/admin/AdminAbout';
 import ManagePosts from '../screens/admin/ManagePosts';
 import PostUpdate from '../screens/admin/PostUpdate';
 import CreateAccount from '../screens/auth/CreateAccount';
@@ -23,6 +27,10 @@ import AIChat from '../screens/user/AIChat';
 import Calendar from '../screens/user/Calendar';
 import SchoolUpdates from '../screens/user/SchoolUpdates';
 import UserSettings from '../screens/user/UserSettings';
+import AccountSettings from '../screens/user/AccountSettings';
+import GeneralSettings from '../screens/user/GeneralSettings';
+import EmailSettings from '../screens/user/EmailSettings';
+import About from '../screens/user/About';
 
 const Stack = createNativeStackNavigator();
 
@@ -70,16 +78,16 @@ const AppNavigator = () => {
         const userEmail = await AsyncStorage.getItem('userEmail');
         const authProvider = await AsyncStorage.getItem('authProvider');
         
-        // If user has valid session, skip to main app
+        // If user has valid session, skip to main app (AIChat instead of SchoolUpdates)
         if ((userToken && userEmail) || (userEmail && authProvider === 'google')) {
-          setInitialRoute('SchoolUpdates');
+          setInitialRoute('AIChat');
         } else {
           // Check for Firebase auth (if user logged in with Google)
           try {
             const { getCurrentUser } = require('../services/authService');
             const currentUser = getCurrentUser();
             if (currentUser?.email) {
-              setInitialRoute('SchoolUpdates');
+              setInitialRoute('AIChat');
             } else {
               setInitialRoute('SplashScreen');
             }
@@ -170,6 +178,38 @@ const AppNavigator = () => {
           }}
         />
         <Stack.Screen 
+          name="AccountSettings" 
+          component={AccountSettings}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
+        />
+        <Stack.Screen 
+          name="GeneralSettings" 
+          component={GeneralSettings}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
+        />
+        <Stack.Screen 
+          name="EmailSettings" 
+          component={EmailSettings}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
+        />
+        <Stack.Screen 
+          name="About" 
+          component={About}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
+        />
+        <Stack.Screen 
           name="AdminDashboard" 
           component={AdminDashboard}
           options={{
@@ -188,6 +228,38 @@ const AppNavigator = () => {
         <Stack.Screen 
           name="AdminSettings" 
           component={AdminSettings}
+        />
+        <Stack.Screen 
+          name="AdminAccountSettings" 
+          component={AdminAccountSettings}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
+        />
+        <Stack.Screen 
+          name="AdminGeneralSettings" 
+          component={AdminGeneralSettings}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
+        />
+        <Stack.Screen 
+          name="AdminEmailSettings" 
+          component={AdminEmailSettings}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
+        />
+        <Stack.Screen 
+          name="AdminAbout" 
+          component={AdminAbout}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
         />
         <Stack.Screen 
           name="AdminCalendar" 

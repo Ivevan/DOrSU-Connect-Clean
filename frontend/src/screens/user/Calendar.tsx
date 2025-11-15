@@ -1,22 +1,23 @@
-import React, { useRef, useState, useCallback, memo, useMemo } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Alert, Pressable, Image, Animated, Dimensions, Easing, SectionList, AccessibilityInfo, InteractionManager } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import dayjs from 'dayjs';
-import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
+import utc from 'dayjs/plugin/utc';
+import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo, Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import UserSidebar from '../../components/navigation/UserSidebar';
 import { theme } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
-import AdminDataService from '../../services/AdminDataService';
-import CalendarService, { CalendarEvent } from '../../services/CalendarService';
-import { formatDate, timeAgo, formatCalendarDate } from '../../utils/dateUtils';
 import MonthPickerModal from '../../modals/MonthPickerModal';
+import AdminDataService from '../../services/AdminDataService';
+import { formatCalendarDate, formatDate } from '../../utils/dateUtils';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -36,6 +37,15 @@ const CalendarScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { isDarkMode, theme: t } = useThemeValues();
   const scrollRef = useRef<ScrollView>(null);
+  // Background animation values (Copilot-style animated orbs)
+  const floatAnim1 = useRef(new Animated.Value(0)).current;
+  const floatAnim2 = useRef(new Animated.Value(0)).current;
+  const floatAnim3 = useRef(new Animated.Value(0)).current;
+  const cloudAnim1 = useRef(new Animated.Value(0)).current;
+  const cloudAnim2 = useRef(new Animated.Value(0)).current;
+  const lightSpot1 = useRef(new Animated.Value(0)).current;
+  const lightSpot2 = useRef(new Animated.Value(0)).current;
+  const lightSpot3 = useRef(new Animated.Value(0)).current;
   const initialNow = new Date();
   const [currentMonth, setCurrentMonth] = useState(new Date(Date.UTC(initialNow.getFullYear(), initialNow.getMonth(), 1)));
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date()); // Default to today
@@ -53,8 +63,11 @@ const CalendarScreen = () => {
   const [headerHeight, setHeaderHeight] = useState(64);
   
   // Calendar state
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [showAllEvents, setShowAllEvents] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
   
   // Animation values
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
@@ -78,44 +91,9 @@ const CalendarScreen = () => {
   const [posts, setPosts] = useState<any[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
-  const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
-
-  // Load calendar events from backend
-  React.useEffect(() => {
-    let cancelled = false;
-    const loadEvents = async () => {
-      try {
-        setIsLoadingEvents(true);
-        // Get events for current year (or all events if no date range specified)
-        const currentYear = new Date().getFullYear();
-        const startDate = new Date(currentYear, 0, 1).toISOString(); // January 1
-        const endDate = new Date(currentYear, 11, 31).toISOString(); // December 31
-        
-        const events = await CalendarService.getEvents({
-          startDate,
-          endDate,
-          limit: 500, // Get up to 500 events
-        });
-        
-        if (!cancelled) {
-          setCalendarEvents(Array.isArray(events) ? events : []);
-        }
-      } catch (error) {
-        console.error('Failed to load calendar events:', error);
-        if (!cancelled) setCalendarEvents([]);
-      } finally {
-        if (!cancelled) setIsLoadingEvents(false);
-      }
-    };
-    
-    loadEvents();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Defer data loading until after screen is visible to prevent navigation delay
-  React.useEffect(() => {
+  useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
@@ -225,7 +203,7 @@ const CalendarScreen = () => {
     isUrgent: !!p.isUrgent,
   });
 
-  const getEventsForDate = React.useCallback((date: Date) => {
+  const getEventsForDate = useCallback((date: Date) => {
     const key = formatDateKey(date);
     const events: any[] = [];
     
@@ -388,35 +366,7 @@ const CalendarScreen = () => {
   }, [getEventsForDate, t, dotScale, handleDayPress]);
 
   const filteredEvents = React.useMemo(() => {
-    const allEvents: any[] = [];
-    
-    // Add events from posts (AdminDataService)
-    if (Array.isArray(posts)) {
-      allEvents.push(...posts.map(transformPostToEvent));
-    }
-    
-    // Add events from calendarEvents (backend)
-    if (Array.isArray(calendarEvents)) {
-      calendarEvents.forEach(event => {
-        const dateKey = parseAnyDateToKey(event.isoDate || event.date);
-        if (dateKey) {
-          allEvents.push({
-            id: event._id || `calendar-${event.isoDate}-${event.title}`,
-            title: event.title,
-            dateKey: dateKey,
-            time: event.time || 'All Day',
-            type: event.category || 'Announcement',
-            color: categoryToColors(event.category).dot,
-            chip: categoryToColors(event.category),
-            description: event.description,
-            source: event.source || 'CSV Upload',
-            isoDate: event.isoDate,
-            date: event.date,
-          });
-        }
-      });
-    }
-    
+    if (!Array.isArray(posts)) return [];
     if (selectedDate && !showAllEvents) {
       return getEventsForDate(selectedDate);
     }
@@ -477,7 +427,7 @@ const CalendarScreen = () => {
       .sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime())
       .map(([key, items]) => ({ key, items: items as any[] }));
   };
-  const groupedEvents = React.useMemo(() => getAllEventsGrouped(), [posts, calendarEvents]);
+  const groupedEvents = React.useMemo(() => getAllEventsGrouped(), [posts]);
 
   const selectMonth = (monthIndex: number) => {
     const newMonth = new Date(Date.UTC(currentMonth.getUTCFullYear(), monthIndex, 1));
@@ -551,82 +501,412 @@ const CalendarScreen = () => {
   //   return () => handle.cancel();
   // }, []);
 
+  // Animate floating background orbs (Copilot-style)
+  React.useEffect(() => {
+    const animations = [
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(floatAnim1, {
+            toValue: 1,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(floatAnim1, {
+            toValue: 0,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(cloudAnim1, {
+            toValue: 1,
+            duration: 15000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cloudAnim1, {
+            toValue: 0,
+            duration: 15000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(cloudAnim2, {
+            toValue: 1,
+            duration: 20000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cloudAnim2, {
+            toValue: 0,
+            duration: 20000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot1, {
+            toValue: 1,
+            duration: 12000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot1, {
+            toValue: 0,
+            duration: 12000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot2, {
+            toValue: 1,
+            duration: 18000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot2, {
+            toValue: 0,
+            duration: 18000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot3, {
+            toValue: 1,
+            duration: 14000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot3, {
+            toValue: 0,
+            duration: 14000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+    ];
+    animations.forEach(anim => anim.start());
+    return () => animations.forEach(anim => anim.stop());
+  }, []);
+
   // List animation - DISABLED FOR DEBUGGING
   React.useEffect(() => {
     // Set values immediately without animation
     listAnim.setValue(1);
     dotScale.setValue(1);
-    // const handle = InteractionManager.runAfterInteractions(() => {
-    //   listAnim.setValue(0);
-    //   Animated.timing(listAnim, {
-    //     toValue: 1,
-    //     duration: 200,
-    //     easing: Easing.out(Easing.ease),
-    //     useNativeDriver: true,
-    //   }).start();
-    //   dotScale.setValue(0.8);
-    //   Animated.timing(dotScale, {
-    //     toValue: 1,
-    //     duration: 200,
-    //     easing: Easing.out(Easing.ease),
-    //     useNativeDriver: true,
-    //   }).start();
-    // });
-    // return () => handle.cancel();
   }, [showAllEvents, selectedDate, posts]);
 
-  const days = React.useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
-  const weekDays = React.useMemo(() => ['S', 'M', 'T', 'W', 'T', 'F', 'S'], []); // Sunday -> Saturday
+  const days = useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
+  const weekDays = useMemo(() => ['S', 'M', 'T', 'W', 'T', 'F', 'S'], []); // Sunday -> Saturday
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
     <View style={[styles.container, {
-      backgroundColor: t.colors.background,
+      backgroundColor: 'transparent',
     }]} collapsable={false}>
       <StatusBar
-          backgroundColor={t.colors.primary}
-        barStyle={isDarkMode ? "light-content" : "light-content"}
-        translucent={false}
-        hidden={false}
+        backgroundColor="transparent"
+        barStyle={isDarkMode ? "light-content" : "dark-content"}
+        translucent={true}
       />
 
-      {/* Safe Area Top Spacer - Fixed position */}
-      <View style={[styles.safeAreaTop, { 
-        height: safeInsets.top,
-        backgroundColor: t.colors.primary,
-      }]} collapsable={false} />
+      {/* Background Gradient - Soft beige (Copilot-style) */}
+      <LinearGradient
+        colors={isDarkMode ? ['#1F1F1F', '#2A2A2A', '#1A1A1A'] : ['#FBF8F3', '#F8F5F0', '#F5F2ED']}
+        style={styles.backgroundGradient}
+      />
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 5 : 3}
+        tint={isDarkMode ? 'dark' : 'light'}
+        style={styles.backgroundGradient}
+      />
 
-      {/* Header - Fixed position to prevent layout shifts */}
-      <View 
-        style={[styles.header, { 
-          backgroundColor: t.colors.primary,
-          top: safeInsets.top,
-        }]}
-        onLayout={(e) => {
-          const { height } = e.nativeEvent.layout;
-          if (height > 0 && height !== headerHeightRef.current) {
-            headerHeightRef.current = height;
-            setHeaderHeight(height);
-          }
-        }}
-        collapsable={false}
-      >
-        <View style={styles.headerLeft} collapsable={false}>
-          <Text style={styles.headerTitle} numberOfLines={1}>School Calendar</Text>
-              </View>
-        <View style={styles.headerRight} collapsable={false}>
-            <View style={styles.headerSpacer} />
-            <View style={styles.headerSpacer} />
+      {/* Animated Floating Background Orbs (Copilot-style) */}
+      <View style={styles.floatingBgContainer} pointerEvents="none">
+        {/* Light Spot 1 - Top right gentle glow */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              top: '8%',
+              right: '12%',
+              transform: [
+                {
+                  translateX: lightSpot1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -15],
+                  }),
+                },
+                {
+                  translateY: lightSpot1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 12],
+                  }),
+                },
+                {
+                  scale: lightSpot1.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.08, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot1}>
+            <LinearGradient
+              colors={['rgba(255, 220, 180, 0.35)', 'rgba(255, 200, 150, 0.18)', 'rgba(255, 230, 200, 0.08)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.2, y: 0.2 }}
+              end={{ x: 1, y: 1 }}
+            />
           </View>
+        </Animated.View>
+
+        {/* Light Spot 2 - Middle left soft circle */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              top: '45%',
+              left: '8%',
+              transform: [
+                {
+                  translateX: lightSpot2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 18],
+                  }),
+                },
+                {
+                  translateY: lightSpot2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -10],
+                  }),
+                },
+                {
+                  scale: lightSpot2.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.06, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot2}>
+            <LinearGradient
+              colors={['rgba(255, 210, 170, 0.28)', 'rgba(255, 200, 160, 0.15)', 'rgba(255, 220, 190, 0.06)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.3, y: 0.3 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Light Spot 3 - Bottom center blurry glow */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              bottom: '12%',
+              left: '55%',
+              transform: [
+                {
+                  translateX: lightSpot3.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -20],
+                  }),
+                },
+                {
+                  translateY: lightSpot3.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 8],
+                  }),
+                },
+                {
+                  scale: lightSpot3.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.1, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot3}>
+            <LinearGradient
+              colors={['rgba(255, 190, 140, 0.25)', 'rgba(255, 180, 130, 0.12)', 'rgba(255, 210, 170, 0.05)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.4, y: 0.4 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Cloud variation 1 - Top left soft light patch */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              top: '15%',
+              left: '10%',
+              transform: [
+                {
+                  translateX: cloudAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 20],
+                  }),
+                },
+                {
+                  translateY: cloudAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -15],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.cloudPatch1}>
+            <LinearGradient
+              colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.22)', 'rgba(255, 230, 200, 0.1)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Cloud variation 2 - Bottom right gentle tone */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              bottom: '20%',
+              right: '15%',
+              transform: [
+                {
+                  translateX: cloudAnim2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -25],
+                  }),
+                },
+                {
+                  translateY: cloudAnim2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 10],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.cloudPatch2}>
+            <LinearGradient
+              colors={['rgba(255, 190, 140, 0.32)', 'rgba(255, 200, 160, 0.18)', 'rgba(255, 220, 190, 0.08)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.3, y: 0.3 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Orb 1 - Soft Orange Glow (Center area) */}
+        <Animated.View
+          style={[
+            styles.floatingOrbWrapper,
+            {
+              top: '35%',
+              left: '50%',
+              marginLeft: -250,
+              transform: [
+                {
+                  translateX: floatAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-30, 30],
+                  }),
+                },
+                {
+                  translateY: floatAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-20, 20],
+                  }),
+                },
+                {
+                  scale: floatAnim1.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.05, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.floatingOrb1}>
+            <LinearGradient
+              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+            <BlurView
+              intensity={Platform.OS === 'ios' ? 60 : 45}
+              tint="default"
+              style={StyleSheet.absoluteFillObject}
+            />
+          </View>
+        </Animated.View>
+      </View>
+
+      {/* Header - Copilot Style matching AIChat */}
+      <View style={[styles.header, { 
+        marginTop: insets.top,
+        marginLeft: insets.left,
+        marginRight: insets.right,
+      }]}>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity 
+            onPress={() => setIsHistoryOpen(true)} 
+            style={styles.menuButton}
+            accessibilityLabel="Open sidebar"
+          >
+            <View style={styles.customHamburger} pointerEvents="none">
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineLong, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+            </View>
+          </TouchableOpacity>
+        </View>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>School Calendar</Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity 
+            style={styles.profileButton} 
+            onPress={() => navigation.navigate('UserSettings')} 
+            accessibilityLabel="User profile - Go to settings"
+          >
+            {backendUserPhoto ? (
+              <Image 
+                source={{ uri: backendUserPhoto }} 
+                style={styles.profileImage}
+              />
+            ) : (
+              <View style={[styles.profileIconCircle, { backgroundColor: '#FF9500' }]}>
+                <Text style={styles.profileInitials}>{getUserInitials()}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView 
         ref={scrollRef} 
-        style={[styles.scrollView, {
-          marginTop: safeInsets.top + headerHeight,
-          marginBottom: 0,
-        }]}
+        style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, {
+          paddingTop: 12,
           paddingBottom: safeInsets.bottom + 80, // Bottom nav bar height + safe area
         }]} 
         showsVerticalScrollIndicator={false}
@@ -639,16 +919,15 @@ const CalendarScreen = () => {
         {/* Calendar Card - Fixed below header */}
         {/* Animation wrapper removed for debugging */}
         <View>
-          {/* Calendar Card */}
-          <View style={[
-          styles.calendarCard,
-          {
-              backgroundColor: t.colors.card,
-            }
-          ]}>
+          {/* Calendar Card - Glassmorphic */}
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.calendarCard, { backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)' }]}
+          >
 
           {/* Month selector at top of calendar */}
-          <View style={[styles.calendarMonthHeader, { backgroundColor: t.colors.card, borderBottomColor: t.colors.border }]}>
+          <View style={[styles.calendarMonthHeader, { backgroundColor: 'transparent', borderBottomColor: 'rgba(255, 255, 255, 0.2)' }]}>
             <TouchableOpacity
               style={styles.monthSelectorButton}
               onPress={openMonthPicker}
@@ -668,7 +947,7 @@ const CalendarScreen = () => {
           </View>
           
           {/* Week day headers */}
-          <View style={[styles.weekHeader, { backgroundColor: t.colors.card }]}>
+          <View style={[styles.weekHeader, { backgroundColor: 'transparent' }]}>
             {weekDays && Array.isArray(weekDays) && weekDays.map((day, index) => (
               <View key={index} style={[styles.weekDayHeader, { borderRightColor: t.colors.border }]}>
                 <Text
@@ -691,7 +970,7 @@ const CalendarScreen = () => {
               return renderCalendarDay(currentDate || new Date(), day, isCurrentDay, !!isSelectedDay, index);
             })}
                         </View>
-                      </View>
+                      </BlurView>
               </View>
 
         {/* Month Picker Modal */}
@@ -704,12 +983,14 @@ const CalendarScreen = () => {
           opacityAnim={monthPickerOpacityAnim}
         />
 
-        {/* Events Section */}
-        <View 
+        {/* Events Section - Glassmorphic */}
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 50 : 40}
+          tint={isDarkMode ? 'dark' : 'light'}
           style={[
             styles.eventsSection,
             {
-              backgroundColor: t.colors.card
+              backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)'
             }
           ]}
         >
@@ -877,7 +1158,7 @@ const CalendarScreen = () => {
             ))}
             </View>
           )}
-        </View>
+        </BlurView>
       </ScrollView>
 
       {/* Bottom Navigation Bar - Fixed position */}
@@ -887,6 +1168,12 @@ const CalendarScreen = () => {
       }]} collapsable={false}>
       <UserBottomNavBar />
       </View>
+
+      {/* User Sidebar Component */}
+      <UserSidebar
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+      />
     </View>
     </GestureHandlerRootView>
   );
@@ -895,49 +1182,138 @@ const CalendarScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.surfaceAlt,
+    backgroundColor: 'transparent',
   },
-  safeAreaTop: {
+  backgroundGradient: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+  },
+  floatingBgContainer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+    overflow: 'hidden',
+  },
+  floatingOrbWrapper: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 1000,
+  },
+  floatingOrb1: {
+    width: 500,
+    height: 500,
+    borderRadius: 250,
+    opacity: 0.5,
+    overflow: 'hidden',
+  },
+  cloudWrapper: {
+    position: 'absolute',
+  },
+  cloudPatch1: {
+    width: 350,
+    height: 350,
+    borderRadius: 175,
+    opacity: 0.25,
+    overflow: 'hidden',
+  },
+  cloudPatch2: {
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    opacity: 0.22,
+    overflow: 'hidden',
+  },
+  lightSpot1: {
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    opacity: 0.2,
+    overflow: 'hidden',
+  },
+  lightSpot2: {
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    opacity: 0.18,
+    overflow: 'hidden',
+  },
+  lightSpot3: {
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    opacity: 0.16,
+    overflow: 'hidden',
   },
   header: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 999,
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: 'transparent',
+    zIndex: 10,
+  },
+  headerLeft: {
+    width: 44,
+  },
+  menuButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customHamburger: {
+    width: 24,
+    height: 18,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  hamburgerLine: {
+    height: 2.5,
+    borderRadius: 2,
+  },
+  hamburgerLineShort: {
+    width: 18,
+  },
+  hamburgerLineLong: {
+    width: 24,
+  },
+  profileButton: {
+    width: 32,
+    height: 32,
+  },
+  profileImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  profileIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF9500',
+  },
+  profileInitials: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFF',
+    letterSpacing: -0.3,
   },
   scrollView: {
     flex: 1,
   },
-  headerLeft: {
-    flex: 1,
-  },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-    color: '#fff',
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: -0.3,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
   },
   headerRight: {
-    flexDirection: 'row',
-    gap: 10,
+    width: 44,
+    alignItems: 'flex-end',
   },
   headerSpacer: {
     width: 40,
@@ -946,7 +1322,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 12,
   },
   bottomNavContainer: {
     position: 'absolute',
@@ -957,12 +1332,9 @@ const styles = StyleSheet.create({
   calendarCard: {
     borderRadius: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   calendarMonthHeader: {
     paddingHorizontal: 16,
@@ -1063,11 +1435,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 0,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   emptyStateCard: {
     alignItems: 'center',

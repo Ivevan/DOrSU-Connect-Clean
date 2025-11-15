@@ -1,27 +1,29 @@
-import React, { useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Animated, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../../contexts/ThemeContext';
-import { theme } from '../../config/theme';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as React from 'react';
+import { useEffect, useRef } from 'react';
+import { Animated, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { theme } from '../../config/theme';
+import { useThemeValues } from '../../contexts/ThemeContext';
 
 type RootStackParamList = {
   UserSettings: undefined;
+  UserHelpCenter: undefined;
+  TermsOfUse: undefined;
+  PrivacyPolicy: undefined;
   Licenses: undefined;
 };
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Licenses'>;
-
-const LicensesScreen = () => {
+const About = () => {
   const insets = useSafeAreaInsets();
-  const { theme, isDarkMode } = useTheme();
-  const navigation = useNavigation<NavigationProp>();
+  const { isDarkMode, theme: t } = useThemeValues();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
-  // Animated floating background orbs (Copilot-style)
+  // Animated floating background orbs
   const floatAnim1 = useRef(new Animated.Value(0)).current;
   const cloudAnim1 = useRef(new Animated.Value(0)).current;
   const cloudAnim2 = useRef(new Animated.Value(0)).current;
@@ -121,93 +123,6 @@ const LicensesScreen = () => {
     animations.forEach(anim => anim.start());
   }, []);
 
-  const licenses = [
-    {
-      name: 'React Native',
-      version: '0.73.x',
-      license: 'MIT',
-      copyright: 'Copyright (c) Meta Platforms, Inc. and affiliates.',
-      description: 'A framework for building native apps using React.',
-    },
-    {
-      name: 'Expo',
-      version: '50.x',
-      license: 'MIT',
-      copyright: 'Copyright (c) 2015-present Expo',
-      description: 'Tools and services for building React Native applications.',
-    },
-    {
-      name: 'React Navigation',
-      version: '6.x',
-      license: 'MIT',
-      copyright: 'Copyright (c) 2017 React Navigation Contributors',
-      description: 'Routing and navigation for React Native apps.',
-    },
-    {
-      name: 'Firebase',
-      version: '10.x',
-      license: 'Apache-2.0',
-      copyright: 'Copyright (c) Google LLC',
-      description: 'Backend platform for authentication, database, and cloud services.',
-    },
-    {
-      name: '@react-native-firebase/app',
-      version: '18.x',
-      license: 'Apache-2.0',
-      copyright: 'Copyright (c) Invertase Limited',
-      description: 'React Native Firebase integration for native platforms.',
-    },
-    {
-      name: '@react-native-firebase/auth',
-      version: '18.x',
-      license: 'Apache-2.0',
-      copyright: 'Copyright (c) Invertase Limited',
-      description: 'Firebase Authentication for React Native.',
-    },
-    {
-      name: '@react-native-google-signin/google-signin',
-      version: '10.x',
-      license: 'MIT',
-      copyright: 'Copyright (c) Google LLC',
-      description: 'Google Sign-In for React Native applications.',
-    },
-    {
-      name: 'expo-haptics',
-      version: '12.x',
-      license: 'MIT',
-      copyright: 'Copyright (c) Expo',
-      description: 'Provides haptic feedback for iOS and Android devices.',
-    },
-    {
-      name: 'expo-linear-gradient',
-      version: '12.x',
-      license: 'MIT',
-      copyright: 'Copyright (c) Expo',
-      description: 'Linear gradient component for React Native.',
-    },
-    {
-      name: 'react-native-safe-area-context',
-      version: '4.x',
-      license: 'MIT',
-      copyright: 'Copyright (c) Th3rdwave',
-      description: 'A flexible way to handle safe areas in React Native.',
-    },
-    {
-      name: 'react-native-gesture-handler',
-      version: '2.x',
-      license: 'MIT',
-      copyright: 'Copyright (c) Software Mansion',
-      description: 'Declarative API exposing platform native touch and gesture system.',
-    },
-    {
-      name: '@expo/vector-icons',
-      version: '13.x',
-      license: 'MIT',
-      copyright: 'Copyright (c) Expo',
-      description: 'Icon library with support for popular icon sets.',
-    },
-  ];
-
   return (
     <View style={styles.container}>
       <StatusBar
@@ -227,17 +142,16 @@ const LicensesScreen = () => {
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
       />
-      
-      {/* Blur overlay on entire background - very subtle */}
+
       <BlurView
         intensity={Platform.OS === 'ios' ? 5 : 3}
         tint="default"
         style={styles.backgroundGradient}
       />
 
-      {/* Animated Floating Background Orbs (Copilot-style) */}
+      {/* Animated Floating Background Orbs */}
       <View style={styles.floatingBgContainer} pointerEvents="none">
-        {/* Light Spot 1 - Top right gentle glow */}
+        {/* Light Spot 1 */}
         <Animated.View
           style={[
             styles.cloudWrapper,
@@ -277,7 +191,7 @@ const LicensesScreen = () => {
           </View>
         </Animated.View>
 
-        {/* Light Spot 2 - Middle left soft circle */}
+        {/* Light Spot 2 */}
         <Animated.View
           style={[
             styles.cloudWrapper,
@@ -317,7 +231,7 @@ const LicensesScreen = () => {
           </View>
         </Animated.View>
 
-        {/* Light Spot 3 - Bottom center blurry glow */}
+        {/* Light Spot 3 */}
         <Animated.View
           style={[
             styles.cloudWrapper,
@@ -357,7 +271,7 @@ const LicensesScreen = () => {
           </View>
         </Animated.View>
 
-        {/* Cloud variation 1 - Top left soft light patch */}
+        {/* Cloud Patch 1 */}
         <Animated.View
           style={[
             styles.cloudWrapper,
@@ -391,7 +305,7 @@ const LicensesScreen = () => {
           </View>
         </Animated.View>
 
-        {/* Cloud variation 2 - Bottom right gentle tone */}
+        {/* Cloud Patch 2 */}
         <Animated.View
           style={[
             styles.cloudWrapper,
@@ -425,7 +339,7 @@ const LicensesScreen = () => {
           </View>
         </Animated.View>
 
-        {/* Orb 1 - Soft Orange Glow (Center area) */}
+        {/* Large Orb */}
         <Animated.View
           style={[
             styles.floatingOrbWrapper,
@@ -472,107 +386,101 @@ const LicensesScreen = () => {
         </Animated.View>
       </View>
 
-      {/* Header - Copilot Style */}
-      <View style={[styles.header, { 
-        marginTop: insets.top,
-        marginLeft: insets.left,
-        marginRight: insets.right,
-      }]}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity 
-            onPress={() => navigation.goBack()} 
-            style={styles.backButton}
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="chevron-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
-          </TouchableOpacity>
-        </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Licenses</Text>
-        <View style={styles.headerRight} />
+      {/* Header */}
+      <View
+        style={[styles.header, {
+          backgroundColor: 'transparent',
+          top: insets.top,
+          marginLeft: insets.left,
+          marginRight: insets.right,
+        }]}
+      >
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="chevron-back" size={28} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>About</Text>
       </View>
 
-      <ScrollView 
-        style={styles.content}
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingTop: 12,
-          paddingBottom: 20,
-        }}
+      <ScrollView
+        style={[styles.scrollView, {
+          marginTop: insets.top + 64,
+        }]}
+        contentContainerStyle={[styles.scrollContent, {
+          paddingBottom: insets.bottom + 20,
+        }]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.descriptionContainer}>
-          <View style={[styles.descriptionCard, { borderColor: theme.colors.border }]}>
-            <BlurView
-              intensity={Platform.OS === 'ios' ? 20 : 15}
-              tint={isDarkMode ? 'dark' : 'light'}
-              style={styles.descriptionBlur}
-            >
-              <View style={[styles.descriptionContent, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
-                <Text style={[styles.description, { color: theme.colors.textMuted }]}>
-                  DOrSU Connect is built using open-source software. This page lists the licenses for the third-party libraries used in this application.
-                </Text>
-              </View>
-            </BlurView>
-          </View>
-        </View>
-        
-        <View style={styles.licensesContainer}>
-          {licenses.map((license, index) => (
-            <View 
-              key={index} 
-              style={[styles.licenseCardWrapper, { borderColor: theme.colors.border }]}
-            >
-              <BlurView
-                intensity={Platform.OS === 'ios' ? 20 : 15}
-                tint={isDarkMode ? 'dark' : 'light'}
-                style={styles.licenseCardBlur}
-              >
-                <View style={[styles.licenseCard, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
-                  <View style={styles.licenseHeader}>
-                    <Ionicons name="code-outline" size={20} color={theme.colors.accent} />
-                    <View style={styles.licenseTitleContainer}>
-                      <Text style={[styles.licenseName, { color: theme.colors.text }]}>
-                        {license.name}
-                      </Text>
-                      <Text style={[styles.licenseVersion, { color: theme.colors.textMuted }]}>
-                        v{license.version}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={[styles.licenseDescription, { color: theme.colors.textMuted }]}>
-                    {license.description}
-                  </Text>
-                  <View style={styles.licenseFooter}>
-                    <View style={[styles.licenseBadge, { backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.15)' : 'rgba(255, 149, 0, 0.1)' }]}>
-                      <Text style={[styles.licenseType, { color: theme.colors.accent }]}>
-                        {license.license}
-                      </Text>
-                    </View>
-                    <Text style={[styles.licenseCopyright, { color: theme.colors.textMuted }]}>
-                      {license.copyright}
-                    </Text>
-                  </View>
-                </View>
-              </BlurView>
-            </View>
-          ))}
-        </View>
-
-        {/* Additional Info */}
-        <View style={[styles.infoBoxWrapper, { borderColor: theme.colors.border }]}>
+        {/* About Items */}
+        <View style={styles.settingsContainer}>
           <BlurView
-            intensity={Platform.OS === 'ios' ? 20 : 15}
+            intensity={Platform.OS === 'ios' ? 50 : 40}
             tint={isDarkMode ? 'dark' : 'light'}
-            style={styles.infoBoxBlur}
+            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
           >
-            <View style={[styles.infoBox, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
-              <View style={styles.infoHeader}>
-                <Ionicons name="information-circle-outline" size={20} color={theme.colors.accent} />
-                <Text style={[styles.infoTitle, { color: theme.colors.text }]}>Open Source</Text>
+            <TouchableOpacity
+              style={styles.settingItemNoBorder}
+              onPress={() => navigation.navigate('UserHelpCenter')}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
+                  <Ionicons name="help-circle-outline" size={20} color="#FF9500" />
+                </View>
+                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Help Center</Text>
               </View>
-              <Text style={[styles.infoText, { color: theme.colors.textMuted }]}>
-                DOrSU Connect is built with open-source technologies. We are grateful to the open-source community for their contributions. Full license texts are available in the source code repository.
-              </Text>
+              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.settingItemNoBorder}
+              onPress={() => navigation.navigate('TermsOfUse')}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
+                  <Ionicons name="document-text-outline" size={20} color="#FF9500" />
+                </View>
+                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Terms of Use</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.settingItemNoBorder}
+              onPress={() => navigation.navigate('PrivacyPolicy')}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
+                  <Ionicons name="shield-checkmark-outline" size={20} color="#FF9500" />
+                </View>
+                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Privacy Policy</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.settingItemNoBorder}
+              onPress={() => navigation.navigate('Licenses')}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
+                  <Ionicons name="document-outline" size={20} color="#FF9500" />
+                </View>
+                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Licenses</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+            </TouchableOpacity>
+
+            <View style={styles.settingItemLast}>
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
+                  <Ionicons name="information-circle-outline" size={20} color="#FF9500" />
+                </View>
+                <Text style={[styles.settingTitle, { color: t.colors.text }]}>DOrSU Connect</Text>
+              </View>
+              <Text style={[styles.settingValue, { color: t.colors.textMuted }]}>v1.0.0</Text>
             </View>
           </BlurView>
         </View>
@@ -584,6 +492,7 @@ const LicensesScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
   backgroundGradient: {
     position: 'absolute',
@@ -601,9 +510,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     overflow: 'hidden',
     zIndex: 0,
-  },
-  floatingOrbWrapper: {
-    position: 'absolute',
   },
   cloudWrapper: {
     position: 'absolute',
@@ -643,6 +549,13 @@ const styles = StyleSheet.create({
     opacity: 0.16,
     overflow: 'hidden',
   },
+  floatingOrbWrapper: {
+    position: 'absolute',
+    width: 500,
+    height: 500,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   floatingOrb1: {
     width: 500,
     height: 500,
@@ -651,16 +564,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 999,
+    backgroundColor: 'transparent',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: 'transparent',
-    zIndex: 10,
-  },
-  headerLeft: {
-    width: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
   backButton: {
     width: 44,
@@ -673,138 +586,60 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     letterSpacing: -0.3,
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    textAlign: 'center',
+    marginLeft: 8,
   },
-  headerRight: {
-    width: 40,
+  scrollView: {
+    paddingHorizontal: theme.spacing(1.5),
+    paddingTop: theme.spacing(2),
   },
-  content: {
-    flex: 1,
+  scrollContent: {
+    paddingHorizontal: theme.spacing(1.5),
+    paddingBottom: 20,
   },
-  descriptionContainer: {
-    marginBottom: 20,
+  settingsContainer: {
+    gap: theme.spacing(1.5),
   },
-  descriptionCard: {
+  sectionCard: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radii.md,
+    padding: theme.spacing(1.5),
     borderWidth: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
-  descriptionBlur: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  descriptionContent: {
-    padding: 16,
-    borderRadius: 12,
-  },
-  description: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '500',
-  },
-  licensesContainer: {
-    gap: 12,
-    marginBottom: 18,
-  },
-  licenseCardWrapper: {
-    borderWidth: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  licenseCardBlur: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  licenseCard: {
-    padding: 16,
-    borderRadius: 12,
-  },
-  licenseHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 10,
-  },
-  licenseTitleContainer: {
-    flex: 1,
-  },
-  licenseName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: theme.colors.text,
-    letterSpacing: 0.2,
-    marginBottom: 2,
-  },
-  licenseVersion: {
-    fontSize: 12,
-    color: theme.colors.textMuted,
-    fontWeight: '500',
-  },
-  licenseDescription: {
-    fontSize: 13,
-    lineHeight: 18,
-    color: theme.colors.textMuted,
-    opacity: 0.9,
-    marginBottom: 12,
-  },
-  licenseFooter: {
+  settingItemNoBorder: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 8,
+    paddingVertical: theme.spacing(1.5),
   },
-  licenseBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  licenseType: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: theme.colors.accent,
-    letterSpacing: 0.5,
-  },
-  licenseCopyright: {
-    fontSize: 11,
-    color: theme.colors.textMuted,
-    opacity: 0.8,
-    flex: 1,
-    textAlign: 'right',
-  },
-  infoBoxWrapper: {
-    borderWidth: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  infoBoxBlur: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  infoBox: {
-    padding: 16,
-    borderRadius: 12,
-  },
-  infoHeader: {
+  settingItemLast: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 8,
+    justifyContent: 'space-between',
+    paddingVertical: theme.spacing(1.5),
   },
-  infoTitle: {
-    fontSize: 15,
-    fontWeight: '600',
+  settingLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: theme.spacing(1.5),
   },
-  infoText: {
-    fontSize: 13,
-    lineHeight: 20,
-    opacity: 0.8,
-    marginLeft: 30,
+  settingIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.text,
+  },
+  settingValue: {
+    fontSize: 14,
+    fontWeight: '400',
   },
 });
 
-export default LicensesScreen;
-
+export default About;

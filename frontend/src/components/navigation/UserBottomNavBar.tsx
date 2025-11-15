@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeValues } from '../../contexts/ThemeContext';
+import { BlurView } from 'expo-blur';
 
 // Keep in sync with app navigator
  type RootStackParamList = {
@@ -23,18 +24,16 @@ import { useThemeValues } from '../../contexts/ThemeContext';
 
 interface BarProps {
   onHomePress?: () => void;
-  onChatPress?: () => void;
+  onDiscoveryPress?: () => void;
   onCalendarPress?: () => void;
-  onSettingsPress?: () => void;
-  activeTab?: 'home' | 'chat' | 'calendar' | 'settings';
+  activeTab?: 'home' | 'discovery' | 'calendar';
   isDarkMode?: boolean;
 }
 
 const Bar: React.FC<BarProps> = ({
   onHomePress,
-  onChatPress,
+  onDiscoveryPress,
   onCalendarPress,
-  onSettingsPress,
   activeTab = 'home',
   isDarkMode = false,
 }) => {
@@ -43,33 +42,41 @@ const Bar: React.FC<BarProps> = ({
   
   return (
     <View style={[styles.container, { 
-      backgroundColor: t.colors.tabBar,
-      borderTopColor: t.colors.tabBarBorder,
-      paddingBottom: 0 // Padding handled by parent container
+      paddingBottom: insets.bottom,
     }]} collapsable={false}>
-      <View style={[styles.backgroundLayer, { 
-        backgroundColor: t.colors.tabBar,
-      }]} pointerEvents="none" />
-      
-      <TouchableOpacity style={styles.tab} onPress={onHomePress}>
-        <Ionicons name="home-outline" size={24} color={activeTab === 'home' ? t.colors.iconActive : t.colors.icon} />
-        <Text style={[styles.label, { color: t.colors.textMuted }, activeTab === 'home' && { color: t.colors.iconActive, fontWeight: '600' }]}>Home</Text>
-      </TouchableOpacity>
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 50 : 40}
+        tint={isDarkMode ? 'dark' : 'light'}
+        style={styles.blurBackground}
+      >
+        <View style={[styles.navContent, {
+          backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
+        }]}>
+          <TouchableOpacity style={styles.tab} onPress={onHomePress}>
+            <Ionicons 
+              name={activeTab === 'home' ? 'home' : 'home-outline'} 
+              size={28} 
+              color={activeTab === 'home' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+            />
+          </TouchableOpacity>
 
-      <TouchableOpacity style={styles.tab} onPress={onChatPress}>
-        <Ionicons name="chatbubbles-outline" size={24} color={activeTab === 'chat' ? t.colors.iconActive : t.colors.icon} />
-        <Text style={[styles.label, { color: t.colors.textMuted }, activeTab === 'chat' && { color: t.colors.iconActive, fontWeight: '600' }]}>AI Chat</Text>
-      </TouchableOpacity>
+          <TouchableOpacity style={styles.tab} onPress={onDiscoveryPress}>
+            <Ionicons 
+              name={activeTab === 'discovery' ? 'compass' : 'compass-outline'} 
+              size={28} 
+              color={activeTab === 'discovery' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+            />
+          </TouchableOpacity>
 
-      <TouchableOpacity style={styles.tab} onPress={onCalendarPress}>
-        <Ionicons name="calendar-outline" size={24} color={activeTab === 'calendar' ? t.colors.iconActive : t.colors.icon} />
-        <Text style={[styles.label, { color: t.colors.textMuted }, activeTab === 'calendar' && { color: t.colors.iconActive, fontWeight: '600' }]}>Calendar</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.tab} onPress={onSettingsPress}>
-        <Ionicons name="settings-outline" size={24} color={activeTab === 'settings' ? t.colors.iconActive : t.colors.icon} />
-        <Text style={[styles.label, { color: t.colors.textMuted }, activeTab === 'settings' && { color: t.colors.iconActive, fontWeight: '600' }]}>Settings</Text>
-      </TouchableOpacity>
+          <TouchableOpacity style={styles.tab} onPress={onCalendarPress}>
+            <Ionicons 
+              name={activeTab === 'calendar' ? 'copy' : 'copy-outline'} 
+              size={28} 
+              color={activeTab === 'calendar' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+            />
+          </TouchableOpacity>
+        </View>
+      </BlurView>
     </View>
   );
 };
@@ -79,52 +86,48 @@ const MemoizedBar = React.memo(Bar);
 const UserBottomNavBar = () => {
   const navigation = useNavigation<Navigation>();
   const route = useRoute();
-  // Revert: no theme toggling
+  const { isDarkMode } = useThemeValues();
 
   const routeName = route.name as keyof RootStackParamList;
-  const activeTab: 'home' | 'chat' | 'calendar' | 'settings' =
-    routeName === 'SchoolUpdates' ? 'home'
-    : routeName === 'AIChat' ? 'chat'
-    : routeName === 'Calendar' ? 'calendar'
-    : routeName === 'UserSettings' ? 'settings'
-    : 'home';
+  const activeTab: 'home' | 'discovery' | 'calendar' =
+    routeName === 'AIChat' ? 'home'
+    : routeName === 'SchoolUpdates' ? 'discovery'
+    : 'calendar';
 
-  // Memoize navigation handlers to prevent re-renders
-  const handleHomePress = React.useCallback(() => navigation.navigate('SchoolUpdates'), [navigation]);
-  const handleChatPress = React.useCallback(() => navigation.navigate('AIChat'), [navigation]);
+  const handleHomePress = React.useCallback(() => navigation.navigate('AIChat'), [navigation]);
+  const handleDiscoveryPress = React.useCallback(() => navigation.navigate('SchoolUpdates'), [navigation]);
   const handleCalendarPress = React.useCallback(() => navigation.navigate('Calendar'), [navigation]);
-  const handleSettingsPress = React.useCallback(() => navigation.navigate('UserSettings'), [navigation]);
 
   return (
     <MemoizedBar
       activeTab={activeTab}
       onHomePress={handleHomePress}
-      onChatPress={handleChatPress}
+      onDiscoveryPress={handleDiscoveryPress}
       onCalendarPress={handleCalendarPress}
-      onSettingsPress={handleSettingsPress}
+      isDarkMode={isDarkMode}
     />
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    position: 'relative',
+    backgroundColor: 'transparent',
+  },
+  blurBackground: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  navContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderTopWidth: 0.5,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    elevation: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: -2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    position: 'relative',
+    paddingVertical: 8,
+    paddingHorizontal: 40,
   },
   backgroundLayer: {
     position: 'absolute',
@@ -133,20 +136,15 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: -1,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    overflow: 'hidden',
   },
   tab: {
     alignItems: 'center',
+    justifyContent: 'center',
     flex: 1,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-  },
-  label: {
-    fontSize: 10,
-    marginTop: 4,
-    fontWeight: '500',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    minHeight: 52,
   },
 });
 

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Animated, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -43,6 +43,37 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
   const { isDarkMode } = useTheme();
   const insets = useSafeAreaInsets();
   const sidebarAnim = useRef(new Animated.Value(-320)).current;
+
+  // User state
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
+
+  // Load user data
+  useFocusEffect(
+    useCallback(() => {
+      const loadUserData = async () => {
+        try {
+          const user = getCurrentUser();
+          setCurrentUser(user);
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const userPhoto = await AsyncStorage.getItem('userPhoto');
+          setBackendUserPhoto(userPhoto);
+        } catch (error) {
+          console.error('Failed to load user data:', error);
+        }
+      };
+      loadUserData();
+    }, [])
+  );
+
+  const getUserInitials = () => {
+    if (!currentUser?.displayName) return '?';
+    const names = currentUser.displayName.split(' ');
+    if (names.length >= 2) {
+      return (names[0][0] + names[1][0]).toUpperCase();
+    }
+    return currentUser.displayName.substring(0, 2).toUpperCase();
+  };
 
   // Animate sidebar when opening/closing
   useEffect(() => {
@@ -88,15 +119,11 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
           },
         ]}
       >
-        {/* Sidebar Header with Logo */}
+        {/* Sidebar Header */}
         <View style={styles.sidebarHeader}>
           <View style={styles.sidebarLogoSection}>
             <View style={styles.sidebarLogo}>
-              <Image 
-                source={require('../../../../assets/DOrSU.png')} 
-                style={styles.logoImage}
-                resizeMode="contain"
-              />
+              <Ionicons name="school" size={28} color="#FFFFFF" />
             </View>
             <Text style={[styles.sidebarTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>
               DOrSU AI
@@ -111,7 +138,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
               }}
               accessibilityLabel="User settings"
             >
-              <Ionicons name="person-circle-outline" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+              <Ionicons name="person-circle-outline" size={26} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.sidebarIconButton}
@@ -123,7 +150,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
               }}
               accessibilityLabel="New conversation"
             >
-              <Ionicons name="create-outline" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+              <Ionicons name="create-outline" size={26} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={onClose}
@@ -273,13 +300,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  sidebarIconWrapper: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileButton: {
+    width: 48,
+    height: 48,
+  },
+  profileImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  profileIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FF9500',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileInitials: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFF',
+    letterSpacing: -0.3,
+  },
+  userInfoSection: {
+    flex: 1,
+  },
+  userEmail: {
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 2,
+  },
   sidebarLogo: {
     width: 40,
     height: 40,
-    borderRadius: 12,
+    borderRadius: 10,
+    backgroundColor: '#FF9500',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
   logoImage: {
     width: 40,

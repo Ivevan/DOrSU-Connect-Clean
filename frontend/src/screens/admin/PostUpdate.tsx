@@ -93,10 +93,9 @@ const PostUpdate: React.FC = () => {
   const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
   const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
   
-  // Animated floating background orbs (Copilot-style)
-  const lightSpot1 = useRef(new Animated.Value(0)).current;
-  const lightSpot2 = useRef(new Animated.Value(0)).current;
-  const lightSpot3 = useRef(new Animated.Value(0)).current;
+  // Animated floating background orbs (Copilot-style) - Simplified
+  const bgFade1 = useRef(new Animated.Value(0)).current;
+  const bgFade2 = useRef(new Animated.Value(0)).current;
 
   // Inline, dependency-free date data
   const months = useMemo(() => [
@@ -125,42 +124,28 @@ const PostUpdate: React.FC = () => {
     const animations = [
       Animated.loop(
         Animated.sequence([
-          Animated.timing(lightSpot1, {
+          Animated.timing(bgFade1, {
             toValue: 1,
-            duration: 6000,
+            duration: 10000,
             useNativeDriver: true,
           }),
-          Animated.timing(lightSpot1, {
+          Animated.timing(bgFade1, {
             toValue: 0,
-            duration: 6000,
+            duration: 10000,
             useNativeDriver: true,
           }),
         ])
       ),
       Animated.loop(
         Animated.sequence([
-          Animated.timing(lightSpot2, {
+          Animated.timing(bgFade2, {
             toValue: 1,
-            duration: 7000,
+            duration: 15000,
             useNativeDriver: true,
           }),
-          Animated.timing(lightSpot2, {
+          Animated.timing(bgFade2, {
             toValue: 0,
-            duration: 7000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot3, {
-            toValue: 1,
-            duration: 9000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot3, {
-            toValue: 0,
-            duration: 9000,
+            duration: 15000,
             useNativeDriver: true,
           }),
         ])
@@ -472,42 +457,46 @@ const PostUpdate: React.FC = () => {
         style={styles.backgroundGradient}
       />
       
-      {/* Animated Floating Orbs */}
+      {/* Simplified Animated Background */}
       <View style={styles.floatingBgContainer} pointerEvents="none">
-        {/* Light spots for subtle glow */}
+        {/* Subtle gradient overlays */}
         <Animated.View
           style={[
-            styles.lightSpot1,
+            styles.gradientOverlay1,
             {
-              opacity: lightSpot1.interpolate({
+              opacity: bgFade1.interpolate({
                 inputRange: [0, 1],
-                outputRange: [0.3, 0.6],
+                outputRange: [0.15, 0.3],
               }),
             },
           ]}
-        />
+        >
+          <LinearGradient
+            colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.2)', 'transparent']}
+            style={StyleSheet.absoluteFillObject}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+        </Animated.View>
+
         <Animated.View
           style={[
-            styles.lightSpot2,
+            styles.gradientOverlay2,
             {
-              opacity: lightSpot2.interpolate({
+              opacity: bgFade2.interpolate({
                 inputRange: [0, 1],
-                outputRange: [0.2, 0.5],
+                outputRange: [0.1, 0.25],
               }),
             },
           ]}
-        />
-        <Animated.View
-          style={[
-            styles.lightSpot3,
-            {
-              opacity: lightSpot3.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.25, 0.55],
-              }),
-            },
-          ]}
-        />
+        >
+          <LinearGradient
+            colors={['transparent', 'rgba(255, 180, 130, 0.3)', 'rgba(255, 200, 160, 0.15)']}
+            style={StyleSheet.absoluteFillObject}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          />
+        </Animated.View>
       </View>
       
       {/* Header - Clean transparent style matching AIChat */}
@@ -544,10 +533,10 @@ const PostUpdate: React.FC = () => {
         <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]} numberOfLines={1}>Post Update</Text>
         <View style={styles.headerRight}>
           <View style={[styles.categoryBadgeHeader, {
-            backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.1)',
-            borderColor: isDarkMode ? 'rgba(99, 102, 241, 0.3)' : 'rgba(99, 102, 241, 0.2)',
+            backgroundColor: isDarkMode ? `${currentCategory.color}30` : `${currentCategory.color}20`,
+            borderColor: isDarkMode ? `${currentCategory.color}50` : `${currentCategory.color}40`,
           }]}>
-            <Text style={[styles.categoryBadgeLabel, { color: isDarkMode ? '#A5B4FC' : '#6366F1' }]} numberOfLines={1} ellipsizeMode="tail">{category}</Text>
+            <Text style={[styles.categoryBadgeLabel, { color: currentCategory.color }]} numberOfLines={1} ellipsizeMode="tail">{category}</Text>
           </View>
         </View>
       </View>
@@ -558,7 +547,7 @@ const PostUpdate: React.FC = () => {
           marginBottom: 0,
         }]}
         contentContainerStyle={[styles.content, {
-          paddingBottom: 20, // Minimal spacing above footer
+          paddingBottom: 180, // Enough space for translucent footer
           paddingTop: 12,
         }]}
         keyboardShouldPersistTaps="handled"
@@ -993,68 +982,76 @@ const PostUpdate: React.FC = () => {
         </View>
       </ScrollView>
 
-      {/* Footer with Action Buttons - AIChat style */}
-      <View style={[styles.footerContainer, { 
-        paddingLeft: 16 + safeInsets.left,
-        paddingRight: 16 + safeInsets.right,
-        paddingBottom: 12 + safeInsets.bottom,
-      }]}>
-        {/* Show Preview Button */}
-        <TouchableOpacity 
-          style={[styles.previewBtn, { 
-            backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.1)',
-            borderColor: isDarkMode ? 'rgba(99, 102, 241, 0.3)' : 'rgba(99, 102, 241, 0.2)'
-          }]} 
-          onPress={handleShowPreview} 
-          activeOpacity={0.7}
-          accessibilityRole="button" 
-          accessibilityLabel="Show preview" 
-          accessibilityHint="Opens a preview of your update"
-        >
-          <Ionicons name="eye" size={18} color="#6366F1" style={styles.previewIcon} />
-          <Text style={[styles.previewText, { color: '#6366F1' }]}>Show Preview</Text>
-        </TouchableOpacity>
-
-        {/* Action Buttons */}
-        <View style={styles.actionButtons}>
+      {/* Footer with Action Buttons - Translucent with blur */}
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 80 : 60}
+        tint={isDarkMode ? 'dark' : 'light'}
+        style={[styles.footerBlurContainer, {
+          paddingLeft: 16 + safeInsets.left,
+          paddingRight: 16 + safeInsets.right,
+          paddingBottom: 12 + safeInsets.bottom,
+        }]}
+      >
+        <View style={[styles.footerContainer, {
+          backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)',
+        }]}>
+          {/* Show Preview Button */}
           <TouchableOpacity 
-            style={[styles.actionBtn, {
-              backgroundColor: '#DC2626',
-              borderWidth: 0,
+            style={[styles.previewBtn, { 
+              backgroundColor: isDarkMode ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.1)',
+              borderColor: isDarkMode ? 'rgba(99, 102, 241, 0.3)' : 'rgba(99, 102, 241, 0.2)'
             }]} 
-            onPress={handleCancel} 
+            onPress={handleShowPreview} 
             activeOpacity={0.7}
             accessibilityRole="button" 
-            accessibilityLabel="Cancel" 
-            accessibilityHint="Discard your changes and go back"
+            accessibilityLabel="Show preview" 
+            accessibilityHint="Opens a preview of your update"
           >
-            <Ionicons name="close-circle" size={18} color="#fff" style={styles.actionIcon} />
-            <Text style={[styles.buttonText, { color: '#fff' }]}>Cancel</Text>
+            <Ionicons name="eye" size={18} color="#6366F1" style={styles.previewIcon} />
+            <Text style={[styles.previewText, { color: '#6366F1' }]}>Show Preview</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.actionBtn, {
-              backgroundColor: isFormValid ? '#2563EB' : (isDarkMode ? '#374151' : '#E5E7EB'),
-              borderWidth: 0,
-            }]} 
-            onPress={handlePublish} 
-            activeOpacity={isFormValid ? 0.7 : 1}
-            disabled={!isFormValid}
-            accessibilityRole="button" 
-            accessibilityLabel="Publish" 
-            accessibilityHint={isFormValid ? "Publishes your update" : "Fill in title and description to enable publishing"}
-          >
-            <Ionicons 
-              name="checkmark-circle" 
-              size={18} 
-              color={isFormValid ? "#fff" : (isDarkMode ? '#6B7280' : '#9CA3AF')} 
-              style={styles.actionIcon} 
-            />
-            <Text style={[styles.buttonText, {
-              color: isFormValid ? "#fff" : (isDarkMode ? '#6B7280' : '#9CA3AF')
-            }]}>Publish</Text>
-          </TouchableOpacity>
+
+          {/* Action Buttons */}
+          <View style={styles.actionButtons}>
+            <TouchableOpacity 
+              style={[styles.actionBtn, {
+                backgroundColor: '#DC2626',
+                borderWidth: 0,
+              }]} 
+              onPress={handleCancel} 
+              activeOpacity={0.7}
+              accessibilityRole="button" 
+              accessibilityLabel="Cancel" 
+              accessibilityHint="Discard your changes and go back"
+            >
+              <Ionicons name="close-circle" size={18} color="#fff" style={styles.actionIcon} />
+              <Text style={[styles.buttonText, { color: '#fff' }]}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.actionBtn, {
+                backgroundColor: isFormValid ? '#2563EB' : (isDarkMode ? '#374151' : '#E5E7EB'),
+                borderWidth: 0,
+              }]} 
+              onPress={handlePublish} 
+              activeOpacity={isFormValid ? 0.7 : 1}
+              disabled={!isFormValid}
+              accessibilityRole="button" 
+              accessibilityLabel="Publish" 
+              accessibilityHint={isFormValid ? "Publishes your update" : "Fill in title and description to enable publishing"}
+            >
+              <Ionicons 
+                name="checkmark-circle" 
+                size={18} 
+                color={isFormValid ? "#fff" : (isDarkMode ? '#6B7280' : '#9CA3AF')} 
+                style={styles.actionIcon} 
+              />
+              <Text style={[styles.buttonText, {
+                color: isFormValid ? "#fff" : (isDarkMode ? '#6B7280' : '#9CA3AF')
+              }]}>Publish</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </BlurView>
     </View>
   );
 };
@@ -1116,32 +1113,19 @@ const styles = StyleSheet.create({
     zIndex: 1,
     overflow: 'hidden',
   },
-  lightSpot1: {
+  gradientOverlay1: {
     position: 'absolute',
-    top: '8%',
-    right: '15%',
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: 'rgba(251, 191, 36, 0.08)',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
-  lightSpot2: {
+  gradientOverlay2: {
     position: 'absolute',
-    bottom: '20%',
-    left: '5%',
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: 'rgba(34, 197, 94, 0.08)',
-  },
-  lightSpot3: {
-    position: 'absolute',
-    bottom: '10%',
-    right: '10%',
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   safeAreaTop: {
     position: 'absolute',
@@ -1502,10 +1486,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 16,
   },
+  footerBlurContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: 'hidden',
+  },
   footerContainer: {
     paddingHorizontal: 16,
     paddingTop: 12,
-    backgroundColor: 'transparent',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
   previewBtn: {
     borderWidth: 1,

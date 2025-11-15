@@ -1,11 +1,16 @@
-import React, { useRef, useState, useCallback, memo, useMemo } from 'react';
+import React, { useCallback, useRef, useState, useMemo, memo, useEffect } from 'react';
 import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Alert, Pressable, Image, Animated, Dimensions, Easing, SectionList, AccessibilityInfo, InteractionManager, Platform } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import AdminDataService from '../../services/AdminDataService';
+import { formatDate, timeAgo, formatCalendarDate } from '../../utils/dateUtils';
+import MonthPickerModal from '../../modals/MonthPickerModal';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
+import UserSidebar from '../../components/navigation/UserSidebar';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -14,9 +19,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { theme } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
-import AdminDataService from '../../services/AdminDataService';
-import { formatDate, timeAgo, formatCalendarDate } from '../../utils/dateUtils';
-import MonthPickerModal from '../../modals/MonthPickerModal';
+import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -62,8 +65,11 @@ const CalendarScreen = () => {
   const [headerHeight, setHeaderHeight] = useState(64);
   
   // Calendar state
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [showAllEvents, setShowAllEvents] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
   
   // Animation values
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
@@ -87,8 +93,59 @@ const CalendarScreen = () => {
   const [posts, setPosts] = useState<any[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
 
+  const getUserInitials = () => {
+    if (!currentUser?.displayName) return '?';
+    const names = currentUser.displayName.split(' ');
+    if (names.length >= 2) {
+      return (names[0][0] + names[1][0]).toUpperCase();
+    }
+    return currentUser.displayName.substring(0, 2).toUpperCase();
+  };
+
+  // Load user data on mount
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        const user = getCurrentUser();
+        if (user) {
+          setCurrentUser(user);
+        }
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const userPhoto = await AsyncStorage.getItem('userPhoto');
+        setBackendUserPhoto(userPhoto);
+      } catch (error) {
+        console.error('Failed to load user data:', error);
+      }
+    };
+    loadUserData();
+  }, []);
+
+  // Subscribe to auth changes
+  useFocusEffect(
+    useCallback(() => {
+      let unsubscribe: (() => void) | null = null;
+      const timeoutId = setTimeout(() => {
+        unsubscribe = onAuthStateChange((user) => {
+          setCurrentUser((prevUser: any) => {
+            if (prevUser?.uid !== user?.uid) {
+              return user;
+            }
+            return prevUser;
+          });
+        });
+      }, 50);
+      
+      return () => {
+        clearTimeout(timeoutId);
+        if (unsubscribe) {
+          unsubscribe();
+        }
+      };
+    }, [])
+  );
+
   // Defer data loading until after screen is visible to prevent navigation delay
-  React.useEffect(() => {
+  useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
@@ -198,7 +255,7 @@ const CalendarScreen = () => {
     isUrgent: !!p.isUrgent,
   });
 
-  const getEventsForDate = React.useCallback((date: Date) => {
+  const getEventsForDate = useCallback((date: Date) => {
     const key = formatDateKey(date);
     if (!Array.isArray(posts)) return [];
     return posts
@@ -329,7 +386,7 @@ const CalendarScreen = () => {
     );
   }, [getEventsForDate, t, dotScale, handleDayPress]);
 
-  const filteredEvents = React.useMemo(() => {
+  const filteredEvents = useMemo(() => {
     if (!Array.isArray(posts)) return [];
     if (selectedDate && !showAllEvents) {
       return getEventsForDate(selectedDate);
@@ -358,7 +415,7 @@ const CalendarScreen = () => {
       .sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime())
       .map(([key, items]) => ({ key, items: items as any[] }));
   };
-  const groupedEvents = React.useMemo(() => getAllEventsGrouped(), [posts]);
+  const groupedEvents = useMemo(() => getAllEventsGrouped(), [posts]);
 
   const selectMonth = (monthIndex: number) => {
     const newMonth = new Date(Date.UTC(currentMonth.getUTCFullYear(), monthIndex, 1));
@@ -531,8 +588,8 @@ const CalendarScreen = () => {
     dotScale.setValue(1);
   }, [showAllEvents, selectedDate, posts]);
 
-  const days = React.useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
-  const weekDays = React.useMemo(() => ['S', 'M', 'T', 'W', 'T', 'F', 'S'], []); // Sunday -> Saturday
+  const days = useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
+  const weekDays = useMemo(() => ['S', 'M', 'T', 'W', 'T', 'F', 'S'], []); // Sunday -> Saturday
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -801,42 +858,51 @@ const CalendarScreen = () => {
         </Animated.View>
       </View>
 
-      {/* Header - Transparent with glassmorphism */}
-      <BlurView
-        intensity={Platform.OS === 'ios' ? 50 : 40}
-        tint={isDarkMode ? 'dark' : 'light'}
-        style={[
-          styles.header,
-          {
-            backgroundColor: isDarkMode ? 'rgba(31, 31, 31, 0.7)' : 'rgba(255, 255, 255, 0.5)',
-            top: safeInsets.top,
-          },
-        ]}
-        onLayout={(e) => {
-          const { height } = e.nativeEvent.layout;
-          if (height > 0 && height !== headerHeightRef.current) {
-            headerHeightRef.current = height;
-            setHeaderHeight(height);
-          }
-        }}
-        collapsable={false}
-      >
-        <View style={styles.headerLeft} collapsable={false}>
-          <Text style={[styles.headerTitle, { color: t.colors.text }]} numberOfLines={1}>School Calendar</Text>
+      {/* Header - Copilot Style matching AIChat */}
+      <View style={[styles.header, { 
+        marginTop: insets.top,
+        marginLeft: insets.left,
+        marginRight: insets.right,
+      }]}>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity 
+            onPress={() => setIsHistoryOpen(true)} 
+            style={styles.menuButton}
+            accessibilityLabel="Open sidebar"
+          >
+            <View style={styles.customHamburger} pointerEvents="none">
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineLong, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+            </View>
+          </TouchableOpacity>
+        </View>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>School Calendar</Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity 
+            style={styles.profileButton} 
+            onPress={() => navigation.navigate('UserSettings')} 
+            accessibilityLabel="User profile - Go to settings"
+          >
+            {backendUserPhoto ? (
+              <Image 
+                source={{ uri: backendUserPhoto }} 
+                style={styles.profileImage}
+              />
+            ) : (
+              <View style={[styles.profileIconCircle, { backgroundColor: '#FF9500' }]}>
+                <Text style={styles.profileInitials}>{getUserInitials()}</Text>
               </View>
-        <View style={styles.headerRight} collapsable={false}>
-            <View style={styles.headerSpacer} />
-            <View style={styles.headerSpacer} />
-          </View>
-      </BlurView>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
 
       <ScrollView 
         ref={scrollRef} 
-        style={[styles.scrollView, {
-          marginTop: safeInsets.top + headerHeight,
-          marginBottom: 0,
-        }]}
+        style={styles.scrollView}
         contentContainerStyle={[styles.scrollContent, {
+          paddingTop: 12,
           paddingBottom: safeInsets.bottom + 80, // Bottom nav bar height + safe area
         }]} 
         showsVerticalScrollIndicator={false}
@@ -1098,6 +1164,12 @@ const CalendarScreen = () => {
       }]} collapsable={false}>
       <UserBottomNavBar />
       </View>
+
+      {/* User Sidebar Component */}
+      <UserSidebar
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+      />
     </View>
     </GestureHandlerRootView>
   );
@@ -1176,36 +1248,78 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   header: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    borderTopWidth: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: 'transparent',
+    zIndex: 10,
+  },
+  headerLeft: {
+    width: 44,
+  },
+  menuButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customHamburger: {
+    width: 24,
+    height: 18,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  hamburgerLine: {
+    height: 2.5,
+    borderRadius: 2,
+  },
+  hamburgerLineShort: {
+    width: 18,
+  },
+  hamburgerLineLong: {
+    width: 24,
+  },
+  profileButton: {
+    width: 32,
+    height: 32,
+  },
+  profileImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  profileIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FF9500',
+  },
+  profileInitials: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFF',
+    letterSpacing: -0.3,
   },
   scrollView: {
     flex: 1,
   },
-  headerLeft: {
-    flex: 1,
-  },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 0.2,
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: -0.3,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
   },
   headerRight: {
-    flexDirection: 'row',
-    gap: 10,
+    width: 44,
+    alignItems: 'flex-end',
   },
   headerSpacer: {
     width: 40,
@@ -1214,7 +1328,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 12,
   },
   bottomNavContainer: {
     position: 'absolute',
@@ -1225,12 +1338,9 @@ const styles = StyleSheet.create({
   calendarCard: {
     borderRadius: 16,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   calendarMonthHeader: {
     paddingHorizontal: 16,
@@ -1331,11 +1441,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
     marginBottom: 0,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   emptyStateCard: {
     alignItems: 'center',

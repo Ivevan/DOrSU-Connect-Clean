@@ -1,15 +1,18 @@
 import * as React from 'react';
 import { useState, useRef, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Switch, Alert, Animated } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Switch, Alert, Animated, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as DocumentPicker from 'expo-document-picker';
 import { useThemeValues, useThemeActions } from '../../contexts/ThemeContext';
 import { theme as themeConfig } from '../../config/theme';
-import LogoutModal from '../../modals/LogoutModal'; 
+import LogoutModal from '../../modals/LogoutModal';
+import AdminFileService from '../../services/AdminFileService'; 
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -50,6 +53,7 @@ const AdminSettings = () => {
   // State for various settings
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
 
   // Lock header height to prevent layout shifts
   const headerHeightRef = useRef<number>(64);
@@ -75,9 +79,26 @@ const AdminSettings = () => {
     });
   }, [sheetY]);
 
-  const confirmLogout = useCallback(() => {
-    closeLogout();
-    navigation.navigate('GetStarted');
+  const confirmLogout = useCallback(async () => {
+    try {
+      // Clear all admin and user data from AsyncStorage
+      await AsyncStorage.multiRemove([
+        'userToken', 
+        'userEmail', 
+        'userName', 
+        'userId', 
+        'isAdmin',
+        'authProvider'
+      ]);
+      
+      closeLogout();
+      navigation.navigate('GetStarted');
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Still navigate to GetStarted even if there's an error
+      closeLogout();
+      navigation.navigate('GetStarted');
+    }
   }, [closeLogout, navigation]);
 
   // Navigation handlers for AdminBottomNavBar
@@ -94,6 +115,46 @@ const AdminSettings = () => {
   const handleTermsOfUsePress = useCallback(() => navigation.navigate('TermsOfUse'), [navigation]);
   const handlePrivacyPolicyPress = useCallback(() => navigation.navigate('PrivacyPolicy'), [navigation]);
   const handleLicensesPress = useCallback(() => navigation.navigate('Licenses'), [navigation]);
+
+  // File upload handler
+  const handleFileUpload = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['text/plain', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/csv', 'application/json'],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) return;
+
+      const asset = Array.isArray((result as any).assets) ? (result as any).assets[0] : (result as any);
+      const fileName = asset.name || 'unknown';
+      const fileUri = asset.uri;
+      const mimeType = asset.mimeType || 'application/octet-stream';
+
+      // Validate file extension
+      const allowedExtensions = ['.txt', '.docx', '.csv', '.json'];
+      const extension = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
+      if (!allowedExtensions.includes(extension)) {
+        Alert.alert('Invalid File', `File type not allowed. Allowed types: ${allowedExtensions.join(', ')}`);
+        return;
+      }
+
+      setIsUploadingFile(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      const uploadResult = await AdminFileService.uploadFile(fileUri, fileName, mimeType);
+
+      Alert.alert(
+        'Upload Successful',
+        `File "${fileName}" uploaded successfully.\n\n${uploadResult.chunksAdded} chunks added to knowledge base.`,
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
+      Alert.alert('Upload Failed', error.message || 'Failed to upload file');
+    } finally {
+      setIsUploadingFile(false);
+    }
+  }, []);
 
   return (
     <View style={[styles.container, {
@@ -198,6 +259,34 @@ const AdminSettings = () => {
             styles.settingsContainer
           ]}
         >
+          {/* Knowledge Base Management */}
+          <View style={[styles.sectionCard, { backgroundColor: theme.colors.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Knowledge Base</Text>
+            
+            <TouchableOpacity 
+              style={[styles.settingItemLast, { opacity: isUploadingFile ? 0.6 : 1 }]}
+              onPress={handleFileUpload}
+              disabled={isUploadingFile}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
+                  <Ionicons name="cloud-upload-outline" size={20} color={theme.colors.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Upload File</Text>
+                  <Text style={[styles.settingSubtitle, { color: theme.colors.textMuted }]}>
+                    Add files to knowledge base (txt, docx, csv, json)
+                  </Text>
+                </View>
+              </View>
+              {isUploadingFile ? (
+                <ActivityIndicator size="small" color={theme.colors.accent} />
+              ) : (
+                <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+              )}
+            </TouchableOpacity>
+          </View>
+
           {/* App Settings */}
           <View style={[styles.sectionCard, { backgroundColor: theme.colors.card }]}>
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>App Settings</Text>
@@ -567,6 +656,11 @@ const styles = StyleSheet.create({
   settingValue: {
     fontSize: 14,
     fontWeight: '400',
+  },
+  settingSubtitle: {
+    fontSize: 12,
+    fontWeight: '400',
+    marginTop: 2,
   },
   signOutButton: {
     flexDirection: 'row',

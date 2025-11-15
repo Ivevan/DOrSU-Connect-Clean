@@ -14,6 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { theme } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import AdminDataService from '../../services/AdminDataService';
+import CalendarService, { CalendarEvent } from '../../services/CalendarService';
 import { formatDate, timeAgo, formatCalendarDate } from '../../utils/dateUtils';
 import MonthPickerModal from '../../modals/MonthPickerModal';
 
@@ -73,9 +74,45 @@ const CalendarScreen = () => {
     return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
   };
 
-  // Data from AdminDataService
+  // Data from AdminDataService (for backward compatibility) and CalendarService
   const [posts, setPosts] = useState<any[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
+  const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
+
+  // Load calendar events from backend
+  React.useEffect(() => {
+    let cancelled = false;
+    const loadEvents = async () => {
+      try {
+        setIsLoadingEvents(true);
+        // Get events for current year (or all events if no date range specified)
+        const currentYear = new Date().getFullYear();
+        const startDate = new Date(currentYear, 0, 1).toISOString(); // January 1
+        const endDate = new Date(currentYear, 11, 31).toISOString(); // December 31
+        
+        const events = await CalendarService.getEvents({
+          startDate,
+          endDate,
+          limit: 500, // Get up to 500 events
+        });
+        
+        if (!cancelled) {
+          setCalendarEvents(Array.isArray(events) ? events : []);
+        }
+      } catch (error) {
+        console.error('Failed to load calendar events:', error);
+        if (!cancelled) setCalendarEvents([]);
+      } finally {
+        if (!cancelled) setIsLoadingEvents(false);
+      }
+    };
+    
+    loadEvents();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Defer data loading until after screen is visible to prevent navigation delay
   React.useEffect(() => {
@@ -190,19 +227,50 @@ const CalendarScreen = () => {
 
   const getEventsForDate = React.useCallback((date: Date) => {
     const key = formatDateKey(date);
-    if (!Array.isArray(posts)) return [];
-    return posts
-      .map(p => ({
-        id: p.id,
-        title: p.title,
-        dateKey: parseAnyDateToKey(p.isoDate || p.date),
-        time: p.time || '',
-        type: p.category || 'Announcement',
-        color: categoryToColors(p.category).dot,
-        chip: categoryToColors(p.category),
-      }))
-      .filter(e => e.dateKey === key);
-  }, [posts]);
+    const events: any[] = [];
+    
+    // Add events from AdminDataService (posts)
+    if (Array.isArray(posts)) {
+      posts.forEach(p => {
+        const eventDateKey = parseAnyDateToKey(p.isoDate || p.date);
+        if (eventDateKey === key) {
+          events.push({
+            id: p.id,
+            title: p.title,
+            dateKey: eventDateKey,
+            time: p.time || '',
+            type: p.category || 'Announcement',
+            color: categoryToColors(p.category).dot,
+            chip: categoryToColors(p.category),
+            description: p.description,
+            source: p.source || 'Admin',
+          });
+        }
+      });
+    }
+    
+    // Add events from CalendarService (backend calendar events)
+    if (Array.isArray(calendarEvents)) {
+      calendarEvents.forEach(event => {
+        const eventDateKey = parseAnyDateToKey(event.isoDate || event.date);
+        if (eventDateKey === key) {
+          events.push({
+            id: event._id || `calendar-${event.isoDate}-${event.title}`,
+            title: event.title,
+            dateKey: eventDateKey,
+            time: event.time || 'All Day',
+            type: event.category || 'Announcement',
+            color: categoryToColors(event.category).dot,
+            chip: categoryToColors(event.category),
+            description: event.description,
+            source: event.source || 'CSV Upload',
+          });
+        }
+      });
+    }
+    
+    return events;
+  }, [posts, calendarEvents]);
 
   // Robust PH date-key comparison (avoids off-by-one no matter device tz)
   const getPHDateKey = (d: Date) => {
@@ -320,22 +388,83 @@ const CalendarScreen = () => {
   }, [getEventsForDate, t, dotScale, handleDayPress]);
 
   const filteredEvents = React.useMemo(() => {
-    if (!Array.isArray(posts)) return [];
+    const allEvents: any[] = [];
+    
+    // Add events from posts (AdminDataService)
+    if (Array.isArray(posts)) {
+      allEvents.push(...posts.map(transformPostToEvent));
+    }
+    
+    // Add events from calendarEvents (backend)
+    if (Array.isArray(calendarEvents)) {
+      calendarEvents.forEach(event => {
+        const dateKey = parseAnyDateToKey(event.isoDate || event.date);
+        if (dateKey) {
+          allEvents.push({
+            id: event._id || `calendar-${event.isoDate}-${event.title}`,
+            title: event.title,
+            dateKey: dateKey,
+            time: event.time || 'All Day',
+            type: event.category || 'Announcement',
+            color: categoryToColors(event.category).dot,
+            chip: categoryToColors(event.category),
+            description: event.description,
+            source: event.source || 'CSV Upload',
+            isoDate: event.isoDate,
+            date: event.date,
+          });
+        }
+      });
+    }
+    
     if (selectedDate && !showAllEvents) {
       return getEventsForDate(selectedDate);
     }
-    return posts.map(transformPostToEvent);
-  }, [selectedDate, showAllEvents, posts, getEventsForDate, transformPostToEvent]);
+    
+    return allEvents;
+  }, [selectedDate, showAllEvents, posts, calendarEvents, getEventsForDate, transformPostToEvent]);
 
   const getAllEventsGrouped = () => {
-    if (!Array.isArray(posts)) return [];
-    const all = posts.map(p => ({
-      ...transformPostToEvent(p),
-      dateObj: (() => { 
-        const k = parseAnyDateToKey(p.isoDate || p.date); 
-        return k ? new Date(k) : new Date(); 
-      })(),
-    })).filter(e => !!e.dateKey);
+    const all: any[] = [];
+    
+    // Add events from posts
+    if (Array.isArray(posts)) {
+      posts.forEach(p => {
+        const event = transformPostToEvent(p);
+        if (event.dateKey) {
+          all.push({
+            ...event,
+            dateObj: (() => { 
+              const k = parseAnyDateToKey(p.isoDate || p.date); 
+              return k ? new Date(k) : new Date(); 
+            })(),
+          });
+        }
+      });
+    }
+    
+    // Add events from calendarEvents
+    if (Array.isArray(calendarEvents)) {
+      calendarEvents.forEach(event => {
+        const dateKey = parseAnyDateToKey(event.isoDate || event.date);
+        if (dateKey) {
+          all.push({
+            id: event._id || `calendar-${event.isoDate}-${event.title}`,
+            title: event.title,
+            dateKey: dateKey,
+            time: event.time || 'All Day',
+            type: event.category || 'Announcement',
+            color: categoryToColors(event.category).dot,
+            chip: categoryToColors(event.category),
+            description: event.description,
+            source: event.source || 'CSV Upload',
+            isoDate: event.isoDate,
+            date: event.date,
+            dateObj: dateKey ? new Date(dateKey) : new Date(),
+          });
+        }
+      });
+    }
     
     const groupedMap = new Map();
     all.forEach(e => {
@@ -348,7 +477,7 @@ const CalendarScreen = () => {
       .sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime())
       .map(([key, items]) => ({ key, items: items as any[] }));
   };
-  const groupedEvents = React.useMemo(() => getAllEventsGrouped(), [posts]);
+  const groupedEvents = React.useMemo(() => getAllEventsGrouped(), [posts, calendarEvents]);
 
   const selectMonth = (monthIndex: number) => {
     const newMonth = new Date(Date.UTC(currentMonth.getUTCFullYear(), monthIndex, 1));
@@ -621,7 +750,7 @@ const CalendarScreen = () => {
           </View>
           <LinearGradient colors={[t.colors.border, 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ height: 1, marginBottom: 10 }} />
 
-          {filteredEvents.length === 0 && !isLoadingPosts && (
+          {filteredEvents.length === 0 && !isLoadingPosts && !isLoadingEvents && (
             <View style={[styles.emptyStateCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
               <View style={[styles.emptyStateIconWrap, { backgroundColor: t.colors.surfaceAlt }]}>
                 <Ionicons name="calendar-outline" size={20} color={t.colors.accent} />

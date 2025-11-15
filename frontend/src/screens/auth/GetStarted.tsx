@@ -232,40 +232,6 @@ const GetStarted = () => {
     startTechAnimations();
   }, []);
 
-  // Animation functions
-  const handleLogoPress = () => {
-    // Haptic feedback for logo press (admin access)
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    Animated.sequence([
-      Animated.parallel([
-        Animated.timing(logoScale, {
-          toValue: 0.95,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(logoGlow, {
-          toValue: 1,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.parallel([
-        Animated.timing(logoScale, {
-          toValue: 1,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(logoGlow, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]),
-    ]).start(() => {
-      navigation.navigate('AdminDashboard');
-    });
-  };
 
   // Handle Google Sign-In
   const handleGoogleSignIn = async () => {
@@ -656,14 +622,9 @@ const GetStarted = () => {
       ]}>
         {/* Logo Section */}
         <View style={styles.topSection}>
-          <TouchableOpacity 
-            onPress={handleLogoPress}
-            activeOpacity={1}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-            accessibilityRole="button"
+          <View
+            accessibilityRole="image"
             accessibilityLabel="DOrSU Connect logo"
-            accessibilityHint="Double tap to access admin dashboard"
-            accessibilityState={{ disabled: false }}
           >
             <Animated.View style={{
               transform: [
@@ -726,7 +687,7 @@ const GetStarted = () => {
                 }]} />
               </View>
             </Animated.View>
-          </TouchableOpacity>
+          </View>
           <Text 
             style={styles.title}
             accessibilityRole="header"

@@ -53,7 +53,19 @@ const AppNavigator = () => {
   useEffect(() => {
     const checkAuthStatus = async () => {
       try {
-        // Check for backend auth token
+        // Check for admin login first
+        const isAdmin = await AsyncStorage.getItem('isAdmin');
+        const adminToken = await AsyncStorage.getItem('userToken');
+        const adminEmail = await AsyncStorage.getItem('userEmail');
+        
+        if (isAdmin === 'true' && adminToken && adminEmail) {
+          // Admin is logged in - route to admin dashboard
+          setInitialRoute('AdminDashboard');
+          setIsLoading(false);
+          return;
+        }
+        
+        // Check for regular user backend auth token
         const userToken = await AsyncStorage.getItem('userToken');
         const userEmail = await AsyncStorage.getItem('userEmail');
         const authProvider = await AsyncStorage.getItem('authProvider');

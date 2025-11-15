@@ -1,21 +1,24 @@
-import React, { useRef, useState, useCallback, memo, useMemo } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Animated, Easing, AccessibilityInfo } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import dayjs from 'dayjs';
-import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
+import utc from 'dayjs/plugin/utc';
+import * as DocumentPicker from 'expo-document-picker';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo, ActivityIndicator, Alert, Animated, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
-import AdminDataService from '../../services/AdminDataService';
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
-import { useThemeValues } from '../../contexts/ThemeContext';
 import { theme } from '../../config/theme';
-import { formatDate, formatCalendarDate } from '../../utils/dateUtils';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import MonthPickerModal from '../../modals/MonthPickerModal';
+import AdminDataService from '../../services/AdminDataService';
+import AdminFileService from '../../services/AdminFileService';
+import CalendarService, { CalendarEvent } from '../../services/CalendarService';
+import { formatCalendarDate, formatDate } from '../../utils/dateUtils';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -143,8 +146,12 @@ const AdminCalendar = () => {
 
   // Data from AdminDataService
   const [posts, setPosts] = useState<any[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
+  const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
+  const [isUploadingCSV, setIsUploadingCSV] = useState<boolean>(false);
 
+  // Load posts from AdminDataService
   React.useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -152,7 +159,8 @@ const AdminCalendar = () => {
         setIsLoadingPosts(true);
         const data = await AdminDataService.getPosts();
         if (!cancelled) setPosts(Array.isArray(data) ? data : []);
-      } catch {
+      } catch (error) {
+        console.error('Failed to load posts:', error);
         if (!cancelled) setPosts([]);
       } finally {
         if (!cancelled) setIsLoadingPosts(false);
@@ -161,6 +169,40 @@ const AdminCalendar = () => {
     load();
     return () => { cancelled = true; };
   }, []);
+
+  // Load calendar events from backend - only load once on component mount
+  React.useEffect(() => {
+    let cancelled = false;
+    const loadEvents = async () => {
+      try {
+        setIsLoadingEvents(true);
+        // Get events for current year (or all events if no date range specified)
+        const currentYear = new Date().getFullYear();
+        const startDate = new Date(currentYear, 0, 1).toISOString(); // January 1
+        const endDate = new Date(currentYear, 11, 31).toISOString(); // December 31
+        
+        const events = await CalendarService.getEvents({
+          startDate,
+          endDate,
+          limit: 500, // Get up to 500 events
+        });
+        
+        if (!cancelled) {
+          setCalendarEvents(Array.isArray(events) ? events : []);
+        }
+      } catch (error) {
+        console.error('Failed to load calendar events:', error);
+        if (!cancelled) setCalendarEvents([]);
+      } finally {
+        if (!cancelled) setIsLoadingEvents(false);
+      }
+    };
+    
+    loadEvents();
+    return () => {
+      cancelled = true;
+    };
+  }, []); // Empty dependency array means this runs only once on mount
 
   // Entrance animation disabled for performance debugging
 
@@ -254,19 +296,46 @@ const AdminCalendar = () => {
 
   const getEventsForDate = React.useCallback((date: Date) => {
     const key = formatDateKey(date);
-    if (!Array.isArray(posts)) return [];
-    return posts
-      .map(p => ({
-        id: p.id,
-        title: p.title,
-        dateKey: parseAnyDateToKey(p.isoDate || p.date),
-        time: p.time || '',
-        type: p.category || 'Announcement',
-        color: categoryToColors(p.category).dot,
-        chip: categoryToColors(p.category),
-      }))
-      .filter(e => e.dateKey === key);
-  }, [posts]);
+    const events: any[] = [];
+    
+    // Add events from AdminDataService (posts)
+    if (Array.isArray(posts)) {
+      posts.forEach(p => {
+        const eventDateKey = parseAnyDateToKey(p.isoDate || p.date);
+        if (eventDateKey === key) {
+          events.push({
+            id: p.id,
+            title: p.title,
+            dateKey: eventDateKey,
+            time: p.time || '',
+            type: p.category || 'Announcement',
+            color: categoryToColors(p.category).dot,
+            chip: categoryToColors(p.category),
+          });
+        }
+      });
+    }
+    
+    // Add events from CalendarService (backend calendar events)
+    if (Array.isArray(calendarEvents)) {
+      calendarEvents.forEach(event => {
+        const eventDateKey = parseAnyDateToKey(event.isoDate || event.date);
+        if (eventDateKey === key) {
+          events.push({
+            id: event._id || `calendar-${event.isoDate}-${event.title}`,
+            title: event.title,
+            dateKey: eventDateKey,
+            time: event.time || 'All Day',
+            type: event.category || 'Announcement',
+            color: categoryToColors(event.category).dot,
+            chip: categoryToColors(event.category),
+          });
+        }
+      });
+    }
+    
+    return events;
+  }, [posts, calendarEvents]); // Only recompute when posts or calendarEvents change
 
   const isToday = (date: Date) => {
     return getPHDateKey(date, PH_TZ) === getPHDateKey(new Date(), PH_TZ);
@@ -282,22 +351,74 @@ const AdminCalendar = () => {
   }, []);
 
   const filteredEvents = React.useMemo(() => {
-    if (!Array.isArray(posts)) return [];
+    if (!Array.isArray(posts) && !Array.isArray(calendarEvents)) return [];
     if (selectedDate && !showAllEvents) {
       return getEventsForDate(selectedDate);
     }
-    return posts.map(transformPostToEvent);
-  }, [selectedDate, showAllEvents, posts, getEventsForDate]);
+    
+    // Combine all events from both sources when showing all events
+    const allEvents: any[] = [];
+    
+    // Add events from posts (AdminDataService)
+    if (Array.isArray(posts)) {
+      allEvents.push(...posts.map(transformPostToEvent));
+    }
+    
+    // Add events from calendarEvents (backend)
+    if (Array.isArray(calendarEvents)) {
+      calendarEvents.forEach(event => {
+        allEvents.push({
+          id: event._id || `calendar-${event.isoDate}-${event.title}`,
+          title: event.title,
+          dateKey: parseAnyDateToKey(event.isoDate || event.date),
+          time: event.time || 'All Day',
+          type: event.category || 'Announcement',
+          color: categoryToColors(event.category).dot,
+          chip: categoryToColors(event.category),
+        });
+      });
+    }
+    
+    return allEvents;
+  }, [selectedDate, showAllEvents, posts, calendarEvents, getEventsForDate]);
 
-  const getAllEventsGrouped = () => {
-    if (!Array.isArray(posts)) return [];
-    const all = posts.map(p => ({
-      ...transformPostToEvent(p),
-      dateObj: (() => { 
-        const k = parseAnyDateToKey(p.isoDate || p.date); 
-        return k ? new Date(k) : new Date(); 
-      })(),
-    })).filter(e => !!e.dateKey);
+  const getAllEventsGrouped = React.useCallback(() => {
+    if (!Array.isArray(posts) && !Array.isArray(calendarEvents)) return [];
+    
+    const all: any[] = [];
+    
+    // Add events from posts (AdminDataService)
+    if (Array.isArray(posts)) {
+      posts.forEach(p => {
+        const eventDateKey = parseAnyDateToKey(p.isoDate || p.date);
+        if (eventDateKey) {
+          all.push({
+            ...transformPostToEvent(p),
+            dateKey: eventDateKey,
+            dateObj: new Date(eventDateKey)
+          });
+        }
+      });
+    }
+    
+    // Add events from calendarEvents (CalendarService)
+    if (Array.isArray(calendarEvents)) {
+      calendarEvents.forEach(event => {
+        const eventDateKey = parseAnyDateToKey(event.isoDate || event.date);
+        if (eventDateKey) {
+          all.push({
+            id: event._id || `calendar-${event.isoDate}-${event.title}`,
+            title: event.title,
+            dateKey: eventDateKey,
+            time: event.time || 'All Day',
+            type: event.category || 'Announcement',
+            color: categoryToColors(event.category).dot,
+            chip: categoryToColors(event.category),
+            dateObj: new Date(eventDateKey)
+          });
+        }
+      });
+    }
     
     const groupedMap = new Map();
     all.forEach(e => {
@@ -309,19 +430,102 @@ const AdminCalendar = () => {
     return Array.from(groupedMap.entries())
       .sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime())
       .map(([key, items]) => ({ key, items: items as any[] }));
-  };
-  const groupedEvents = React.useMemo(() => getAllEventsGrouped(), [posts]);
+  }, [posts, calendarEvents]); // Only recompute when posts or calendarEvents change
+  
+  const groupedEvents = React.useMemo(() => getAllEventsGrouped(), [getAllEventsGrouped]);
 
   const getMonthEventCount = (dateRef: Date) => {
     const y = dateRef.getFullYear();
     const m = dateRef.getMonth() + 1;
-    return posts.reduce((acc, p) => {
+    
+    let count = 0;
+    
+    // Count events from posts (AdminDataService)
+    count += posts.reduce((acc, p) => {
       const key = parseAnyDateToKey(p.isoDate || p.date);
       if (!key) return acc;
       const [yy, mm] = key.split('-');
       return acc + ((Number(yy) === y && Number(mm) === m) ? 1 : 0);
     }, 0);
+    
+    // Count events from calendarEvents (CalendarService)
+    count += calendarEvents.reduce((acc, event) => {
+      const key = parseAnyDateToKey(event.isoDate || event.date);
+      if (!key) return acc;
+      const [yy, mm] = key.split('-');
+      return acc + ((Number(yy) === y && Number(mm) === m) ? 1 : 0);
+    }, 0);
+    
+    return count;
   };
+
+  // CSV upload handler
+  const handleCSVUpload = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'text/csv',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) return;
+
+      const asset = Array.isArray((result as any).assets) ? (result as any).assets[0] : (result as any);
+      const fileName = asset.name || 'unknown';
+      const fileUri = asset.uri;
+
+      if (!fileName.toLowerCase().endsWith('.csv')) {
+        Alert.alert('Invalid File', 'Please select a CSV file');
+        return;
+      }
+
+      setIsUploadingCSV(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      const uploadResult = await AdminFileService.uploadCalendarCSV(fileUri, fileName);
+
+      Alert.alert(
+        'Upload Successful',
+        `Calendar CSV uploaded successfully.\n\n${uploadResult.eventsAdded} new events added.\n${uploadResult.eventsUpdated} events updated.`,
+        [
+          { 
+            text: 'OK',
+            onPress: () => {
+              // Reload calendar events to show new events
+              refreshCalendarEvents();
+            }
+          }
+        ]
+      );
+    } catch (error: any) {
+      Alert.alert('Upload Failed', error.message || 'Failed to upload CSV file');
+    } finally {
+      setIsUploadingCSV(false);
+    }
+  }, []);
+
+  // Refresh calendar events from backend
+  const refreshCalendarEvents = useCallback(async () => {
+    try {
+      setIsLoadingEvents(true);
+      // Get events for current year
+      const currentYear = new Date().getFullYear();
+      const startDate = new Date(currentYear, 0, 1).toISOString(); // January 1
+      const endDate = new Date(currentYear, 11, 31).toISOString(); // December 31
+      
+      const events = await CalendarService.getEvents({
+        startDate,
+        endDate,
+        limit: 500, // Get up to 500 events
+      });
+      
+      setCalendarEvents(Array.isArray(events) ? events : []);
+    } catch (error) {
+      console.error('Failed to refresh calendar events:', error);
+      setCalendarEvents([]);
+    } finally {
+      setIsLoadingEvents(false);
+    }
+  }, []);
 
   // Memoized Calendar Day Component
   const CalendarDay = memo(({ date, day, isCurrentDay, isSelectedDay, index, eventsForDay, theme, onPress }: { date: Date; day: number | null; isCurrentDay: boolean; isSelectedDay: boolean; index: number; eventsForDay: any[]; theme: any; onPress: (date: Date) => void }) => {
@@ -560,7 +764,27 @@ const AdminCalendar = () => {
         </View>
               <Text style={[styles.eventsTitle, { color: t.colors.text }]}>Events</Text>
             </View>
-            <View style={[styles.segmentedToggle, { backgroundColor: t.colors.card, borderColor: t.colors.border }]}>
+            <View style={styles.eventsHeaderRight}>
+              <TouchableOpacity
+                style={[styles.csvUploadButton, { 
+                  backgroundColor: t.colors.surface,
+                  borderColor: t.colors.border,
+                  opacity: isUploadingCSV ? 0.6 : 1
+                }]}
+                onPress={handleCSVUpload}
+                disabled={isUploadingCSV}
+                activeOpacity={0.7}
+              >
+                {isUploadingCSV ? (
+                  <ActivityIndicator size="small" color={t.colors.accent} />
+                ) : (
+                  <>
+                    <Ionicons name="cloud-upload-outline" size={14} color={t.colors.accent} />
+                    <Text style={[styles.csvUploadText, { color: t.colors.accent }]}>Upload CSV</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <View style={[styles.segmentedToggle, { backgroundColor: t.colors.card, borderColor: t.colors.border }]}>
               <TouchableOpacity
                 style={[styles.segmentItem, !showAllEvents && [styles.segmentItemActive, { backgroundColor: t.colors.surfaceAlt }]]}
                 onPress={() => { setShowAllEvents(false); AccessibilityInfo.announceForAccessibility?.('Switched to Day view'); Haptics.selectionAsync(); }}
@@ -577,6 +801,7 @@ const AdminCalendar = () => {
               >
                 <Text style={[styles.segmentText, { color: t.colors.textMuted }, showAllEvents && styles.segmentTextActive]}>All</Text>
               </TouchableOpacity>
+            </View>
             </View>
           </View>
           <View style={styles.eventsSubtitleRowEnhanced}>
@@ -1005,6 +1230,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  eventsHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   eventsIconWrap: {
     width: 22,
     height: 22,
@@ -1253,6 +1483,19 @@ const styles = StyleSheet.create({
   inlineCreateText: {
     fontSize: 12,
     fontWeight: '700',
+  },
+  csvUploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  csvUploadText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 

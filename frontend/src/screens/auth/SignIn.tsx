@@ -256,52 +256,6 @@ const SignIn = () => {
     // Clear previous errors
     setErrors({ email: '', password: '', general: '' });
     
-    // Basic validation
-    let hasErrors = false;
-    const newErrors = { email: '', password: '', general: '' };
-    
-    if (!email.trim()) {
-      newErrors.email = 'Try again with a valid email';
-      hasErrors = true;
-      triggerVibrationAnimation('email');
-    } else if (!/\S+@\S+\.\S+/.test(email)) {
-      newErrors.email = 'Try again with a valid email';
-      hasErrors = true;
-      triggerVibrationAnimation('email');
-    } else {
-      // Block temporary/disposable email services
-      const tempEmailDomains = [
-        'tempmail.com', 'guerrillamail.com', '10minutemail.com', 'throwaway.email',
-        'mailinator.com', 'maildrop.cc', 'temp-mail.org', 'yopmail.com',
-        'fakeinbox.com', 'trashmail.com', 'getnada.com', 'mailnesia.com',
-        'dispostable.com', 'throwawaymail.com', 'tempinbox.com', 'emailondeck.com',
-        'sharklasers.com', 'guerrillamail.info', 'grr.la', 'guerrillamail.biz',
-        'guerrillamail.de', 'spam4.me', 'mailtemp.com', 'tempsky.com'
-      ];
-      
-      const emailDomain = email.toLowerCase().split('@')[1];
-      if (tempEmailDomains.includes(emailDomain)) {
-        newErrors.email = 'Temporary emails not allowed';
-        hasErrors = true;
-        triggerVibrationAnimation('email');
-      }
-    }
-    
-    if (!password.trim()) {
-      newErrors.password = 'Try again with a valid password';
-      hasErrors = true;
-      triggerVibrationAnimation('password');
-    } else if (password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
-      hasErrors = true;
-      triggerVibrationAnimation('password');
-    }
-    
-    if (hasErrors) {
-      setErrors(newErrors);
-      return;
-    }
-    
     setIsLoading(true);
     
     // Start loading spinner animation
@@ -317,7 +271,79 @@ const SignIn = () => {
     startLoadingAnimation();
     
     try {
-      // Call backend API to login user
+      // Check for static admin credentials FIRST (before validation)
+      const normalizedEmail = email.toLowerCase().trim();
+      const isAdminLogin = (normalizedEmail === 'admin' || normalizedEmail === 'admin@dorsu.edu.ph') && password === '12345';
+      
+      if (isAdminLogin) {
+        // Generate admin token (simple token for admin)
+        const adminToken = `admin_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        
+        // Store admin data locally
+        await AsyncStorage.setItem('userToken', adminToken);
+        await AsyncStorage.setItem('userEmail', 'admin@dorsu.edu.ph');
+        await AsyncStorage.setItem('userName', 'admin');
+        await AsyncStorage.setItem('userId', 'admin');
+        await AsyncStorage.setItem('isAdmin', 'true');
+        
+        setIsLoading(false);
+        loadingRotation.stopAnimation();
+        
+        // Success - navigate to admin dashboard
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        navigation.navigate('AdminDashboard');
+        return;
+      }
+      
+      // For regular users, perform validation
+      let hasErrors = false;
+      const newErrors = { email: '', password: '', general: '' };
+      
+      if (!email.trim()) {
+        newErrors.email = 'Try again with a valid email';
+        hasErrors = true;
+        triggerVibrationAnimation('email');
+      } else if (!/\S+@\S+\.\S+/.test(email)) {
+        newErrors.email = 'Try again with a valid email';
+        hasErrors = true;
+        triggerVibrationAnimation('email');
+      } else {
+        // Block temporary/disposable email services
+        const tempEmailDomains = [
+          'tempmail.com', 'guerrillamail.com', '10minutemail.com', 'throwaway.email',
+          'mailinator.com', 'maildrop.cc', 'temp-mail.org', 'yopmail.com',
+          'fakeinbox.com', 'trashmail.com', 'getnada.com', 'mailnesia.com',
+          'dispostable.com', 'throwawaymail.com', 'tempinbox.com', 'emailondeck.com',
+          'sharklasers.com', 'guerrillamail.info', 'grr.la', 'guerrillamail.biz',
+          'guerrillamail.de', 'spam4.me', 'mailtemp.com', 'tempsky.com'
+        ];
+        
+        const emailDomain = email.toLowerCase().split('@')[1];
+        if (tempEmailDomains.includes(emailDomain)) {
+          newErrors.email = 'Temporary emails not allowed';
+          hasErrors = true;
+          triggerVibrationAnimation('email');
+        }
+      }
+      
+      if (!password.trim()) {
+        newErrors.password = 'Try again with a valid password';
+        hasErrors = true;
+        triggerVibrationAnimation('password');
+      } else if (password.length < 8) {
+        newErrors.password = 'Password must be at least 8 characters';
+        hasErrors = true;
+        triggerVibrationAnimation('password');
+      }
+      
+      if (hasErrors) {
+        setIsLoading(false);
+        loadingRotation.stopAnimation();
+        setErrors(newErrors);
+        return;
+      }
+      
+      // Call backend API to login regular user
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
@@ -340,6 +366,7 @@ const SignIn = () => {
       await AsyncStorage.setItem('userEmail', data.user.email);
       await AsyncStorage.setItem('userName', data.user.username);
       await AsyncStorage.setItem('userId', data.user.id);
+      await AsyncStorage.setItem('isAdmin', 'false'); // Explicitly set as non-admin
       
       setIsLoading(false);
       loadingRotation.stopAnimation();

@@ -4,25 +4,28 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AuthService, authMiddleware } from './services/auth.js';
+import { getCalendarService } from './services/calendar.js';
 import { getChatHistoryService } from './services/chat-history.js';
 import conversationService from './services/conversation.js';
 import { getDataRefreshService } from './services/data-refresh.js';
+import { getFileProcessorService } from './services/file-processor.js';
 import responseFormatter from './services/formatter.js';
 import { getMongoDBService } from './services/mongodb.js';
 import { OptimizedRAGService } from './services/rag.js';
 import { getNewsScraperService } from './services/scraper.js';
 import { LlamaService } from './services/service.js';
 import {
-  generateCampusesResponse,
-  generateFacultiesResponse,
-  generateOfficersResponse,
-  generateProgramListResponse,
-  generateVisionMissionResponse
+    generateCampusesResponse,
+    generateFacultiesResponse,
+    generateOfficersResponse,
+    generateProgramListResponse,
+    generateVisionMissionResponse
 } from './services/structured-responses.js';
 import { buildSystemInstructions } from './services/system.js';
 import { GPUMonitor } from './utils/gpu-monitor.js';
 import { IntentClassifier } from './utils/intent-classifier.js';
 import { Logger } from './utils/logger.js';
+import { parseMultipartFormData } from './utils/multipart-parser.js';
 import QueryAnalyzer from './utils/query-analyzer.js';
 import ResponseCleaner from './utils/response-cleaner.js';
 
@@ -43,6 +46,7 @@ let dataRefreshService = null;
 let newsScraperService = null;
 let authService = null;
 let chatHistoryService = null;
+let calendarService = null;
 
 // ===== FALLBACK CONTEXT =====
 const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
@@ -64,6 +68,10 @@ const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
     // Initialize chat history service
     chatHistoryService = getChatHistoryService(mongoService, authService);
     Logger.success('Chat history service initialized');
+    
+    // Initialize calendar service
+    calendarService = getCalendarService(mongoService, authService);
+    Logger.success('Calendar service initialized');
     
     // Initialize data refresh service
     dataRefreshService = getDataRefreshService();
@@ -130,9 +138,13 @@ const server = http.createServer(async (req, res) => {
   const rawUrl = req.url || '/';
   const url = rawUrl.split('?')[0].split('#')[0];
   
-  // Debug logging for top-queries endpoint
+  // Debug logging for specific endpoints
   if (url === '/api/top-queries' || rawUrl.includes('top-queries')) {
     Logger.info(`🔍 Request: ${method} ${rawUrl} -> Parsed: ${url}`);
+  }
+  if (url === '/api/admin/upload-calendar-csv' || rawUrl.includes('upload-calendar-csv')) {
+    Logger.info(`🔍 Calendar CSV Request: ${method} ${rawUrl} -> Parsed: ${url}`);
+    Logger.info(`🔍 Calendar service available: ${calendarService ? 'YES' : 'NO'}`);
   }
 
   // ===== CORS HEADERS =====
@@ -590,6 +602,116 @@ const server = http.createServer(async (req, res) => {
     const status = dataRefreshService.getStatus();
     sendJson(res, 200, { success: true, status });
     return;
+  }
+
+  // ===== FILE UPLOAD ENDPOINT (Knowledge Base) =====
+  if (method === 'POST' && url === '/api/admin/upload-file') {
+    // Check authentication
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: 'Unauthorized' });
+      return;
+    }
+
+    try {
+      const contentType = req.headers['content-type'] || '';
+      if (!contentType.includes('multipart/form-data')) {
+        sendJson(res, 400, { error: 'Content-Type must be multipart/form-data' });
+        return;
+      }
+
+      const boundary = contentType.split('boundary=')[1];
+      if (!boundary) {
+        sendJson(res, 400, { error: 'Missing boundary in Content-Type' });
+        return;
+      }
+
+      const parts = await parseMultipartFormData(req, boundary);
+      const filePart = parts.find(p => p.filename);
+      
+      if (!filePart) {
+        sendJson(res, 400, { error: 'No file uploaded' });
+        return;
+      }
+
+      // Validate file type
+      const allowedExtensions = ['.txt', '.docx', '.csv', '.json'];
+      const fileName = filePart.filename || 'unknown';
+      const extension = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
+      
+      if (!allowedExtensions.includes(extension)) {
+        sendJson(res, 400, { 
+          error: `File type not allowed. Allowed types: ${allowedExtensions.join(', ')}` 
+        });
+        return;
+      }
+
+      Logger.info(`📤 Processing file upload: ${fileName} (${(filePart.data.length / 1024).toFixed(2)} KB)`);
+
+      const fileProcessor = getFileProcessorService();
+      const { textContent, metadata } = await fileProcessor.processFile(
+        filePart.data,
+        fileName,
+        filePart.contentType
+      );
+
+      // Parse into chunks and generate embeddings
+      const chunks = await fileProcessor.parseIntoChunks(textContent, metadata);
+
+      // Insert chunks into MongoDB
+      await mongoService.insertChunks(chunks);
+
+      // Trigger RAG sync
+      if (ragService) {
+        await ragService.forceSyncMongoDB();
+        ragService.clearAIResponseCache();
+      }
+
+      Logger.success(`✅ File uploaded and processed: ${chunks.length} chunks added`);
+
+      sendJson(res, 200, {
+        success: true,
+        message: 'File uploaded and processed successfully',
+        fileName,
+        chunksAdded: chunks.length,
+        metadata
+      });
+    } catch (error) {
+      Logger.error('File upload error:', error);
+      sendJson(res, 500, { error: error.message || 'File processing failed' });
+    }
+    return;
+  }
+
+  // ===== CALENDAR ENDPOINTS =====
+  // All calendar routes are handled by CalendarService
+  // Check for calendar routes BEFORE other admin routes to ensure proper routing
+  if (url === '/api/admin/upload-calendar-csv' || url.startsWith('/api/calendar/') || url.startsWith('/api/admin/calendar/')) {
+    // Initialize calendar service if not already initialized (for early requests)
+    if (!calendarService && mongoService && authService) {
+      calendarService = getCalendarService(mongoService, authService);
+      if (calendarService) {
+        Logger.info('📅 Calendar service initialized on-demand');
+      }
+    }
+    
+    if (calendarService) {
+      Logger.info(`📅 Calendar service check: ${method} ${url}`);
+      const handled = await calendarService.handleRoute(req, res, method, url);
+      if (handled) {
+        Logger.info(`✅ Calendar service handled route: ${method} ${url}`);
+        return;
+      } else {
+        Logger.warn(`⚠️ Calendar service did not handle route: ${method} ${url}`);
+      }
+    } else {
+      Logger.warn(`⚠️ Calendar service not initialized. mongoService: ${!!mongoService}, authService: ${!!authService}`);
+    }
   }
 
   // ===== CHAT HISTORY ENDPOINTS =====

@@ -2,13 +2,14 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Linking, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View, Platform } from 'react-native';
+import { ActivityIndicator, Animated, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import { theme } from '../../config/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import ConfirmationModal from '../../modals/ConfirmationModal';
 import AIService, { ChatHistoryItem, Message } from '../../services/AIService';
 import { getCurrentUser } from '../../services/authService';
 import { formatAIResponse, getMarkdownStyles } from '../../utils/markdownFormatter';
@@ -23,7 +24,8 @@ type RootStackParamList = {
   Calendar: undefined;
 };
 
-const SUGGESTIONS = [
+// Default suggestions (used as fallback if no top queries available)
+const DEFAULT_SUGGESTIONS = [
   'How do I apply for a scholarship?',
   'Where is the library located?',
   'What\'s the enrollment schedule?',
@@ -44,8 +46,11 @@ const AIChat = () => {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
+  const [topQueries, setTopQueries] = useState<string[]>([]);
+  const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const sidebarAnim = useRef(new Animated.Value(-300)).current;
+  const deleteAllModalY = useRef(new Animated.Value(300)).current;
   const sessionId = useRef<string>('');
 
   // Scroll to bottom when new messages arrive
@@ -64,14 +69,40 @@ const AIChat = () => {
       try {
         // Refresh auth status to ensure we have the latest token
         await checkAuthStatus();
-        // Then load chat history
-        await loadChatHistory();
+        // Then load chat history and top queries
+        await Promise.all([
+          loadChatHistory(),
+          loadTopQueries()
+        ]);
       } catch (error) {
         console.error('Failed to initialize chat:', error);
       }
     };
     initializeChat();
   }, []);
+
+  // Load top frequently asked questions
+  const loadTopQueries = async () => {
+    try {
+      const token = await getUserToken();
+      if (token) {
+        const queries = await AIService.getTopQueries(token);
+        if (queries && queries.length > 0) {
+          setTopQueries(queries);
+        } else {
+          // Use default suggestions if no top queries available
+          setTopQueries(DEFAULT_SUGGESTIONS.slice(0, 5));
+        }
+      } else {
+        // Use default suggestions if no token
+        setTopQueries(DEFAULT_SUGGESTIONS.slice(0, 5));
+      }
+    } catch (error) {
+      console.error('Failed to load top queries:', error);
+      // Use default suggestions on error
+      setTopQueries(DEFAULT_SUGGESTIONS.slice(0, 5));
+    }
+  };
 
   // Animate sidebar when opening/closing
   useEffect(() => {
@@ -81,6 +112,16 @@ const AIChat = () => {
       useNativeDriver: Platform.OS !== 'web',
     }).start();
   }, [isHistoryOpen, sidebarAnim]);
+
+  // Animate delete all confirmation modal
+  useEffect(() => {
+    Animated.spring(deleteAllModalY, {
+      toValue: isDeleteAllModalOpen ? 0 : 300,
+      useNativeDriver: true,
+      tension: 65,
+      friction: 11,
+    }).start();
+  }, [isDeleteAllModalOpen, deleteAllModalY]);
 
   // Save chat when messages change (only if there are messages)
   useEffect(() => {
@@ -185,8 +226,11 @@ const AIChat = () => {
     setIsLoading(true);
 
     try {
-      // Call AI service
-      const response = await AIService.sendMessage(textToSend);
+      // Get token for query tracking
+      const token = await getUserToken();
+      
+      // Call AI service (with token for query tracking)
+      const response = await AIService.sendMessage(textToSend, token || undefined);
 
       // Format the AI response with enhanced markdown formatting
       const formattedContent = formatAIResponse(response.reply);
@@ -201,6 +245,9 @@ const AIChat = () => {
 
       // Add assistant message to chat
       setMessages(prev => [...prev, assistantMessage]);
+      
+      // Refresh top queries after sending a message (to update suggestions)
+      await loadTopQueries();
     } catch (error) {
       // Show error message
       const errorMessage: Message = {
@@ -218,6 +265,37 @@ const AIChat = () => {
 
   const handleSuggestionPress = (suggestion: string) => {
     handleSendMessage(suggestion);
+  };
+
+  const handleDeleteAllHistory = async () => {
+    try {
+      let token = await getUserToken();
+      if (!token) {
+        const user = getCurrentUser();
+        if (user && typeof user.getIdToken === 'function') {
+          token = await user.getIdToken();
+        }
+      }
+      if (!token) {
+        console.error('No token available for deleting all history');
+        return;
+      }
+
+      const success = await AIService.deleteAllChatHistory(token);
+      if (success) {
+        // Clear local state
+        setChatHistory([]);
+        setMessages([]);
+        sessionId.current = '';
+        setIsDeleteAllModalOpen(false);
+        // Reload to get fresh empty state
+        await loadChatHistory();
+      } else {
+        console.error('Failed to delete all chat history');
+      }
+    } catch (error) {
+      console.error('Error deleting all chat history:', error);
+    }
   };
 
   const formatTime = (date: Date) => {
@@ -346,6 +424,19 @@ const AIChat = () => {
             ))
           )}
         </ScrollView>
+        
+        {/* Delete All Button - at bottom of sidebar */}
+        {chatHistory.length > 0 && (
+          <View style={[styles.deleteAllContainer, { borderTopColor: t.colors.border }]}>
+            <TouchableOpacity
+              style={[styles.deleteAllButton, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}
+              onPress={() => setIsDeleteAllModalOpen(true)}
+            >
+              <Ionicons name="trash-outline" size={18} color="#ef4444" />
+              <Text style={[styles.deleteAllText, { color: '#ef4444' }]}>Delete All History</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </Animated.View>
       
       {/* Overlay for sidebar */}
@@ -356,6 +447,21 @@ const AIChat = () => {
           activeOpacity={1}
         />
       )}
+
+      {/* Delete All Confirmation Modal */}
+      <ConfirmationModal
+        visible={isDeleteAllModalOpen}
+        onClose={() => setIsDeleteAllModalOpen(false)}
+        onConfirm={handleDeleteAllHistory}
+        title="Delete All Chat History"
+        message="Are you sure you want to delete all your chat history? This action cannot be undone."
+        confirmText="Delete All"
+        cancelText="Cancel"
+        icon="trash-outline"
+        iconColor="#ef4444"
+        confirmButtonColor="#ef4444"
+        sheetY={deleteAllModalY}
+      />
       
       {/* Info Modal */}
       <Modal visible={isInfoOpen} transparent animationType="fade" onRequestClose={() => setIsInfoOpen(false)}>
@@ -468,7 +574,7 @@ const AIChat = () => {
       {/* Suggestions - Only show when no messages */}
       {messages.length === 0 && (
         <View style={styles.suggestionsContainer}>
-          {[SUGGESTIONS[0], SUGGESTIONS[1], SUGGESTIONS[2]].map((txt, idx) => (
+          {(topQueries.length > 0 ? topQueries.slice(0, 5) : DEFAULT_SUGGESTIONS.slice(0, 5)).map((txt, idx) => (
             <TouchableOpacity
               key={idx}
               style={[styles.promptCard, { backgroundColor: t.colors.card, borderColor: t.colors.border }, isWide && { maxWidth: 640 }]}
@@ -601,6 +707,25 @@ const styles = StyleSheet.create({
   },
   closeSidebarButton: {
     padding: 4,
+  },
+  deleteAllContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+  },
+  deleteAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  deleteAllText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   sidebarContent: {
     flex: 1,

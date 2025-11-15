@@ -376,6 +376,106 @@ class MongoDBService {
   }
 
   /**
+   * Log user query with frequency tracking
+   */
+  async logUserQuery(userId, query) {
+    try {
+      if (!userId || !query || !query.trim()) {
+        return;
+      }
+
+      const collection = this.getCollection(mongoConfig.collections.conversations);
+      
+      // Normalize query for comparison (lowercase, trim, remove extra spaces)
+      const normalizedQuery = query.toLowerCase().trim().replace(/\s+/g, ' ');
+      
+      // Use a hash to avoid MongoDB field name issues with special characters
+      // Store queries in an array with frequency count
+      const userDoc = await collection.findOne({ userId: userId });
+      
+      if (!userDoc || !userDoc.queryFrequency) {
+        // Create new document with query frequency array
+        await collection.updateOne(
+          { userId: userId },
+          {
+            $set: {
+              userId: userId,
+              queryFrequency: [{ query: normalizedQuery, count: 1 }],
+              updatedAt: new Date()
+            },
+            $setOnInsert: {
+              createdAt: new Date()
+            }
+          },
+          { upsert: true }
+        );
+      } else {
+        // Update existing query frequency
+        const queryIndex = userDoc.queryFrequency.findIndex(q => q.query === normalizedQuery);
+        
+        if (queryIndex >= 0) {
+          // Increment count for existing query
+          await collection.updateOne(
+            { userId: userId, 'queryFrequency.query': normalizedQuery },
+            {
+              $inc: { 'queryFrequency.$.count': 1 },
+              $set: { updatedAt: new Date() }
+            }
+          );
+        } else {
+          // Add new query
+          await collection.updateOne(
+            { userId: userId },
+            {
+              $push: { queryFrequency: { query: normalizedQuery, count: 1 } },
+              $set: { updatedAt: new Date() }
+            }
+          );
+        }
+      }
+      
+      Logger.info(`✅ Logged user query for userId: ${userId}`);
+    } catch (error) {
+      Logger.error('Failed to log user query:', error);
+    }
+  }
+
+  /**
+   * Get top N most frequently asked questions for a user
+   */
+  async getTopQueries(userId, limit = 5) {
+    try {
+      if (!userId) {
+        return [];
+      }
+
+      const collection = this.getCollection(mongoConfig.collections.conversations);
+      
+      const userDoc = await collection.findOne({ userId: userId });
+      
+      if (!userDoc || !userDoc.queryFrequency || !Array.isArray(userDoc.queryFrequency)) {
+        return [];
+      }
+      
+      // Sort query frequency array by count (descending) and get top N
+      const queryArray = [...userDoc.queryFrequency]
+        .sort((a, b) => (b.count || 0) - (a.count || 0)) // Sort by count descending
+        .slice(0, limit) // Get top N
+        .map(item => {
+          // Capitalize first letter of query for display
+          const query = item.query || '';
+          return query.charAt(0).toUpperCase() + query.slice(1);
+        });
+      
+      return queryArray;
+      
+    } catch (error) {
+      Logger.error('Failed to get top queries:', error);
+      return [];
+    }
+  }
+
+  /**
    * Get analytics summary
    */
   async getAnalytics(startDate = null, endDate = null) {
@@ -543,6 +643,35 @@ class MongoDBService {
     } catch (error) {
       Logger.error('Failed to get user count:', error);
       return 0;
+    }
+  }
+
+  /**
+   * Delete a user account and all associated data
+   */
+  async deleteUser(userId) {
+    try {
+      const { ObjectId } = await import('mongodb');
+      const userObjectId = new ObjectId(userId);
+      
+      // Delete user from users collection
+      const usersCollection = this.getCollection(mongoConfig.collections.users || 'users');
+      const userResult = await usersCollection.deleteOne({ _id: userObjectId });
+      
+      if (userResult.deletedCount === 0) {
+        Logger.warn(`User not found for deletion: ${userId}`);
+        return { success: false, message: 'User not found' };
+      }
+      
+      // Delete all chat history and conversations
+      const conversationsCollection = this.getCollection(mongoConfig.collections.conversations);
+      await conversationsCollection.deleteOne({ userId: userId });
+      
+      Logger.success(`🗑️ User account deleted: ${userId}`);
+      return { success: true, message: 'User account and all associated data deleted' };
+    } catch (error) {
+      Logger.error('Failed to delete user:', error);
+      throw error;
     }
   }
 
@@ -721,6 +850,33 @@ class MongoDBService {
       return result;
     } catch (error) {
       Logger.error('Failed to delete chat session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete all chat history for a user
+   */
+  async deleteAllChatHistory(userId) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.conversations);
+
+      const result = await collection.updateOne(
+        { userId: userId },
+        {
+          $set: {
+            history: [],
+            sessions: {},
+            queryFrequency: [],
+            updatedAt: new Date()
+          }
+        }
+      );
+
+      Logger.success(`🗑️ All chat history deleted for user: ${userId}`);
+      return result;
+    } catch (error) {
+      Logger.error('Failed to delete all chat history:', error);
       throw error;
     }
   }

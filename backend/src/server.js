@@ -4,6 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AuthService, authMiddleware } from './services/auth.js';
+import { getChatHistoryService } from './services/chat-history.js';
 import conversationService from './services/conversation.js';
 import { getDataRefreshService } from './services/data-refresh.js';
 import responseFormatter from './services/formatter.js';
@@ -41,6 +42,7 @@ let mongoService = null;
 let dataRefreshService = null;
 let newsScraperService = null;
 let authService = null;
+let chatHistoryService = null;
 
 // ===== FALLBACK CONTEXT =====
 const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
@@ -58,6 +60,10 @@ const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
     // Initialize authentication service
     authService = new AuthService(mongoService);
     Logger.success('Auth service initialized');
+    
+    // Initialize chat history service
+    chatHistoryService = getChatHistoryService(mongoService, authService);
+    Logger.success('Chat history service initialized');
     
     // Initialize data refresh service
     dataRefreshService = getDataRefreshService();
@@ -120,7 +126,14 @@ function serveStatic(req, res) {
 
 const server = http.createServer(async (req, res) => {
   const method = req.method || 'GET';
-  const url = req.url || '/';
+  // Parse URL to get pathname (remove query parameters and hash)
+  const rawUrl = req.url || '/';
+  const url = rawUrl.split('?')[0].split('#')[0];
+  
+  // Debug logging for top-queries endpoint
+  if (url === '/api/top-queries' || rawUrl.includes('top-queries')) {
+    Logger.info(`🔍 Request: ${method} ${rawUrl} -> Parsed: ${url}`);
+  }
 
   // ===== CORS HEADERS =====
   // Allow requests from frontend
@@ -451,6 +464,34 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Delete user account
+  if (method === 'DELETE' && url === '/api/auth/account') {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+
+    try {
+      const result = await mongoService.deleteUser(auth.userId);
+      if (result.success) {
+        Logger.success(`✅ Account deleted successfully: ${auth.userId}`);
+        sendJson(res, 200, { success: true, message: 'Account deleted successfully' });
+      } else {
+        sendJson(res, 404, { error: result.message || 'User not found' });
+      }
+    } catch (error) {
+      Logger.error('Delete account error:', error.message);
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+
   // Manual knowledge base refresh endpoint
   if (method === 'POST' && url === '/api/refresh-knowledge') {
     if (!dataRefreshService) {
@@ -552,142 +593,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ===== CHAT HISTORY ENDPOINTS =====
-  
-  // Save chat history
-  if (method === 'POST' && url === '/api/chat-history') {
-    if (!authService || !mongoService) {
-      sendJson(res, 503, { error: 'Services not available' });
-      return;
-    }
-    
-    Logger.info(`POST /api/chat-history: Validating authentication...`);
-    const auth = await authMiddleware(authService, mongoService)(req);
-    if (!auth.authenticated) {
-      Logger.error(`POST /api/chat-history: Authentication failed - ${auth.error || 'Unauthorized'}, details: ${auth.details || 'none'}`);
-      sendJson(res, 401, { error: auth.error || 'Unauthorized', details: auth.details });
-      return;
-    }
-    Logger.info(`POST /api/chat-history: Authentication successful for userId: ${auth.userId}`);
-    
-    let body = '';
-    req.on('data', chunk => { body += chunk; if (body.length > 1000000) req.destroy(); });
-    req.on('end', async () => {
-      try {
-        const json = JSON.parse(body);
-        const { sessionId, messages } = json;
-        
-        if (!sessionId || !messages) {
-          sendJson(res, 400, { error: 'sessionId and messages required' });
-          return;
-        }
-        
-        // Save the chat session
-        await mongoService.saveChatSession(auth.userId, sessionId, messages);
-        
-        // Add to chat history list
-        if (messages.length > 0) {
-          const firstMessage = messages[0];
-          const lastMessage = messages[messages.length - 1];
-          
-          const chatInfo = {
-            id: sessionId,
-            title: firstMessage.content.substring(0, 50) + (firstMessage.content.length > 50 ? '...' : ''),
-            preview: lastMessage.content.substring(0, 100) + (lastMessage.content.length > 100 ? '...' : ''),
-            timestamp: new Date()
-          };
-          
-          await mongoService.addChatToHistory(auth.userId, chatInfo);
-        }
-        
-        sendJson(res, 200, { success: true, message: 'Chat history saved' });
-      } catch (error) {
-        Logger.error('Save chat history error:', error);
-        sendJson(res, 500, { error: error.message });
-      }
-    });
-    return;
-  }
-  
-  // Get chat history list
-  if (method === 'GET' && url === '/api/chat-history') {
-    if (!authService || !mongoService) {
-      sendJson(res, 503, { error: 'Services not available' });
-      return;
-    }
-    
-    const auth = await authMiddleware(authService, mongoService)(req);
-    if (!auth.authenticated) {
-      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
-      return;
-    }
-    
-    try {
-      const history = await mongoService.getChatHistory(auth.userId);
-      sendJson(res, 200, { success: true, history });
-    } catch (error) {
-      Logger.error('Get chat history error:', error);
-      sendJson(res, 500, { error: error.message });
-    }
-    return;
-  }
-  
-  // Get specific chat session
-  if (method === 'GET' && url.startsWith('/api/chat-session/')) {
-    if (!authService || !mongoService) {
-      sendJson(res, 503, { error: 'Services not available' });
-      return;
-    }
-    
-    const auth = await authMiddleware(authService, mongoService)(req);
-    if (!auth.authenticated) {
-      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
-      return;
-    }
-    
-    try {
-      const sessionId = url.split('/')[3]; // /api/chat-session/{sessionId}
-      
-      if (!sessionId) {
-        sendJson(res, 400, { error: 'Session ID required' });
-        return;
-      }
-      
-      const messages = await mongoService.getChatSession(auth.userId, sessionId);
-      sendJson(res, 200, { success: true, messages });
-    } catch (error) {
-      Logger.error('Get chat session error:', error);
-      sendJson(res, 500, { error: error.message });
-    }
-    return;
-  }
-
-  // Delete specific chat session
-  if (method === 'DELETE' && url.startsWith('/api/chat-session/')) {
-    if (!authService || !mongoService) {
-      sendJson(res, 503, { error: 'Services not available' });
-      return;
-    }
-
-    const auth = await authMiddleware(authService, mongoService)(req);
-    if (!auth.authenticated) {
-      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
-      return;
-    }
-
-    try {
-      const sessionId = url.split('/')[3]; // /api/chat-session/{sessionId}
-      if (!sessionId) {
-        sendJson(res, 400, { error: 'Session ID required' });
-        return;
-      }
-
-      await mongoService.deleteChatSession(auth.userId, sessionId);
-      sendJson(res, 200, { success: true });
-    } catch (error) {
-      Logger.error('Delete chat session error:', error);
-      sendJson(res, 500, { error: error.message });
-    }
-    return;
+  // All chat history routes are handled by ChatHistoryService
+  if (chatHistoryService) {
+    const handled = await chatHistoryService.handleRoute(req, res, method, url);
+    if (handled) return;
   }
 
   // ===== CHAT ENDPOINT (Main AI Processing) =====
@@ -700,6 +609,20 @@ const server = http.createServer(async (req, res) => {
         const json = JSON.parse(body);
         const prompt = json.prompt || json.message || '';
         if (!prompt.trim()) { sendJson(res, 400, { error: 'prompt required' }); return; }
+        
+        // Try to get userId from auth token (optional - chat can work without auth)
+        let userId = null;
+        if (authService && mongoService) {
+          try {
+            const auth = await authMiddleware(authService, mongoService)(req);
+            if (auth.authenticated && auth.userId) {
+              userId = auth.userId;
+            }
+          } catch (authError) {
+            // Auth is optional for chat - continue without userId
+            Logger.info('Chat endpoint: No auth token provided (optional)');
+          }
+        }
 
         const service = new LlamaService();
         const providerInfo = service.getProviderInfo();
@@ -840,11 +763,81 @@ const server = http.createServer(async (req, res) => {
         const dateSpecificPattern = /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\d{4}|last month|this month|last week)\b/i;
         const isDateSpecificQuery = dateSpecificPattern.test(prompt);
         
-        const { newsContext, newsInstruction } = await buildNewsContext(
-          isNewsQuery || isDirectNewsQuery,
-          isDateSpecificQuery,
-          newsScraperService
-        );
+        // Check if user wants to summarize a specific news item (e.g., "summarize news 1", "tell me about news 2", "click 3")
+        const newsSummarizePattern = /\b(summarize|summarise|summaries|tell me about|what's in|what is|click|select|choose|number|#)\s*(news|update|item|article)?\s*([1-9]|one|two|three|first|second|third|1st|2nd|3rd)\b/i;
+        const newsIndexMatch = prompt.match(/\b([1-9]|one|two|three|first|second|third|1st|2nd|3rd)\b/i);
+        const wantsNewsSummary = newsSummarizePattern.test(prompt) || (newsIndexMatch && /\b(news|update|item|article|summarize|tell|click|select)\b/i.test(prompt));
+        
+        let articleContent = null;
+        let articleTitle = null;
+        let articleUrl = null;
+        
+        // If user wants to summarize a specific news item, scrape it
+        if (wantsNewsSummary && newsScraperService) {
+          // Extract the index number (1-9, or words like "one", "first", etc.)
+          let newsIndex = null;
+          if (newsIndexMatch) {
+            const indexStr = newsIndexMatch[1].toLowerCase();
+            const indexMap = {
+              'one': 1, 'first': 1, '1st': 1,
+              'two': 2, 'second': 2, '2nd': 2,
+              'three': 3, 'third': 3, '3rd': 3,
+              'four': 4, 'fourth': 4, '4th': 4,
+              'five': 5, 'fifth': 5, '5th': 5,
+              'six': 6, 'sixth': 6, '6th': 6,
+              'seven': 7, 'seventh': 7, '7th': 7,
+              'eight': 8, 'eighth': 8, '8th': 8,
+              'nine': 9, 'ninth': 9, '9th': 9
+            };
+            newsIndex = indexMap[indexStr] || parseInt(indexStr);
+          } else {
+            // Try to extract number from prompt
+            const numberMatch = prompt.match(/\b([1-9])\b/);
+            if (numberMatch) {
+              newsIndex = parseInt(numberMatch[1]);
+            }
+          }
+          
+          if (newsIndex && newsIndex >= 1 && newsIndex <= 9) {
+            Logger.info(`📰 User wants to summarize news item #${newsIndex}`);
+            
+            // Get the news item by index
+            const newsItem = await newsScraperService.getNewsItemByIndex(newsIndex);
+            
+            if (newsItem && newsItem.link) {
+              Logger.info(`📄 Scraping article from: ${newsItem.link}`);
+              
+              // Scrape the full article content
+              const article = await newsScraperService.scrapeNewsArticle(newsItem.link);
+              
+              if (article && article.content) {
+                articleContent = article.content;
+                articleTitle = article.title || newsItem.title;
+                articleUrl = article.url || newsItem.link;
+                
+                Logger.success(`✅ Successfully scraped article: ${articleTitle.substring(0, 50)}...`);
+                
+                // Modify the prompt to be a summarization request
+                processedPrompt = `Please summarize the following news article about DOrSU. Provide a clear, concise summary including the main points, key information, and any important details:\n\nTitle: ${articleTitle}\n\nArticle Content:\n${articleContent}`;
+              } else {
+                Logger.warn(`⚠️ Could not scrape article content from ${newsItem.link}`);
+                processedPrompt = `I tried to scrape the news article but couldn't retrieve its content. The article link is: ${newsItem.link}. Please inform the user that the article content is not available for summarization at this time.`;
+              }
+            } else {
+              Logger.warn(`⚠️ News item #${newsIndex} not found or has no link`);
+              processedPrompt = `I couldn't find news item #${newsIndex} to summarize. Please inform the user that the requested news item is not available.`;
+            }
+          }
+        }
+        
+        // Only build news context if user is asking for news list (not summarizing a specific article)
+        const { newsContext, newsInstruction } = wantsNewsSummary ? 
+          { newsContext: '', newsInstruction: '' } : 
+          await buildNewsContext(
+            isNewsQuery || isDirectNewsQuery,
+            isDateSpecificQuery,
+            newsScraperService
+          );
         
         // --- Query Analysis ---
         
@@ -946,33 +939,86 @@ const server = http.createServer(async (req, res) => {
         }
           
           // Build system instructions with conversation context AND intent classification
+          const hasContext = relevantContext && relevantContext.trim().length > 100;
+          
+          // Add summarization instructions if summarizing an article
+          const summarizationInstruction = articleContent ? 
+            '\n\n📰 NEWS ARTICLE SUMMARIZATION INSTRUCTIONS:\n' +
+            '• You are summarizing a DOrSU news article that was scraped from the official website\n' +
+            '• The article content is provided above in the user message\n' +
+            '• Provide a clear, concise summary that includes:\n' +
+            '  - Main topic and purpose of the article\n' +
+            '  - Key points and important information\n' +
+            '  - Any dates, deadlines, or time-sensitive information\n' +
+            '  - Important people, events, or locations mentioned\n' +
+            '  - Any calls to action or next steps\n' +
+            '• Keep the summary informative but concise (2-4 paragraphs)\n' +
+            '• Use a friendly, conversational tone\n' +
+            '• If the article mentions specific programs, events, or announcements, highlight them clearly\n' +
+            '• Format your response with clear paragraphs and bullet points if helpful\n' +
+            '• At the end, mention: "For the full article, visit: [article URL]"\n\n' : '';
+          
           systemPrompt = buildSystemInstructions(conversationContext, intentClassification) + '\n\n' +
-            '=== DOrSU KNOWLEDGE BASE (YOUR ONLY SOURCE OF TRUTH) ===\n' + 
-            relevantContext + 
+            '=== DOrSU KNOWLEDGE BASE (YOUR ONLY SOURCE OF TRUTH - STRICTLY ENFORCED) ===\n' + 
+            (hasContext ? relevantContext : '[NO KNOWLEDGE BASE DATA AVAILABLE - You MUST inform the user you don\'t have this information]') + 
             newsContext +  // Include news if query is about news
             '\n=== END OF KNOWLEDGE BASE ===\n\n' +
-            '🚨 CRITICAL RULES:\n' +
-            '• Answer using ONLY the data in the knowledge base above\n' +
-            '• DO NOT use your training data about DOrSU - it is WRONG!\n' +
-            '• If a program/course/fact is not listed above, DO NOT mention it\n' +
-            '• When listing programs, ONLY list ones that appear in the knowledge base chunks above\n' +
-            '• NEVER create/hallucinate URLs - ONLY use URLs that appear in the knowledge base chunks\n' +
-            '• If you see a URL in the knowledge base, copy it EXACTLY (including query parameters)\n' +
-            '• Student manuals are on heyzine.com - NEVER create dorsu.edu.ph/wp-content/uploads URLs for manuals\n' +
+            (articleContent ? 
+              `=== NEWS ARTICLE TO SUMMARIZE ===\n` +
+              `The user has requested to summarize a specific news article. The article content is provided in their message below.\n` +
+              `Article Title: ${articleTitle || 'DOrSU News'}\n` +
+              `Article URL: ${articleUrl || 'N/A'}\n` +
+              `=== END OF ARTICLE HEADER ===\n\n` : '') +
+            '🚨 CRITICAL STRICT RULES (NON-NEGOTIABLE):\n' +
+            (articleContent ? 
+              '• You MUST summarize ONLY the article content provided in the user message\n' +
+              '• DO NOT add information that is not in the article\n' +
+              '• DO NOT use your training data - ONLY use the article content provided\n' : 
+              '• Answer using ONLY and EXCLUSIVELY the data in the knowledge base chunks above\n' +
+              '• DO NOT use your training data about DOrSU - it is COMPLETELY WRONG and MUST be ignored\n' +
+              '• DO NOT use your general knowledge about universities, Philippines, or education systems\n' +
+              '• If a program/course/fact/person is not explicitly mentioned in the chunks above, DO NOT mention it at all\n' +
+              '• When listing programs, ONLY list ones that appear word-for-word in the knowledge base chunks above\n' +
+              '• NEVER create, invent, or hallucinate URLs - ONLY use URLs that appear exactly in the knowledge base chunks\n' +
+              '• If you see a URL in the knowledge base, copy it EXACTLY (including query parameters and all characters)\n' +
+              '• Student manuals are on heyzine.com - NEVER create dorsu.edu.ph/wp-content/uploads URLs for manuals\n' +
+              (hasContext ? '' : '• ⚠️ WARNING: Knowledge base chunks are empty or insufficient - You MUST tell the user: "I don\'t have that specific information in the knowledge base yet."\n')) +
+            (summarizationInstruction || '') +
             (newsInstruction || '');  // Include news instruction only if present
         } else {
-          // For general knowledge queries, use intent-aware system prompt
-          systemPrompt = IntentClassifier.getSystemPrompt(intentClassification);
+          // For non-DOrSU queries, still restrict to knowledge base if available
+          if (ragService && relevantContext && relevantContext.trim().length > 100) {
+            systemPrompt = buildSystemInstructions(conversationContext, intentClassification) + '\n\n' +
+              '=== KNOWLEDGE BASE DATA ===\n' + 
+              relevantContext + 
+              '\n=== END OF KNOWLEDGE BASE ===\n\n' +
+              '🚨 CRITICAL: Use ONLY information from the knowledge base above. If information is not there, say you don\'t have it.';
+          } else {
+            // For general knowledge queries without DOrSU context, use intent-aware system prompt
+            systemPrompt = IntentClassifier.getSystemPrompt(intentClassification);
+          }
         }
 
         // --- AI Response Generation ---
         
-        const rawReply = await service.chat([
-          { role: 'system', content: systemPrompt },
+        // Few-shot examples that reinforce knowledge-base-only behavior
+        const fewShotExamples = isDOrSUQuery ? [
+          { role: 'user', content: 'What is DOrSU?' },
+          { role: 'assistant', content: 'DOrSU is Davao Oriental State University, founded 1989 in Mati City, Philippines. (This information comes from the knowledge base provided.)' },
+          { role: 'user', content: 'Who is the president?' },
+          { role: 'assistant', content: 'As of 2025, the president is Dr. Roy G. Ponce. (This information comes from the knowledge base provided.)' },
+          { role: 'user', content: 'What programs does DOrSU offer in Computer Engineering?' },
+          { role: 'assistant', content: 'I don\'t have that specific information in the knowledge base yet. Please check with the university directly for the most current program offerings.' }
+        ] : [
           { role: 'user', content: 'What is DOrSU?' },
           { role: 'assistant', content: 'DOrSU is Davao Oriental State University, founded 1989 in Mati City, Philippines.' },
           { role: 'user', content: 'Who is the president?' },
-          { role: 'assistant', content: 'The president is Dr. Roy G. Ponce.' },
+          { role: 'assistant', content: 'The president is Dr. Roy G. Ponce.' }
+        ];
+        
+        const rawReply = await service.chat([
+          { role: 'system', content: systemPrompt },
+          ...fewShotExamples,
           { role: 'user', content: processedPrompt }
         ], options);
         
@@ -994,7 +1040,14 @@ const server = http.createServer(async (req, res) => {
         
         // Cache and log
         if (ragService) ragService.cacheAIResponse(processedPrompt, reply, queryAnalysis.complexity);
-        if (mongoService) mongoService.logQuery(processedPrompt, queryAnalysis.complexity, responseTime, false);
+        if (mongoService) {
+          mongoService.logQuery(processedPrompt, queryAnalysis.complexity, responseTime, false);
+          
+          // Track user query for frequency analysis (if userId is available)
+          if (userId) {
+            await mongoService.logUserQuery(userId, processedPrompt);
+          }
+        }
         
         conversationService.storeConversation(sessionId, processedPrompt, reply, {
           detectedTopics: queryAnalysis.detectedTopics,
@@ -1032,6 +1085,9 @@ const server = http.createServer(async (req, res) => {
   // ===== STATIC FILE SERVING =====
   
   if (serveStatic(req, res)) return;
+  
+  // Log unmatched routes for debugging
+  Logger.warn(`⚠️ 404 - Route not found: ${method} ${url} (raw: ${rawUrl})`);
   sendJson(res, 404, { error: 'Not found' });
 });
 
@@ -1061,7 +1117,7 @@ function getConversationalIntentIcon(intentType) {
 }
 
 /**
- * Build news context for knowledge base
+ * Build news context - scrapes on-demand and returns formatted news
  */
 async function buildNewsContext(shouldIncludeNews, isDateSpecific, newsService) {
   if (!shouldIncludeNews || !newsService) {
@@ -1069,34 +1125,83 @@ async function buildNewsContext(shouldIncludeNews, isDateSpecific, newsService) 
   }
   
   try {
-    const news = await newsService.getNews();
+    // Scrape news fresh on-demand (sorted by date, newest first)
+    const newsCount = isDateSpecific ? 10 : 3;
+    const news = await newsService.getLatestNews(newsCount);
+    
     if (!news || news.length === 0) {
-      return { newsContext: '', newsInstruction: '' };
+      Logger.warn('📰 No news items found after scraping');
+      return { 
+        newsContext: '', 
+        newsInstruction: '\n⚠️ Note: No recent news was found. Inform the user that no news items are available at this time.' 
+      };
     }
     
-    // Show only 3 latest news by default, unless user asks for specific date
-    const newsToShow = isDateSpecific ? news.slice(0, 10) : news.slice(0, 3);
-    
-    let newsContext = '\n\n=== RECENT DORSU NEWS & UPDATES ===\n';
-    newsToShow.forEach((item, index) => {
-      newsContext += `\n${index + 1}. ${item.title}\n`;
-      newsContext += `   Date: ${item.date}\n`;
+    // Format news with proper structure including links
+    let newsContext = '\n\n=== LATEST DORSU NEWS & UPDATES (SCRAPED ON-DEMAND) ===\n';
+    news.forEach((item, index) => {
+      newsContext += `\n${index + 1}. **${item.title}**\n`;
+      newsContext += `   📅 Date: ${item.date}\n`;
       if (item.excerpt && item.excerpt !== 'Click to read more') {
-        newsContext += `   ${item.excerpt}\n`;
+        newsContext += `   📄 ${item.excerpt}\n`;
       }
-      newsContext += `   Link: ${item.link}\n`;
+      newsContext += `   🔗 Link: ${item.link}\n`;
     });
     newsContext += '\n=== END OF NEWS ===\n';
     
-    const newsInstruction = isDateSpecific ? '' : 
-      '\n\n⚠️ CRITICAL: Show only the 3 latest news items using the format shown in the News Article Format section above.\n';
+    const newsInstruction = isDateSpecific ? 
+      '\n\n📰 NEWS RESPONSE FORMATTING (MANDATORY):\n' +
+      '• Format the news response as a numbered list (1, 2, 3, etc.)\n' +
+      '• For each news item, include:\n' +
+      '  - Bold title on the first line\n' +
+      '  - Date on the second line with 📅 emoji\n' +
+      '  - Excerpt/description if available (third line)\n' +
+      '  - Clickable link with 🔗 emoji and the FULL URL\n' +
+      '• Make links clickable using markdown format: [Link Text](URL)\n' +
+      '• At the end, inform users they can ask for summaries: "Would you like me to summarize any of these news items? Just say summarize news 1 or tell me about news 2!"\n' +
+      '• Example format:\n' +
+      '  1. **News Title**\n' +
+      '     📅 Date: January 15, 2025\n' +
+      '     This is the news excerpt or description.\n' +
+      '     🔗 Link: [Read more](https://dorsu.edu.ph/news/article/)\n\n' :
+      '\n\n📰 NEWS RESPONSE FORMATTING (MANDATORY):\n' +
+      '• User asked for latest news - show exactly 3 latest posts based on date\n' +
+      '• Format each news item as follows:\n' +
+      '  1. **Bold Title** (first line)\n' +
+      '     📅 Date: [Date] (second line)\n' +
+      '     [Excerpt/description if available] (third line)\n' +
+      '     🔗 Link: [Read full article](URL) (fourth line with clickable markdown link)\n' +
+      '• Number the news items: 1, 2, 3\n' +
+      '• Use proper spacing between items\n' +
+      '• Make sure all links are clickable using markdown: [text](URL)\n' +
+      '• Include the FULL URL from the knowledge base chunks\n' +
+      '• Start your response with a friendly intro like: "Here are the 3 latest news from DOrSU:"\n' +
+      '• After listing the news, add: "Would you like me to summarize any of these news items? Just say summarize news 1 or tell me about news 2!"\n' +
+      '• Example:\n' +
+      '  Here are the 3 latest news from DOrSU:\n\n' +
+      '  1. **Annual Research Conference 2025**\n' +
+      '     📅 Date: January 20, 2025\n' +
+      '     DOrSU announces the annual research conference.\n' +
+      '     🔗 Link: [Read full article](https://dorsu.edu.ph/news/annual-research-conference-2025/)\n\n' +
+      '  2. **New Academic Programs Offered**\n' +
+      '     📅 Date: January 15, 2025\n' +
+      '     The university introduces new programs for 2025.\n' +
+      '     🔗 Link: [Read full article](https://dorsu.edu.ph/news/new-academic-programs/)\n\n' +
+      '  3. **Enrollment Schedule Released**\n' +
+      '     📅 Date: January 10, 2025\n' +
+      '     Enrollment dates and requirements are now available.\n' +
+      '     🔗 Link: [Read full article](https://dorsu.edu.ph/news/enrollment-schedule-2025/)\n\n' +
+      '  Would you like me to summarize any of these news items? Just say summarize news 1 or tell me about news 2!\n\n';
     
-    Logger.info(`📰 Including ${newsToShow.length} news items in response`);
+    Logger.info(`📰 Including ${news.length} latest news items in response (scraped on-demand, sorted by date)`);
     
     return { newsContext, newsInstruction };
   } catch (error) {
-    Logger.warn('Failed to fetch news for query:', error.message);
-    return { newsContext: '', newsInstruction: '' };
+    Logger.error('Failed to scrape news on-demand:', error.message);
+    return { 
+      newsContext: '', 
+      newsInstruction: '\n⚠️ Note: Unable to fetch news at this time. Inform the user that news scraping failed.' 
+    };
   }
 }
 

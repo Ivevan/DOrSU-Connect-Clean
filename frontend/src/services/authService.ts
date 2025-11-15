@@ -270,4 +270,33 @@ export const getGoogleSignInErrorMessage = (error: any): string => {
   }
 };
 
+/**
+ * Delete user account from the backend (MongoDB)
+ * This will delete the user account and all associated data from the knowledge base
+ */
+export const deleteAccount = async (token: string): Promise<boolean> => {
+  try {
+    const apiConfig = require('../config/api.config').default;
+    const baseUrl = apiConfig.baseUrl;
+    const response = await fetch(`${baseUrl}/api/auth/account`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.success === true;
+  } catch (error: any) {
+    console.error('Failed to delete account:', error);
+    throw error;
+  }
+};
+
 

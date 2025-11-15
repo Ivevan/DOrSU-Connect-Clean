@@ -11,16 +11,19 @@ import { theme } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRoute } from '@react-navigation/native';
 
 type RootStackParamList = {
   UserSettings: undefined;
   AccountSettings: undefined;
+  GetStarted: undefined;
 };
 
 const AccountSettings = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme: t } = useThemeValues();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute();
 
   // Animated floating background orbs
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -41,6 +44,10 @@ const AccountSettings = () => {
   const [backendUserName, setBackendUserName] = useState<string | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteStatus, setDeleteStatus] = useState<'idle' | 'wrong' | 'success' | 'error'>('idle');
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState('');
 
   useFocusEffect(
     useCallback(() => {
@@ -111,6 +118,56 @@ const AccountSettings = () => {
   const handleCancelEdit = () => {
     setIsEditingName(false);
     setEditedName('');
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText.trim().toLowerCase() !== 'delete') {
+      setDeleteStatus('wrong');
+      setDeleteErrorMessage('Please type "Delete" to confirm');
+      return;
+    }
+
+    try {
+      setDeleteStatus('idle');
+      // Clear user data from AsyncStorage
+      await AsyncStorage.removeItem('userName');
+      await AsyncStorage.removeItem('userEmail');
+      await AsyncStorage.removeItem('userPhoto');
+      await AsyncStorage.removeItem('userToken');
+      await AsyncStorage.removeItem('userId');
+      await AsyncStorage.removeItem('authProvider');
+      
+      // Delete Firebase user account if available
+      if (currentUser) {
+        await currentUser.delete?.();
+      }
+      
+      setDeleteStatus('success');
+      // User will be redirected to auth flow automatically
+    } catch (error) {
+      console.error('Failed to delete account:', error);
+      setDeleteStatus('error');
+      setDeleteErrorMessage('Failed to delete account. Please try again.');
+    }
+  };
+
+  const handleCancelDeleteModal = () => {
+    setIsDeleteModalVisible(false);
+    setDeleteConfirmText('');
+    setDeleteStatus('idle');
+    setDeleteErrorMessage('');
+  };
+
+  const handleSuccessClose = () => {
+    setIsDeleteModalVisible(false);
+    setDeleteConfirmText('');
+    setDeleteStatus('idle');
+    setDeleteErrorMessage('');
+    // Navigate back to GetStarted after successful deletion
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'GetStarted' as never }],
+    });
   };
 
   // Animate floating background orbs on mount
@@ -385,7 +442,119 @@ const AccountSettings = () => {
             <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
           </TouchableOpacity>
         </BlurView>
+
+        <TouchableOpacity 
+          style={[styles.deleteAccountButton, { borderColor: '#EF4444' }]}
+          onPress={() => setIsDeleteModalVisible(true)}
+        >
+          <Text style={styles.deleteAccountText}>Delete Account</Text>
+        </TouchableOpacity>
       </ScrollView>
+
+      {/* Delete Account Confirmation Modal */}
+      {isDeleteModalVisible && (
+        <View style={styles.modalOverlay}>
+          {deleteStatus === 'success' ? (
+            // Success Modal
+            <View style={[styles.modalContent, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
+              <View style={styles.successIconContainer}>
+                <View style={styles.successIconBackground}>
+                  <Ionicons name="checkmark-circle" size={64} color="#10B981" />
+                </View>
+              </View>
+              <Text style={[styles.successTitle, { color: '#10B981' }]}>Account Deleted</Text>
+              <Text style={[styles.successMessage, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>
+                Your account has been successfully deleted. You will be redirected to the sign in screen.
+              </Text>
+              <TouchableOpacity
+                style={styles.successButton}
+                onPress={handleSuccessClose}
+              >
+                <Text style={styles.successButtonText}>Return to Sign In</Text>
+              </TouchableOpacity>
+            </View>
+          ) : deleteStatus === 'error' ? (
+            // Error Modal
+            <View style={[styles.modalContent, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
+              <View style={styles.errorIconContainer}>
+                <View style={styles.errorIconBackground}>
+                  <Ionicons name="alert-circle" size={64} color="#EF4444" />
+                </View>
+              </View>
+              <Text style={[styles.errorTitle, { color: '#EF4444' }]}>Deletion Failed</Text>
+              <Text style={[styles.errorMessage, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>
+                {deleteErrorMessage}
+              </Text>
+              <TouchableOpacity
+                style={styles.errorButton}
+                onPress={handleCancelDeleteModal}
+              >
+                <Text style={styles.errorButtonText}>Try Again</Text>
+              </TouchableOpacity>
+            </View>
+          ) : deleteStatus === 'wrong' ? (
+            // Wrong Input Modal
+            <View style={[styles.modalContent, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
+              <View style={styles.warningIconContainer}>
+                <View style={styles.warningIconBackground}>
+                  <Ionicons name="warning" size={64} color="#F59E0B" />
+                </View>
+              </View>
+              <Text style={[styles.warningTitle, { color: '#F59E0B' }]}>Incorrect Confirmation</Text>
+              <Text style={[styles.warningMessage, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>
+                Please type "Delete" exactly to confirm the account deletion.
+              </Text>
+              <TouchableOpacity
+                style={styles.warningButton}
+                onPress={() => setDeleteStatus('idle')}
+              >
+                <Text style={styles.warningButtonText}>Back</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            // Default Confirmation Modal
+            <View style={[styles.modalContent, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
+              <Text style={[styles.modalTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Delete Account</Text>
+              <Text style={[styles.modalMessage, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>
+                This action cannot be undone. All your data will be permanently deleted.
+              </Text>
+              <Text style={[styles.confirmLabel, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>
+                Type "Delete" to confirm:
+              </Text>
+              <TextInput
+                style={[styles.confirmInput, { 
+                  color: isDarkMode ? '#F9FAFB' : '#1F2937',
+                  borderColor: '#EF4444',
+                  backgroundColor: isDarkMode ? 'rgba(0, 0, 0, 0.3)' : 'rgba(239, 68, 68, 0.1)'
+                }]}
+                placeholder="Delete"
+                placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
+                value={deleteConfirmText}
+                onChangeText={(text) => {
+                  setDeleteConfirmText(text);
+                  if (deleteStatus !== 'idle' && deleteStatus !== 'success' && deleteStatus !== 'error') {
+                    setDeleteStatus('idle');
+                  }
+                }}
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelModalButton]}
+                  onPress={handleCancelDeleteModal}
+                >
+                  <Text style={[styles.modalButtonText, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.deleteModalButton]}
+                  onPress={handleDeleteAccount}
+                >
+                  <Text style={styles.deleteModalButtonText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </View>
+      )}
     </View>
   );
 };
@@ -554,6 +723,205 @@ const styles = StyleSheet.create({
     borderRadius: 140,
     opacity: 0.2,
     overflow: 'hidden',
+  },
+  deleteAccountButton: {
+    marginTop: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteAccountText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#EF4444',
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    borderRadius: 16,
+    padding: 24,
+    marginHorizontal: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 12,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  modalMessage: {
+    fontSize: 14,
+    fontWeight: '400',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  confirmLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  confirmInput: {
+    borderWidth: 1.5,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 16,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelModalButton: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+  },
+  deleteModalButton: {
+    backgroundColor: '#EF4444',
+  },
+  modalButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  deleteModalButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  successIconContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  successIconBackground: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  successMessage: {
+    fontSize: 14,
+    fontWeight: '400',
+    lineHeight: 20,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  successButton: {
+    backgroundColor: '#10B981',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  errorIconContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  errorIconBackground: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: 14,
+    fontWeight: '400',
+    lineHeight: 20,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  errorButton: {
+    backgroundColor: '#EF4444',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  errorButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  warningIconContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  warningIconBackground: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  warningTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  warningMessage: {
+    fontSize: 14,
+    fontWeight: '400',
+    lineHeight: 20,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  warningButton: {
+    backgroundColor: '#F59E0B',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  warningButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });
 

@@ -1,6 +1,8 @@
 import * as React from 'react';
-import { useState, useRef, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Switch, Alert, Animated } from 'react-native';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Switch, Alert, Animated, Platform } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
@@ -34,36 +36,122 @@ type RootStackParamList = {
 const AdminSettings = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  // Use split hooks to reduce re-renders
   const { isDarkMode, theme } = useThemeValues();
   const { toggleTheme } = useThemeActions();
   const scrollRef = useRef<ScrollView>(null);
   
-  // Memoize safe area insets to prevent recalculation during navigation
-  const safeInsets = useMemo(() => ({
-    top: insets.top,
-    bottom: insets.bottom,
-    left: insets.left,
-    right: insets.right,
-  }), [insets.top, insets.bottom, insets.left, insets.right]);
+  // Animated floating background orbs
+  const floatAnim1 = useRef(new Animated.Value(0)).current;
+  const cloudAnim1 = useRef(new Animated.Value(0)).current;
+  const cloudAnim2 = useRef(new Animated.Value(0)).current;
+  const lightSpot1 = useRef(new Animated.Value(0)).current;
+  const lightSpot2 = useRef(new Animated.Value(0)).current;
+  const lightSpot3 = useRef(new Animated.Value(0)).current;
+
+  // Animate floating background orbs on mount
+  useEffect(() => {
+    const animations = [
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(floatAnim1, {
+            toValue: 1,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(floatAnim1, {
+            toValue: 0,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(cloudAnim1, {
+            toValue: 1,
+            duration: 15000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cloudAnim1, {
+            toValue: 0,
+            duration: 15000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(cloudAnim2, {
+            toValue: 1,
+            duration: 20000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cloudAnim2, {
+            toValue: 0,
+            duration: 20000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot1, {
+            toValue: 1,
+            duration: 12000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot1, {
+            toValue: 0,
+            duration: 12000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot2, {
+            toValue: 1,
+            duration: 18000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot2, {
+            toValue: 0,
+            duration: 18000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot3, {
+            toValue: 1,
+            duration: 14000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot3, {
+            toValue: 0,
+            duration: 14000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+    ];
+
+    animations.forEach(anim => anim.start());
+
+    return () => {
+      animations.forEach(anim => anim.stop());
+    };
+  }, [floatAnim1, cloudAnim1, cloudAnim2, lightSpot1, lightSpot2, lightSpot3]);
   
   // State for various settings
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
 
-  // Lock header height to prevent layout shifts
-  const headerHeightRef = useRef<number>(64);
-  const [headerHeight, setHeaderHeight] = useState(64);
-
-  // Animation values - DISABLED FOR LAYOUT STABILITY
-  const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
-  const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
-
   const sheetY = useRef(new Animated.Value(300)).current;
 
   const openLogout = useCallback(() => {
     setIsLogoutOpen(true);
-    // Wait for modal mount then animate
     setTimeout(() => {
       Animated.timing(sheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
     }, 0);
@@ -97,67 +185,153 @@ const AdminSettings = () => {
 
   return (
     <View style={[styles.container, {
-      backgroundColor: theme.colors.background,
+      backgroundColor: 'transparent',
     }]} collapsable={false}>
       <StatusBar
-        backgroundColor={theme.colors.primary}
-        barStyle="light-content"
-        translucent={false}
-        hidden={false}
+        backgroundColor="transparent"
+        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        translucent={true}
       />
 
-      {/* Safe Area Top Spacer - Fixed position */}
-      <View style={[styles.safeAreaTop, {
-        height: safeInsets.top,
-        backgroundColor: theme.colors.primary,
-      }]} collapsable={false} />
+      {/* Background Gradient Layer */}
+      <LinearGradient
+        colors={[
+          isDarkMode
+            ? '#0B1220'
+            : '#FBF8F3',
+          isDarkMode
+            ? '#111827'
+            : '#F8F5F0',
+          isDarkMode
+            ? '#1F2937'
+            : '#F5F2ED'
+        ]}
+        style={styles.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+      />
+      
+      {/* Blur overlay on entire background */}
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 5 : 3}
+        tint="default"
+        style={styles.backgroundGradient}
+      />
 
-      {/* Header - Fixed position to prevent layout shifts */}
-      <View
-        style={[styles.header, {
-          backgroundColor: theme.colors.primary,
-          top: safeInsets.top,
-        }]}
-        onLayout={(e) => {
-          const { height } = e.nativeEvent.layout;
-          if (height > 0 && height !== headerHeightRef.current) {
-            headerHeightRef.current = height;
-            setHeaderHeight(height);
-          }
-        }}
+      {/* Animated Floating Background Orbs */}
+      <View style={styles.floatingBgContainer} pointerEvents="none">
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              transform: [
+                {
+                  translateY: cloudAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -30],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.cloudPatch1}>
+            <LinearGradient
+              colors={['rgba(255, 149, 0, 0.3)', 'transparent']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{ flex: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              transform: [
+                {
+                  translateY: cloudAnim2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 40],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.cloudPatch2}>
+            <LinearGradient
+              colors={['rgba(255, 149, 0, 0.2)', 'transparent']}
+              start={{ x: 1, y: 0 }}
+              end={{ x: 0, y: 1 }}
+              style={{ flex: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        <Animated.View
+          style={[
+            styles.lightSpot1,
+            {
+              transform: [
+                {
+                  scale: lightSpot1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.8, 1.2],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={['rgba(255, 200, 100, 0.4)', 'transparent']}
+            start={{ x: 0.5, y: 0 }}
+            end={{ x: 0.5, y: 1 }}
+            style={{ flex: 1 }}
+          />
+        </Animated.View>
+      </View>
+
+      {/* Header */}
+      <View style={[styles.header, { 
+        backgroundColor: 'transparent',
+        top: insets.top,
+        marginLeft: insets.left,
+        marginRight: insets.right,
+      }]}
         collapsable={false}
       >
-        <View style={styles.headerLeft} collapsable={false}>
-          <Text style={styles.headerTitle} numberOfLines={1}>Settings</Text>
-        </View>
-        <View style={styles.headerRight} collapsable={false}>
-          <View style={styles.headerSpacer} />
-          <View style={styles.headerSpacer} />
-        </View>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="chevron-back" size={28} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Settings</Text>
       </View>
 
       <ScrollView
         ref={scrollRef}
-        style={[styles.scrollView, {
-          marginTop: safeInsets.top + headerHeight,
-          marginBottom: 0,
-        }]}
-        contentContainerStyle={[styles.scrollContent, {
-          paddingBottom: safeInsets.bottom + 80, // Bottom nav bar height + safe area
-        }]}
+        style={[styles.scrollView, { marginTop: insets.top + 56 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 20 }]}
         showsVerticalScrollIndicator={false}
         removeClippedSubviews={true}
         keyboardShouldPersistTaps="handled"
         bounces={true}
         scrollEventThrottle={16}
       >
-        {/* User Profile Section - Fixed height to prevent layout shifts */}
-        <View
+        {/* User Profile Section */}
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 50 : 40}
+          tint={isDarkMode ? 'dark' : 'light'}
           style={[
             styles.profileSection,
             {
-              backgroundColor: theme.colors.card,
-              minHeight: 100, // Fixed minimum height to prevent layout shifts
+              backgroundColor: 'rgba(255, 255, 255, 0.3)',
+              minHeight: 100,
             }
           ]}
         >
@@ -190,7 +364,7 @@ const AdminSettings = () => {
               </Text>
             </View>
           </View>
-        </View>
+        </BlurView>
 
         {/* Settings Categories */}
         <View
@@ -199,27 +373,28 @@ const AdminSettings = () => {
           ]}
         >
           {/* App Settings */}
-          <View style={[styles.sectionCard, { backgroundColor: theme.colors.card }]}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
+          >
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>App Settings</Text>
             
             <View style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="moon-outline" size={20} color={theme.colors.accent} />
+                  <Ionicons name="moon-outline" size={20} color="#FF9500" />
                 </View>
                 <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Dark Mode</Text>
               </View>
               <Switch
                 value={isDarkMode}
                 onValueChange={(value) => {
-                  // Trigger haptic feedback immediately
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  // Toggle theme - state updates immediately, animation runs in background
                   toggleTheme();
                 }}
-                trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
+                trackColor={{ false: theme.colors.border, true: '#FF9500' }}
                 thumbColor={theme.colors.surface}
-                // Optimize switch performance
                 ios_backgroundColor={theme.colors.border}
               />
             </View>
@@ -227,36 +402,44 @@ const AdminSettings = () => {
             <View style={styles.settingItemLast}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="notifications-outline" size={20} color={theme.colors.accent} />
+                  <Ionicons name="notifications-outline" size={20} color="#FF9500" />
                 </View>
                 <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Notifications</Text>
               </View>
               <Switch
                 value={notificationsEnabled}
                 onValueChange={setNotificationsEnabled}
-                trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
+                trackColor={{ false: theme.colors.border, true: '#FF9500' }}
                 thumbColor={notificationsEnabled ? theme.colors.surface : theme.colors.surface}
               />
             </View>
-          </View>
+          </BlurView>
 
           {/* Email Section */}
-          <View style={[styles.sectionCard, { backgroundColor: theme.colors.card }]}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
+          >
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Email</Text>
             
             <TouchableOpacity style={styles.settingItemLast}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="mail-outline" size={20} color={theme.colors.accent} />
+                  <Ionicons name="mail-outline" size={20} color="#FF9500" />
                 </View>
                 <Text style={[styles.settingTitle, { color: theme.colors.text }]}>admin@dorsu.edu.ph</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
-          </View>
+          </BlurView>
 
           {/* About Section */}
-          <View style={[styles.sectionCard, { backgroundColor: theme.colors.card }]}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
+          >
             <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>About</Text>
             
             <TouchableOpacity 
@@ -265,7 +448,7 @@ const AdminSettings = () => {
             >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="help-circle-outline" size={20} color={theme.colors.accent} />
+                  <Ionicons name="help-circle-outline" size={20} color="#FF9500" />
                 </View>
                 <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Help Center</Text>
               </View>
@@ -278,7 +461,7 @@ const AdminSettings = () => {
             >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="document-text-outline" size={20} color={theme.colors.accent} />
+                  <Ionicons name="document-text-outline" size={20} color="#FF9500" />
                 </View>
                 <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Terms of Use</Text>
               </View>
@@ -291,7 +474,7 @@ const AdminSettings = () => {
             >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="shield-checkmark-outline" size={20} color={theme.colors.accent} />
+                  <Ionicons name="shield-checkmark-outline" size={20} color="#FF9500" />
                 </View>
                 <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Privacy Policy</Text>
               </View>
@@ -304,7 +487,7 @@ const AdminSettings = () => {
             >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="document-outline" size={20} color={theme.colors.accent} />
+                  <Ionicons name="document-outline" size={20} color="#FF9500" />
                 </View>
                 <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Licenses</Text>
               </View>
@@ -314,13 +497,13 @@ const AdminSettings = () => {
             <View style={styles.settingItemLast}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="information-circle-outline" size={20} color={theme.colors.accent} />
+                  <Ionicons name="information-circle-outline" size={20} color="#FF9500" />
                 </View>
                 <Text style={[styles.settingTitle, { color: theme.colors.text }]}>DOrSU Connect</Text>
               </View>
               <Text style={[styles.settingValue, { color: theme.colors.textMuted }]}>v1.0.0</Text>
             </View>
-          </View>
+          </BlurView>
 
           {/* Sign Out Button */}
           <TouchableOpacity 
@@ -340,20 +523,20 @@ const AdminSettings = () => {
         </View>
       </ScrollView>
 
-      {/* Bottom Navigation Bar - Fixed position */}
+      {/* Bottom Navigation Bar */}
       <View style={[styles.bottomNavContainer, {
         bottom: 0,
-        paddingBottom: safeInsets.bottom,
+        paddingBottom: insets.bottom,
       }]} collapsable={false}>
         <AdminBottomNavBar
-        activeTab="settings"
-        onDashboardPress={handleDashboardPress}
-        onChatPress={handleChatPress}
-        onAddPress={handleAddPress}
-        onCalendarPress={handleCalendarPress}
-        onSettingsPress={handleSettingsPress}
-        onPostUpdatePress={handlePostUpdatePress}
-        onManagePostPress={handleManagePostPress}
+          activeTab="settings"
+          onDashboardPress={handleDashboardPress}
+          onChatPress={handleChatPress}
+          onAddPress={handleAddPress}
+          onCalendarPress={handleCalendarPress}
+          onSettingsPress={handleSettingsPress}
+          onPostUpdatePress={handlePostUpdatePress}
+          onManagePostPress={handleManagePostPress}
         />
       </View>
 
@@ -372,56 +555,37 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: themeConfig.colors.surfaceAlt,
   },
-  safeAreaTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 1000,
-  },
   header: {
     position: 'absolute',
     left: 0,
     right: 0,
     zIndex: 999,
-    backgroundColor: themeConfig.colors.primary,
+    backgroundColor: 'transparent',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
+    justifyContent: 'flex-start',
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: -0.3,
+    marginLeft: 8,
   },
   scrollView: {
     flex: 1,
   },
-  headerLeft: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-    color: '#fff',
-  },
-  headerRight: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  headerSpacer: {
-    width: 40,
-    height: 33,
-    marginLeft: 4,
-  },
   scrollContent: {
     paddingHorizontal: themeConfig.spacing(1.5),
-    paddingTop: themeConfig.spacing(2),
+    paddingVertical: themeConfig.spacing(2),
   },
   bottomNavContainer: {
     position: 'absolute',
@@ -432,12 +596,15 @@ const styles = StyleSheet.create({
   profileSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: themeConfig.colors.surface,
+    backgroundColor: 'transparent',
     borderRadius: themeConfig.radii.md,
     padding: themeConfig.spacing(2.5),
     marginBottom: themeConfig.spacing(2),
     gap: themeConfig.spacing(2),
-    minHeight: 100, // Fixed minimum height to prevent layout shifts
+    minHeight: 100,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    overflow: 'hidden',
   },
   profileAvatarContainer: {
     position: 'relative',
@@ -491,7 +658,7 @@ const styles = StyleSheet.create({
   profileInfo: {
     flex: 1,
     alignItems: 'flex-start',
-    minWidth: 0, // Prevent flex overflow
+    minWidth: 0,
   },
   profileName: {
     fontSize: 18,
@@ -499,7 +666,7 @@ const styles = StyleSheet.create({
     color: themeConfig.colors.text,
     marginBottom: themeConfig.spacing(0.5),
     letterSpacing: 0.2,
-    minHeight: 24, // Fixed height to prevent text layout shift
+    minHeight: 24,
   },
   profileEmailContainer: {
     flexDirection: 'row',
@@ -510,16 +677,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: themeConfig.colors.textMuted,
     fontWeight: '400',
-    minHeight: 20, // Fixed height to prevent text layout shift
+    minHeight: 20,
   },
   settingsContainer: {
     gap: themeConfig.spacing(1.5),
   },
   sectionCard: {
-    backgroundColor: themeConfig.colors.surface,
+    backgroundColor: 'transparent',
     borderRadius: themeConfig.radii.md,
     padding: themeConfig.spacing(1.5),
-    ...themeConfig.shadow1,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    overflow: 'hidden',
   },
   sectionTitle: {
     fontSize: 15,
@@ -584,6 +753,47 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     letterSpacing: 0.3,
+  },
+  backgroundGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: -1,
+  },
+  floatingBgContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+    zIndex: 0,
+  },
+  cloudWrapper: {
+    position: 'absolute',
+  },
+  cloudPatch1: {
+    width: 350,
+    height: 350,
+    borderRadius: 175,
+    opacity: 0.25,
+    overflow: 'hidden',
+  },
+  cloudPatch2: {
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    opacity: 0.22,
+    overflow: 'hidden',
+  },
+  lightSpot1: {
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    opacity: 0.2,
+    overflow: 'hidden',
   },
 });
 

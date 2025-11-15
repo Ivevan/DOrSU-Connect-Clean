@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, TextInput, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
@@ -39,6 +39,8 @@ const AccountSettings = () => {
   });
 
   const [backendUserName, setBackendUserName] = useState<string | null>(null);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState('');
 
   useFocusEffect(
     useCallback(() => {
@@ -83,6 +85,33 @@ const AccountSettings = () => {
     if (currentUser?.email) return currentUser.email.split('@')[0];
     return 'User';
   }, [currentUser, backendUserName]);
+
+  const handleEditName = () => {
+    setEditedName(userName);
+    setIsEditingName(true);
+  };
+
+  const handleSaveName = async () => {
+    if (!editedName.trim()) {
+      Alert.alert('Error', 'Name cannot be empty');
+      return;
+    }
+
+    try {
+      await AsyncStorage.setItem('userName', editedName.trim());
+      setBackendUserName(editedName.trim());
+      setIsEditingName(false);
+      Alert.alert('Success', 'Name updated successfully');
+    } catch (error) {
+      console.error('Failed to save name:', error);
+      Alert.alert('Error', 'Failed to update name. Please try again.');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditingName(false);
+    setEditedName('');
+  };
 
   // Animate floating background orbs on mount
   useEffect(() => {
@@ -302,17 +331,49 @@ const AccountSettings = () => {
         >
           <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Account Information</Text>
 
-          <View style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
+          <TouchableOpacity 
+            style={[styles.settingItem, { borderBottomColor: t.colors.border }]}
+            onPress={handleEditName}
+            disabled={isEditingName}
+          >
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                 <Ionicons name="person-outline" size={20} color="#FF9500" />
               </View>
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={[styles.settingTitle, { color: t.colors.text }]}>Name</Text>
-                <Text style={[styles.settingValue, { color: t.colors.textMuted, marginTop: 4 }]}>{userName}</Text>
+                {isEditingName ? (
+                  <View style={styles.editNameContainer}>
+                    <TextInput
+                      style={[styles.nameInput, { color: t.colors.text, borderColor: t.colors.border }]}
+                      value={editedName}
+                      onChangeText={setEditedName}
+                      placeholder="Enter your name"
+                      placeholderTextColor={t.colors.textMuted}
+                      autoFocus
+                    />
+                    <View style={styles.editActions}>
+                      <TouchableOpacity 
+                        style={[styles.actionButton, styles.cancelButton]}
+                        onPress={handleCancelEdit}
+                      >
+                        <Text style={styles.cancelText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[styles.actionButton, styles.saveButton]}
+                        onPress={handleSaveName}
+                      >
+                        <Text style={styles.saveText}>Save</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={[styles.settingValue, { color: t.colors.textMuted, marginTop: 4 }]}>{userName}</Text>
+                )}
               </View>
             </View>
-          </View>
+            {!isEditingName && <Ionicons name="pencil" size={18} color={t.colors.textMuted} />}
+          </TouchableOpacity>
 
           <TouchableOpacity style={styles.settingItemLast}>
             <View style={styles.settingLeft}>
@@ -419,6 +480,47 @@ const styles = StyleSheet.create({
   settingValue: {
     fontSize: 13,
     fontWeight: '400',
+  },
+  editNameContainer: {
+    marginTop: 8,
+    gap: 8,
+  },
+  nameInput: {
+    fontSize: 14,
+    fontWeight: '400',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  editActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  actionButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButton: {
+    backgroundColor: 'rgba(107, 114, 128, 0.2)',
+  },
+  saveButton: {
+    backgroundColor: '#FF9500',
+  },
+  cancelText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  saveText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   floatingBgContainer: {
     position: 'absolute',

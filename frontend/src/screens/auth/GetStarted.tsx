@@ -664,25 +664,6 @@ const GetStarted = () => {
         </Animated.View>
       </View>
       
-      {/* Skip to User Screen Button - Top Right */}
-      <TouchableOpacity
-        style={[styles.skipButton, { 
-          top: insets.top + 12, 
-          right: 16,
-          backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-          borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(31, 41, 55, 0.1)',
-        }]}
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          navigation.navigate('AIChat');
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Skip to AI Chat"
-        accessibilityHint="Double tap to go directly to the AI Chat screen"
-      >
-        <MaterialIcons name="dashboard" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
-      </TouchableOpacity>
-      
       <View style={[
         styles.content,
         {
@@ -1347,18 +1328,6 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     textTransform: 'uppercase',
     marginBottom: 16,
-  },
-  skipButton: {
-    position: 'absolute',
-    zIndex: 100,
-    borderRadius: 12,
-    padding: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 4,
-    borderWidth: 1,
   },
   sparkleContainer: {
     position: 'absolute',

@@ -1,6 +1,8 @@
 import * as React from 'react';
-import { useState, useRef, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Switch, Alert, Animated } from 'react-native';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Switch, Alert, Animated, Platform } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import { useNavigation } from '@react-navigation/native';
@@ -430,59 +432,19 @@ const AdminSettings = () => {
             styles.settingsContainer
           ]}
         >
-          {/* App Settings */}
-          <View style={[styles.sectionCard, { backgroundColor: theme.colors.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>App Settings</Text>
-            
-            <View style={[styles.settingItem, { borderBottomColor: theme.colors.border }]}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="moon-outline" size={20} color={theme.colors.accent} />
-                </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Dark Mode</Text>
-              </View>
-              <Switch
-                value={isDarkMode}
-                onValueChange={(value) => {
-                  // Trigger haptic feedback immediately
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  // Toggle theme - state updates immediately, animation runs in background
-                  toggleTheme();
-                }}
-                trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
-                thumbColor={theme.colors.surface}
-                // Optimize switch performance
-                ios_backgroundColor={theme.colors.border}
-              />
-            </View>
-
-            <View style={styles.settingItemLast}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="notifications-outline" size={20} color={theme.colors.accent} />
-                </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>Notifications</Text>
-              </View>
-              <Switch
-                value={notificationsEnabled}
-                onValueChange={setNotificationsEnabled}
-                trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
-                thumbColor={notificationsEnabled ? theme.colors.surface : theme.colors.surface}
-              />
-            </View>
-          </View>
-
-          {/* Email Section */}
-          <View style={[styles.sectionCard, { backgroundColor: theme.colors.card }]}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Email</Text>
-            
-            <TouchableOpacity style={styles.settingItemLast}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: theme.colors.surface }]}>
-                  <Ionicons name="mail-outline" size={20} color={theme.colors.accent} />
-                </View>
-                <Text style={[styles.settingTitle, { color: theme.colors.text }]}>admin@dorsu.edu.ph</Text>
-              </View>
+          {/* All Settings Section */}
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
+          >
+            <TouchableOpacity 
+              style={styles.sectionTitleButton}
+              onPress={() => {
+                navigation.navigate('AdminGeneralSettings');
+              }}
+            >
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>General</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 

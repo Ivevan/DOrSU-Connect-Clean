@@ -15,7 +15,8 @@ type RootStackParamList = {
   GetStarted: undefined;
   SignIn: undefined;
   CreateAccount: undefined;
-  SchoolUpdates: undefined; // Added new screen
+  SchoolUpdates: undefined;
+  AdminDashboard: undefined;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'SignIn'>;

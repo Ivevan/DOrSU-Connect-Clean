@@ -48,7 +48,7 @@ describe('AdminCalendar Screen', () => {
     renderScreen(<AdminCalendar />);
 
     await waitFor(() => {
-      expect(screen.getByText('School Calendar')).toBeTruthy();
+      expect(screen.getByText('DOrSU Calendar')).toBeTruthy();
     }, { timeout: 3000 });
   });
 
@@ -56,8 +56,8 @@ describe('AdminCalendar Screen', () => {
     renderScreen(<AdminCalendar />);
 
     await waitFor(() => {
-      // Calendar grid should be present - verify by checking for "School Calendar" title
-      const title = screen.queryByText('School Calendar');
+      // Calendar grid should be present - verify by checking for "DOrSU Calendar" title
+      const title = screen.queryByText('DOrSU Calendar');
       expect(title).toBeTruthy();
     }, { timeout: 3000 });
   });
@@ -68,7 +68,7 @@ describe('AdminCalendar Screen', () => {
     await waitFor(() => {
       // Check for add event button or title as fallback
       const addEventButton = screen.queryByText(/Add Event|New Event|Create Event|Add/i);
-      const title = screen.queryByText('School Calendar');
+      const title = screen.queryByText('DOrSU Calendar');
       expect(addEventButton || title).toBeTruthy();
     }, { timeout: 3000 });
   });
@@ -80,7 +80,7 @@ describe('AdminCalendar Screen', () => {
       // Check for events section or empty state
       const eventsSection = screen.queryByText(/Events|No events|Today's Events/) || 
                            screen.queryByTestId('events-section');
-      expect(eventsSection || screen.getByText('School Calendar')).toBeTruthy();
+      expect(eventsSection || screen.getByText('DOrSU Calendar')).toBeTruthy();
     }, { timeout: 3000 });
   });
 

@@ -707,7 +707,7 @@ const server = http.createServer(async (req, res) => {
         Logger.info(`✅ Calendar service handled route: ${method} ${url}`);
         return;
       } else {
-        Logger.warn(`⚠️ Calendar service did not handle route: ${method} ${url}`);
+        Logger.warn(`⚠️ Calendar service did not handle route: ${method} ${url} - will continue to other handlers`);
       }
     } else {
       Logger.warn(`⚠️ Calendar service not initialized. mongoService: ${!!mongoService}, authService: ${!!authService}`);

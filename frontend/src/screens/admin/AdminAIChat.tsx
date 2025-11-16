@@ -3,7 +3,7 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Linking, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -347,7 +347,6 @@ const AdminAIChat = () => {
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
         translucent={true}
       />
-
       {/* Background Gradient Layer */}
       <LinearGradient
         colors={[
@@ -365,7 +364,6 @@ const AdminAIChat = () => {
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
       />
-      
       {/* Blur overlay on entire background - very subtle */}
       <BlurView
         intensity={Platform.OS === 'ios' ? 5 : 3}
@@ -641,7 +639,6 @@ const AdminAIChat = () => {
           </TouchableOpacity>
         </View>
       </View>
-      
       {/* Admin Sidebar Component */}
       <AdminSidebar
         isOpen={isHistoryOpen}
@@ -662,7 +659,6 @@ const AdminAIChat = () => {
           }
         }}
       />
-      
       {/* Info Modal */}
       <InfoModal
         visible={isInfoOpen}

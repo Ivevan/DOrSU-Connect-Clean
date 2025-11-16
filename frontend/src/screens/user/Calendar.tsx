@@ -17,6 +17,7 @@ import { theme } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import MonthPickerModal from '../../modals/MonthPickerModal';
 import AdminDataService from '../../services/AdminDataService';
+import CalendarService, { CalendarEvent } from '../../services/CalendarService';
 import { formatCalendarDate, formatDate } from '../../utils/dateUtils';
 
 type RootStackParamList = {
@@ -91,6 +92,7 @@ const CalendarScreen = () => {
   const [posts, setPosts] = useState<any[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
+  const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
 
   // Defer data loading until after screen is visible to prevent navigation delay
   useEffect(() => {
@@ -113,6 +115,39 @@ const CalendarScreen = () => {
     return () => { 
       cancelled = true;
       cancelAnimationFrame(rafId);
+    };
+  }, []);
+
+  // Load calendar events from backend
+  useEffect(() => {
+    let cancelled = false;
+    const loadEvents = async () => {
+      try {
+        setIsLoadingEvents(true);
+        const currentYear = new Date().getFullYear();
+        const startDate = new Date(currentYear, 0, 1).toISOString();
+        const endDate = new Date(currentYear, 11, 31).toISOString();
+        
+        const events = await CalendarService.getEvents({
+          startDate,
+          endDate,
+          limit: 500,
+        });
+        
+        if (!cancelled) {
+          setCalendarEvents(Array.isArray(events) ? events : []);
+        }
+      } catch (error) {
+        console.error('Failed to load calendar events:', error);
+        if (!cancelled) setCalendarEvents([]);
+      } finally {
+        if (!cancelled) setIsLoadingEvents(false);
+      }
+    };
+    
+    loadEvents();
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -366,9 +401,32 @@ const CalendarScreen = () => {
   }, [getEventsForDate, t, dotScale, handleDayPress]);
 
   const filteredEvents = React.useMemo(() => {
-    if (!Array.isArray(posts)) return [];
+    if (!Array.isArray(posts) && !Array.isArray(calendarEvents)) return [];
     if (selectedDate && !showAllEvents) {
       return getEventsForDate(selectedDate);
+    }
+    
+    // Combine all events from both sources when showing all events
+    const allEvents: any[] = [];
+    
+    // Add events from posts (AdminDataService)
+    if (Array.isArray(posts)) {
+      allEvents.push(...posts.map(transformPostToEvent));
+    }
+    
+    // Add events from calendarEvents (backend)
+    if (Array.isArray(calendarEvents)) {
+      calendarEvents.forEach(event => {
+        allEvents.push({
+          id: event._id || `calendar-${event.isoDate}-${event.title}`,
+          title: event.title,
+          dateKey: parseAnyDateToKey(event.isoDate || event.date),
+          time: event.time || 'All Day',
+          type: event.category || 'Announcement',
+          color: categoryToColors(event.category).dot,
+          chip: categoryToColors(event.category),
+        });
+      });
     }
     
     return allEvents;
@@ -599,6 +657,15 @@ const CalendarScreen = () => {
     listAnim.setValue(1);
     dotScale.setValue(1);
   }, [showAllEvents, selectedDate, posts]);
+
+  const getUserInitials = () => {
+    if (!currentUser?.displayName) return '?';
+    const names = currentUser.displayName.split(' ');
+    if (names.length >= 2) {
+      return (names[0][0] + names[1][0]).toUpperCase();
+    }
+    return currentUser.displayName.substring(0, 2).toUpperCase();
+  };
 
   const days = useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
   const weekDays = useMemo(() => ['S', 'M', 'T', 'W', 'T', 'F', 'S'], []); // Sunday -> Saturday
@@ -881,7 +948,7 @@ const CalendarScreen = () => {
             </View>
           </TouchableOpacity>
         </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>School Calendar</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>DOrSU Calendar</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity 
             style={styles.profileButton} 

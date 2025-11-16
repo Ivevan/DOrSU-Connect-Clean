@@ -4,7 +4,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Image, Linking, Modal, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View, Platform } from 'react-native';
+import { ActivityIndicator, Animated, Image, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
@@ -494,7 +494,6 @@ const AIChat = () => {
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
         translucent={true}
       />
-
       {/* Background Gradient Layer */}
       <LinearGradient
         colors={[
@@ -512,7 +511,6 @@ const AIChat = () => {
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
       />
-      
       {/* Blur overlay on entire background - very subtle */}
       <BlurView
         intensity={Platform.OS === 'ios' ? 5 : 3}
@@ -795,7 +793,6 @@ const AIChat = () => {
           </TouchableOpacity>
         </View>
       </View>
-      
       {/* User Sidebar Component */}
       <UserSidebar
         isOpen={isHistoryOpen}
@@ -816,7 +813,6 @@ const AIChat = () => {
           }
         }}
       />
-      
       {/* Info Modal */}
       <Modal visible={isInfoOpen} transparent animationType="fade" onRequestClose={() => setIsInfoOpen(false)}>
         <View style={styles.infoModalOverlay}>
@@ -855,7 +851,6 @@ const AIChat = () => {
           </View>
         </View>
       </Modal>
-      
       {/* Main Content - Chat Messages */}
       <ScrollView 
         ref={scrollViewRef}
@@ -1050,7 +1045,6 @@ const AIChat = () => {
               multiline
               maxLength={2000}
             />
-            
             {inputText.trim() && (
               <TouchableOpacity 
                 style={[

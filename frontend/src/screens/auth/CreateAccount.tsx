@@ -501,23 +501,15 @@ const CreateAccount = () => {
           </Animated.View>
         </View>
         
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          bounces={Platform.OS === 'ios'}
-          keyboardDismissMode="interactive"
-          style={styles.scrollView}
-        >
-          <View style={[
-            styles.content,
-            {
-              paddingTop: insets.top,
-              paddingBottom: insets.bottom,
-              paddingLeft: insets.left,
-              paddingRight: insets.right,
-            },
-          ]}>
+        <View style={[
+          styles.content,
+          {
+            paddingTop: insets.top,
+            paddingBottom: insets.bottom,
+            paddingLeft: insets.left,
+            paddingRight: insets.right,
+          },
+        ]}>
         {/* Logo and Title Section */}
         <View style={styles.topSection}>
           <TouchableOpacity 
@@ -795,8 +787,7 @@ const CreateAccount = () => {
             </TouchableOpacity>
           </View>
         </View>
-          </View>
-        </ScrollView>
+        </View>
       </KeyboardWrapper>
       
       {/* Success Modal */}
@@ -870,14 +861,6 @@ const styles = StyleSheet.create({
     borderRadius: 250,
     opacity: 0.5,
     overflow: 'hidden',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'space-between',
-    paddingBottom: Platform.OS === 'android' ? 20 : 0,
   },
   content: {
     flex: 1,

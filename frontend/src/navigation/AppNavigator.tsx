@@ -77,16 +77,23 @@ const AppNavigator = () => {
         const userToken = await AsyncStorage.getItem('userToken');
         const userEmail = await AsyncStorage.getItem('userEmail');
         const authProvider = await AsyncStorage.getItem('authProvider');
+        const userRole = await AsyncStorage.getItem('userRole');
         
-        // If user has valid session, skip to main app (AIChat instead of SchoolUpdates)
+        // If user has valid session, determine initial screen based on role
         if ((userToken && userEmail) || (userEmail && authProvider === 'google')) {
-          setInitialRoute('AIChat');
+          // Check if user is admin
+          if (userRole === 'admin') {
+            setInitialRoute('AdminAIChat');
+          } else {
+            setInitialRoute('AIChat');
+          }
         } else {
           // Check for Firebase auth (if user logged in with Google)
           try {
             const { getCurrentUser } = require('../services/authService');
             const currentUser = getCurrentUser();
             if (currentUser?.email) {
+              // Default to AIChat for regular users
               setInitialRoute('AIChat');
             } else {
               setInitialRoute('SplashScreen');
@@ -224,6 +231,14 @@ const AppNavigator = () => {
         <Stack.Screen 
           name="AdminAIChat" 
           component={AdminAIChat}
+          options={{
+            animation: 'none' as const,
+            animationDuration: 0,
+            freezeOnBlur: false,
+            contentStyle: {
+              backgroundColor: 'transparent',
+            },
+          }}
         />
         <Stack.Screen 
           name="AdminSettings" 

@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../config/theme';
 import { useThemeActions, useThemeValues } from '../../contexts/ThemeContext';
 import * as Haptics from 'expo-haptics';
+import ThemeColorModal from '../../modals/ThemeColorModal';
 
 type RootStackParamList = {
   UserSettings: undefined;
@@ -22,6 +23,7 @@ const GeneralSettings = () => {
   const { toggleTheme } = useThemeActions();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [language, setLanguage] = useState('English');
+  const [isThemeColorModalVisible, setIsThemeColorModalVisible] = useState(false);
 
   const floatAnim1 = useRef(new Animated.Value(0)).current;
   const cloudAnim1 = useRef(new Animated.Value(0)).current;
@@ -241,6 +243,24 @@ const GeneralSettings = () => {
         >
           <Text style={[styles.sectionTitle, { color: t.colors.text }]}>General Settings</Text>
 
+          <TouchableOpacity 
+            style={[styles.settingItem, { borderBottomColor: t.colors.border }]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setIsThemeColorModalVisible(true);
+            }}
+          >
+            <View style={styles.settingLeft}>
+              <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
+                <Ionicons name="color-palette-outline" size={20} color="#FF9500" />
+              </View>
+              <Text style={[styles.settingTitle, { color: t.colors.text }]}>Theme Color</Text>
+            </View>
+            <View style={styles.settingRight}>
+              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+            </View>
+          </TouchableOpacity>
+
           <View style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
@@ -274,6 +294,12 @@ const GeneralSettings = () => {
           </TouchableOpacity>
         </BlurView>
       </ScrollView>
+
+      {/* Theme Color Modal */}
+      <ThemeColorModal
+        visible={isThemeColorModalVisible}
+        onClose={() => setIsThemeColorModalVisible(false)}
+      />
     </View>
   );
 };

@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { theme } from '../../config/theme';
 import { useThemeValues, useThemeActions } from '../../contexts/ThemeContext';
+import ThemeColorModal from '../../modals/ThemeColorModal';
 
 type RootStackParamList = {
   AdminSettings: undefined;
@@ -25,6 +26,7 @@ const AdminGeneralSettings = () => {
   // State for settings
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [isThemeColorModalVisible, setIsThemeColorModalVisible] = useState(false);
 
   // Animated floating background orbs
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -424,6 +426,24 @@ const AdminGeneralSettings = () => {
             tint={isDarkMode ? 'dark' : 'light'}
             style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
           >
+            <TouchableOpacity 
+              style={styles.settingItem}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setIsThemeColorModalVisible(true);
+              }}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
+                  <Ionicons name="color-palette-outline" size={20} color="#FF9500" />
+                </View>
+                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Theme Color</Text>
+              </View>
+              <View style={styles.settingRight}>
+                <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+              </View>
+            </TouchableOpacity>
+
             <View style={styles.settingItem}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
@@ -483,6 +503,12 @@ const AdminGeneralSettings = () => {
           </BlurView>
         </View>
       </ScrollView>
+
+      {/* Theme Color Modal */}
+      <ThemeColorModal
+        visible={isThemeColorModalVisible}
+        onClose={() => setIsThemeColorModalVisible(false)}
+      />
     </View>
   );
 };
@@ -623,6 +649,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
     gap: theme.spacing(1.5),
+  },
+  settingRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   settingIcon: {
     width: 32,

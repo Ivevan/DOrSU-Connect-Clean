@@ -8,12 +8,14 @@ import {
   Animated,
   Image,
   Easing,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { lightTheme as theme } from '../../config/theme';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -27,34 +29,25 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'SplashScree
 const SplashScreen = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const { isDarkMode, theme: t } = useTheme();
 
   // Animation values
   const logoScale = useRef(new Animated.Value(0)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
-  const backgroundOpacity = useRef(new Animated.Value(0)).current;
   const loadingBarWidth = useRef(new Animated.Value(0)).current;
   const loadingOpacity = useRef(new Animated.Value(0)).current;
   
-  // Tech overlay animations
-  const techFloat1 = useRef(new Animated.Value(0)).current;
-  const techFloat2 = useRef(new Animated.Value(0)).current;
-  const techFloat3 = useRef(new Animated.Value(0)).current;
-  const techFloat4 = useRef(new Animated.Value(0)).current;
-  const techFloat5 = useRef(new Animated.Value(0)).current;
-  const techFloat6 = useRef(new Animated.Value(0)).current;
-  const techFloat7 = useRef(new Animated.Value(0)).current;
-  const techFloat8 = useRef(new Animated.Value(0)).current;
+  // Floating background orbs (Copilot-style) - same as AIChat
+  const floatAnim1 = useRef(new Animated.Value(0)).current;
+  const cloudAnim1 = useRef(new Animated.Value(0)).current;
+  const cloudAnim2 = useRef(new Animated.Value(0)).current;
+  const lightSpot1 = useRef(new Animated.Value(0)).current;
+  const lightSpot2 = useRef(new Animated.Value(0)).current;
+  const lightSpot3 = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     // Start the animation sequence
     const startAnimations = () => {
-      // Background fade in
-      Animated.timing(backgroundOpacity, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-      }).start();
-
       // Logo entrance animation
       Animated.parallel([
         Animated.timing(logoOpacity, {
@@ -96,358 +89,370 @@ const SplashScreen = () => {
     startAnimations();
   }, [navigation]);
 
-  // Start tech floating animations
-  React.useEffect(() => {
-    const startTechAnimations = () => {
+  // Animate floating background orbs on mount (same as AIChat)
+  useEffect(() => {
+    const animations = [
       Animated.loop(
         Animated.sequence([
-          Animated.timing(techFloat1, {
+          Animated.timing(floatAnim1, {
             toValue: 1,
-            duration: 4000,
+            duration: 8000,
             useNativeDriver: true,
           }),
-          Animated.timing(techFloat1, {
+          Animated.timing(floatAnim1, {
             toValue: 0,
-            duration: 4000,
+            duration: 8000,
             useNativeDriver: true,
           }),
         ])
-      ).start();
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(cloudAnim1, {
+            toValue: 1,
+            duration: 15000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cloudAnim1, {
+            toValue: 0,
+            duration: 15000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(cloudAnim2, {
+            toValue: 1,
+            duration: 20000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cloudAnim2, {
+            toValue: 0,
+            duration: 20000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot1, {
+            toValue: 1,
+            duration: 12000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot1, {
+            toValue: 0,
+            duration: 12000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot2, {
+            toValue: 1,
+            duration: 18000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot2, {
+            toValue: 0,
+            duration: 18000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot3, {
+            toValue: 1,
+            duration: 14000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot3, {
+            toValue: 0,
+            duration: 14000,
+            useNativeDriver: true,
+          }),
+        ])
+      ),
+    ];
 
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(techFloat2, {
-            toValue: 1,
-            duration: 3500,
-            delay: 1000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(techFloat2, {
-            toValue: 0,
-            duration: 3500,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(techFloat3, {
-            toValue: 1,
-            duration: 4500,
-            delay: 2000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(techFloat3, {
-            toValue: 0,
-            duration: 4500,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      // Additional floating elements
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(techFloat4, {
-            toValue: 1,
-            duration: 3800,
-            delay: 500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(techFloat4, {
-            toValue: 0,
-            duration: 3800,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(techFloat5, {
-            toValue: 1,
-            duration: 4200,
-            delay: 1500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(techFloat5, {
-            toValue: 0,
-            duration: 4200,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(techFloat6, {
-            toValue: 1,
-            duration: 3600,
-            delay: 2500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(techFloat6, {
-            toValue: 0,
-            duration: 3600,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(techFloat7, {
-            toValue: 1,
-            duration: 4800,
-            delay: 800,
-            useNativeDriver: true,
-          }),
-          Animated.timing(techFloat7, {
-            toValue: 0,
-            duration: 4800,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(techFloat8, {
-            toValue: 1,
-            duration: 3200,
-            delay: 1800,
-            useNativeDriver: true,
-          }),
-          Animated.timing(techFloat8, {
-            toValue: 0,
-            duration: 3200,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    };
-    startTechAnimations();
+    animations.forEach(anim => anim.start());
   }, []);
 
 
   return (
-    <View style={[styles.container, {
-      paddingTop: insets.top,
-      paddingBottom: insets.bottom,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    }]}>
+    <View style={styles.container}>
       <StatusBar
         backgroundColor="transparent"
-        barStyle="dark-content"
+        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
         translucent={true}
         animated={true}
       />
       
-      {/* Gradient Background */}
-      <Animated.View style={[styles.gradientBackgroundContainer, { opacity: backgroundOpacity }]}>
-        <LinearGradient
-          colors={['#F8FAFC', '#F1F5F9', '#E2E8F0']}
-          style={styles.gradientBackground}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        />
-      </Animated.View>
+      {/* Background Gradient Layer */}
+      <LinearGradient
+        colors={[
+          isDarkMode ? '#0B1220' : '#FBF8F3',
+          isDarkMode ? '#111827' : '#F8F5F0',
+          isDarkMode ? '#1F2937' : '#F5F2ED'
+        ]}
+        style={styles.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+      />
       
-      {/* Tech Overlay Pattern */}
-      <Animated.View style={[styles.techOverlay, { opacity: backgroundOpacity }]}>
-        {/* Circuit-like lines */}
-        <View style={styles.techLine1} />
-        <View style={styles.techLine2} />
-        <View style={styles.techLine3} />
-        
-        {/* Floating tech dots */}
-        <View style={styles.techDot1} />
-        <View style={styles.techDot2} />
-        <View style={styles.techDot3} />
-        <View style={styles.techDot4} />
-        <View style={styles.techDot5} />
-        <View style={styles.techDot6} />
-        
-        {/* Animated floating tech elements */}
-        <Animated.View style={[
-          styles.techFloatElement1,
-          {
-            opacity: techFloat1.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.4, 0.8],
-            }),
-            transform: [{
-              translateY: techFloat1.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, -15],
-              })
-            }]
-          }
-        ]} />
-        
-        <Animated.View style={[
-          styles.techFloatElement2,
-          {
-            opacity: techFloat2.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.5, 0.9],
-            }),
-            transform: [{
-              translateX: techFloat2.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, 12],
-              })
-            }]
-          }
-        ]} />
-        
-        <Animated.View style={[
-          styles.techFloatElement3,
-          {
-            opacity: techFloat3.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.6, 1.0],
-            }),
-            transform: [{
-              scale: techFloat3.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.7, 1.3],
-              })
-            }]
-          }
-        ]} />
-        
-        {/* Additional floating tech elements */}
-        <Animated.View style={[
-          styles.techFloatElement4,
-          {
-            opacity: techFloat4.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.3, 0.7],
-            }),
-            transform: [
-              {
-                translateY: techFloat4.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -20],
-                })
-              },
-              {
-                translateX: techFloat4.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 8],
-                })
-              }
-            ]
-          }
-        ]} />
-        
-        <Animated.View style={[
-          styles.techFloatElement5,
-          {
-            opacity: techFloat5.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.4, 0.8],
-            }),
-            transform: [
-              {
-                scale: techFloat5.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.5, 1.2],
-                })
-              },
-              {
-                translateX: techFloat5.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -15],
-                })
-              }
-            ]
-          }
-        ]} />
-        
-        <Animated.View style={[
-          styles.techFloatElement6,
-          {
-            opacity: techFloat6.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.5, 0.9],
-            }),
-            transform: [
-              {
-                translateY: techFloat6.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 18],
-                })
-              },
-              {
-                rotate: techFloat6.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['0deg', '180deg'],
-                })
-              }
-            ]
-          }
-        ]} />
-        
-        <Animated.View style={[
-          styles.techFloatElement7,
-          {
-            opacity: techFloat7.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.3, 0.6],
-            }),
-            transform: [
-              {
-                translateX: techFloat7.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -10],
-                })
-              },
-              {
-                scale: techFloat7.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.8, 1.1],
-                })
-              }
-            ]
-          }
-        ]} />
-        
-        <Animated.View style={[
-          styles.techFloatElement8,
-          {
-            opacity: techFloat8.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.4, 0.8],
-            }),
-            transform: [
-              {
-                translateY: techFloat8.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -12],
-                })
-              },
-              {
-                translateX: techFloat8.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 6],
-                })
-              },
-              {
-                rotate: techFloat8.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['0deg', '90deg'],
-                })
-              }
-            ]
-          }
-        ]} />
-      </Animated.View>
+      {/* Blur overlay on entire background - very subtle */}
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 5 : 3}
+        tint="default"
+        style={styles.backgroundGradient}
+      />
 
-      <View style={styles.content}>
+      {/* Animated Floating Background Orbs (Copilot-style) - same as AIChat */}
+      <View style={styles.floatingBgContainer} pointerEvents="none">
+        {/* Light Spot 1 - Top right gentle glow */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              top: '8%',
+              right: '12%',
+              transform: [
+                {
+                  translateX: lightSpot1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -15],
+                  }),
+                },
+                {
+                  translateY: lightSpot1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 12],
+                  }),
+                },
+                {
+                  scale: lightSpot1.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.08, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot1}>
+            <LinearGradient
+              colors={['rgba(255, 220, 180, 0.35)', 'rgba(255, 200, 150, 0.18)', 'rgba(255, 230, 200, 0.08)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.2, y: 0.2 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Light Spot 2 - Middle left soft circle */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              top: '45%',
+              left: '8%',
+              transform: [
+                {
+                  translateX: lightSpot2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 18],
+                  }),
+                },
+                {
+                  translateY: lightSpot2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -10],
+                  }),
+                },
+                {
+                  scale: lightSpot2.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.06, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot2}>
+            <LinearGradient
+              colors={['rgba(255, 210, 170, 0.28)', 'rgba(255, 200, 160, 0.15)', 'rgba(255, 220, 190, 0.06)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.3, y: 0.3 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Light Spot 3 - Bottom center blurry glow */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              bottom: '12%',
+              left: '55%',
+              transform: [
+                {
+                  translateX: lightSpot3.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -20],
+                  }),
+                },
+                {
+                  translateY: lightSpot3.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 8],
+                  }),
+                },
+                {
+                  scale: lightSpot3.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.1, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot3}>
+            <LinearGradient
+              colors={['rgba(255, 190, 140, 0.25)', 'rgba(255, 180, 130, 0.12)', 'rgba(255, 210, 170, 0.05)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.4, y: 0.4 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Cloud variation 1 - Top left soft light patch */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              top: '15%',
+              left: '10%',
+              transform: [
+                {
+                  translateX: cloudAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 20],
+                  }),
+                },
+                {
+                  translateY: cloudAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -15],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.cloudPatch1}>
+            <LinearGradient
+              colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.22)', 'rgba(255, 230, 200, 0.1)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Cloud variation 2 - Bottom right gentle tone */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              bottom: '20%',
+              right: '15%',
+              transform: [
+                {
+                  translateX: cloudAnim2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -25],
+                  }),
+                },
+                {
+                  translateY: cloudAnim2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 10],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.cloudPatch2}>
+            <LinearGradient
+              colors={['rgba(255, 190, 140, 0.32)', 'rgba(255, 200, 160, 0.18)', 'rgba(255, 220, 190, 0.08)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.3, y: 0.3 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Orb 1 - Soft Orange Glow (Center area) */}
+        <Animated.View
+          style={[
+            styles.floatingOrbWrapper,
+            {
+              top: '35%',
+              left: '50%',
+              marginLeft: -250,
+              transform: [
+                {
+                  translateX: floatAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-30, 30],
+                  }),
+                },
+                {
+                  translateY: floatAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-20, 20],
+                  }),
+                },
+                {
+                  scale: floatAnim1.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.05, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.floatingOrb1}>
+            <LinearGradient
+              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+            <BlurView
+              intensity={Platform.OS === 'ios' ? 60 : 45}
+              tint="default"
+              style={StyleSheet.absoluteFillObject}
+            />
+          </View>
+        </Animated.View>
+      </View>
+
+      <View style={[styles.content, {
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom,
+        paddingLeft: insets.left,
+        paddingRight: insets.right,
+      }]}>
         {/* Logo Container */}
         <View style={styles.logoContainer}>
           <Animated.View
@@ -476,11 +481,14 @@ const SplashScreen = () => {
             },
           ]}
         >
-          <View style={styles.loadingBarBackground}>
+          <View style={[styles.loadingBarBackground, {
+            backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+          }]}>
             <Animated.View
               style={[
                 styles.loadingBar,
                 {
+                  backgroundColor: '#FF9500',
                   width: loadingBarWidth.interpolate({
                     inputRange: [0, 1],
                     outputRange: ['0%', '100%'],
@@ -499,201 +507,83 @@ const SplashScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.surfaceAlt,
   },
-  gradientBackgroundContainer: {
+  backgroundGradient: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
+    zIndex: -1,
   },
-  gradientBackground: {
-    flex: 1,
-  },
-  techOverlay: {
+  // Floating background orbs container (Copilot-style)
+  floatingBgContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    opacity: 0.4,
+    overflow: 'hidden',
+    zIndex: 0,
   },
-  // Circuit-like lines
-  techLine1: {
+  floatingOrbWrapper: {
     position: 'absolute',
-    top: '15%',
-    left: '10%',
-    width: width * 0.3,
-    height: 2,
-    backgroundColor: '#2196F3',
-    opacity: 0.6,
-    transform: [{ rotate: '15deg' }],
   },
-  techLine2: {
+  cloudWrapper: {
     position: 'absolute',
-    top: '25%',
-    right: '15%',
-    width: width * 0.25,
-    height: 2,
-    backgroundColor: '#2196F3',
+  },
+  cloudPatch1: {
+    width: 350,
+    height: 350,
+    borderRadius: 175,
+    opacity: 0.25,
+    overflow: 'hidden',
+  },
+  cloudPatch2: {
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    opacity: 0.22,
+    overflow: 'hidden',
+  },
+  lightSpot1: {
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    opacity: 0.2,
+    overflow: 'hidden',
+  },
+  lightSpot2: {
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    opacity: 0.18,
+    overflow: 'hidden',
+  },
+  lightSpot3: {
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    opacity: 0.16,
+    overflow: 'hidden',
+  },
+  floatingOrb1: {
+    width: 500,
+    height: 500,
+    borderRadius: 250,
     opacity: 0.5,
-    transform: [{ rotate: '-20deg' }],
-  },
-  techLine3: {
-    position: 'absolute',
-    bottom: '30%',
-    left: '20%',
-    width: width * 0.4,
-    height: 2,
-    backgroundColor: '#2196F3',
-    opacity: 0.55,
-    transform: [{ rotate: '10deg' }],
-  },
-  // Floating tech dots
-  techDot1: {
-    position: 'absolute',
-    top: '20%',
-    left: '25%',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#2196F3',
-    opacity: 0.7,
-  },
-  techDot2: {
-    position: 'absolute',
-    top: '35%',
-    right: '30%',
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: '#2196F3',
-    opacity: 0.6,
-  },
-  techDot3: {
-    position: 'absolute',
-    top: '45%',
-    left: '15%',
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: '#2196F3',
-    opacity: 0.65,
-  },
-  techDot4: {
-    position: 'absolute',
-    bottom: '25%',
-    right: '20%',
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: '#2196F3',
-    opacity: 0.6,
-  },
-  techDot5: {
-    position: 'absolute',
-    bottom: '40%',
-    left: '70%',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#2196F3',
-    opacity: 0.55,
-  },
-  techDot6: {
-    position: 'absolute',
-    top: '60%',
-    right: '10%',
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#2196F3',
-    opacity: 0.7,
-  },
-  // Animated floating tech elements
-  techFloatElement1: {
-    position: 'absolute',
-    top: '30%',
-    left: '40%',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#2196F3',
-  },
-  techFloatElement2: {
-    position: 'absolute',
-    top: '65%',
-    right: '35%',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#2196F3',
-  },
-  techFloatElement3: {
-    position: 'absolute',
-    bottom: '35%',
-    left: '60%',
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#2196F3',
-  },
-  techFloatElement4: {
-    position: 'absolute',
-    top: '40%',
-    right: '25%',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#2196F3',
-  },
-  techFloatElement5: {
-    position: 'absolute',
-    top: '70%',
-    left: '25%',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#2196F3',
-  },
-  techFloatElement6: {
-    position: 'absolute',
-    top: '15%',
-    right: '45%',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#2196F3',
-  },
-  techFloatElement7: {
-    position: 'absolute',
-    bottom: '20%',
-    right: '40%',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#2196F3',
-  },
-  techFloatElement8: {
-    position: 'absolute',
-    top: '55%',
-    left: '45%',
-    width: 9,
-    height: 9,
-    borderRadius: 4.5,
-    backgroundColor: '#2196F3',
+    overflow: 'hidden',
   },
   content: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: theme.spacing(4),
+    paddingHorizontal: 20,
   },
   logoContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: theme.spacing(3),
+    marginBottom: 24,
   },
   logoWrapper: {
     width: width * 0.4,
@@ -707,18 +597,16 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     alignItems: 'center',
-    marginTop: theme.spacing(2),
+    marginTop: 16,
   },
   loadingBarBackground: {
     width: width * 0.8,
     height: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
     borderRadius: 4,
     overflow: 'hidden',
   },
   loadingBar: {
     height: '100%',
-    backgroundColor: '#2196F3',
     borderRadius: 4,
   },
 });

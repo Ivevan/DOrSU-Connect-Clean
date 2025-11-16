@@ -539,7 +539,7 @@ const AdminSettings = () => {
             onPress={openLogout}
             activeOpacity={0.7}
           >
-            <Ionicons name="log-out-outline" size={22} color="#EF4444" />
+            <Ionicons name="log-out-outline" size={18} color="#EF4444" />
             <Text style={[styles.signOutText, { color: '#EF4444' }]}>Sign out</Text>
           </TouchableOpacity>
         </View>
@@ -757,18 +757,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: themeConfig.spacing(2.5),
-    paddingHorizontal: themeConfig.spacing(3),
+    paddingVertical: themeConfig.spacing(1.5),
+    paddingHorizontal: themeConfig.spacing(2),
     borderRadius: themeConfig.radii.md,
     marginTop: themeConfig.spacing(2),
     marginBottom: 0,
-    gap: themeConfig.spacing(1.5),
+    gap: themeConfig.spacing(1),
     borderWidth: 1,
   },
   signOutText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   backgroundGradient: {
     position: 'absolute',

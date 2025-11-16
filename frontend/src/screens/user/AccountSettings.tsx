@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, TextInput, Alert } from 'react-native';
+import { Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
@@ -129,17 +129,34 @@ const AccountSettings = () => {
 
     try {
       setDeleteStatus('idle');
+      
       // Clear user data from AsyncStorage
-      await AsyncStorage.removeItem('userName');
-      await AsyncStorage.removeItem('userEmail');
-      await AsyncStorage.removeItem('userPhoto');
-      await AsyncStorage.removeItem('userToken');
-      await AsyncStorage.removeItem('userId');
-      await AsyncStorage.removeItem('authProvider');
+      await AsyncStorage.multiRemove(['userToken', 'userEmail', 'userName', 'userId', 'userPhoto', 'authProvider']);
       
       // Delete Firebase user account if available
-      if (currentUser) {
-        await currentUser.delete?.();
+      if (currentUser && typeof currentUser.delete === 'function') {
+        try {
+          await currentUser.delete();
+        } catch (firebaseError) {
+          console.error('Firebase account deletion error:', firebaseError);
+          // Continue with local deletion even if Firebase fails
+        }
+      }
+      
+      // Sign out from Firebase if user is signed in
+      try {
+        const { getFirebaseAuth } = require('../../config/firebase');
+        const auth = getFirebaseAuth();
+        
+        const isJSSDK = auth.signOut !== undefined;
+        if (isJSSDK) {
+          const { signOut } = require('firebase/auth');
+          await signOut(auth);
+        } else {
+          await auth.signOut();
+        }
+      } catch (signOutError) {
+        console.error('Firebase sign out error:', signOutError);
       }
       
       setDeleteStatus('success');
@@ -166,7 +183,7 @@ const AccountSettings = () => {
     // Navigate back to GetStarted after successful deletion
     navigation.reset({
       index: 0,
-      routes: [{ name: 'GetStarted' as never }],
+      routes: [{ name: 'GetStarted' }],
     });
   };
 
@@ -444,9 +461,13 @@ const AccountSettings = () => {
         </BlurView>
 
         <TouchableOpacity 
-          style={[styles.deleteAccountButton, { borderColor: '#EF4444' }]}
+          style={[styles.deleteAccountButton, { 
+            borderColor: '#EF4444',
+            backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.1)' : 'rgba(239, 68, 68, 0.05)'
+          }]}
           onPress={() => setIsDeleteModalVisible(true)}
         >
+          <Ionicons name="trash-outline" size={18} color="#EF4444" />
           <Text style={styles.deleteAccountText}>Delete Account</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -725,14 +746,15 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   deleteAccountButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 24,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: '#EF4444',
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: 8,
   },
   deleteAccountText: {
     fontSize: 14,
@@ -759,6 +781,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 12,
+  },
+  modalHeader: {
+    alignItems: 'center',
+    marginBottom: 16,
   },
   modalTitle: {
     fontSize: 18,
@@ -795,6 +821,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 44,
   },
   cancelModalButton: {
     borderWidth: 1,

@@ -3,12 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useRef } from 'react';
 import { Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../config/api.config';
-import { lightTheme as theme } from '../../config/theme';
+import { useTheme } from '../../contexts/ThemeContext';
 import SuccessModal from '../../modals/SuccessModal';
 
 type RootStackParamList = {
@@ -24,17 +25,16 @@ const { width, height } = Dimensions.get('window');
 const CreateAccount = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const { isDarkMode, theme: t } = useTheme();
 
   // Animation values
   const logoScale = useRef(new Animated.Value(1)).current;
-  const logoGlow = useRef(new Animated.Value(0)).current;
   const signUpButtonScale = useRef(new Animated.Value(1)).current;
   const floatingAnimation = useRef(new Animated.Value(0)).current;
-  const techFloat1 = useRef(new Animated.Value(0)).current;
-  const techFloat2 = useRef(new Animated.Value(0)).current;
-  const techFloat3 = useRef(new Animated.Value(0)).current;
-  const techFloat4 = useRef(new Animated.Value(0)).current;
-  const techFloat5 = useRef(new Animated.Value(0)).current;
+  const floatAnim1 = useRef(new Animated.Value(0)).current;
+  const lightSpot1 = useRef(new Animated.Value(0)).current;
+  const lightSpot2 = useRef(new Animated.Value(0)).current;
+  const lightSpot3 = useRef(new Animated.Value(0)).current;
   
   // Screen transition animations
   const screenOpacity = useRef(new Animated.Value(0)).current;
@@ -107,27 +107,67 @@ const CreateAccount = () => {
     };
     startFloatingAnimation();
 
-    // Start tech floating animations
-    const startTechAnimations = () => {
-      [techFloat1, techFloat2, techFloat3, techFloat4, techFloat5].forEach((floatRef, index) => {
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(floatRef, {
-              toValue: 1,
-              duration: 4000 + index * 500,
-              delay: index * 500,
-              useNativeDriver: true,
-            }),
-            Animated.timing(floatRef, {
-              toValue: 0,
-              duration: 4000 + index * 500,
-              useNativeDriver: true,
-            }),
-          ])
-        ).start();
-      });
-    };
-    startTechAnimations();
+    // Start orb animations
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim1, {
+          toValue: 1,
+          duration: 8000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim1, {
+          toValue: 0,
+          duration: 8000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    // Light spot animations
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(lightSpot1, {
+          toValue: 1,
+          duration: 12000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(lightSpot1, {
+          toValue: 0,
+          duration: 12000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(lightSpot2, {
+          toValue: 1,
+          duration: 18000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(lightSpot2, {
+          toValue: 0,
+          duration: 18000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(lightSpot3, {
+          toValue: 1,
+          duration: 14000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(lightSpot3, {
+          toValue: 0,
+          duration: 14000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
   }, []);
 
   // Button press handler
@@ -289,142 +329,206 @@ const CreateAccount = () => {
   const keyboardProps = Platform.OS === 'ios' ? { behavior: 'padding' as const, keyboardVerticalOffset: 0 } : {};
 
   return (
-    <View style={[styles.container, {
-      paddingTop: insets.top,
-      paddingBottom: insets.bottom,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    }]}>
+    <View style={styles.container}>
       <KeyboardWrapper 
         style={styles.keyboardAvoidingView}
         {...keyboardProps}
     >
       <StatusBar
         backgroundColor="transparent"
-        barStyle="dark-content"
+        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
         translucent={true}
-          animated={true}
-        />
+        animated={true}
+      />
         
         {/* Gradient Background */}
-        <Animated.View style={[styles.gradientBackgroundContainer, { opacity: backgroundOpacity }]}>
+        <Animated.View style={[styles.gradientBackground, { opacity: backgroundOpacity }]}>
           <LinearGradient
-            colors={['#F8FAFC', '#F1F5F9', '#E2E8F0']}
+            colors={isDarkMode 
+              ? ['#0B1220', '#111827', '#1F2937'] 
+              : ['#FBF8F3', '#F8F5F0', '#F5F2ED']
+            }
             style={styles.gradientBackground}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           />
         </Animated.View>
         
-        {/* Tech Overlay Pattern */}
-        <Animated.View style={[styles.techOverlay, { opacity: backgroundOpacity }]}>
-          <View style={styles.techLine1} />
-          <View style={styles.techLine2} />
-          <View style={styles.techLine3} />
-          <View style={styles.techDot1} />
-          <View style={styles.techDot2} />
-          <View style={styles.techDot3} />
-          <View style={styles.techDot4} />
-          <View style={styles.techDot5} />
-          <View style={styles.techDot6} />
-          
-          {/* Animated floating tech elements */}
-          <Animated.View style={[
-            styles.techFloatElement1,
-            {
-              opacity: techFloat1.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.4, 0.8],
-              }),
-              transform: [{
-                translateY: techFloat1.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -15],
-                })
-              }]
-            }
-          ]} />
-          
-          <Animated.View style={[
-            styles.techFloatElement2,
-            {
-              opacity: techFloat2.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.5, 0.9],
-              }),
-              transform: [{
-                translateX: techFloat2.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 12],
-                })
-              }]
-            }
-          ]} />
-          
-          <Animated.View style={[
-            styles.techFloatElement3,
-            {
-              opacity: techFloat3.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.6, 1.0],
-              }),
-              transform: [{
-                scale: techFloat3.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.7, 1.3],
-                })
-              }]
-            }
-          ]} />
-          
-          <Animated.View style={[
-            styles.techFloatElement4,
-            {
-              opacity: techFloat4.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.3, 0.7],
-              }),
-              transform: [
-                {
-                  translateY: techFloat4.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -20],
-                  })
-                },
-                {
-                  translateX: techFloat4.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 8],
-                  })
-                }
-              ]
-            }
-          ]} />
-          
-          <Animated.View style={[
-            styles.techFloatElement5,
-            {
-              opacity: techFloat5.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.4, 0.8],
-              }),
-              transform: [
-                {
-                  scale: techFloat5.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.5, 1.2],
-                  })
-                },
-                {
-                  translateX: techFloat5.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -15],
-                  })
-                }
-              ]
-            }
-          ]} />
-        </Animated.View>
+        {/* Blur overlay on entire background - very subtle */}
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 5 : 3}
+          tint="default"
+          style={styles.gradientBackground}
+        />
+
+        {/* Animated Floating Background Orbs (Copilot-style) */}
+        <View style={styles.floatingBgContainer} pointerEvents="none">
+          {/* Light Spot 1 - Top right gentle glow */}
+          <Animated.View
+            style={[
+              styles.cloudWrapper,
+              {
+                top: '8%',
+                right: '12%',
+                transform: [
+                  {
+                    translateX: lightSpot1.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -15],
+                    }),
+                  },
+                  {
+                    translateY: lightSpot1.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, 12],
+                    }),
+                  },
+                  {
+                    scale: lightSpot1.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [1, 1.08, 1],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View style={styles.lightSpot1}>
+              <LinearGradient
+                colors={['rgba(255, 220, 180, 0.35)', 'rgba(255, 200, 150, 0.18)', 'rgba(255, 230, 200, 0.08)']}
+                style={StyleSheet.absoluteFillObject}
+                start={{ x: 0.2, y: 0.2 }}
+                end={{ x: 1, y: 1 }}
+              />
+            </View>
+          </Animated.View>
+
+          {/* Light Spot 2 - Middle left soft circle */}
+          <Animated.View
+            style={[
+              styles.cloudWrapper,
+              {
+                top: '45%',
+                left: '8%',
+                transform: [
+                  {
+                    translateX: lightSpot2.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, 18],
+                    }),
+                  },
+                  {
+                    translateY: lightSpot2.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -10],
+                    }),
+                  },
+                  {
+                    scale: lightSpot2.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [1, 1.06, 1],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View style={styles.lightSpot2}>
+              <LinearGradient
+                colors={['rgba(255, 210, 170, 0.28)', 'rgba(255, 200, 160, 0.15)', 'rgba(255, 220, 190, 0.06)']}
+                style={StyleSheet.absoluteFillObject}
+                start={{ x: 0.3, y: 0.3 }}
+                end={{ x: 1, y: 1 }}
+              />
+            </View>
+          </Animated.View>
+
+          {/* Light Spot 3 - Bottom center blurry glow */}
+          <Animated.View
+            style={[
+              styles.cloudWrapper,
+              {
+                bottom: '12%',
+                left: '55%',
+                transform: [
+                  {
+                    translateX: lightSpot3.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -20],
+                    }),
+                  },
+                  {
+                    translateY: lightSpot3.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, 8],
+                    }),
+                  },
+                  {
+                    scale: lightSpot3.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [1, 1.1, 1],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View style={styles.lightSpot3}>
+              <LinearGradient
+                colors={['rgba(255, 190, 140, 0.25)', 'rgba(255, 180, 130, 0.12)', 'rgba(255, 210, 170, 0.05)']}
+                style={StyleSheet.absoluteFillObject}
+                start={{ x: 0.4, y: 0.4 }}
+                end={{ x: 1, y: 1 }}
+              />
+            </View>
+          </Animated.View>
+
+          {/* Orb 1 - Soft Orange Glow */}
+          <Animated.View
+            style={[
+              styles.floatingOrbWrapper,
+              {
+                top: '35%',
+                left: '50%',
+                marginLeft: -250,
+                transform: [
+                  {
+                    translateX: floatAnim1.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-30, 30],
+                    }),
+                  },
+                  {
+                    translateY: floatAnim1.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-20, 20],
+                    }),
+                  },
+                  {
+                    scale: floatAnim1.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: [1, 1.05, 1],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View style={styles.floatingOrb1}>
+              <LinearGradient
+                colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+                style={StyleSheet.absoluteFillObject}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              />
+              <BlurView
+                intensity={Platform.OS === 'ios' ? 60 : 45}
+                tint="default"
+                style={StyleSheet.absoluteFillObject}
+              />
+            </View>
+          </Animated.View>
+        </View>
         
         <ScrollView 
           contentContainerStyle={styles.scrollContent}
@@ -437,6 +541,10 @@ const CreateAccount = () => {
           <Animated.View style={[
             styles.content,
             {
+              paddingTop: insets.top,
+              paddingBottom: insets.bottom,
+              paddingLeft: insets.left,
+              paddingRight: insets.right,
               opacity: screenOpacity,
               transform: [{ translateY: contentTranslateY }],
             },
@@ -458,55 +566,11 @@ const CreateAccount = () => {
                 }
               ],
             }}>
-              <Animated.View style={[
-                styles.logoGlow,
-                {
-                  opacity: logoGlow,
-                },
-              ]} />
               <Image source={require('../../../../assets/DOrSU.png')} style={styles.logoImage} />
-              <View style={styles.sparkleContainer}>
-                <Animated.View style={[styles.sparkle, styles.sparkle1, {
-                  opacity: floatingAnimation.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [0.3, 0.8, 0.3],
-                  }),
-                  transform: [{
-                    scale: floatingAnimation.interpolate({
-                      inputRange: [0, 0.5, 1],
-                      outputRange: [0.8, 1.2, 0.8],
-                    })
-                  }]
-                }]} />
-                <Animated.View style={[styles.sparkle, styles.sparkle2, {
-                  opacity: floatingAnimation.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [0.5, 1, 0.5],
-                  }),
-                  transform: [{
-                    scale: floatingAnimation.interpolate({
-                      inputRange: [0, 0.5, 1],
-                      outputRange: [1, 0.8, 1],
-                    })
-                  }]
-                }]} />
-                <Animated.View style={[styles.sparkle, styles.sparkle3, {
-                  opacity: floatingAnimation.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [0.4, 0.9, 0.4],
-                  }),
-                  transform: [{
-                    scale: floatingAnimation.interpolate({
-                      inputRange: [0, 0.5, 1],
-                      outputRange: [0.9, 1.1, 0.9],
-                    })
-                  }]
-                }]} />
-              </View>
             </Animated.View>
           </TouchableOpacity>
-            <Text style={styles.welcomeText}>Create Account</Text>
-            <Text style={styles.signInText}>Sign up to get started</Text>
+            <Text style={[styles.welcomeText, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Create Account</Text>
+            <Text style={[styles.signInText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>Sign up to get started</Text>
         </View>
 
         {/* Form Section */}
@@ -515,13 +579,10 @@ const CreateAccount = () => {
             <Animated.View style={[
               styles.inputWrapper,
               {
+                backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.9)',
                 borderColor: usernameFocus.interpolate({
                   inputRange: [0, 1],
-                  outputRange: ['rgba(0, 0, 0, 0.05)', '#2196F3'],
-                }),
-                shadowOpacity: usernameFocus.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.1, 0.2],
+                  outputRange: [isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)', '#FF9500'],
                 }),
               }
             ]}>
@@ -558,13 +619,10 @@ const CreateAccount = () => {
             <Animated.View style={[
               styles.inputWrapper,
               {
+                backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.9)',
                 borderColor: emailFocus.interpolate({
                   inputRange: [0, 1],
-                  outputRange: ['rgba(0, 0, 0, 0.05)', '#2196F3'],
-                }),
-                shadowOpacity: emailFocus.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.1, 0.2],
+                  outputRange: [isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)', '#FF9500'],
                 }),
               }
             ]}>
@@ -602,13 +660,10 @@ const CreateAccount = () => {
             <Animated.View style={[
               styles.inputWrapper,
               {
+                backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.9)',
                 borderColor: passwordFocus.interpolate({
                   inputRange: [0, 1],
-                  outputRange: ['rgba(0, 0, 0, 0.05)', '#2196F3'],
-                }),
-                shadowOpacity: passwordFocus.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.1, 0.2],
+                  outputRange: [isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)', '#FF9500'],
                 }),
               }
             ]}>
@@ -656,13 +711,10 @@ const CreateAccount = () => {
             <Animated.View style={[
               styles.inputWrapper,
               {
+                backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.9)',
                 borderColor: confirmPasswordFocus.interpolate({
                   inputRange: [0, 1],
-                  outputRange: ['rgba(0, 0, 0, 0.05)', '#2196F3'],
-                }),
-                shadowOpacity: confirmPasswordFocus.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.1, 0.2],
+                  outputRange: [isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)', '#FF9500'],
                 }),
               }
             ]}>
@@ -726,48 +778,51 @@ const CreateAccount = () => {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               activeOpacity={0.8}
             >
-              <LinearGradient
-                colors={isLoading ? ['#6B7280', '#9CA3AF'] : ['#1F2937', '#374151']}
-                style={styles.signUpButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                pointerEvents="none"
+              <BlurView
+                intensity={Platform.OS === 'ios' ? 80 : 60}
+                tint={isDarkMode ? 'dark' : 'light'}
+                style={styles.buttonBlur}
               >
-                {isLoading ? (
-                  <>
-                    <Animated.View style={[
-                      styles.loadingSpinner,
-                      {
-                        transform: [{
-                          rotate: loadingRotation.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: ['0deg', '360deg'],
-                          })
-                        }]
-                      }
-                    ]}>
-                      <MaterialIcons name="refresh" size={24} color="white" />
-                    </Animated.View>
-                    <Text style={styles.signUpButtonText}>Creating Account...</Text>
-                  </>
-                ) : (
-                  <>
-                    <MaterialIcons name="person-add" size={24} color="white" style={styles.buttonIcon} />
-                    <Text style={styles.signUpButtonText}>Sign Up</Text>
-                  </>
-                )}
-              </LinearGradient>
+                <View style={[
+                  styles.buttonContent,
+                  { backgroundColor: isDarkMode ? 'rgba(37, 99, 235, 0.15)' : 'rgba(31, 41, 55, 0.15)' }
+                ]}>
+                  {isLoading ? (
+                    <>
+                      <Animated.View style={[
+                        styles.loadingSpinner,
+                        {
+                          transform: [{
+                            rotate: loadingRotation.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: ['0deg', '360deg'],
+                            })
+                          }]
+                        }
+                      ]}>
+                        <MaterialIcons name="refresh" size={24} color={isDarkMode ? '#60A5FA' : '#1F2937'} />
+                      </Animated.View>
+                      <Text style={[styles.signUpButtonText, { color: isDarkMode ? '#E5E7EB' : '#1F2937' }]}>Creating Account...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <MaterialIcons name="person-add" size={24} color={isDarkMode ? '#60A5FA' : '#1F2937'} style={styles.buttonIcon} />
+                      <Text style={[styles.signUpButtonText, { color: isDarkMode ? '#E5E7EB' : '#1F2937' }]}>Sign Up</Text>
+                    </>
+                  )}
+                </View>
+              </BlurView>
           </TouchableOpacity>
           </Animated.View>
 
           <View style={styles.signUpContainer}>
-            <Text style={styles.signUpText}>Already have an account? </Text>
+            <Text style={[styles.signUpText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>Already have an account? </Text>
             <TouchableOpacity 
               onPress={() => navigation.navigate('SignIn')}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               style={styles.signUpLinkButton}
             >
-              <Text style={styles.signUpLink}>Sign In</Text>
+              <Text style={[styles.signUpLink, { color: isDarkMode ? '#60A5FA' : '#1F2937' }]}>Sign In</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -791,163 +846,61 @@ const CreateAccount = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.surfaceAlt,
   },
   keyboardAvoidingView: {
     flex: 1,
   },
-  gradientBackgroundContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
   gradientBackground: {
-    flex: 1,
-  },
-  techOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    opacity: 0.4,
+    zIndex: -1,
   },
-  techLine1: {
+  // Floating background orbs container (Copilot-style)
+  floatingBgContainer: {
     position: 'absolute',
-    top: '15%',
-    left: '10%',
-    width: width * 0.3,
-    height: 2,
-    backgroundColor: '#2196F3',
-    opacity: 0.6,
-    transform: [{ rotate: '15deg' }],
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+    zIndex: 0,
   },
-  techLine2: {
+  floatingOrbWrapper: {
     position: 'absolute',
-    top: '25%',
-    right: '15%',
-    width: width * 0.25,
-    height: 2,
-    backgroundColor: '#2196F3',
+  },
+  cloudWrapper: {
+    position: 'absolute',
+  },
+  lightSpot1: {
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    opacity: 0.2,
+    overflow: 'hidden',
+  },
+  lightSpot2: {
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    opacity: 0.18,
+    overflow: 'hidden',
+  },
+  lightSpot3: {
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    opacity: 0.16,
+    overflow: 'hidden',
+  },
+  floatingOrb1: {
+    width: 500,
+    height: 500,
+    borderRadius: 250,
     opacity: 0.5,
-    transform: [{ rotate: '-20deg' }],
-  },
-  techLine3: {
-    position: 'absolute',
-    bottom: '30%',
-    left: '20%',
-    width: width * 0.4,
-    height: 2,
-    backgroundColor: '#2196F3',
-    opacity: 0.55,
-    transform: [{ rotate: '10deg' }],
-  },
-  techDot1: {
-    position: 'absolute',
-    top: '20%',
-    left: '25%',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#2196F3',
-    opacity: 0.7,
-  },
-  techDot2: {
-    position: 'absolute',
-    top: '35%',
-    right: '30%',
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: '#2196F3',
-    opacity: 0.6,
-  },
-  techDot3: {
-    position: 'absolute',
-    top: '45%',
-    left: '15%',
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: '#2196F3',
-    opacity: 0.65,
-  },
-  techDot4: {
-    position: 'absolute',
-    bottom: '25%',
-    right: '20%',
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: '#2196F3',
-    opacity: 0.6,
-  },
-  techDot5: {
-    position: 'absolute',
-    bottom: '40%',
-    left: '70%',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#2196F3',
-    opacity: 0.55,
-  },
-  techDot6: {
-    position: 'absolute',
-    top: '60%',
-    right: '10%',
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#2196F3',
-    opacity: 0.7,
-  },
-  techFloatElement1: {
-    position: 'absolute',
-    top: '30%',
-    left: '40%',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#2196F3',
-  },
-  techFloatElement2: {
-    position: 'absolute',
-    top: '65%',
-    right: '35%',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#2196F3',
-  },
-  techFloatElement3: {
-    position: 'absolute',
-    bottom: '35%',
-    left: '60%',
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#2196F3',
-  },
-  techFloatElement4: {
-    position: 'absolute',
-    top: '40%',
-    right: '25%',
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#2196F3',
-  },
-  techFloatElement5: {
-    position: 'absolute',
-    top: '70%',
-    left: '25%',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#2196F3',
+    overflow: 'hidden',
   },
   scrollView: {
     flex: 1,
@@ -959,20 +912,20 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: theme.spacing(2.5),
-    paddingTop: Platform.OS === 'android' ? theme.spacing(1) : theme.spacing(3),
-    paddingBottom: Platform.OS === 'android' ? theme.spacing(2) : theme.spacing(4),
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'android' ? 8 : 24,
+    paddingBottom: Platform.OS === 'android' ? 16 : 32,
     justifyContent: 'space-between',
   },
   topSection: {
     alignItems: 'center',
-    marginBottom: theme.spacing(2),
-    marginTop: theme.spacing(1),
+    marginBottom: 16,
+    marginTop: 8,
   },
   logoImage: {
     width: width * 0.28,
     height: width * 0.28,
-    marginBottom: theme.spacing(2),
+    marginBottom: 16,
     resizeMode: 'contain',
     shadowColor: '#1F2937',
     shadowOffset: { width: 0, height: 4 },
@@ -980,56 +933,10 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
-  logoGlow: {
-    position: 'absolute',
-    width: width * 0.32,
-    height: width * 0.32,
-    borderRadius: width * 0.16,
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#2196F3',
-    shadowColor: '#2196F3',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 15,
-    elevation: 12,
-    top: -width * 0.02,
-    left: -width * 0.02,
-  },
-  sparkleContainer: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-  },
-  sparkle: {
-    position: 'absolute',
-    width: 6,
-    height: 6,
-    backgroundColor: '#2196F3',
-    borderRadius: 3,
-    shadowColor: '#2196F3',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  sparkle1: {
-    top: '15%',
-    right: '10%',
-  },
-  sparkle2: {
-    bottom: '20%',
-    left: '8%',
-  },
-  sparkle3: {
-    top: '60%',
-    right: '5%',
-  },
   welcomeText: {
     fontSize: 32,
     fontWeight: '800',
-    color: theme.colors.text,
-    marginBottom: theme.spacing(2),
+    marginBottom: 16,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
     textAlign: 'center',
@@ -1040,10 +947,9 @@ const styles = StyleSheet.create({
   signInText: {
     fontSize: 18,
     fontWeight: '500',
-    color: theme.colors.textMuted,
     textAlign: 'center',
     letterSpacing: 0.3,
-    marginBottom: theme.spacing(1),
+    marginBottom: 8,
   },
   formContainer: {
     width: '100%',
@@ -1051,76 +957,70 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   inputContainer: {
-    marginBottom: theme.spacing(2),
+    marginBottom: 16,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.surface,
-    borderRadius: theme.radii.md,
-    marginBottom: theme.spacing(2),
-    paddingHorizontal: theme.spacing(2),
-    ...theme.shadow1,
+    borderRadius: 16,
+    marginBottom: 16,
+    paddingHorizontal: 16,
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.05)',
   },
   inputIcon: {
-    marginRight: theme.spacing(1.5),
+    marginRight: 12,
   },
   input: {
     flex: 1,
-    paddingVertical: theme.spacing(2),
+    paddingVertical: 16,
     fontSize: 16,
     fontWeight: '500',
-    color: theme.colors.text,
+    color: '#1F2937',
   },
   passwordToggle: {
-    padding: theme.spacing(1),
-    marginLeft: theme.spacing(1),
+    padding: 8,
+    marginLeft: 8,
   },
   signUpButton: {
-    borderRadius: theme.radii.lg,
+    borderRadius: 16,
     alignItems: 'center',
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'center',
-    marginBottom: theme.spacing(2),
-    ...theme.shadow2,
+    marginBottom: 16,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    ...Platform.select({
-      web: {
-        cursor: 'pointer',
-        userSelect: 'none',
-      },
-    }),
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   signUpButtonDisabled: {
     opacity: 0.7,
   },
-  signUpButtonGradient: {
-    paddingVertical: theme.spacing(2.5),
-    paddingHorizontal: theme.spacing(3),
+  buttonBlur: {
+    width: '100%',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  buttonContent: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
     alignItems: 'center',
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'center',
-    borderRadius: theme.radii.lg,
+    borderRadius: 16,
     minHeight: 56,
   },
   signUpButtonText: {
-    color: theme.colors.surface,
     fontSize: 17,
     fontWeight: '600',
-    marginLeft: theme.spacing(1.5),
+    marginLeft: 12,
     letterSpacing: 0.3,
   },
   buttonIcon: {
-    marginRight: theme.spacing(1),
+    marginRight: 8,
   },
   loadingSpinner: {
-    marginRight: theme.spacing(1),
+    marginRight: 8,
     transform: [{ rotate: '0deg' }],
   },
   signUpContainer: {
@@ -1129,12 +1029,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   signUpText: {
-    color: theme.colors.textMuted,
     fontSize: 15,
     letterSpacing: 0.2,
   },
   signUpLink: {
-    color: theme.colors.text,
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0.2,

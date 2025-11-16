@@ -1,16 +1,18 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useRef } from 'react';
 import { useColorScheme, Platform, Animated } from 'react-native';
-import { Theme, getTheme } from '../config/theme';
+import { Theme, getTheme, ColorTheme } from '../config/theme';
 
 // Split context into values and actions to reduce re-renders
 interface ThemeValuesType {
   isDarkMode: boolean;
   theme: Theme;
+  colorTheme: ColorTheme;
 }
 
 interface ThemeActionsType {
   toggleTheme: () => void;
   setTheme: (isDark: boolean) => void;
+  setColorTheme: (colorTheme: ColorTheme) => void;
 }
 
 interface ThemeContextType extends ThemeValuesType, ThemeActionsType {
@@ -52,6 +54,9 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   // Optional user preference override: 'light' | 'dark' | null (follow system)
   // Default to 'light' mode on app launch
   const [userPreference, setUserPreference] = useState<null | 'light' | 'dark'>('light');
+  
+  // Color theme preference - default to 'facet'
+  const [selectedColorTheme, setSelectedColorTheme] = useState<ColorTheme>('facet');
 
   // Animation for theme transition - use refs to avoid triggering re-renders
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -85,21 +90,27 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const setTheme = React.useCallback((isDark: boolean) => {
     setUserPreference(isDark ? 'dark' : 'light');
   }, []);
+  
+  const setColorTheme = React.useCallback((colorTheme: ColorTheme) => {
+    setSelectedColorTheme(colorTheme);
+  }, []);
 
   // Memoize theme calculation to prevent unnecessary recalculations
-  const theme = useMemo(() => getTheme(isDarkMode), [isDarkMode]);
+  const theme = useMemo(() => getTheme(isDarkMode, selectedColorTheme), [isDarkMode, selectedColorTheme]);
 
   // Split context values - only changes when theme actually changes
   const values: ThemeValuesType = useMemo(() => ({
     isDarkMode,
     theme,
-  }), [isDarkMode, theme]);
+    colorTheme: selectedColorTheme,
+  }), [isDarkMode, theme, selectedColorTheme]);
 
   // Split context actions - stable, never changes
   const actions: ThemeActionsType = useMemo(() => ({
     toggleTheme,
     setTheme,
-  }), [toggleTheme, setTheme]);
+    setColorTheme,
+  }), [toggleTheme, setTheme, setColorTheme]);
 
   // Full context value for backward compatibility
   const fullValue: ThemeContextType = useMemo(() => ({

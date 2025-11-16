@@ -2,11 +2,12 @@ import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
+import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useRef } from 'react';
-import { Alert, Animated, Dimensions, Easing, Image, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Dimensions, Easing, Image, Modal, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { lightTheme as theme } from '../../config/theme';
+import { useTheme } from '../../contexts/ThemeContext';
 import { getGoogleSignInErrorMessage, signInWithGoogle } from '../../services/authService';
 
 type RootStackParamList = {
@@ -14,6 +15,7 @@ type RootStackParamList = {
   SignIn: undefined;
   CreateAccount: undefined;
   AdminDashboard: undefined;
+  AdminAIChat: undefined;
   SchoolUpdates: undefined;
   AIChat: undefined;
 };
@@ -25,6 +27,7 @@ const { width, height } = Dimensions.get('window');
 const GetStarted = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const { isDarkMode, theme: t } = useTheme();
 
   // Animation values
   const logoScale = useRef(new Animated.Value(1)).current;
@@ -34,7 +37,13 @@ const GetStarted = () => {
   const signInButtonScale = useRef(new Animated.Value(1)).current;
   const googleLoadingOpacity = useRef(new Animated.Value(0)).current;
   const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
+  const [showErrorModal, setShowErrorModal] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState('');
   const floatingAnimation = useRef(new Animated.Value(0)).current;
+  const floatAnim1 = useRef(new Animated.Value(0)).current;
+  const lightSpot1 = useRef(new Animated.Value(0)).current;
+  const lightSpot2 = useRef(new Animated.Value(0)).current;
+  const lightSpot3 = useRef(new Animated.Value(0)).current;
   const techFloat1 = useRef(new Animated.Value(0)).current;
   const techFloat2 = useRef(new Animated.Value(0)).current;
   const techFloat3 = useRef(new Animated.Value(0)).current;
@@ -52,13 +61,6 @@ const GetStarted = () => {
   // Start screen transition animation on mount
   React.useEffect(() => {
     const startScreenTransition = () => {
-      // Background fade in
-      Animated.timing(backgroundOpacity, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }).start();
-
       // Screen content fade in and slide up
       Animated.parallel([
         Animated.timing(screenOpacity, {
@@ -99,6 +101,70 @@ const GetStarted = () => {
       ).start();
     };
     startFloatingAnimation();
+
+    // Start main orb animation
+    const startOrbAnimations = () => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(floatAnim1, {
+            toValue: 1,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(floatAnim1, {
+            toValue: 0,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot1, {
+            toValue: 1,
+            duration: 12000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot1, {
+            toValue: 0,
+            duration: 12000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot2, {
+            toValue: 1,
+            duration: 18000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot2, {
+            toValue: 0,
+            duration: 18000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(lightSpot3, {
+            toValue: 1,
+            duration: 14000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(lightSpot3, {
+            toValue: 0,
+            duration: 14000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    };
+    startOrbAnimations();
 
     // Start tech floating animations
     const startTechAnimations = () => {
@@ -264,7 +330,7 @@ const GetStarted = () => {
         }),
       ]),
     ]).start(() => {
-      navigation.navigate('AdminDashboard');
+      navigation.navigate('AdminAIChat');
     });
   };
 
@@ -388,14 +454,11 @@ const GetStarted = () => {
       console.error('Google Sign-In Error:', error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       
-      const errorMessage = getGoogleSignInErrorMessage(error);
+      const errorMsg = getGoogleSignInErrorMessage(error);
       
-      // Show alert for better visibility
-      Alert.alert(
-        'Sign-In Failed',
-        errorMessage,
-        [{ text: 'OK' }]
-      );
+      // Show styled error modal instead of Alert
+      setErrorMessage(errorMsg);
+      setShowErrorModal(true);
     } finally {
       setIsGoogleLoading(false);
       Animated.parallel([
@@ -432,23 +495,210 @@ const GetStarted = () => {
   };
 
   return (
-    <View style={[styles.container, {
-      paddingTop: insets.top,
-      paddingBottom: insets.bottom,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-    }]}
-    >
+    <View style={styles.container}>
       <StatusBar
         backgroundColor="transparent"
-        barStyle="dark-content"
+        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
         translucent={true}
         animated={true}
       />
       
+      {/* Background Gradient Layer */}
+      <LinearGradient
+        colors={[
+          isDarkMode ? '#0B1220' : '#FBF8F3',
+          isDarkMode ? '#111827' : '#F8F5F0',
+          isDarkMode ? '#1F2937' : '#F5F2ED'
+        ]}
+        style={styles.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+      />
+      
+      {/* Blur overlay on entire background - very subtle */}
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 5 : 3}
+        tint="default"
+        style={styles.backgroundGradient}
+      />
+
+      {/* Animated Floating Background Orbs (Copilot-style) */}
+      <View style={styles.floatingBgContainer} pointerEvents="none">
+        {/* Light Spot 1 - Top right gentle glow */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              top: '8%',
+              right: '12%',
+              transform: [
+                {
+                  translateX: lightSpot1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -15],
+                  }),
+                },
+                {
+                  translateY: lightSpot1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 12],
+                  }),
+                },
+                {
+                  scale: lightSpot1.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.08, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot1}>
+            <LinearGradient
+              colors={['rgba(255, 220, 180, 0.35)', 'rgba(255, 200, 150, 0.18)', 'rgba(255, 230, 200, 0.08)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.2, y: 0.2 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Light Spot 2 - Middle left soft circle */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              top: '45%',
+              left: '8%',
+              transform: [
+                {
+                  translateX: lightSpot2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 18],
+                  }),
+                },
+                {
+                  translateY: lightSpot2.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -10],
+                  }),
+                },
+                {
+                  scale: lightSpot2.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.06, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot2}>
+            <LinearGradient
+              colors={['rgba(255, 210, 170, 0.28)', 'rgba(255, 200, 160, 0.15)', 'rgba(255, 220, 190, 0.06)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.3, y: 0.3 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Light Spot 3 - Bottom center blurry glow */}
+        <Animated.View
+          style={[
+            styles.cloudWrapper,
+            {
+              bottom: '12%',
+              left: '55%',
+              transform: [
+                {
+                  translateX: lightSpot3.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -20],
+                  }),
+                },
+                {
+                  translateY: lightSpot3.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 8],
+                  }),
+                },
+                {
+                  scale: lightSpot3.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.1, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.lightSpot3}>
+            <LinearGradient
+              colors={['rgba(255, 190, 140, 0.25)', 'rgba(255, 180, 130, 0.12)', 'rgba(255, 210, 170, 0.05)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0.4, y: 0.4 }}
+              end={{ x: 1, y: 1 }}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Orb 1 - Soft Orange Glow */}
+        <Animated.View
+          style={[
+            styles.floatingOrbWrapper,
+            {
+              top: '35%',
+              left: '50%',
+              marginLeft: -250,
+              transform: [
+                {
+                  translateX: floatAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-30, 30],
+                  }),
+                },
+                {
+                  translateY: floatAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-20, 20],
+                  }),
+                },
+                {
+                  scale: floatAnim1.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.05, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.floatingOrb1}>
+            <LinearGradient
+              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+            <BlurView
+              intensity={Platform.OS === 'ios' ? 60 : 45}
+              tint="default"
+              style={StyleSheet.absoluteFillObject}
+            />
+          </View>
+        </Animated.View>
+      </View>
+      
       {/* Skip to User Screen Button - Top Right */}
       <TouchableOpacity
-        style={[styles.skipButton, { top: insets.top + 12, right: 16 }]}
+        style={[styles.skipButton, { 
+          top: insets.top + 12, 
+          right: 16,
+          backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+          borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(31, 41, 55, 0.1)',
+        }]}
         onPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           navigation.navigate('AIChat');
@@ -457,214 +707,16 @@ const GetStarted = () => {
         accessibilityLabel="Skip to AI Chat"
         accessibilityHint="Double tap to go directly to the AI Chat screen"
       >
-        <MaterialIcons name="dashboard" size={24} color="#1F2937" />
+        <MaterialIcons name="dashboard" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
       </TouchableOpacity>
-
-      {/* Gradient Background */}
-      <Animated.View style={[styles.gradientBackgroundContainer, { opacity: backgroundOpacity }]}>
-        <LinearGradient
-          colors={['#F8FAFC', '#F1F5F9', '#E2E8F0']}
-          style={styles.gradientBackground}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        />
-      </Animated.View>
-      
-      {/* Tech Overlay Pattern */}
-      <Animated.View style={[styles.techOverlay, { opacity: backgroundOpacity }]}>
-        {/* Circuit-like lines */}
-        <View style={styles.techLine1} />
-        <View style={styles.techLine2} />
-        <View style={styles.techLine3} />
-        
-        {/* Floating tech dots */}
-        <View style={styles.techDot1} />
-        <View style={styles.techDot2} />
-        <View style={styles.techDot3} />
-        <View style={styles.techDot4} />
-        <View style={styles.techDot5} />
-        <View style={styles.techDot6} />
-        
-        {/* Animated floating tech elements */}
-        <Animated.View style={[
-          styles.techFloatElement1,
-          {
-            opacity: techFloat1.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.4, 0.8],
-            }),
-            transform: [{
-              translateY: techFloat1.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, -15],
-              })
-            }]
-          }
-        ]} />
-        
-        <Animated.View style={[
-          styles.techFloatElement2,
-          {
-            opacity: techFloat2.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.5, 0.9],
-            }),
-            transform: [{
-              translateX: techFloat2.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, 12],
-              })
-            }]
-          }
-        ]} />
-        
-        <Animated.View style={[
-          styles.techFloatElement3,
-          {
-            opacity: techFloat3.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.6, 1.0],
-            }),
-            transform: [{
-              scale: techFloat3.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.7, 1.3],
-              })
-            }]
-          }
-        ]} />
-        
-        {/* Additional floating tech elements */}
-        <Animated.View style={[
-          styles.techFloatElement4,
-          {
-            opacity: techFloat4.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.3, 0.7],
-            }),
-            transform: [
-              {
-                translateY: techFloat4.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -20],
-                })
-              },
-              {
-                translateX: techFloat4.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 8],
-                })
-              }
-            ]
-          }
-        ]} />
-        
-        <Animated.View style={[
-          styles.techFloatElement5,
-          {
-            opacity: techFloat5.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.4, 0.8],
-            }),
-            transform: [
-              {
-                scale: techFloat5.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.5, 1.2],
-                })
-              },
-              {
-                translateX: techFloat5.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -15],
-                })
-              }
-            ]
-          }
-        ]} />
-        
-        <Animated.View style={[
-          styles.techFloatElement6,
-          {
-            opacity: techFloat6.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.5, 0.9],
-            }),
-            transform: [
-              {
-                translateY: techFloat6.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 18],
-                })
-              },
-              {
-                rotate: techFloat6.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['0deg', '180deg'],
-                })
-              }
-            ]
-          }
-        ]} />
-        
-        <Animated.View style={[
-          styles.techFloatElement7,
-          {
-            opacity: techFloat7.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.3, 0.6],
-            }),
-            transform: [
-              {
-                translateX: techFloat7.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -10],
-                })
-              },
-              {
-                scale: techFloat7.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.8, 1.1],
-                })
-              }
-            ]
-          }
-        ]} />
-        
-        <Animated.View style={[
-          styles.techFloatElement8,
-          {
-            opacity: techFloat8.interpolate({
-              inputRange: [0, 1],
-              outputRange: [0.4, 0.8],
-            }),
-            transform: [
-              {
-                translateY: techFloat8.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, -12],
-                })
-              },
-              {
-                translateX: techFloat8.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 6],
-                })
-              },
-              {
-                rotate: techFloat8.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['0deg', '90deg'],
-                })
-              }
-            ]
-          }
-        ]} />
-      </Animated.View>
       
       <Animated.View style={[
         styles.content,
         {
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
           opacity: screenOpacity,
           transform: [{ translateY: contentTranslateY }],
         },
@@ -743,19 +795,19 @@ const GetStarted = () => {
             </Animated.View>
           </TouchableOpacity>
           <Text 
-            style={styles.title}
+            style={[styles.title, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}
             accessibilityRole="header"
           >
             DOrSU CONNECT
           </Text>
           <Text 
-            style={styles.subtitle}
+            style={[styles.subtitle, { color: isDarkMode ? '#E5E7EB' : '#374151' }]}
             accessibilityRole="text"
           >
             Your Academic AI Assistant
           </Text>
           <Text 
-            style={styles.aiText}
+            style={[styles.aiText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}
             accessibilityRole="text"
           >
             AI Powered
@@ -765,6 +817,60 @@ const GetStarted = () => {
         {/* Buttons Section */}
         <View style={styles.buttonsSection}>
           <View style={styles.buttonContainer}>
+            {/* Sign In Button */}
+            <Animated.View style={{ transform: [{ scale: signInButtonScale }] }}>
+              <TouchableOpacity 
+                style={styles.darkButton} 
+                onPress={() => handleButtonPress(signInButtonScale, () => navigation.navigate('SignIn'))}
+                accessibilityRole="button"
+                accessibilityLabel="Sign in"
+                accessibilityHint="Double tap to sign in to your DOrSU Connect account"
+                accessibilityState={{ disabled: false }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <BlurView
+                  intensity={Platform.OS === 'ios' ? 80 : 60}
+                  tint={isDarkMode ? 'dark' : 'light'}
+                  style={styles.buttonBlur}
+                >
+                  <View style={[
+                    styles.buttonContent,
+                    { backgroundColor: isDarkMode ? 'rgba(37, 99, 235, 0.15)' : 'rgba(31, 41, 55, 0.15)' }
+                  ]}>
+                    <MaterialIcons name="login" size={24} color={isDarkMode ? '#60A5FA' : '#1F2937'} style={styles.buttonIcon} />
+                    <Text style={[styles.darkButtonText, { color: isDarkMode ? '#E5E7EB' : '#1F2937' }]}>Sign In</Text>
+                  </View>
+                </BlurView>
+              </TouchableOpacity>
+            </Animated.View>
+
+            {/* Create Account Button */}
+            <Animated.View style={{ transform: [{ scale: signUpButtonScale }] }}>
+              <TouchableOpacity 
+                style={styles.darkButton} 
+                onPress={() => handleButtonPress(signUpButtonScale, () => navigation.navigate('CreateAccount'))}
+                accessibilityRole="button"
+                accessibilityLabel="Create account"
+                accessibilityHint="Double tap to create a new DOrSU Connect account"
+                accessibilityState={{ disabled: false }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <BlurView
+                  intensity={Platform.OS === 'ios' ? 80 : 60}
+                  tint={isDarkMode ? 'dark' : 'light'}
+                  style={styles.buttonBlur}
+                >
+                  <View style={[
+                    styles.buttonContent,
+                    { backgroundColor: isDarkMode ? 'rgba(37, 99, 235, 0.15)' : 'rgba(31, 41, 55, 0.15)' }
+                  ]}>
+                    <MaterialIcons name="person-add" size={24} color={isDarkMode ? '#60A5FA' : '#1F2937'} style={styles.buttonIcon} />
+                    <Text style={[styles.darkButtonText, { color: isDarkMode ? '#E5E7EB' : '#1F2937' }]}>Create Account</Text>
+                  </View>
+                </BlurView>
+              </TouchableOpacity>
+            </Animated.View>
+            
             {/* Google Sign-In Button */}
             <Animated.View style={{ transform: [{ scale: googleButtonScale }] }}>
               <TouchableOpacity 
@@ -777,70 +883,30 @@ const GetStarted = () => {
                 accessibilityState={{ disabled: isGoogleLoading }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <LinearGradient
-                  colors={isGoogleLoading ? ['#E5E7EB', '#D1D5DB'] : ['#FFFFFF', '#F8FAFC']}
-                  style={styles.buttonGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
+                <BlurView
+                  intensity={Platform.OS === 'ios' ? 80 : 60}
+                  tint={isDarkMode ? 'dark' : 'light'}
+                  style={styles.buttonBlur}
                 >
-                  {!isGoogleLoading ? (
-                    <>
-                      <MaterialCommunityIcons name="google" size={24} color="#4285F4" style={styles.buttonIcon} />
-                      <Text style={styles.googleButtonText}>Continue with Google</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Animated.View style={{ opacity: googleLoadingOpacity }}>
+                  <View style={[
+                    styles.buttonContent,
+                    { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.6)' }
+                  ]}>
+                    {!isGoogleLoading ? (
+                      <>
                         <MaterialCommunityIcons name="google" size={24} color="#4285F4" style={styles.buttonIcon} />
-                      </Animated.View>
-                      <Text style={styles.googleButtonText}>Signing in...</Text>
-                    </>
-                  )}
-                </LinearGradient>
-              </TouchableOpacity>
-            </Animated.View>
-            
-            <Animated.View style={{ transform: [{ scale: signUpButtonScale }] }}>
-              <TouchableOpacity 
-                style={styles.darkButton} 
-                onPress={() => handleButtonPress(signUpButtonScale, () => navigation.navigate('CreateAccount'))}
-                accessibilityRole="button"
-                accessibilityLabel="Create account"
-                accessibilityHint="Double tap to create a new DOrSU Connect account"
-                accessibilityState={{ disabled: false }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <LinearGradient
-                  colors={['#1F2937', '#374151']}
-                  style={styles.buttonGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <MaterialIcons name="person-add" size={24} color="white" style={styles.buttonIcon} />
-                  <Text style={styles.darkButtonText}>Create Account</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </Animated.View>
-
-            <Animated.View style={{ transform: [{ scale: signInButtonScale }] }}>
-              <TouchableOpacity 
-                style={styles.darkButton} 
-                onPress={() => handleButtonPress(signInButtonScale, () => navigation.navigate('SignIn'))}
-                accessibilityRole="button"
-                accessibilityLabel="Sign in"
-                accessibilityHint="Double tap to sign in to your DOrSU Connect account"
-                accessibilityState={{ disabled: false }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <LinearGradient
-                  colors={['#1F2937', '#374151']}
-                  style={styles.buttonGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  <MaterialIcons name="login" size={24} color="white" style={styles.buttonIcon} />
-                  <Text style={styles.darkButtonText}>Sign In</Text>
-                </LinearGradient>
+                        <Text style={[styles.googleButtonText, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Continue with Google</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Animated.View style={{ opacity: googleLoadingOpacity }}>
+                          <MaterialCommunityIcons name="google" size={24} color="#4285F4" style={styles.buttonIcon} />
+                        </Animated.View>
+                        <Text style={[styles.googleButtonText, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Signing in...</Text>
+                      </>
+                    )}
+                  </View>
+                </BlurView>
               </TouchableOpacity>
             </Animated.View>
           </View>
@@ -850,13 +916,13 @@ const GetStarted = () => {
         <View style={styles.universityContainer}>
           <View style={styles.universityDivider} />
           <Text 
-            style={styles.universityText}
+            style={[styles.universityText, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}
             accessibilityRole="text"
           >
             Davao Oriental State University
           </Text>
           <Text 
-            style={styles.universitySubtext}
+            style={[styles.universitySubtext, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}
             accessibilityRole="text"
             numberOfLines={1}
             ellipsizeMode="tail"
@@ -865,6 +931,48 @@ const GetStarted = () => {
           </Text>
         </View>
       </Animated.View>
+
+      {/* Error Modal */}
+      <Modal
+        visible={showErrorModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowErrorModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={styles.modalBackdrop} 
+            activeOpacity={1} 
+            onPress={() => setShowErrorModal(false)}
+          />
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 80 : 60}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={styles.errorModalBlur}
+          >
+            <View style={[styles.errorModalContainer, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.95)' : 'rgba(255, 255, 255, 0.95)' }]}>
+              <View style={[styles.errorIconCircle, { backgroundColor: isDarkMode ? '#7F1D1D' : '#FEE2E2' }]}>
+                <MaterialIcons name="error-outline" size={32} color={isDarkMode ? '#FCA5A5' : '#DC2626'} />
+              </View>
+              <Text style={[styles.errorModalTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>
+                Sign-In Failed
+              </Text>
+              <Text style={[styles.errorModalMessage, { color: isDarkMode ? '#D1D5DB' : '#6B7280' }]}>
+                {errorMessage}
+              </Text>
+              <TouchableOpacity
+                style={[styles.errorModalButton, { backgroundColor: isDarkMode ? '#DC2626' : '#EF4444' }]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowErrorModal(false);
+                }}
+              >
+                <Text style={styles.errorModalButtonText}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </BlurView>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -872,17 +980,58 @@ const GetStarted = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.surfaceAlt,
   },
-  gradientBackgroundContainer: {
+  backgroundGradient: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
+    zIndex: -1,
   },
-  gradientBackground: {
-    flex: 1,
+  // Floating background orbs container (Copilot-style)
+  floatingBgContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    overflow: 'hidden',
+    zIndex: 0,
+  },
+  floatingOrbWrapper: {
+    position: 'absolute',
+  },
+  cloudWrapper: {
+    position: 'absolute',
+  },
+  lightSpot1: {
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    opacity: 0.2,
+    overflow: 'hidden',
+  },
+  lightSpot2: {
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    opacity: 0.18,
+    overflow: 'hidden',
+  },
+  lightSpot3: {
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    opacity: 0.16,
+    overflow: 'hidden',
+  },
+  floatingOrb1: {
+    width: 500,
+    height: 500,
+    borderRadius: 250,
+    opacity: 0.5,
+    overflow: 'hidden',
   },
   techOverlay: {
     position: 'absolute',
@@ -1072,23 +1221,23 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: theme.spacing(2.5),
-    paddingTop: Platform.OS === 'android' ? theme.spacing(2) : theme.spacing(4),
-    paddingBottom: Platform.OS === 'android' ? theme.spacing(4) : theme.spacing(6),
-    justifyContent: 'flex-start', // Changed to ensure branding section is visible
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'android' ? 16 : 32,
+    paddingBottom: Platform.OS === 'android' ? 32 : 48,
+    justifyContent: 'flex-start',
   },
   topSection: {
     alignItems: 'center',
     justifyContent: 'flex-start',
-    paddingHorizontal: theme.spacing(4),
-    paddingTop: theme.spacing(5), // Further reduced for better space distribution
-    paddingBottom: theme.spacing(2), // Further reduced for better space distribution
-    minHeight: height * 0.4, // Reduced from 50% to 40% for more button space
+    paddingHorizontal: 32,
+    paddingTop: 40,
+    paddingBottom: 16,
+    minHeight: height * 0.4,
   },
   logoImage: {
     width: width * 0.28,
     height: width * 0.28,
-    marginBottom: theme.spacing(3), // Reduced for more compact layout
+    marginBottom: 24,
     resizeMode: 'contain',
     shadowColor: '#1F2937',
     shadowOffset: { width: 0, height: 4 },
@@ -1115,8 +1264,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: '800',
-    color: theme.colors.text,
-    marginBottom: theme.spacing(2), // Increased for better hierarchy
+    marginBottom: 16,
     letterSpacing: 1.2,
     textTransform: 'uppercase',
     textAlign: 'center',
@@ -1127,138 +1275,116 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 18,
     fontWeight: '500',
-    color: theme.colors.text,
-    marginBottom: theme.spacing(1.5), // Increased for better separation
+    marginBottom: 12,
     textAlign: 'center',
     letterSpacing: 0.3,
   },
   aiText: {
     fontSize: 15,
     fontWeight: '400',
-    color: theme.colors.textMuted,
     textAlign: 'center',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
-    marginBottom: theme.spacing(1), // Further reduced for tighter spacing
+    marginBottom: 8,
   },
   buttonsSection: {
     width: '100%',
-    paddingHorizontal: theme.spacing(1),
+    paddingHorizontal: 8,
     justifyContent: 'flex-start',
-    paddingTop: theme.spacing(1), // Reduced for tighter spacing
+    paddingTop: 8,
   },
   bottomSection: {
     width: '100%',
-    paddingHorizontal: theme.spacing(1), // Add horizontal padding for better button alignment
+    paddingHorizontal: 8,
   },
   buttonContainer: {
     width: '100%',
-    gap: theme.spacing(1.5), // Reduced gap for tighter button spacing
+    gap: 12,
   },
   googleButton: {
-    borderRadius: theme.radii.lg,
+    borderRadius: 16,
     alignItems: 'center',
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'center',
-    ...theme.shadow2,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.05)',
-  },
-  emailButton: {
-    borderRadius: theme.radii.lg,
-    alignItems: 'center',
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    ...theme.shadow2,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.05)',
-  },
-  buttonGradient: {
-    paddingVertical: theme.spacing(2.5), // Reduced vertical padding
-    paddingHorizontal: theme.spacing(3),
-    alignItems: 'center',
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    borderRadius: theme.radii.lg,
-    minHeight: 56, // Reduced height for more compact buttons
-  },
-  googleButtonText: {
-    color: theme.colors.text,
-    fontSize: 17,
-    fontWeight: '600',
-    marginLeft: theme.spacing(1.5),
-    letterSpacing: 0.3,
-  },
-  emailButtonText: {
-    color: theme.colors.text,
-    fontSize: 17,
-    fontWeight: '600',
-    marginLeft: theme.spacing(1.5),
-    letterSpacing: 0.3,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   darkButton: {
-    borderRadius: theme.radii.lg,
+    borderRadius: 16,
     alignItems: 'center',
     width: '100%',
     flexDirection: 'row',
     justifyContent: 'center',
-    ...theme.shadow2,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
-  darkButtonText: {
-    color: theme.colors.surface,
+  buttonBlur: {
+    width: '100%',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  buttonContent: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    borderRadius: 16,
+    minHeight: 56,
+  },
+  googleButtonText: {
     fontSize: 17,
     fontWeight: '600',
-    marginLeft: theme.spacing(1.5),
+    marginLeft: 12,
+    letterSpacing: 0.3,
+  },
+  darkButtonText: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginLeft: 12,
     letterSpacing: 0.3,
   },
   buttonIcon: {
-    marginRight: theme.spacing(1),
+    marginRight: 8,
   },
   universityContainer: {
     alignItems: 'center',
-    paddingHorizontal: theme.spacing(4),
-    paddingVertical: theme.spacing(2), // Reduced for tighter spacing
-    marginTop: 'auto', // Push to bottom of available space
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    marginTop: 'auto',
   },
   universityDivider: {
-    width: 80, // Increased width for better visual impact
+    width: 80,
     height: 2,
-    backgroundColor: theme.colors.primary,
+    backgroundColor: '#FF9500',
     borderRadius: 1,
-    marginBottom: theme.spacing(2), // Reduced for tighter spacing
-    opacity: 0.8, // Increased opacity for better visibility
+    marginBottom: 16,
+    opacity: 0.8,
   },
   universityText: {
     fontSize: 16,
     fontWeight: '600',
-    color: theme.colors.text,
     textAlign: 'center',
     letterSpacing: 0.5,
     lineHeight: 24,
-    marginBottom: theme.spacing(1), // Reduced for tighter spacing
+    marginBottom: 8,
   },
   universitySubtext: {
-    fontSize: 12, // Slightly reduced for single line
+    fontSize: 12,
     fontWeight: '400',
-    color: theme.colors.textMuted,
     textAlign: 'center',
-    letterSpacing: 0.6, // Reduced letter spacing for single line
-    lineHeight: 16, // Reduced line height
+    letterSpacing: 0.6,
+    lineHeight: 16,
     textTransform: 'uppercase',
-    marginBottom: theme.spacing(2),
+    marginBottom: 16,
   },
   skipButton: {
     position: 'absolute',
     zIndex: 100,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderRadius: 12,
     padding: 10,
     shadowColor: '#000',
@@ -1267,7 +1393,6 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
     borderWidth: 1,
-    borderColor: 'rgba(31, 41, 55, 0.1)',
   },
   sparkleContainer: {
     position: 'absolute',
@@ -1297,6 +1422,85 @@ const styles = StyleSheet.create({
   sparkle3: {
     top: '60%',
     right: '5%',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  errorModalBlur: {
+    borderRadius: 24,
+    overflow: 'hidden',
+    width: '90%',
+    maxWidth: 380,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.25,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  errorModalContainer: {
+    borderRadius: 24,
+    padding: 32,
+    width: '100%',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  errorIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  errorModalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 10,
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
+  errorModalMessage: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: 28,
+    paddingHorizontal: 12,
+    fontWeight: '400',
+  },
+  errorModalButton: {
+    paddingVertical: 16,
+    paddingHorizontal: 56,
+    borderRadius: 14,
+    minWidth: 160,
+    shadowColor: '#DC2626',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  errorModalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    letterSpacing: 0.2,
   },
 });
 

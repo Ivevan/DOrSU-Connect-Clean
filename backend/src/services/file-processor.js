@@ -3,7 +3,6 @@
  * Handles parsing and processing of uploaded files (txt, docx, csv, json)
  */
 
-import fs from 'node:fs';
 import path from 'node:path';
 import { Logger } from '../utils/logger.js';
 import { getEmbeddingService } from './embedding.js';
@@ -314,6 +313,8 @@ class FileProcessorService {
 
   /**
    * Parse CSV calendar file
+   * Required fields: Type (Institutional/Academic), Event, DateType, StartDate, EndDate, Year, Month, WeekOfMonth, Description
+   * Accepts at least 3 of these fields (flexible field names)
    */
   parseCalendarCSV(csvContent) {
     const lines = csvContent.split('\n').filter(line => line.trim().length > 0);
@@ -322,16 +323,54 @@ class FileProcessorService {
     const events = [];
     const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
     
-    // Expected headers: title, date, time, category, description (optional)
-    const titleIndex = headers.findIndex(h => h.includes('title') || h.includes('event'));
-    const dateIndex = headers.findIndex(h => h.includes('date'));
-    const timeIndex = headers.findIndex(h => h.includes('time'));
-    const categoryIndex = headers.findIndex(h => h.includes('category') || h.includes('type'));
-    const descriptionIndex = headers.findIndex(h => h.includes('description') || h.includes('desc'));
+    // Find field indices with flexible matching (case-insensitive, handles underscores/spaces)
+    const findFieldIndex = (possibleNames) => {
+      return headers.findIndex(h => {
+        const normalized = h.toLowerCase().replace(/[_\s]/g, '');
+        return possibleNames.some(name => normalized === name || normalized.includes(name));
+      });
+    };
     
-    if (titleIndex === -1 || dateIndex === -1) {
-      throw new Error('CSV must contain "title" and "date" columns');
+    // Required/Expected fields: Type, Event, DateType, StartDate, EndDate, Year, Month, WeekOfMonth, Description
+    const typeIndex = findFieldIndex(['type', 'category', 'eventtype']);
+    const eventIndex = findFieldIndex(['event', 'title', 'name']);
+    const dateTypeIndex = findFieldIndex(['datetype', 'datetype', 'date_type']);
+    const startDateIndex = findFieldIndex(['startdate', 'start_date', 'start']);
+    const endDateIndex = findFieldIndex(['enddate', 'end_date', 'end']);
+    const yearIndex = findFieldIndex(['year']);
+    const monthIndex = findFieldIndex(['month']);
+    const weekOfMonthIndex = findFieldIndex(['weekofmonth', 'week_of_month', 'weekinmonth', 'week_in_month']);
+    const descriptionIndex = findFieldIndex(['description', 'desc', 'details']);
+    const timeIndex = findFieldIndex(['time', 'eventtime', 'event_time']);
+    
+    // Count how many required fields are present (need at least 3, including Event)
+    const foundFields = [
+      typeIndex !== -1,
+      eventIndex !== -1,
+      dateTypeIndex !== -1,
+      startDateIndex !== -1,
+      endDateIndex !== -1,
+      yearIndex !== -1,
+      monthIndex !== -1,
+      weekOfMonthIndex !== -1,
+      descriptionIndex !== -1
+    ].filter(Boolean).length;
+    
+    // Validate: Must have Event field and at least 2 other fields (total 3+)
+    if (eventIndex === -1) {
+      throw new Error('CSV must contain "Event" column (or "Title"/"Name")');
     }
+    
+    if (foundFields < 3) {
+      throw new Error(`CSV must contain at least 3 of the required fields. Found: ${foundFields}. Required fields: Type, Event, DateType, StartDate, EndDate, Year, Month, WeekOfMonth, Description`);
+    }
+    
+    const isNewFormat = dateTypeIndex !== -1 || startDateIndex !== -1 || endDateIndex !== -1;
+    
+    // For old format, find date column
+    const dateIndex = findFieldIndex(['date', 'eventdate', 'event_date', 'when']);
+    
+    Logger.info(`CSV Format detected - Fields found: ${foundFields}/9. Event: ${eventIndex !== -1}, Type: ${typeIndex !== -1}, DateType: ${dateTypeIndex !== -1}, StartDate: ${startDateIndex !== -1}, EndDate: ${endDateIndex !== -1}, Year: ${yearIndex !== -1}, Month: ${monthIndex !== -1}, WeekOfMonth: ${weekOfMonthIndex !== -1}, Description: ${descriptionIndex !== -1}`);
     
     // Get current year for month-only dates
     const currentYear = new Date().getFullYear();
@@ -339,46 +378,233 @@ class FileProcessorService {
     for (let i = 1; i < lines.length; i++) {
       const fields = this.parseCSVLine(lines[i]);
       
-      if (fields.length <= Math.max(titleIndex, dateIndex)) continue;
+      if (fields.length <= eventIndex) continue;
       
-      const title = fields[titleIndex]?.trim();
-      const dateStr = fields[dateIndex]?.trim();
-      const time = timeIndex >= 0 ? fields[timeIndex]?.trim() || 'All Day' : 'All Day';
-      const category = categoryIndex >= 0 ? fields[categoryIndex]?.trim() || 'Announcement' : 'Announcement';
+      const title = eventIndex >= 0 ? fields[eventIndex]?.trim() : '';
+      if (!title) continue;
+      
+      // Get Type (Institutional or Academic) - default to Institutional
+      const typeRaw = typeIndex >= 0 ? fields[typeIndex]?.trim() : 'Institutional';
+      const category = typeRaw && (typeRaw.toLowerCase() === 'academic' || typeRaw.toLowerCase() === 'institutional') 
+        ? typeRaw.charAt(0).toUpperCase() + typeRaw.slice(1).toLowerCase() 
+        : 'Institutional';
+      
       const description = descriptionIndex >= 0 ? fields[descriptionIndex]?.trim() || '' : '';
+      const time = timeIndex >= 0 ? fields[timeIndex]?.trim() || 'All Day' : 'All Day';
       
-      if (!title || !dateStr) continue;
-      
-      // Skip invalid entries
-      const invalidPatterns = ['within this semester', 'within semester', 'tbd', 'tba', 'to be determined'];
-      if (invalidPatterns.some(pattern => dateStr.toLowerCase().includes(pattern))) {
-        Logger.warn(`Skipping row ${i + 1}: Invalid date entry: ${dateStr}`);
-        continue;
-      }
-      
-      // Parse dates - may return multiple dates for fields with multiple dates
-      const dates = this.parseDate(dateStr, currentYear);
-      
-      if (!dates || dates.length === 0) {
-        Logger.warn(`Skipping row ${i + 1}: Invalid date format: ${dateStr}`);
-        continue;
-      }
-      
-      // Create an event for each date found
-      for (const date of dates) {
-        events.push({
-          title,
-          date: this.formatDate(date),
-          isoDate: date.toISOString(),
-          time,
-          category,
-          description,
-          source: 'CSV Upload'
-        });
+      if (isNewFormat) {
+        // New format: DateType, StartDate, EndDate, WeekOfMonth, Month, Year
+        const dateType = dateTypeIndex >= 0 ? fields[dateTypeIndex]?.trim().toLowerCase() : 'date';
+        const startDateStr = startDateIndex >= 0 ? fields[startDateIndex]?.trim() : '';
+        const endDateStr = endDateIndex >= 0 ? fields[endDateIndex]?.trim() : '';
+        const weekOfMonth = weekOfMonthIndex >= 0 ? fields[weekOfMonthIndex]?.trim() : null;
+        const month = monthIndex >= 0 ? fields[monthIndex]?.trim() : null;
+        const year = yearIndex >= 0 ? fields[yearIndex]?.trim() : currentYear.toString();
+        
+        // Parse dates - only parse if strings are not empty
+        let startDate = null;
+        let endDate = null;
+        
+        if (startDateStr && startDateStr.trim() !== '') {
+          const parsedStart = this.parseDate(startDateStr.trim(), parseInt(year, 10));
+          if (parsedStart && parsedStart.length > 0) {
+            startDate = parsedStart[0];
+          } else {
+            Logger.warn(`Skipping row ${i + 1}: Could not parse StartDate: ${startDateStr}`);
+          }
+        }
+        
+        if (endDateStr && endDateStr.trim() !== '') {
+          const parsedEnd = this.parseDate(endDateStr.trim(), parseInt(year, 10));
+          if (parsedEnd && parsedEnd.length > 0) {
+            endDate = parsedEnd[0];
+          } else {
+            Logger.warn(`Skipping row ${i + 1}: Could not parse EndDate: ${endDateStr}`);
+          }
+        }
+        
+        // Handle different date types - check dateType first
+        if (dateType === 'month_only' || dateType === 'month') {
+          // Month-only event (no specific date, just month)
+          if (!month) {
+            Logger.warn(`Skipping row ${i + 1}: Month-only event requires Month column`);
+            continue;
+          }
+          const monthNum = parseInt(month, 10) - 1; // 0-indexed
+          const yearNum = parseInt(year, 10);
+          const placeholderDate = new Date(yearNum, monthNum, 1);
+          
+          events.push({
+            title,
+            date: this.formatDate(placeholderDate),
+            isoDate: placeholderDate.toISOString(),
+            time,
+            category,
+            description,
+            source: 'CSV Upload',
+            dateType: 'month',
+            month: parseInt(month, 10),
+            year: yearNum
+          });
+        } else if (dateType === 'week_in_month' || dateType === 'week') {
+          // Week-only event (no specific date, just week of month)
+          if (!weekOfMonth || !month) {
+            Logger.warn(`Skipping row ${i + 1}: Week-in-month event requires WeekOfMonth and Month columns`);
+            continue;
+          }
+          const monthNum = parseInt(month, 10) - 1; // 0-indexed
+          const weekNum = parseInt(weekOfMonth, 10);
+          const yearNum = parseInt(year, 10);
+          // Approximate: 1st week = day 1-7, 2nd = 8-14, 3rd = 15-21, 4th = 22-28, 5th = 29-31
+          const dayApprox = (weekNum - 1) * 7 + 1;
+          const placeholderDate = new Date(yearNum, monthNum, Math.min(dayApprox, 28));
+          
+          events.push({
+            title,
+            date: this.formatDate(placeholderDate),
+            isoDate: placeholderDate.toISOString(),
+            time,
+            category,
+            description,
+            source: 'CSV Upload',
+            dateType: 'week',
+            weekOfMonth: weekNum,
+            month: parseInt(month, 10),
+            year: yearNum
+          });
+        } else if (dateType === 'date_range' && startDate && endDate) {
+          // Date range: create events for all dates in the range to mark them on calendar
+          // Normalize dates to start of day for comparison
+          const start = new Date(startDate);
+          const end = new Date(endDate);
+          start.setHours(0, 0, 0, 0);
+          end.setHours(0, 0, 0, 0);
+          
+          // If start and end are the same, treat as single date
+          if (start.getTime() === end.getTime()) {
+            events.push({
+              title,
+              date: this.formatDate(startDate),
+              isoDate: startDate.toISOString(),
+              time,
+              category,
+              description,
+              source: 'CSV Upload',
+              dateType: 'date',
+              startDate: startDate.toISOString(),
+              endDate: startDate.toISOString(),
+              weekOfMonth: weekOfMonth ? parseInt(weekOfMonth, 10) : null,
+              month: month ? parseInt(month, 10) : null,
+              year: parseInt(year, 10)
+            });
+          } else {
+            // Create an event for each date in the range to mark all dates on calendar
+            const eventDates = this.getDateRange(startDate, endDate);
+            for (const eventDate of eventDates) {
+              events.push({
+                title,
+                date: this.formatDate(eventDate),
+                isoDate: eventDate.toISOString(),
+                time,
+                category,
+                description,
+                source: 'CSV Upload',
+                dateType: 'date_range',
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString(),
+                weekOfMonth: weekOfMonth ? parseInt(weekOfMonth, 10) : null,
+                month: month ? parseInt(month, 10) : null,
+                year: parseInt(year, 10)
+              });
+            }
+          }
+        } else if (dateType === 'date' && startDate) {
+          // Single date
+          events.push({
+            title,
+            date: this.formatDate(startDate),
+            isoDate: startDate.toISOString(),
+            time,
+            category,
+            description,
+            source: 'CSV Upload',
+            dateType: 'date',
+            startDate: startDate.toISOString(),
+            endDate: startDate.toISOString(),
+            weekOfMonth: weekOfMonth ? parseInt(weekOfMonth, 10) : null,
+            month: month ? parseInt(month, 10) : null,
+            year: parseInt(year, 10)
+          });
+        } else {
+          // If we can't parse the date type, log a warning but don't skip if we have dates
+          if (!startDate && !endDate && !month) {
+            Logger.warn(`Skipping row ${i + 1}: Invalid date format - dateType: ${dateType}, startDate: ${startDateStr}, endDate: ${endDateStr}, month: ${month}`);
+            continue;
+          }
+        }
+      } else {
+        // Old format: single date column
+        const dateStr = dateIndex >= 0 ? fields[dateIndex]?.trim() : '';
+        if (!dateStr) continue;
+        
+        // Skip if this looks like a DateType value (not a date)
+        const dateTypeValues = ['date', 'date_range', 'month_only', 'week_in_month', 'week', 'month'];
+        if (dateTypeValues.includes(dateStr.toLowerCase())) {
+          Logger.warn(`Skipping row ${i + 1}: Date column contains DateType value "${dateStr}" - CSV may be in new format but headers not detected correctly`);
+          continue;
+        }
+        
+        // Skip invalid entries
+        const invalidPatterns = ['within this semester', 'within semester', 'tbd', 'tba', 'to be determined'];
+        if (invalidPatterns.some(pattern => dateStr.toLowerCase().includes(pattern))) {
+          Logger.warn(`Skipping row ${i + 1}: Invalid date entry: ${dateStr}`);
+          continue;
+        }
+        
+        // Parse dates - may return multiple dates for fields with multiple dates
+        const dates = this.parseDate(dateStr, currentYear);
+        
+        if (!dates || dates.length === 0) {
+          Logger.warn(`Skipping row ${i + 1}: Invalid date format: ${dateStr}`);
+          continue;
+        }
+        
+        // Create an event for each date found
+        for (const date of dates) {
+          events.push({
+            title,
+            date: this.formatDate(date),
+            isoDate: date.toISOString(),
+            time,
+            category,
+            description,
+            source: 'CSV Upload'
+          });
+        }
       }
     }
     
     return events;
+  }
+
+  /**
+   * Get all dates in a date range
+   */
+  getDateRange(startDate, endDate) {
+    const dates = [];
+    const current = new Date(startDate);
+    const end = new Date(endDate);
+    
+    // Normalize to start of day
+    current.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    
+    while (current <= end) {
+      dates.push(new Date(current));
+      current.setDate(current.getDate() + 1);
+    }
+    
+    return dates;
   }
 
   /**
@@ -581,4 +807,5 @@ export function getFileProcessorService() {
 }
 
 export default FileProcessorService;
+
 

@@ -41,6 +41,11 @@ export class QueryAnalyzer {
       // Bisaya: kampus, pasilidad
       campus: ['campus', 'campuses', 'location', 'facilities', 'building', 'extension', 'main campus', 'kampus', 'pasilidad', 'gusali', 'lokasyon'],
       
+      // Calendar & events
+      // Tagalog: petsa, pangyayari, anunsyo, iskedyul
+      // Bisaya: petsa, panghitabo, anunsyo, iskedyul
+      calendar: ['date', 'dates', 'event', 'events', 'announcement', 'announcements', 'schedule', 'schedules', 'calendar', 'when', 'upcoming', 'coming', 'next', 'deadline', 'deadlines', 'holiday', 'holidays', 'academic calendar', 'semester', 'enrollment period', 'registration', 'exam schedule', 'class schedule', 'petsa', 'pangyayari', 'anunsyo', 'iskedyul', 'panghitabo'],
+      
       // Enrollment & requirements
       // Tagalog: enrollment, pag-enrol, kinakailangan
       // Bisaya: pagpalista, kinahanglan

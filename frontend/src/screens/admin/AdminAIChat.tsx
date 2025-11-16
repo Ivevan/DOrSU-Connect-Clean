@@ -1,9 +1,10 @@
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Linking, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,13 +32,7 @@ type RootStackParamList = {
   ManagePosts: undefined;
 };
 
-const SUGGESTIONS = [
-  'Review pending announcements',
-  'Draft a new update',
-  'Schedule an event',
-  'Show recent student queries',
-  'Help with policy wording'
-];
+// No default suggestions - FAQs will be empty until populated from backend
 
 const AdminAIChat = () => {
   const insets = useSafeAreaInsets();
@@ -52,8 +47,16 @@ const AdminAIChat = () => {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
+  const [topQueries, setTopQueries] = useState<string[]>([]);
+  const [isLoadingTopQueries, setIsLoadingTopQueries] = useState(false);
+  const [selectedUserType, setSelectedUserType] = useState<'student' | 'faculty'>('student');
+  const [isFaqsExpanded, setIsFaqsExpanded] = useState(true);
   const scrollViewRef = useRef<ScrollView>(null);
   const sessionId = useRef<string>('');
+
+  // Segmented control animation and width tracking
+  const segmentAnim = useRef(new Animated.Value(0)).current;
+  const segmentWidth = useRef(0);
 
   // Animated floating background orbs (Copilot-style)
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -227,10 +230,66 @@ const AdminAIChat = () => {
     }
   }, [isLoading, typingDot1, typingDot2, typingDot3]);
 
+  // Update segment animation when selection changes
+  useEffect(() => {
+    if (segmentWidth.current > 0) {
+      const targetX = selectedUserType === 'faculty' 
+        ? segmentWidth.current / 2 - 2 
+        : 2;
+      Animated.spring(segmentAnim, {
+        toValue: targetX,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }).start();
+    }
+  }, [selectedUserType, segmentAnim]);
+
+  // Load top queries from backend
+  const loadTopQueries = async () => {
+    try {
+      setIsLoadingTopQueries(true);
+      const token = await getUserToken();
+      if (token) {
+        // Pass selectedUserType to filter FAQs (shared across all users)
+        const queries = await AIService.getTopQueries(token, selectedUserType);
+        if (queries && queries.length > 0) {
+          setTopQueries(queries);
+        } else {
+          // No default suggestions - leave empty
+          setTopQueries([]);
+        }
+      } else {
+        // No default suggestions - leave empty
+        setTopQueries([]);
+      }
+    } catch (error) {
+      console.error('Failed to load top queries:', error);
+      // No default suggestions - leave empty
+      setTopQueries([]);
+    } finally {
+      setIsLoadingTopQueries(false);
+    }
+  };
+
   // Load chat history on component mount
   useEffect(() => {
     loadChatHistory();
+    loadTopQueries();
   }, []);
+
+  // Reload top queries when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      // Reload top queries when screen is focused to get latest data
+      loadTopQueries();
+    }, [selectedUserType])
+  );
+
+  // Reload top queries when userType changes
+  useEffect(() => {
+    loadTopQueries();
+  }, [selectedUserType]);
 
   // Save chat when messages change
   useEffect(() => {
@@ -257,7 +316,7 @@ const AdminAIChat = () => {
       if (!token) return;
       
       if (messages.length > 0 && sessionId.current) {
-        await AIService.saveChatHistory(sessionId.current, messages, token);
+        await AIService.saveChatHistory(sessionId.current, messages, token, selectedUserType);
         await loadChatHistory();
       }
     } catch (error) {
@@ -305,8 +364,9 @@ const AdminAIChat = () => {
     setIsLoading(true);
 
     try {
-      // Call AI service
-      const response = await AIService.sendMessage(textToSend);
+      // Call AI service with selected userType
+      const token = await getUserToken();
+      const response = await AIService.sendMessage(textToSend, token || undefined, selectedUserType);
 
       // Format the AI response with enhanced markdown formatting
       const formattedContent = formatAIResponse(response.reply);
@@ -336,6 +396,23 @@ const AdminAIChat = () => {
     }
   };
 
+  const handleDeleteAllChats = async () => {
+    try {
+      const token = await getUserToken();
+      if (!token) return;
+      
+      const success = await AIService.deleteAllChatHistory(token);
+      if (success) {
+        setChatHistory([]);
+        sessionId.current = '';
+        setMessages([]);
+        await loadChatHistory();
+      }
+    } catch (error) {
+      console.error('Failed to delete all chats:', error);
+    }
+  };
+
   const handleSuggestionPress = (suggestion: string) => {
     handleSendMessage(suggestion);
   };
@@ -347,7 +424,6 @@ const AdminAIChat = () => {
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
         translucent={true}
       />
-
       {/* Background Gradient Layer */}
       <LinearGradient
         colors={[
@@ -365,7 +441,6 @@ const AdminAIChat = () => {
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
       />
-      
       {/* Blur overlay on entire background - very subtle */}
       <BlurView
         intensity={Platform.OS === 'ios' ? 5 : 3}
@@ -628,7 +703,18 @@ const AdminAIChat = () => {
             </View>
           </TouchableOpacity>
         </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>New Conversation</Text>
+        <View style={styles.headerTitleContainer}>
+          <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>
+            {messages.length > 0 ? 'Conversation' : 'New Conversation'}
+          </Text>
+          {messages.length > 0 && (
+            <View style={[styles.userTypeLabel, { backgroundColor: '#FF9500' }]}>
+              <Text style={styles.userTypeLabelText}>
+                {selectedUserType === 'faculty' ? 'Faculty' : 'Student'}
+              </Text>
+            </View>
+          )}
+        </View>
         <View style={styles.headerRight}>
           <TouchableOpacity 
             style={styles.profileButton} 
@@ -641,7 +727,6 @@ const AdminAIChat = () => {
           </TouchableOpacity>
         </View>
       </View>
-      
       {/* Admin Sidebar Component */}
       <AdminSidebar
         isOpen={isHistoryOpen}
@@ -654,15 +739,26 @@ const AdminAIChat = () => {
         }}
         getUserToken={getUserToken}
         sessionId={sessionId.current}
-        onDeleteChat={(chatId) => {
-          setChatHistory(prev => prev.filter(h => h.id !== chatId));
-          if (sessionId.current === chatId) {
-            sessionId.current = '';
-            setMessages([]);
+        onDeleteChat={async (chatId) => {
+          try {
+            const token = await getUserToken();
+            if (token) {
+              const success = await AIService.deleteChatSession(chatId, token);
+              if (success) {
+                setChatHistory(prev => prev.filter(h => h.id !== chatId));
+                if (sessionId.current === chatId) {
+                  sessionId.current = '';
+                  setMessages([]);
+                }
+                await loadChatHistory(); // Refresh the list
+              }
+            }
+          } catch (error) {
+            console.error('Failed to delete chat:', error);
           }
         }}
+        onDeleteAllChats={handleDeleteAllChats}
       />
-      
       {/* Info Modal */}
       <InfoModal
         visible={isInfoOpen}
@@ -833,30 +929,70 @@ const AdminAIChat = () => {
 
       {/* Suggestions - Only show when no messages */}
       {messages.length === 0 && (
-        <View style={[styles.suggestionsContainer, {
-          paddingHorizontal: 12 + insets.left,
+        <View style={[styles.suggestionsWrapper, {
+          paddingHorizontal: 16 + insets.left,
+          paddingRight: 16 + insets.right,
         }]}>
-          {[SUGGESTIONS[0], SUGGESTIONS[1], SUGGESTIONS[2]].map((txt, idx) => (
+          {/* FAQs Section - Full width */}
+          <View style={styles.faqsSection}>
+            {/* Top 5 FAQs Header with Toggle */}
             <TouchableOpacity
-              key={idx}
-              style={[styles.promptCard, isWide && { maxWidth: 640 }]}
-              activeOpacity={0.9}
-              onPress={() => handleSuggestionPress(txt)}
+              style={styles.faqsHeaderButton}
+              onPress={() => {
+                setIsFaqsExpanded(!isFaqsExpanded);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }}
+              activeOpacity={0.7}
             >
-              <BlurView
-                intensity={Platform.OS === 'ios' ? 50 : 40}
-                tint={isDarkMode ? 'dark' : 'light'}
-                style={styles.promptCardBlur}
-              >
-                <View style={styles.promptCardContent}>
-                  <View style={[styles.promptIconWrap, { backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.15)' : 'rgba(255, 149, 0, 0.1)' }]}>
-                    <Ionicons name="reorder-three" size={16} color="#FF9500" />
-                  </View>
-                  <Text style={[styles.promptCardText, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>{txt}</Text>
-                </View>
-              </BlurView>
+              <View style={styles.faqsHeader}>
+                <Text style={[styles.faqsLabel, { color: theme.colors.text }]}>Top 5 FAQs</Text>
+                <Ionicons 
+                  name={isFaqsExpanded ? "chevron-up" : "chevron-down"} 
+                  size={20} 
+                  color={theme.colors.text} 
+                />
+              </View>
             </TouchableOpacity>
-          ))}
+
+            {/* Expandable FAQ List */}
+            {isFaqsExpanded && (
+              <View style={styles.faqsDropdown}>
+                <ScrollView 
+                  style={styles.faqsScrollView}
+                  showsVerticalScrollIndicator={true}
+                  nestedScrollEnabled={true}
+                >
+                  {isLoadingTopQueries ? (
+                    <View style={styles.loadingSuggestions}>
+                      <ActivityIndicator size="small" color={theme.colors.accent} />
+                    </View>
+                  ) : topQueries.length > 0 ? (
+                    topQueries.map((txt, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={styles.promptCard}
+                        activeOpacity={0.9}
+                        onPress={() => handleSuggestionPress(txt)}
+                      >
+                        <BlurView
+                          intensity={Platform.OS === 'ios' ? 50 : 40}
+                          tint={isDarkMode ? 'dark' : 'light'}
+                          style={styles.promptCardBlur}
+                        >
+                          <View style={styles.promptCardContent}>
+                            <View style={[styles.promptIconWrap, { backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.15)' : 'rgba(255, 149, 0, 0.1)' }]}>
+                              <Ionicons name="reorder-three" size={16} color="#FF9500" />
+                            </View>
+                            <Text style={[styles.promptCardText, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>{txt}</Text>
+                          </View>
+                        </BlurView>
+                      </TouchableOpacity>
+                    ))
+                  ) : null}
+                </ScrollView>
+              </View>
+            )}
+          </View>
         </View>
       )}
 
@@ -866,6 +1002,65 @@ const AdminAIChat = () => {
         paddingRight: 16 + insets.right,
         paddingBottom: 12 + insets.bottom,
       }]}>
+        {/* Student/Faculty Toggle - Perplexity style in input bar */}
+        <View style={styles.userTypeToggleContainer}>
+          <View 
+            style={[styles.userTypeToggle, { backgroundColor: selectedUserType === 'student' ? '#10B981' : '#2563EB' }]}
+            onLayout={(e) => {
+              segmentWidth.current = e.nativeEvent.layout.width;
+              const targetX = selectedUserType === 'faculty' 
+                ? segmentWidth.current / 2 - 2 
+                : 2;
+              segmentAnim.setValue(targetX);
+            }}
+          >
+            <Animated.View
+              style={[
+                styles.userTypeToggleSelector,
+                {
+                  transform: [
+                    {
+                      translateX: segmentAnim,
+                    },
+                  ],
+                }
+              ]}
+            />
+            <View style={styles.userTypeToggleOptions}>
+              <TouchableOpacity
+                style={styles.userTypeToggleOption}
+                onPress={() => {
+                  setSelectedUserType('student');
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={[
+                  styles.userTypeToggleText,
+                  { color: selectedUserType === 'student' ? '#10B981' : '#FFFFFF' }
+                ]}>
+                  Student
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.userTypeToggleOption}
+                onPress={() => {
+                  setSelectedUserType('faculty');
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={[
+                  styles.userTypeToggleText,
+                  { color: selectedUserType === 'faculty' ? '#2563EB' : '#FFFFFF' }
+                ]}>
+                  Faculty
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
         <View style={[styles.inputBarOuter, {
           borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
         }]}>
@@ -885,7 +1080,6 @@ const AdminAIChat = () => {
               multiline
               maxLength={2000}
             />
-            
             {inputText.trim() && (
               <TouchableOpacity 
                 style={[
@@ -1023,14 +1217,29 @@ const styles = StyleSheet.create({
   hamburgerLineLong: {
     width: 24,
   },
+  headerTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
   headerTitle: {
     fontSize: 17,
     fontWeight: '600',
     letterSpacing: -0.3,
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    textAlign: 'center',
+  },
+  userTypeLabel: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  userTypeLabelText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   headerRight: {
     width: 40,
@@ -1076,14 +1285,90 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 20,
   },
-  suggestionsContainer: {
+  suggestionsWrapper: {
     width: '100%',
-    alignItems: 'center',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    justifyContent: 'flex-start',
     marginBottom: 8,
+  },
+  faqsSection: {
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  faqsHeaderButton: {
+    marginBottom: 12,
+  },
+  faqsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+  },
+  faqsLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  faqsDropdown: {
+    maxHeight: 300,
+    marginTop: 8,
+  },
+  faqsScrollView: {
+    maxHeight: 300,
+  },
+  userTypeToggleContainer: {
+    marginBottom: 8,
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  userTypeToggle: {
+    flexDirection: 'row',
+    borderRadius: 8,
+    padding: 2,
+    position: 'relative',
+    overflow: 'hidden',
+    width: '100%',
+    alignSelf: 'stretch',
+  },
+  userTypeToggleSelector: {
+    position: 'absolute',
+    top: 2,
+    bottom: 2,
+    left: 0,
+    width: '48%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  userTypeToggleOptions: {
+    flexDirection: 'row',
+    width: '100%',
+    zIndex: 1,
+  },
+  userTypeToggleOption: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userTypeToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  loadingSuggestions: {
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   promptCard: {
     width: '100%',
-    borderRadius: 16,
+    borderRadius: 12,
     marginBottom: 8,
     overflow: 'hidden',
     borderWidth: 1,

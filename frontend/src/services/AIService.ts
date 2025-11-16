@@ -30,11 +30,13 @@ export interface ChatResponse {
 
 export interface ChatRequest {
   prompt: string;
+  userType?: 'student' | 'faculty' | null;
   maxTokens?: number;
   temperature?: number;
 }
 
 export interface ChatHistoryItem {
+  userType?: 'student' | 'faculty';
   id: string;
   title: string;
   preview: string;
@@ -55,7 +57,7 @@ class AIService {
   /**
    * Send a message to the AI and get a response
    */
-  async sendMessage(prompt: string, token?: string): Promise<ChatResponse> {
+  async sendMessage(prompt: string, token?: string, userType?: 'student' | 'faculty' | null): Promise<ChatResponse> {
     try {
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
@@ -71,6 +73,7 @@ class AIService {
         headers,
         body: JSON.stringify({
           prompt,
+          userType: userType || null,
         } as ChatRequest),
       });
 
@@ -89,13 +92,14 @@ class AIService {
   /**
    * Save chat history to the backend
    */
-  async saveChatHistory(sessionId: string, messages: Message[], token: string): Promise<boolean> {
+  async saveChatHistory(sessionId: string, messages: Message[], token: string, userType?: 'student' | 'faculty'): Promise<boolean> {
     try {
       console.log('📤 AIService.saveChatHistory: Sending request', {
         sessionId,
         messagesCount: messages.length,
         tokenLength: token?.length || 0,
-        tokenPrefix: token?.substring(0, 20) || 'none'
+        tokenPrefix: token?.substring(0, 20) || 'none',
+        userType: userType || 'none'
       });
 
       const response = await fetch(`${this.baseUrl}/api/chat-history`, {
@@ -106,7 +110,8 @@ class AIService {
         },
         body: JSON.stringify({
           sessionId,
-          messages
+          messages,
+          userType: userType || null
         }),
       });
 
@@ -265,9 +270,15 @@ class AIService {
   /**
    * Get top frequently asked questions for the current user
    */
-  async getTopQueries(token: string): Promise<string[]> {
+  async getTopQueries(token: string, userType?: 'student' | 'faculty' | null): Promise<string[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/top-queries`, {
+      // Build URL with optional userType query parameter
+      let url = `${this.baseUrl}/api/top-queries`;
+      if (userType) {
+        url += `?userType=${userType}`;
+      }
+      
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`

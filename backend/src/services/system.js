@@ -470,6 +470,24 @@ export function buildSystemInstructions(conversationContext = null, intentClassi
   }
   
   /**
+   * Get calendar events formatting instructions
+   * Returns instructions for how to format and present calendar events in responses
+   */
+  export function getCalendarEventsInstructions() {
+    return '\n\n📅 CALENDAR EVENTS INSTRUCTIONS:\n' +
+      '• Use the calendar events data above to answer questions about dates, events, announcements, and schedules\n' +
+      '• When mentioning events, format dates concisely (e.g., "Jan 11 - Jan 15, 2025" instead of listing each date separately)\n' +
+      '• For date range events, show the range format: "Jan 11 - Jan 15, 2025"\n' +
+      '• Do NOT list the same event multiple times - group similar events together\n' +
+      '• If multiple events share the same title, show them as a single entry with date ranges\n' +
+      '• When mentioning events, include the exact date range, time (if available), and category\n' +
+      '• If the user asks about upcoming events, prioritize events with future dates\n' +
+      '• If asking about a specific date or month, filter events accordingly\n' +
+      '• Always format dates clearly and concisely (e.g., "Jan 11 - Jan 15, 2025")\n' +
+      '• If no events match the query, inform the user that no events were found for that criteria\n\n';
+  }
+  
+  /**
    * Get emoji icon for conversational intent
    */
   function getIntentIcon(intentType) {

@@ -49,6 +49,29 @@ class DataRefreshService {
         .map(([word]) => word);
     };
     
+    // Convert object/array to readable text format
+    const objectToText = (obj, prefix = '') => {
+      if (Array.isArray(obj)) {
+        return obj.map((item, index) => {
+          if (typeof item === 'object' && item !== null) {
+            return objectToText(item, `${prefix}[${index}]`);
+          }
+          return `${prefix}[${index}]: ${String(item)}`;
+        }).join('\n');
+      } else if (typeof obj === 'object' && obj !== null) {
+        return Object.entries(obj)
+          .map(([key, value]) => {
+            const fullKey = prefix ? `${prefix}.${key}` : key;
+            if (typeof value === 'object' && value !== null) {
+              return objectToText(value, fullKey);
+            }
+            return `${fullKey}: ${String(value)}`;
+          })
+          .join('\n');
+      }
+      return `${prefix}: ${String(obj)}`;
+    };
+    
     const processValue = (value, key, currentSection) => {
       if (typeof value === 'string' && value.length > 20) {
         chunks.push({
@@ -65,26 +88,63 @@ class DataRefreshService {
           }
         });
       } else if (Array.isArray(value)) {
-        value.forEach((item, index) => {
-          if (typeof item === 'object' && item !== null) {
-            processObject(item, `${key}[${index}]`, currentSection);
-          } else if (typeof item === 'string' && item.length > 20) {
-            chunks.push({
-              id: `${currentSection}_${key}_${index}_${Date.now()}_${chunks.length}`,
-              content: item,
-              section: currentSection,
-              type: 'list_item',
-              category: currentSection,
-              keywords: extractKeywords(item),
-              metadata: {
-                source: 'dorsu_data.json',
-                field: key,
-                index: index,
-                updated_at: new Date()
-              }
-            });
-          }
-        });
+        // Special handling for structured arrays (like vicePresidents, deans, etc.)
+        // Group related items together to prevent fragmentation
+        const isStructuredArray = value.length > 0 && 
+          typeof value[0] === 'object' && 
+          value[0] !== null &&
+          (key.includes('vicePresidents') || key.includes('deans') || 
+           key.includes('directors') || key.includes('chancellor') ||
+           key.includes('executives') || key.includes('boardOfRegents'));
+        
+        if (isStructuredArray) {
+          // Create a single chunk for the entire array to keep related data together
+          const arrayText = value.map((item, index) => {
+            if (typeof item === 'object' && item !== null) {
+              return Object.entries(item)
+                .map(([k, v]) => `${k}: ${String(v)}`)
+                .join(', ');
+            }
+            return String(item);
+          }).join('\n');
+          
+          chunks.push({
+            id: `${currentSection}_${key}_${Date.now()}_${chunks.length}`,
+            content: arrayText,
+            section: currentSection,
+            type: 'structured_list',
+            category: currentSection,
+            keywords: extractKeywords(arrayText),
+            metadata: {
+              source: 'dorsu_data.json',
+              field: key,
+              itemCount: value.length,
+              updated_at: new Date()
+            }
+          });
+        } else {
+          // For non-structured arrays, process items individually
+          value.forEach((item, index) => {
+            if (typeof item === 'object' && item !== null) {
+              processObject(item, `${key}[${index}]`, currentSection);
+            } else if (typeof item === 'string' && item.length > 20) {
+              chunks.push({
+                id: `${currentSection}_${key}_${index}_${Date.now()}_${chunks.length}`,
+                content: item,
+                section: currentSection,
+                type: 'list_item',
+                category: currentSection,
+                keywords: extractKeywords(item),
+                metadata: {
+                  source: 'dorsu_data.json',
+                  field: key,
+                  index: index,
+                  updated_at: new Date()
+                }
+              });
+            }
+          });
+        }
       } else if (typeof value === 'object' && value !== null) {
         processObject(value, key, currentSection);
       }
@@ -98,7 +158,8 @@ class DataRefreshService {
         if (['history', 'leadership', 'programs', 'faculties', 'enrollment', 
              'visionMission', 'mandate', 'qualityPolicy', 'studentOrganizations',
              'annualAccomplishmentReports', 'studentResources', 'offices',
-             'detailedOfficeServices', 'additionalOfficesAndCenters'].includes(key)) {
+             'detailedOfficeServices', 'additionalOfficesAndCenters',
+             'organizationalStructure/DOrSUOfficials2025'].includes(key)) {
           newSection = key;
         }
         

@@ -390,11 +390,20 @@ export class OptimizedRAGService {
     const queryLower = query.toLowerCase();
     const queryWords = queryLower.split(/\s+/).filter(word => word.length > 2);
     
+    // Detect calendar-related query
+    const calendarPattern = /\b(date|dates|event|events|announcement|announcements|schedule|schedules|calendar|when|upcoming|coming|next|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule)\b/i;
+    const isCalendarQuery = calendarPattern.test(query);
+    
     const results = [];
     
     // Score each chunk based on keyword matches
     this.faissOptimizedData.chunks.forEach(chunk => {
       let score = 0;
+      
+      // Boost score for calendar events if query is calendar-related
+      if (isCalendarQuery && (chunk.section === 'calendar_events' || chunk.type === 'calendar_event')) {
+        score += 50; // High base score for calendar events in calendar queries
+      }
       
       // Score based on text content
       const textLower = chunk.text.toLowerCase();
@@ -423,6 +432,18 @@ export class OptimizedRAGService {
         });
       }
       
+      // Additional scoring for calendar events: match date-related terms
+      if (chunk.section === 'calendar_events' || chunk.type === 'calendar_event') {
+        const dateTerms = ['january', 'february', 'march', 'april', 'may', 'june', 
+                          'july', 'august', 'september', 'october', 'november', 'december',
+                          'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
+                          'week', 'month', 'year', 'today', 'tomorrow', 'next', 'upcoming'];
+        const hasDateTerm = dateTerms.some(term => queryLower.includes(term));
+        if (hasDateTerm) {
+          score += 20; // Boost for date-related queries
+        }
+      }
+      
       if (score > 0) {
         results.push({
           id: chunk.id,
@@ -449,7 +470,7 @@ export class OptimizedRAGService {
   }
 
   // Get context for specific topics using optimized chunking
-  async getContextForTopic(query, maxTokens = 500, maxSections = 10, suggestMore = false) {
+  async getContextForTopic(query, maxTokens = 500, maxSections = 10, suggestMore = false, calendarService = null) {
     // Debug: Verify we have optimized data
     if (!this.faissOptimizedData || !this.faissOptimizedData.chunks) {
       console.log('⚠️ OPTIMIZED RAG: No optimized data available, using fallback');
@@ -470,18 +491,24 @@ export class OptimizedRAGService {
     this.cacheStats.misses++;
     console.log(`🔍 OPTIMIZED RAG Cache MISS: "${query.substring(0, 30)}..." (${this.faissOptimizedData.chunks.length} chunks available)`);
     
+    // Detect calendar-related queries
+    const calendarPattern = /\b(date|dates|event|events|announcement|announcements|schedule|schedules|calendar|when|upcoming|coming|next|this\s+(week|month|year)|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule)\b/i;
+    const isCalendarQuery = calendarPattern.test(query);
+    
     // Check if this is a comprehensive query that needs ALL related chunks
     const comprehensiveKeywords = [
       'core values', 'mission', 'missions', 'mandate', 'objectives',
       'graduate outcomes', 'quality commitments', 'president', 'leadership',
       'history', 'faculties', 'faculty', 'programs', 'programme', 'enrollment', 
-      'campuses', 'campus', 'deans', 'dean', 'directors', 'director'
+      'campuses', 'campus', 'deans', 'dean', 'directors', 'director',
+      'events', 'schedules', 'calendar', 'announcements', 'dates', 'deadlines'
     ];
     
     // Check for plural keywords (indicates user wants ALL items)
     const pluralKeywords = [
       'faculties', 'programs', 'courses', 'deans', 'directors', 'campuses',
-      'values', 'missions', 'objectives', 'commitments', 'outcomes'
+      'values', 'missions', 'objectives', 'commitments', 'outcomes',
+      'events', 'schedules', 'announcements', 'dates', 'deadlines'
     ];
     
     const hasPluralKeyword = pluralKeywords.some(keyword => 
@@ -588,6 +615,89 @@ export class OptimizedRAGService {
       relevantData = await this.findRelevantDataFAISS(query, maxSections);
     }
     
+    // For calendar queries, also fetch and include calendar events
+    let calendarEventsData = [];
+    if (isCalendarQuery && calendarService && this.mongoService) {
+      try {
+        const now = new Date();
+        const startDate = new Date(now);
+        startDate.setDate(startDate.getDate() - 30); // Past 30 days
+        const endDate = new Date(now);
+        endDate.setDate(endDate.getDate() + 365); // Next 365 days
+        
+        const events = await calendarService.getEvents({
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+          limit: 100
+        });
+        
+        if (events && events.length > 0) {
+          // Convert calendar events to RAG format chunks
+          calendarEventsData = events.map((event, idx) => {
+            const eventDate = event.isoDate || event.date;
+            const dateStr = eventDate ? new Date(eventDate).toLocaleDateString('en-US', { 
+              year: 'numeric', 
+              month: 'long', 
+              day: 'numeric' 
+            }) : 'Date TBD';
+            
+            // Create searchable text from event
+            let eventText = `${event.title || 'Untitled Event'}. `;
+            if (event.description) eventText += `${event.description}. `;
+            eventText += `Date: ${dateStr}. `;
+            if (event.time) eventText += `Time: ${event.time}. `;
+            if (event.category) eventText += `Category: ${event.category}. `;
+            if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+              const start = new Date(event.startDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+              const end = new Date(event.endDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+              eventText += `Date Range: ${start} to ${end}. `;
+            }
+            
+            // Extract keywords from event
+            const keywords = [];
+            if (event.title) keywords.push(...event.title.toLowerCase().split(/\s+/).filter(w => w.length > 3));
+            if (event.category) keywords.push(event.category.toLowerCase());
+            if (event.description) {
+              const descWords = event.description.toLowerCase().split(/\s+/).filter(w => w.length > 4);
+              keywords.push(...descWords.slice(0, 5)); // Top 5 words from description
+            }
+            
+            return {
+              id: `calendar-${event._id || event.id || idx}`,
+              section: 'calendar_events',
+              type: 'calendar_event',
+              text: eventText.trim(),
+              score: 100, // High score for calendar events in calendar queries
+              metadata: {
+                title: event.title,
+                date: eventDate,
+                time: event.time,
+                category: event.category,
+                description: event.description,
+                dateType: event.dateType,
+                startDate: event.startDate,
+                endDate: event.endDate
+              },
+              keywords: [...new Set(keywords)], // Remove duplicates
+              source: 'calendar_database'
+            };
+          });
+          
+          // Merge calendar events with RAG results, prioritizing calendar events for calendar queries
+          if (isCalendarQuery) {
+            relevantData = [...calendarEventsData, ...relevantData];
+          } else {
+            relevantData = [...relevantData, ...calendarEventsData];
+          }
+          
+          console.log(`📅 RAG: Added ${calendarEventsData.length} calendar events to context`);
+        }
+      } catch (calendarError) {
+        console.error('📅 RAG: Error fetching calendar events:', calendarError);
+        // Continue without calendar data if there's an error
+      }
+    }
+    
     if (relevantData.length === 0) {
       const basicInfo = this.getBasicInfo();
       this.cache.set(cacheKey, basicInfo, 600); // Cache basic info for 10 minutes
@@ -620,8 +730,132 @@ export class OptimizedRAGService {
     // No need to cap here - trust the server's calculation
     const effectiveMaxTokens = maxTokens; // Use requested tokens directly
     
-    // Add sections - prioritize completeness for comprehensive queries
-    for (const item of relevantData) {
+    // Separate calendar events from other data for better formatting
+    const calendarEvents = relevantData.filter(item => item.section === 'calendar_events');
+    const otherData = relevantData.filter(item => item.section !== 'calendar_events');
+    
+    // Add calendar events section first if present
+    if (calendarEvents.length > 0 && isCalendarQuery) {
+      const calendarHeader = `\n## CALENDAR EVENTS AND SCHEDULES\n\n`;
+      context += calendarHeader;
+      currentTokens += Math.round(calendarHeader.length / 4);
+      
+      // Helper function to format date concisely (e.g., "Jan 11" or "Jan 11 - Jan 15")
+      const formatDateConcise = (date) => {
+        if (!date) return 'Date TBD';
+        const d = new Date(date);
+        const month = d.toLocaleDateString('en-US', { month: 'short' });
+        const day = d.getDate();
+        return `${month} ${day}`;
+      };
+      
+      // Group events by title to avoid redundancy
+      const groupedEvents = new Map();
+      calendarEvents.forEach(event => {
+        const title = event.metadata?.title || 'Untitled Event';
+        if (!groupedEvents.has(title)) {
+          groupedEvents.set(title, []);
+        }
+        groupedEvents.get(title).push(event);
+      });
+      
+      // Format grouped events
+      for (const [title, eventGroup] of groupedEvents) {
+        // Sort events by date
+        eventGroup.sort((a, b) => {
+          const dateA = a.metadata?.date || a.metadata?.startDate || '';
+          const dateB = b.metadata?.date || b.metadata?.startDate || '';
+          return new Date(dateA) - new Date(dateB);
+        });
+        
+        // Get unique properties from the group
+        const firstEvent = eventGroup[0];
+        const category = firstEvent.metadata?.category;
+        const time = firstEvent.metadata?.time;
+        const description = firstEvent.metadata?.description;
+        
+        let eventText = `**${title}**\n`;
+        
+        // Check if all events in group are date ranges
+        const allAreDateRanges = eventGroup.every(e => 
+          e.metadata?.dateType === 'date_range' && e.metadata.startDate && e.metadata.endDate
+        );
+        
+        if (allAreDateRanges && eventGroup.length > 0) {
+          // For date ranges, show the range concisely
+          const startDate = eventGroup[0].metadata.startDate;
+          const endDate = eventGroup[eventGroup.length - 1].metadata.endDate;
+          
+          // If all events are part of the same range, show single range
+          if (eventGroup.length === 1) {
+            const start = formatDateConcise(startDate);
+            const end = formatDateConcise(endDate);
+            const year = new Date(startDate).getFullYear();
+            eventText += `📅 Date: ${start} - ${end}, ${year}\n`;
+          } else {
+            // Multiple ranges - show first and last
+            const firstStart = formatDateConcise(startDate);
+            const lastEnd = formatDateConcise(endDate);
+            const year = new Date(startDate).getFullYear();
+            eventText += `📅 Dates: ${firstStart} - ${lastEnd}, ${year}\n`;
+          }
+        } else {
+          // Mix of single dates and ranges, or all single dates
+          const dates = [];
+          eventGroup.forEach(event => {
+            if (event.metadata?.dateType === 'date_range' && event.metadata.startDate && event.metadata.endDate) {
+              const start = formatDateConcise(event.metadata.startDate);
+              const end = formatDateConcise(event.metadata.endDate);
+              dates.push(`${start} - ${end}`);
+            } else if (event.metadata?.date) {
+              dates.push(formatDateConcise(event.metadata.date));
+            }
+          });
+          
+          if (dates.length > 0) {
+            // Remove duplicates and format
+            const uniqueDates = [...new Set(dates)];
+            const year = eventGroup[0].metadata?.date 
+              ? new Date(eventGroup[0].metadata.date).getFullYear()
+              : eventGroup[0].metadata?.startDate 
+                ? new Date(eventGroup[0].metadata.startDate).getFullYear()
+                : new Date().getFullYear();
+            
+            if (uniqueDates.length === 1) {
+              eventText += `📅 Date: ${uniqueDates[0]}, ${year}\n`;
+            } else if (uniqueDates.length <= 3) {
+              eventText += `📅 Dates: ${uniqueDates.join(', ')}, ${year}\n`;
+            } else {
+              // Too many dates, show range
+              const firstDate = uniqueDates[0];
+              const lastDate = uniqueDates[uniqueDates.length - 1];
+              eventText += `📅 Dates: ${firstDate} - ${lastDate}, ${year}\n`;
+            }
+          }
+        }
+        
+        if (time) eventText += `⏰ Time: ${time}\n`;
+        if (category) eventText += `🏷️ Category: ${category}\n`;
+        if (description) {
+          const desc = description.length > 150 
+            ? description.substring(0, 150) + '...' 
+            : description;
+          eventText += `📝 ${desc}\n`;
+        }
+        eventText += '\n';
+        
+        const eventTokens = Math.round(eventText.length / 4);
+        if (currentTokens + eventTokens > effectiveMaxTokens) {
+          break;
+        }
+        
+        context += eventText;
+        currentTokens += eventTokens;
+      }
+    }
+    
+    // Add other sections - prioritize completeness for comprehensive queries
+    for (const item of otherData) {
       const sectionText = `## ${item.section} (${item.type})\n${item.text}\n\n`;
       const sectionTokens = Math.round(sectionText.length / 4);
       

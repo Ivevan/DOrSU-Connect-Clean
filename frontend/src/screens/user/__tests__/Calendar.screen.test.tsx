@@ -47,7 +47,7 @@ describe('Calendar Screen', () => {
     renderScreen(<Calendar />);
 
     await waitFor(() => {
-      expect(screen.getByText('School Calendar')).toBeTruthy();
+      expect(screen.getByText('DOrSU Calendar')).toBeTruthy();
     }, { timeout: 3000 });
   });
 
@@ -55,10 +55,10 @@ describe('Calendar Screen', () => {
     renderScreen(<Calendar />);
 
     await waitFor(() => {
-      // Calendar grid should be present - verify by checking for "School Calendar" title
+      // Calendar grid should be present - verify by checking for "DOrSU Calendar" title
       // which indicates the screen has rendered. The calendar grid itself may be animated
       // and the week day headers are single letters that might not be easily queryable.
-      const title = screen.queryByText('School Calendar');
+      const title = screen.queryByText('DOrSU Calendar');
       expect(title).toBeTruthy();
     }, { timeout: 3000 });
   });
@@ -81,7 +81,7 @@ describe('Calendar Screen', () => {
       // Check for events section or empty state
       const eventsSection = screen.queryByText(/Events|No events|Today's Events/) || 
                            screen.queryByTestId('events-section');
-      expect(eventsSection || screen.getByText('School Calendar')).toBeTruthy();
+      expect(eventsSection || screen.getByText('DOrSU Calendar')).toBeTruthy();
     }, { timeout: 3000 });
   });
 

@@ -74,17 +74,17 @@ export class ChatHistoryService {
     req.on('end', async () => {
       try {
         const json = JSON.parse(body);
-        const { sessionId, messages } = json;
+        const { sessionId, messages, userType } = json;
 
         if (!sessionId || !messages) {
           this.sendJson(res, 400, { error: 'sessionId and messages required' });
           return;
         }
 
-        // Save the chat session
-        await this.mongoService.saveChatSession(auth.userId, sessionId, messages);
+        // Save the chat session with userType
+        await this.mongoService.saveChatSession(auth.userId, sessionId, messages, userType);
 
-        // Add to chat history list
+        // Add to chat history list with userType
         if (messages.length > 0) {
           const firstMessage = messages[0];
           const lastMessage = messages[messages.length - 1];
@@ -93,10 +93,12 @@ export class ChatHistoryService {
             id: sessionId,
             title: firstMessage.content.substring(0, 50) + (firstMessage.content.length > 50 ? '...' : ''),
             preview: lastMessage.content.substring(0, 100) + (lastMessage.content.length > 100 ? '...' : ''),
-            timestamp: new Date()
+            timestamp: new Date(),
+            userType: userType || 'student' // Default to student if not provided
           };
 
           await this.mongoService.addChatToHistory(auth.userId, chatInfo);
+          Logger.info(`✅ Chat history entry added for user: ${auth.userId}, session: ${sessionId}, userType: ${userType || 'student'}`);
         }
 
         this.sendJson(res, 200, { success: true, message: 'Chat history saved' });
@@ -159,7 +161,7 @@ export class ChatHistoryService {
   }
 
   /**
-   * Get top frequently asked questions
+   * Get top frequently asked questions (global FAQs from knowledge base)
    */
   async handleGetTopQueries(req, res) {
     Logger.info(`📊 GET /api/top-queries - Request received`);
@@ -178,8 +180,15 @@ export class ChatHistoryService {
         return true;
       }
 
-      Logger.info(`Top queries: Fetching for userId: ${auth.userId}`);
-      const topQueries = await this.mongoService.getTopQueries(auth.userId, 5);
+      // Get userType from query parameter (optional)
+      const rawUrl = req.url || '/';
+      const urlParts = rawUrl.split('?');
+      const queryString = urlParts[1] || '';
+      const params = new URLSearchParams(queryString);
+      const userType = params.get('userType'); // 'student' or 'faculty' or null for all
+
+      Logger.info(`Top queries: Fetching global FAQs, userType: ${userType || 'all'}`);
+      const topQueries = await this.mongoService.getGlobalFAQs(userType, 5);
       Logger.success(`Top queries: Returning ${topQueries.length} queries`);
       this.sendJson(res, 200, { success: true, queries: topQueries });
     } catch (error) {

@@ -1,19 +1,19 @@
-import * as React from 'react';
-import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, StatusBar, TouchableOpacity, ScrollView, Switch, Alert, Animated, Platform } from 'react-native';
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { BlurView } from 'expo-blur';
 import * as DocumentPicker from 'expo-document-picker';
-import { useThemeValues, useThemeActions } from '../../contexts/ThemeContext';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as React from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, Animated, Platform, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme as themeConfig } from '../../config/theme';
+import { useThemeActions, useThemeValues } from '../../contexts/ThemeContext';
 import LogoutModal from '../../modals/LogoutModal';
-import AdminFileService from '../../services/AdminFileService'; 
+import AdminFileService from '../../services/AdminFileService';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -153,6 +153,7 @@ const AdminSettings = () => {
   // State for various settings
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
 
   // Lock header height to prevent layout shifts
   const headerHeightRef = useRef<number>(64);
@@ -487,7 +488,7 @@ const AdminSettings = () => {
               <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>About</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
-          </BlurView>
+          </View>
 
           {/* Sign Out Button */}
           <TouchableOpacity 

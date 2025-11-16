@@ -27,6 +27,15 @@ export class CalendarService {
       return await this.handleUploadCalendarCSV(req, res);
     }
 
+    // Create calendar event
+    if (method === 'POST') {
+      const normalizedUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+      if (normalizedUrl === '/api/admin/calendar/events') {
+        Logger.info('📅 CalendarService: Matched create-event route');
+        return await this.handleCreateEvent(req, res);
+      }
+    }
+
     // Get calendar events
     if (method === 'GET' && url === '/api/calendar/events') {
       return await this.handleGetEvents(req, res);
@@ -38,13 +47,44 @@ export class CalendarService {
       return await this.handleGetEventById(req, res, eventId);
     }
 
-    // Delete calendar event
-    if (method === 'DELETE' && url.startsWith('/api/admin/calendar/events/')) {
-      const eventId = url.split('/api/admin/calendar/events/')[1];
-      return await this.handleDeleteEvent(req, res, eventId);
+    // Update calendar event (PUT) - check BEFORE delete to avoid conflicts
+    if (method === 'PUT') {
+      Logger.info(`📅 CalendarService: Checking PUT route for: ${url}`);
+      // Normalize URL (handle double slashes and trailing slashes)
+      let normalizedUrl = url.replace(/\/+/g, '/'); // Replace multiple slashes with single
+      normalizedUrl = normalizedUrl.endsWith('/') ? normalizedUrl.slice(0, -1) : normalizedUrl;
+      
+      // Match PUT /api/admin/calendar/events/{eventId}
+      const putEventMatch = normalizedUrl.match(/^\/api\/admin\/calendar\/events\/([^\/\?]+)/);
+      if (putEventMatch && putEventMatch[1]) {
+        const eventId = putEventMatch[1];
+        Logger.info(`📅 CalendarService: Matched update-event route for ID: ${eventId}`);
+        return await this.handleUpdateEvent(req, res, eventId);
+      }
+    }
+
+    // Delete all calendar events - check this BEFORE individual delete to avoid conflicts
+    if (method === 'DELETE') {
+      // Normalize URL (handle double slashes and trailing slashes)
+      let normalizedUrl = url.replace(/\/+/g, '/'); // Replace multiple slashes with single
+      normalizedUrl = normalizedUrl.endsWith('/') ? normalizedUrl.slice(0, -1) : normalizedUrl;
+      
+      if (normalizedUrl === '/api/admin/calendar/events') {
+        Logger.info('📅 CalendarService: Matched delete-all-events route');
+        return await this.handleDeleteAllEvents(req, res);
+      }
+      
+      // Delete calendar event (individual)
+      const deleteEventMatch = normalizedUrl.match(/^\/api\/admin\/calendar\/events\/([^\/\?]+)/);
+      if (deleteEventMatch && deleteEventMatch[1]) {
+        const eventId = deleteEventMatch[1];
+        Logger.info(`📅 CalendarService: Matched delete-event route for ID: ${eventId}`);
+        return await this.handleDeleteEvent(req, res, eventId);
+      }
     }
 
     // Route not handled by this service
+    Logger.info(`📅 CalendarService: Route not matched - ${method} ${url}`);
     return false;
   }
 
@@ -203,6 +243,146 @@ export class CalendarService {
   }
 
   /**
+   * Handle create calendar event
+   */
+  async handleCreateEvent(req, res) {
+    // Check authentication
+    if (!this.authService || !this.mongoService) {
+      this.sendJson(res, 503, { error: 'Services not available' });
+      return true;
+    }
+
+    const auth = await this.getAuthMiddleware()(req);
+    if (!auth.authenticated) {
+      Logger.warn('Create calendar event: Unauthorized');
+      this.sendJson(res, 401, { error: 'Unauthorized' });
+      return true;
+    }
+
+    try {
+      // Read request body using event-based approach (more reliable)
+      let body = '';
+      await new Promise((resolve, reject) => {
+        req.on('data', chunk => {
+          body += chunk.toString();
+          if (body.length > 1000000) { // 1MB limit
+            req.destroy();
+            reject(new Error('Request body too large'));
+          }
+        });
+        req.on('end', () => {
+          resolve();
+        });
+        req.on('error', reject);
+      });
+
+      if (!body) {
+        this.sendJson(res, 400, { error: 'Request body is required' });
+        return true;
+      }
+
+      let eventData;
+      try {
+        eventData = JSON.parse(body);
+      } catch (parseError) {
+        Logger.error('Failed to parse request body:', parseError);
+        this.sendJson(res, 400, { error: 'Invalid JSON in request body' });
+        return true;
+      }
+
+      // Validate required fields
+      if (!eventData || !eventData.title || !eventData.isoDate) {
+        Logger.warn('Create event validation failed:', { hasTitle: !!eventData?.title, hasIsoDate: !!eventData?.isoDate });
+        this.sendJson(res, 400, { error: 'Title and date are required' });
+        return true;
+      }
+
+      // Format date string
+      const dateObj = new Date(eventData.isoDate);
+      const formattedDate = this.formatDate(dateObj);
+
+      // Create event object
+      const event = {
+        title: eventData.title,
+        date: eventData.date || formattedDate,
+        isoDate: eventData.isoDate,
+        time: eventData.time || 'All Day',
+        category: eventData.category || 'Event',
+        description: eventData.description || '',
+        source: 'Manual Entry',
+        uploadedAt: new Date(),
+        uploadedBy: auth.userId,
+        dateType: eventData.dateType || 'date',
+        startDate: eventData.startDate || eventData.isoDate,
+        endDate: eventData.endDate || eventData.isoDate,
+        weekOfMonth: eventData.weekOfMonth || null,
+        month: eventData.month || null,
+        year: eventData.year || null,
+      };
+
+      // Save event
+      const savedEvent = await this.createEvent(event);
+
+      Logger.success(`✅ Calendar event created: ${savedEvent._id}`);
+
+      this.sendJson(res, 201, {
+        success: true,
+        message: 'Event created successfully',
+        event: savedEvent
+      });
+      return true;
+    } catch (error) {
+      Logger.error('Create calendar event error:', error);
+      this.sendJson(res, 500, { error: error.message || 'Failed to create event' });
+      return true;
+    }
+  }
+
+  /**
+   * Format date to readable string
+   */
+  formatDate(date) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[date.getMonth()];
+    const day = date.getDate();
+    const year = date.getFullYear();
+    return `${month} ${day}, ${year}`;
+  }
+
+  /**
+   * Handle delete all calendar events
+   */
+  async handleDeleteAllEvents(req, res) {
+    // Check authentication
+    if (!this.authService || !this.mongoService) {
+      this.sendJson(res, 503, { error: 'Services not available' });
+      return true;
+    }
+
+    const auth = await this.getAuthMiddleware()(req);
+    if (!auth.authenticated) {
+      Logger.warn('Delete all calendar events: Unauthorized');
+      this.sendJson(res, 401, { error: 'Unauthorized' });
+      return true;
+    }
+
+    try {
+      const result = await this.deleteAllEvents();
+
+      this.sendJson(res, 200, {
+        success: true,
+        message: 'All events deleted successfully',
+        deletedCount: result.deletedCount
+      });
+      return true;
+    } catch (error) {
+      Logger.error('Delete all calendar events error:', error);
+      this.sendJson(res, 500, { error: error.message || 'Failed to delete all events' });
+      return true;
+    }
+  }
+
+  /**
    * Handle delete calendar event
    */
   async handleDeleteEvent(req, res, eventId) {
@@ -236,6 +416,20 @@ export class CalendarService {
       Logger.error('Delete calendar event error:', error);
       this.sendJson(res, 500, { error: error.message || 'Failed to delete event' });
       return true;
+    }
+  }
+
+  /**
+   * Create a single calendar event in MongoDB
+   */
+  async createEvent(event) {
+    try {
+      const calendarCollection = this.mongoService.getCollection('calendar');
+      const result = await calendarCollection.insertOne(event);
+      return { ...event, _id: result.insertedId };
+    } catch (error) {
+      Logger.error('Failed to create calendar event:', error);
+      throw error;
     }
   }
 
@@ -328,11 +522,164 @@ export class CalendarService {
   async getEventById(eventId) {
     try {
       const calendarCollection = this.mongoService.getCollection('calendar');
-      const event = await calendarCollection.findOne({ _id: eventId });
+      const { ObjectId } = await import('mongodb');
+      
+      // Convert eventId to ObjectId if it's a string
+      const objectId = typeof eventId === 'string' ? new ObjectId(eventId) : eventId;
+      
+      const event = await calendarCollection.findOne({ _id: objectId });
       return event;
     } catch (error) {
       Logger.error('Failed to get calendar event by ID:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Delete all calendar events
+   */
+  async deleteAllEvents() {
+    try {
+      const calendarCollection = this.mongoService.getCollection('calendar');
+      const result = await calendarCollection.deleteMany({});
+      Logger.info(`✅ Deleted ${result.deletedCount} calendar events`);
+      return {
+        deletedCount: result.deletedCount
+      };
+    } catch (error) {
+      Logger.error('Failed to delete all calendar events:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update calendar event
+   */
+  async updateEvent(eventId, updates) {
+    try {
+      const calendarCollection = this.mongoService.getCollection('calendar');
+      const { ObjectId } = await import('mongodb');
+      
+      // Convert eventId to ObjectId if it's a string
+      const objectId = typeof eventId === 'string' ? new ObjectId(eventId) : eventId;
+      
+      // If isoDate is being updated, also update the formatted date
+      if (updates.isoDate) {
+        const dateObj = new Date(updates.isoDate);
+        updates.date = this.formatDate(dateObj);
+      }
+      
+      // Add updated timestamp
+      updates.updatedAt = new Date();
+      
+      const result = await calendarCollection.updateOne(
+        { _id: objectId },
+        { $set: updates }
+      );
+      
+      if (result.matchedCount === 0) {
+        return null;
+      }
+      
+      // Return the updated event
+      const updatedEvent = await calendarCollection.findOne({ _id: objectId });
+      return updatedEvent;
+    } catch (error) {
+      Logger.error('Failed to update calendar event:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Handle update calendar event
+   */
+  async handleUpdateEvent(req, res, eventId) {
+    // Check authentication
+    if (!this.authService || !this.mongoService) {
+      this.sendJson(res, 503, { error: 'Services not available' });
+      return true;
+    }
+
+    const auth = await this.getAuthMiddleware()(req);
+    if (!auth.authenticated) {
+      Logger.warn('Update calendar event: Unauthorized');
+      this.sendJson(res, 401, { error: 'Unauthorized' });
+      return true;
+    }
+
+    try {
+      // Read request body using event-based approach (more reliable)
+      let body = '';
+      await new Promise((resolve, reject) => {
+        req.on('data', chunk => {
+          body += chunk.toString();
+          if (body.length > 1000000) { // 1MB limit
+            req.destroy();
+            reject(new Error('Request body too large'));
+          }
+        });
+        req.on('end', () => {
+          resolve();
+        });
+        req.on('error', reject);
+      });
+
+      if (!body) {
+        this.sendJson(res, 400, { error: 'Request body is required' });
+        return true;
+      }
+
+      let eventData;
+      try {
+        eventData = JSON.parse(body);
+      } catch (parseError) {
+        Logger.error('Failed to parse request body:', parseError);
+        this.sendJson(res, 400, { error: 'Invalid JSON in request body' });
+        return true;
+      }
+
+      // Validate required fields
+      if (!eventData || !eventData.title || !eventData.isoDate) {
+        Logger.warn('Update event validation failed:', { hasTitle: !!eventData?.title, hasIsoDate: !!eventData?.isoDate });
+        this.sendJson(res, 400, { error: 'Title and date are required' });
+        return true;
+      }
+
+      // Prepare update object (exclude _id and other system fields)
+      const updates = {
+        title: eventData.title,
+        isoDate: eventData.isoDate,
+        time: eventData.time || 'All Day',
+        category: eventData.category || 'Event',
+        description: eventData.description || '',
+        dateType: eventData.dateType || 'date',
+        startDate: eventData.startDate || eventData.isoDate,
+        endDate: eventData.endDate || eventData.isoDate,
+        weekOfMonth: eventData.weekOfMonth || null,
+        month: eventData.month || null,
+        year: eventData.year || null,
+      };
+
+      // Update event
+      const updatedEvent = await this.updateEvent(eventId, updates);
+
+      if (!updatedEvent) {
+        this.sendJson(res, 404, { error: 'Event not found' });
+        return true;
+      }
+
+      Logger.success(`✅ Calendar event updated: ${eventId}`);
+
+      this.sendJson(res, 200, {
+        success: true,
+        message: 'Event updated successfully',
+        event: updatedEvent
+      });
+      return true;
+    } catch (error) {
+      Logger.error('Update calendar event error:', error);
+      this.sendJson(res, 500, { error: error.message || 'Failed to update event' });
+      return true;
     }
   }
 
@@ -342,7 +689,12 @@ export class CalendarService {
   async deleteEvent(eventId) {
     try {
       const calendarCollection = this.mongoService.getCollection('calendar');
-      const result = await calendarCollection.deleteOne({ _id: eventId });
+      const { ObjectId } = await import('mongodb');
+      
+      // Convert eventId to ObjectId if it's a string
+      const objectId = typeof eventId === 'string' ? new ObjectId(eventId) : eventId;
+      
+      const result = await calendarCollection.deleteOne({ _id: objectId });
       return result.deletedCount > 0;
     } catch (error) {
       Logger.error('Failed to delete calendar event:', error);

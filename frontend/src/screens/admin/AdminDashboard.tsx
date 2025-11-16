@@ -1,16 +1,23 @@
-import React, { useMemo, useState, useRef, useEffect, useCallback, memo } from 'react';
-import { View, Text, StyleSheet, StatusBar, Platform, ScrollView, Animated, Easing, TouchableOpacity, Image, Pressable } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Dimensions, Image, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import EventDetailsDrawer from '../../components/calendar/EventDetailsDrawer';
+import AddPostDrawer from '../../components/dashboard/AddPostDrawer';
+import PostDetailsDrawer from '../../components/dashboard/PostDetailsDrawer';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import AdminSidebar from '../../components/navigation/AdminSidebar';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import AdminDataService from '../../services/AdminDataService';
+import CalendarService, { CalendarEvent } from '../../services/CalendarService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
+import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
+import { formatDate } from '../../utils/dateUtils';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -63,145 +70,30 @@ const getPHDateKey = (d: Date | string) => {
   }
 };
 
-// Helper functions for tag colors
-const getTagColor = (tag: string) => {
-  switch (tag.toLowerCase()) {
-    case 'announcement':
-      return '#E8F0FF';
-    case 'academic':
-      return '#F0F9FF';
-    case 'event':
-      return '#FEF3C7';
-    case 'service':
-      return '#ECFDF5';
-    case 'infrastructure':
-      return '#FEF2F2';
-    default:
-      return '#E8F0FF';
-  }
-};
-
-const getTagTextColor = (tag: string) => {
-  switch (tag.toLowerCase()) {
-    case 'announcement':
-      return '#1A3E7A';
-    case 'academic':
-      return '#0369A1';
-    case 'event':
-      return '#D97706';
-    case 'service':
-      return '#059669';
-    case 'infrastructure':
-      return '#DC2626';
-    default:
-      return '#1A3E7A';
-  }
-};
-
-// Animated No Events Component
-const NoEventsAnimation = memo(({ theme }: { theme: any }) => {
-  const floatAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(floatAnim, {
-            toValue: -6,
-            duration: 2000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(floatAnim, {
-            toValue: 0,
-            duration: 2000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.sequence([
-          Animated.timing(scaleAnim, {
-            toValue: 1.08,
-            duration: 2000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(scaleAnim, {
-            toValue: 1,
-            duration: 2000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-      ])
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [floatAnim, scaleAnim]);
-
-  return (
-    <Animated.View 
-      style={{
-        transform: [
-          { translateY: floatAnim },
-          { scale: scaleAnim }
-        ],
-      }}
-    >
-      <Ionicons name="calendar-clear-outline" size={100} color={theme.colors.textMuted} style={{ opacity: 0.4 }} />
-    </Animated.View>
-  );
-});
-
-// Event Card with Image Preview (Horizontal Scrollable)
-const EventCard = memo(({ update, onPress, theme }: { update: any; onPress: () => void; theme: any }) => {
-  const imageUrl = update.images?.[0] || update.image;
-  
-  return (
-    <Pressable style={[styles.eventCardHorizontal, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
-      {imageUrl ? (
-        <Image 
-          source={{ uri: imageUrl }} 
-          style={styles.eventImageHorizontal}
-          resizeMode="cover"
-        />
-      ) : (
-        <View style={[styles.eventImagePlaceholder, { backgroundColor: theme.colors.surface }]}>
-          <Ionicons name="calendar-outline" size={40} color={theme.colors.textMuted} />
-        </View>
-      )}
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.7)']}
-        style={styles.eventGradient}
-      >
-        <View style={styles.eventOverlayContent}>
-          <View style={[styles.eventTagOverlay, { backgroundColor: getTagColor(update.tag) }]}>
-            <Text style={[styles.eventTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
-          </View>
-          <Text style={styles.eventTitleOverlay} numberOfLines={2}>{update.title}</Text>
-          <View style={styles.eventDateTimeRow}>
-            <Ionicons name="calendar-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-            <Text style={styles.eventDateOverlay}>{update.date}</Text>
-            {update.time && (
-              <>
-                <Text style={styles.eventTimeSeparator}>•</Text>
-                <Ionicons name="time-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                <Text style={styles.eventDateOverlay}>{update.time}</Text>
-              </>
-            )}
-          </View>
-        </View>
-      </LinearGradient>
-    </Pressable>
-  );
-});
 
 const AdminDashboard = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const scrollRef = useRef<ScrollView>(null);
+  
+  // Memoize safe area insets to prevent recalculation during navigation
+  const safeInsets = useMemo(() => ({
+    top: insets.top,
+    bottom: insets.bottom,
+    left: insets.left,
+    right: insets.right,
+  }), [insets.top, insets.bottom, insets.left, insets.right]);
+
+  // Calculate available height for scrollable cards section
+  const screenHeight = Dimensions.get('window').height;
+  const cardsScrollViewHeight = useMemo(() => {
+    const headerHeight = safeInsets.top + 60; // Header height
+    const welcomeSectionHeight = 60; // Welcome section approximate height
+    const updatesHeaderHeight = 120; // Updates header + filters approximate height
+    const bottomNavHeight = safeInsets.bottom + 80; // Bottom nav + safe area
+    return screenHeight - headerHeight - welcomeSectionHeight - updatesHeaderHeight - bottomNavHeight - 50; // 50 for padding/margins
+  }, [screenHeight, safeInsets.top, safeInsets.bottom]);
   
   // Auth state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -217,6 +109,40 @@ const AdminDashboard = () => {
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [allUpdates, setAllUpdates] = useState<DashboardUpdate[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [isLoadingCalendarEvents, setIsLoadingCalendarEvents] = useState(false);
+  
+  // Drawer state
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isPostDrawerOpen, setIsPostDrawerOpen] = useState(false);
+  const [selectedPost, setSelectedPost] = useState<any | null>(null);
+  const slideAnim = useRef(new Animated.Value(0)).current; // 0 = closed, 1 = open
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const postDrawerSlideAnim = useRef(new Animated.Value(0)).current;
+  const postDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
+  const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
+  const postDrawerMonthPickerScaleAnim = useRef(new Animated.Value(0)).current;
+  const postDrawerMonthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
+  
+  // Event drawer state
+  const [showEventDrawer, setShowEventDrawer] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [selectedDateEvents, setSelectedDateEvents] = useState<any[]>([]);
+  const [selectedDateForDrawer, setSelectedDateForDrawer] = useState<Date | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('');
+  const [selectedDateObj, setSelectedDateObj] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const eventDrawerSlideAnim = useRef(new Animated.Value(0)).current;
+  const eventDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const eventDrawerMonthPickerScaleAnim = useRef(new Animated.Value(0)).current;
+  const eventDrawerMonthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
   
   // Animated floating background orbs (Copilot-style)
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -225,17 +151,6 @@ const AdminDashboard = () => {
   const lightSpot1 = useRef(new Animated.Value(0)).current;
   const lightSpot2 = useRef(new Animated.Value(0)).current;
   const lightSpot3 = useRef(new Animated.Value(0)).current;
-
-  // Today's events (category Event occurring today) - using timezone-aware comparison
-  const todaysEvents = useMemo(() => {
-    const todayKey = getPHDateKey(new Date());
-    return allUpdates.filter(u => {
-      if (u.tag.toLowerCase() !== 'event') return false;
-      if (!u.isoDate) return false;
-      const eventKey = getPHDateKey(u.isoDate);
-      return eventKey === todayKey;
-    });
-  }, [allUpdates]);
 
   // Upcoming updates (future dates)
   const upcomingUpdates = useMemo(() => {
@@ -263,6 +178,38 @@ const AdminDashboard = () => {
     if (timeFilter === 'recent') return recentUpdates;
     return allUpdates; // 'all'
   }, [timeFilter, upcomingUpdates, recentUpdates, allUpdates]);
+
+  // Current month calendar events (separate from posts/announcements)
+  const currentMonthEvents = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    
+    return calendarEvents
+      .filter(event => {
+        const eventDate = event.isoDate || event.date;
+        if (!eventDate) return false;
+        const eventDateObj = new Date(eventDate);
+        return eventDateObj.getFullYear() === currentYear &&
+               eventDateObj.getMonth() === currentMonth;
+      })
+      .map(event => ({
+        id: event._id || `calendar-${event.isoDate}-${event.title}`,
+        title: event.title,
+        date: new Date(event.isoDate || event.date).toLocaleDateString(),
+        tag: event.category || 'Event',
+        description: event.description || '',
+        image: undefined,
+        images: undefined,
+        pinned: false,
+        isoDate: event.isoDate || event.date,
+      }))
+      .sort((a, b) => {
+        const dateA = new Date(a.isoDate || a.date).getTime();
+        const dateB = new Date(b.isoDate || b.date).getTime();
+        return dateA - dateB; // Sort ascending (earliest first)
+      });
+  }, [calendarEvents]);
 
   // Load current user and subscribe to auth changes
   useEffect(() => {
@@ -389,7 +336,120 @@ const AdminDashboard = () => {
     animations.forEach(anim => anim.start());
   }, []);
 
-  // Fetch dashboard data
+  // Refresh calendar events function
+  const refreshCalendarEvents = useCallback(async () => {
+    try {
+      setIsLoadingCalendarEvents(true);
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      
+      // Get first and last day of current month
+      const startDate = new Date(currentYear, currentMonth, 1);
+      const endDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
+      
+      const events = await CalendarService.getEvents({
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        limit: 1000,
+      });
+      
+      setCalendarEvents(Array.isArray(events) ? events : []);
+    } catch (error) {
+      console.error('Failed to load calendar events:', error);
+      setCalendarEvents([]);
+    } finally {
+      setIsLoadingCalendarEvents(false);
+    }
+  }, []);
+
+  // Fetch calendar events for current month
+  useEffect(() => {
+    refreshCalendarEvents();
+  }, [refreshCalendarEvents]);
+  
+  // Initialize edit fields when event is selected
+  useEffect(() => {
+    if (selectedEvent && showEventDrawer) {
+      if (isEditing) {
+        setEditTitle(selectedEvent.title || '');
+        setEditDescription(selectedEvent.description || '');
+        setEditTime(selectedEvent.time || 'All Day');
+        if (selectedEvent.isoDate || selectedEvent.date) {
+          const eventDate = new Date(selectedEvent.isoDate || selectedEvent.date);
+          setSelectedDateObj(eventDate);
+          setEditDate(formatDate(eventDate));
+        } else {
+          setSelectedDateObj(null);
+          setEditDate('');
+        }
+      }
+    }
+  }, [selectedEvent, showEventDrawer, isEditing]);
+  
+  // Open event drawer
+  const openEventDrawer = useCallback((event: CalendarEvent, date?: Date) => {
+    setSelectedEvent(event);
+    if (date) {
+      setSelectedDateForDrawer(date);
+      // Find all events on this date
+      const dateKey = formatDateKey(date);
+      const eventsOnDate = calendarEvents.filter(e => {
+        const eventDateKey = parseAnyDateToKey(e.isoDate || e.date);
+        return eventDateKey === dateKey;
+      });
+      setSelectedDateEvents(eventsOnDate.map(e => ({
+        id: e._id || `calendar-${e.isoDate}-${e.title}`,
+        title: e.title,
+        color: categoryToColors(e.category || 'Event').dot,
+        type: e.category || 'Event',
+      })));
+    } else {
+      setSelectedDateForDrawer(null);
+      setSelectedDateEvents([]);
+    }
+    setShowEventDrawer(true);
+    setIsEditing(false);
+    Animated.parallel([
+      Animated.spring(eventDrawerSlideAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }),
+      Animated.timing(eventDrawerBackdropOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [calendarEvents, eventDrawerSlideAnim, eventDrawerBackdropOpacity]);
+  
+  // Close event drawer
+  const closeEventDrawer = useCallback(() => {
+    Animated.parallel([
+      Animated.spring(eventDrawerSlideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }),
+      Animated.timing(eventDrawerBackdropOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowEventDrawer(false);
+      setSelectedEvent(null);
+      setSelectedDateForDrawer(null);
+      setSelectedDateEvents([]);
+      setIsEditing(false);
+    });
+  }, [eventDrawerSlideAnim, eventDrawerBackdropOpacity]);
+
+  // Fetch dashboard data (posts/announcements) - combines with calendar events
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
@@ -399,23 +459,49 @@ const AdminDashboard = () => {
         // Fetch dashboard statistics
         const dashboardStats = await AdminDataService.getDashboard();
         
-        // Fetch recent updates
+        // Fetch recent updates (posts/announcements)
         const posts = await AdminDataService.getPosts();
-        const allUpdatesData = posts.map(post => ({
-          id: post.id,
-          title: post.title,
-          date: new Date(post.date).toLocaleDateString(),
-          tag: post.category,
-          description: post.description,
-          image: post.image,
-          images: post.images,
-          pinned: (post as any).pinned || false,
-          isoDate: post.date,
-        }));
+        const postsData = posts.map(post => {
+          // Ensure images array is properly set
+          let images = post.images;
+          if (!images || !Array.isArray(images) || images.length === 0) {
+            // If images array is empty but image field exists, create array from it
+            if (post.image) {
+              images = [post.image];
+            } else {
+              images = [];
+            }
+          }
+          
+          return {
+            id: post.id,
+            title: post.title,
+            date: new Date(post.date).toLocaleDateString(),
+            tag: post.category,
+            description: post.description,
+            image: post.image,
+            images: images,
+            pinned: (post as any).pinned || false,
+            isoDate: post.date,
+          };
+        });
         
-        setAllUpdates(allUpdatesData);
+        // Only use posts data - calendar events are shown in separate section
+        // Remove duplicates from posts only
+        const uniqueUpdates = postsData.filter((update, index, self) =>
+          index === self.findIndex(u => u.id === update.id)
+        );
+        
+        // Sort by date (newest first)
+        uniqueUpdates.sort((a, b) => {
+          const dateA = new Date(a.isoDate || a.date).getTime();
+          const dateB = new Date(b.isoDate || b.date).getTime();
+          return dateB - dateA;
+        });
+        
+        setAllUpdates(uniqueUpdates);
         setDashboardData({
-          recentUpdates: allUpdatesData.slice(0, 5),
+          recentUpdates: uniqueUpdates.slice(0, 5),
         });
       } catch (err: any) {
         setDashboardError(err?.message || 'Failed to load dashboard data');
@@ -426,10 +512,10 @@ const AdminDashboard = () => {
     };
 
     fetchDashboardData();
-  }, []);
+  }, [calendarEvents]);
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} collapsable={false}>
       <StatusBar
         backgroundColor="transparent"
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
@@ -452,6 +538,7 @@ const AdminDashboard = () => {
         style={styles.backgroundGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
+        pointerEvents="none"
       />
         
       {/* Blur overlay on entire background - very subtle */}
@@ -459,10 +546,11 @@ const AdminDashboard = () => {
         intensity={Platform.OS === 'ios' ? 5 : 3}
         tint="default"
         style={styles.backgroundGradient}
+        pointerEvents="none"
       />
 
       {/* Animated Floating Background Orbs (Copilot-style) */}
-      <View style={styles.floatingBgContainer} pointerEvents="none">
+      <View style={styles.floatingBgContainer} pointerEvents="none" collapsable={false}>
         {/* Light Spot 1 - Top right gentle glow */}
         <Animated.View
           style={[
@@ -700,10 +788,10 @@ const AdminDashboard = () => {
 
       {/* Header - Copilot Style */}
       <View style={[styles.header, { 
-        marginTop: insets.top,
-        marginLeft: insets.left,
-        marginRight: insets.right,
-      }]}>
+        marginTop: safeInsets.top,
+        marginLeft: safeInsets.left,
+        marginRight: safeInsets.right,
+      }]} collapsable={false}>
         <View style={styles.headerLeft}>
           <TouchableOpacity 
             onPress={() => setIsHistoryOpen(true)} 
@@ -744,17 +832,8 @@ const AdminDashboard = () => {
         onClose={() => setIsHistoryOpen(false)}
       />
 
-      {/* Main Content */}
-      <ScrollView 
-        ref={scrollRef} 
-        style={styles.content} 
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingTop: 12,
-          paddingBottom: 20,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
+      {/* Main Content - Fixed Header Section */}
+      <View style={styles.content}>
         <View style={styles.welcomeSection}>
           <View style={styles.welcomeText}>
             <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>Hello {userName},</Text>
@@ -762,63 +841,124 @@ const AdminDashboard = () => {
           </View>
         </View>
 
-        {/* Today's Events - Single Card Display */}
-        {!isLoadingDashboard && !dashboardError && (
-          <View style={styles.todaysEventsSection}>
-            <View style={styles.todaysEventsHeader}>
-              <View style={[styles.sectionIconWrapper, { backgroundColor: theme.colors.accent + '15' }]}>
-                <Ionicons name="calendar-outline" size={20} color={theme.colors.accent} />
-              </View>
-              <View style={styles.sectionTitleWrapper}>
-                <Text style={[styles.todaysEventsTitle, { color: theme.colors.text }]}>Today's Events</Text>
-                <Text style={[styles.todaysEventsSubtitle, { color: theme.colors.textMuted }]}>
-                  {todaysEvents.length > 0 ? 'Happening now' : 'No events today'}
-                </Text>
-              </View>
-            </View>
-            {todaysEvents.length > 0 ? (
-              <View style={[styles.eventCardContainer, { borderColor: theme.colors.border }]}>
-                <BlurView
-                  intensity={Platform.OS === 'ios' ? 20 : 15}
-                  tint={isDarkMode ? 'dark' : 'light'}
-                  style={styles.eventCardBlur}
-                >
-                  <View style={{ backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.5)' : 'rgba(255, 255, 255, 0.5)' }}>
-                    <EventCard update={todaysEvents[0]} onPress={() => {}} theme={theme} />
+        {/* Current Month Calendar Events Section */}
+        {currentMonthEvents.length > 0 && (
+          <View style={[styles.calendarEventsSection, { borderColor: theme.colors.border, marginBottom: 12 }]} collapsable={false}>
+            <BlurView
+              intensity={Platform.OS === 'ios' ? 20 : 15}
+              tint={isDarkMode ? 'dark' : 'light'}
+              style={styles.calendarEventsBlur}
+            >
+              <View style={[styles.calendarEventsContent, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]} collapsable={false}>
+                <View style={styles.sectionHeaderEnhanced}>
+                  <View style={[styles.sectionIconWrapper, { backgroundColor: '#FF9500' + '15' }]}>
+                    <Ionicons 
+                      name="calendar-outline" 
+                      size={20} 
+                      color="#FF9500" 
+                    />
                   </View>
-                </BlurView>
-              </View>
-            ) : (
-              <View style={[styles.noEventsContainer, { borderColor: theme.colors.border }]}>
-                <BlurView
-                  intensity={Platform.OS === 'ios' ? 20 : 15}
-                  tint={isDarkMode ? 'dark' : 'light'}
-                  style={styles.noEventsBlur}
-                >
-                  <View style={[styles.noEventsCard, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}>
-                    <NoEventsAnimation theme={theme} />
-                    <Text style={[styles.noEventsText, { color: theme.colors.textMuted }]}>No events scheduled for today</Text>
+                  <View style={styles.sectionTitleWrapper}>
+                    <Text style={[styles.sectionTitleEnhanced, { color: theme.colors.text }]}>
+                      DOrSU Calendar - {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    </Text>
+                    <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
+                      {currentMonthEvents.length} event{currentMonthEvents.length !== 1 ? 's' : ''} this month
+                    </Text>
                   </View>
-                </BlurView>
+                </View>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={true}
+                  contentContainerStyle={{ paddingRight: 12, gap: 12 }}
+                  style={{ flexShrink: 0 }}
+                >
+                  {currentMonthEvents.map((event) => {
+                    const tagLower = event.tag?.toLowerCase() || '';
+                    let accentColor = '#93C5FD';
+                    
+                    if (tagLower === 'institutional') {
+                      accentColor = '#2563EB';
+                    } else if (tagLower === 'academic') {
+                      accentColor = '#10B981';
+                    } else {
+                      const colors = categoryToColors(event.tag);
+                      accentColor = colors.dot || '#93C5FD';
+                    }
+                    
+                    // Find the full CalendarEvent object
+                    const fullEvent = calendarEvents.find(e => 
+                      e._id === event.id || 
+                      `calendar-${e.isoDate}-${e.title}` === event.id
+                    ) || null;
+                    
+                    return (
+                      <TouchableOpacity
+                        key={event.id}
+                        style={[styles.calendarEventCard, { 
+                          backgroundColor: theme.colors.surface, 
+                          borderColor: theme.colors.border,
+                          minWidth: 280,
+                        }]}
+                        activeOpacity={0.7}
+                        delayPressIn={0}
+                        onPress={() => {
+                          if (fullEvent) {
+                            const eventDate = fullEvent.isoDate || fullEvent.date 
+                              ? new Date(fullEvent.isoDate || fullEvent.date)
+                              : new Date();
+                            openEventDrawer(fullEvent, eventDate);
+                          }
+                        }}
+                      >
+                        <View style={[styles.calendarEventAccent, { backgroundColor: accentColor }]} collapsable={false} />
+                        <View style={styles.calendarEventContent} collapsable={false}>
+                          <View style={styles.calendarEventHeader}>
+                            <View style={[styles.calendarEventIconWrapper, { backgroundColor: accentColor + '20' }]}>
+                              <Ionicons name="calendar" size={16} color={accentColor} />
+                            </View>
+                            <Text style={[styles.calendarEventTag, { color: accentColor }]}>{event.tag}</Text>
+                          </View>
+                          <Text style={[styles.calendarEventTitle, { color: theme.colors.text }]} numberOfLines={2}>
+                            {event.title}
+                          </Text>
+                          <View style={styles.calendarEventDateRow}>
+                            <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
+                            <Text style={[styles.calendarEventDate, { color: theme.colors.textMuted }]}>
+                              {event.date}
+                            </Text>
+                          </View>
+                          {event.description && (
+                            <Text style={[styles.calendarEventDescription, { color: theme.colors.textMuted }]} numberOfLines={2}>
+                              {event.description}
+                            </Text>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
               </View>
-            )}
+            </BlurView>
           </View>
         )}
 
-        {/* Recent Updates Section */}
-        <View style={[styles.recentUpdatesSection, { borderColor: theme.colors.border }]}>
+        {/* Recent Updates Section - Fixed Header */}
+        <View style={[styles.recentUpdatesSection, { borderColor: theme.colors.border }]} collapsable={false}>
           <BlurView
             intensity={Platform.OS === 'ios' ? 20 : 15}
             tint={isDarkMode ? 'dark' : 'light'}
             style={styles.updatesSectionBlur}
           >
-            <View style={[styles.updatesSectionContent, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
+            <View style={[styles.updatesSectionContent, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]} collapsable={false}>
+              {/* Fixed Header Section */}
               <View style={styles.sectionHeaderEnhanced}>
-                <View style={[styles.sectionIconWrapper, { backgroundColor: theme.colors.accent + '15' }]}>
+                <View style={[styles.sectionIconWrapper, { backgroundColor: '#FF9500' + '15' }]}>
                   <Ionicons 
                     name={timeFilter === 'upcoming' ? 'time-outline' : timeFilter === 'recent' ? 'calendar-outline' : 'grid-outline'} 
                     size={20} 
-                    color={theme.colors.accent} 
+                    color="#FF9500" 
                   />
                 </View>
                 <View style={styles.sectionTitleWrapper}>
@@ -829,8 +969,8 @@ const AdminDashboard = () => {
                 </View>
               </View>
 
-              {/* Time Filter Pills */}
-              <View style={styles.filtersContainer}>
+              {/* Time Filter Pills - Fixed */}
+              <View style={[styles.filtersContainer, { flexShrink: 0 }]} collapsable={false}>
                 <Pressable
                   style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'all' && styles.filterPillActive]}
                   onPress={() => setTimeFilter('all')}
@@ -851,62 +991,411 @@ const AdminDashboard = () => {
                 </Pressable>
               </View>
               
-              {dashboardError && (
-                <View style={{ alignItems: 'center', paddingVertical: 16 }}>
-                  <Ionicons name="alert-circle-outline" size={40} color="#DC2626" />
-                  <Text style={{ marginTop: 6, fontSize: 12, color: '#DC2626', fontWeight: '600' }}>{dashboardError}</Text>
-                </View>
-              )}
-
-              {isLoadingDashboard && (
-                <View style={{ alignItems: 'center', paddingVertical: 16 }}>
-                  <Ionicons name="hourglass-outline" size={40} color={theme.colors.textMuted} />
-                  <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>Loading dashboard...</Text>
-                </View>
-              )}
-
-              {!isLoadingDashboard && !dashboardError && displayedUpdates.length === 0 && (
-                <View style={{ alignItems: 'center', paddingVertical: 16 }}>
-                  <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
-                  <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>
-                    {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : 'No updates found'}
-                  </Text>
-                </View>
-              )}
-
-              {!isLoadingDashboard && !dashboardError && displayedUpdates.map((update) => (
-                <View key={update.id} style={[styles.updateCard, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-                  {update.images?.[0] && (
-                    <Image 
-                      source={{ uri: update.images[0] }} 
-                      style={styles.updateImage}
-                      resizeMode="cover"
-                    />
-                  )}
-                  <View style={styles.updateContentWrapper}>
-                    <View style={styles.updateContent}>
-                      <Text style={[styles.updateTitle, { color: theme.colors.text }]} numberOfLines={2}>{update.title}</Text>
-                      <View style={styles.updateDateRow}>
-                        <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} style={{ marginRight: 4 }} />
-                        <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
-                      </View>
-                    </View>
-                    <View style={[styles.updateTag, { backgroundColor: getTagColor(update.tag) }]}>
-                      <Text style={[styles.updateTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
-                    </View>
+              {/* Scrollable Cards Section */}
+              <ScrollView
+                style={[styles.cardsScrollView, { maxHeight: cardsScrollViewHeight }]}
+                contentContainerStyle={{ paddingBottom: safeInsets.bottom + 60 }}
+                showsVerticalScrollIndicator={true}
+                showsHorizontalScrollIndicator={false}
+                nestedScrollEnabled={true}
+                keyboardShouldPersistTaps="handled"
+                bounces={true}
+                scrollEventThrottle={16}
+                removeClippedSubviews={true}
+                horizontal={false}
+              >
+                {dashboardError && (
+                  <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+                    <Ionicons name="alert-circle-outline" size={40} color="#DC2626" />
+                    <Text style={{ marginTop: 6, fontSize: 12, color: '#DC2626', fontWeight: '600' }}>{dashboardError}</Text>
                   </View>
-                </View>
-              ))}
+                )}
+
+                {isLoadingDashboard && (
+                  <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+                    <Ionicons name="hourglass-outline" size={40} color={theme.colors.textMuted} />
+                    <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>Loading dashboard...</Text>
+                  </View>
+                )}
+
+                {!isLoadingDashboard && !dashboardError && displayedUpdates.length === 0 && (
+                  <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+                    <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
+                    <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>
+                      {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : 'No updates found'}
+                    </Text>
+                  </View>
+                )}
+
+                {!isLoadingDashboard && !dashboardError && displayedUpdates.map((update) => {
+                  // Get color for accent bar based on category (institutional/academic)
+                  const tagLower = update.tag?.toLowerCase() || '';
+                  let accentColor = '#93C5FD'; // Default blue
+                  
+                  if (tagLower === 'institutional') {
+                    accentColor = '#2563EB'; // Blue for Institutional
+                  } else if (tagLower === 'academic') {
+                    accentColor = '#10B981'; // Green for Academic
+                  } else {
+                    // For other categories (event, announcement, etc.), use categoryToColors
+                    const colors = categoryToColors(update.tag);
+                    accentColor = colors.dot || '#93C5FD';
+                  }
+                  
+                  return (
+                    <TouchableOpacity
+                      key={update.id}
+                      style={[styles.updateCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                      activeOpacity={0.7}
+                      delayPressIn={0}
+                      onPress={() => {
+                        // Convert DashboardUpdate to Post format
+                        const post: any = {
+                          id: update.id,
+                          title: update.title,
+                          description: update.description,
+                          category: update.tag,
+                          date: update.isoDate || update.date,
+                          isoDate: update.isoDate || update.date,
+                          image: update.image,
+                          images: update.images,
+                        };
+                        setSelectedPost(post);
+                        setIsPostDrawerOpen(true);
+                        Animated.parallel([
+                          Animated.spring(postDrawerSlideAnim, {
+                            toValue: 1,
+                            useNativeDriver: true,
+                            tension: 65,
+                            friction: 11,
+                          }),
+                          Animated.timing(postDrawerBackdropOpacity, {
+                            toValue: 1,
+                            duration: 300,
+                            useNativeDriver: true,
+                          }),
+                        ]).start();
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                    >
+                      <View style={[styles.updateAccent, { backgroundColor: accentColor }]} collapsable={false} />
+                      <View style={styles.updateContent} collapsable={false}>
+                        {(update.images?.[0] || update.image) && (
+                          <Image 
+                            source={{ uri: update.images?.[0] || update.image || '' }} 
+                            style={styles.updateImage}
+                            resizeMode="cover"
+                            onError={(error) => {
+                              console.error('Image load error:', error.nativeEvent.error);
+                              console.log('Failed image URL:', update.images?.[0] || update.image);
+                            }}
+                          />
+                        )}
+                        <View style={styles.updateTextContent}>
+                          <Text style={[styles.updateTitle, { color: theme.colors.text }]} numberOfLines={2}>{update.title}</Text>
+                          <View style={styles.updateDateRow}>
+                            <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
+                            <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
+                          </View>
+                          {update.description && (
+                            <Text style={[styles.updateDescription, { color: theme.colors.textMuted }]} numberOfLines={2}>
+                              {update.description}
+                            </Text>
+                          )}
+                          <View style={styles.updateTagRow}>
+                            <View style={styles.statusItem}>
+                              <Ionicons name="pricetag-outline" size={12} color={accentColor} />
+                              <Text style={[styles.updateTagText, { color: accentColor }]}>{update.tag}</Text>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             </View>
           </BlurView>
         </View>
-      </ScrollView>
+      </View>
 
-      <AdminBottomNavBar
-        activeTab="dashboard"
-        onChatPress={() => navigation.navigate('AdminAIChat')}
-        onDashboardPress={() => navigation.navigate('AdminDashboard')}
-        onCalendarPress={() => navigation.navigate('AdminCalendar')}
+      {/* Floating Plus Icon Button - Bottom Right */}
+      <TouchableOpacity
+        style={[styles.floatingAddButton, {
+          bottom: safeInsets.bottom + 80, // Above nav bar
+        }]}
+        onPress={() => {
+          setIsDrawerOpen(true);
+          Animated.parallel([
+            Animated.spring(slideAnim, {
+              toValue: 1,
+              useNativeDriver: true,
+              tension: 65,
+              friction: 11,
+            }),
+            Animated.timing(backdropOpacity, {
+              toValue: 1,
+              duration: 300,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        }}
+        activeOpacity={0.8}
+      >
+        <View style={[styles.floatingAddButtonIcon, { backgroundColor: '#FF9500' }]}>
+          <Ionicons name="add" size={28} color="#FFFFFF" />
+        </View>
+      </TouchableOpacity>
+
+      {/* Bottom Navigation Bar - Fixed position */}
+      <View style={[styles.bottomNavContainer, {
+        bottom: 0,
+        paddingBottom: safeInsets.bottom,
+      }]} collapsable={false}>
+        <AdminBottomNavBar
+          activeTab="dashboard"
+          onChatPress={() => navigation.navigate('AdminAIChat')}
+          onDashboardPress={() => navigation.navigate('AdminDashboard')}
+          onCalendarPress={() => navigation.navigate('AdminCalendar')}
+        />
+      </View>
+
+      {/* Add Event/Announcement Drawer */}
+      <AddPostDrawer
+        visible={isDrawerOpen}
+        onClose={() => {
+          Animated.parallel([
+            Animated.spring(slideAnim, {
+              toValue: 0,
+              useNativeDriver: true,
+              tension: 65,
+              friction: 11,
+            }),
+            Animated.timing(backdropOpacity, {
+              toValue: 0,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
+            setIsDrawerOpen(false);
+          });
+        }}
+        type={null}
+        onSuccess={async () => {
+          // Refresh dashboard data
+          try {
+            setIsLoadingDashboard(true);
+            setDashboardError(null);
+            
+            // Fetch posts and calendar events in parallel for faster loading
+            const [events, posts] = await Promise.all([
+              // Refresh calendar events for current month only (reduced limit for speed)
+              (async () => {
+                const now = new Date();
+                const currentYear = now.getFullYear();
+                const currentMonth = now.getMonth();
+                const startDate = new Date(currentYear, currentMonth, 1);
+                const endDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
+                
+                return CalendarService.getEvents({
+                  startDate: startDate.toISOString(),
+                  endDate: endDate.toISOString(),
+                  limit: 100, // Reduced from 1000 for faster loading
+                });
+              })(),
+              // Fetch posts
+              AdminDataService.getPosts(),
+            ]);
+            
+            setCalendarEvents(Array.isArray(events) ? events : []);
+            const postsData = posts.map(post => {
+              // Ensure images array is properly set
+              let images = post.images;
+              if (!images || !Array.isArray(images) || images.length === 0) {
+                // If images array is empty but image field exists, create array from it
+                if (post.image) {
+                  images = [post.image];
+                } else {
+                  images = [];
+                }
+              }
+              
+              return {
+                id: post.id,
+                title: post.title,
+                date: new Date(post.date).toLocaleDateString(),
+                tag: post.category,
+                description: post.description,
+                image: post.image,
+                images: images,
+                pinned: (post as any).pinned || false,
+                isoDate: post.date,
+              };
+            });
+            
+            // Only use posts data - calendar events are shown in separate section
+            // Remove duplicates from posts only
+            const uniqueUpdates = postsData.filter((update, index, self) =>
+              index === self.findIndex(u => u.id === update.id)
+            );
+            
+            // Sort by date (newest first)
+            uniqueUpdates.sort((a, b) => {
+              const dateA = new Date(a.isoDate || a.date).getTime();
+              const dateB = new Date(b.isoDate || b.date).getTime();
+              return dateB - dateA;
+            });
+            
+            setAllUpdates(uniqueUpdates);
+            setDashboardData({
+              recentUpdates: uniqueUpdates.slice(0, 5),
+            });
+          } catch (err: any) {
+            setDashboardError(err?.message || 'Failed to load dashboard data');
+          } finally {
+            setIsLoadingDashboard(false);
+          }
+        }}
+        slideAnim={slideAnim}
+        backdropOpacity={backdropOpacity}
+        monthPickerScaleAnim={monthPickerScaleAnim}
+        monthPickerOpacityAnim={monthPickerOpacityAnim}
+      />
+
+      {/* Post Details Drawer */}
+      <PostDetailsDrawer
+        visible={isPostDrawerOpen}
+        onClose={() => {
+          Animated.parallel([
+            Animated.spring(postDrawerSlideAnim, {
+              toValue: 0,
+              useNativeDriver: true,
+              tension: 65,
+              friction: 11,
+            }),
+            Animated.timing(postDrawerBackdropOpacity, {
+              toValue: 0,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
+            setIsPostDrawerOpen(false);
+            setSelectedPost(null);
+          });
+        }}
+        selectedPost={selectedPost}
+        onPostUpdated={(updatedPost) => {
+          // Update selectedPost with the updated data immediately
+          console.log('🔄 Updating selectedPost in AdminDashboard', { updatedPost });
+          setSelectedPost(updatedPost);
+        }}
+        onRefresh={async () => {
+          // Refresh dashboard data
+          try {
+            setIsLoadingDashboard(true);
+            setDashboardError(null);
+            
+            const posts = await AdminDataService.getPosts();
+            const postsData = posts.map(post => {
+              let images = post.images;
+              if (!images || !Array.isArray(images) || images.length === 0) {
+                if (post.image) {
+                  images = [post.image];
+                } else {
+                  images = [];
+                }
+              }
+              
+              return {
+                id: post.id,
+                title: post.title,
+                date: new Date(post.date).toLocaleDateString(),
+                tag: post.category,
+                description: post.description,
+                image: post.image,
+                images: images,
+                pinned: (post as any).pinned || false,
+                isoDate: post.date,
+              };
+            });
+            
+            const uniqueUpdates = postsData.filter((update, index, self) =>
+              index === self.findIndex(u => u.id === update.id)
+            );
+            
+            uniqueUpdates.sort((a, b) => {
+              const dateA = new Date(a.isoDate || a.date).getTime();
+              const dateB = new Date(b.isoDate || b.date).getTime();
+              return dateB - dateA;
+            });
+            
+            setAllUpdates(uniqueUpdates);
+            setDashboardData({
+              recentUpdates: uniqueUpdates.slice(0, 5),
+            });
+          } catch (err: any) {
+            setDashboardError(err?.message || 'Failed to load dashboard data');
+          } finally {
+            setIsLoadingDashboard(false);
+          }
+        }}
+        slideAnim={postDrawerSlideAnim}
+        backdropOpacity={postDrawerBackdropOpacity}
+        monthPickerScaleAnim={postDrawerMonthPickerScaleAnim}
+        monthPickerOpacityAnim={postDrawerMonthPickerOpacityAnim}
+      />
+
+      {/* Event Details Drawer */}
+      <EventDetailsDrawer
+        visible={showEventDrawer}
+        onClose={closeEventDrawer}
+        selectedEvent={selectedEvent}
+        isEditing={isEditing}
+        setIsEditing={setIsEditing}
+        editTitle={editTitle}
+        setEditTitle={setEditTitle}
+        editDescription={editDescription}
+        setEditDescription={setEditDescription}
+        editDate={editDate}
+        setEditDate={setEditDate}
+        editTime={editTime}
+        setEditTime={setEditTime}
+        selectedDateObj={selectedDateObj}
+        setSelectedDateObj={setSelectedDateObj}
+        showDatePicker={showDatePicker}
+        setShowDatePicker={setShowDatePicker}
+        isDeleting={isDeleting}
+        setIsDeleting={setIsDeleting}
+        isUpdating={isUpdating}
+        setIsUpdating={setIsUpdating}
+        selectedDateEvents={selectedDateEvents}
+        selectedDateForDrawer={selectedDateForDrawer}
+        calendarEvents={calendarEvents}
+        refreshCalendarEvents={refreshCalendarEvents}
+        slideAnim={eventDrawerSlideAnim}
+        backdropOpacity={eventDrawerBackdropOpacity}
+        monthPickerScaleAnim={eventDrawerMonthPickerScaleAnim}
+        monthPickerOpacityAnim={eventDrawerMonthPickerOpacityAnim}
+        onSelectEvent={(event) => {
+          if (!event) {
+            setSelectedEvent(null);
+            return;
+          }
+          setSelectedEvent(event);
+          // Update edit fields when event changes
+          setEditTitle(event.title || '');
+          setEditDescription(event.description || '');
+          setEditTime(event.time || 'All Day');
+          if (event.isoDate || event.date) {
+            const eventDate = new Date(event.isoDate || event.date);
+            setSelectedDateObj(eventDate);
+            setEditDate(formatDate(eventDate));
+          } else {
+            setSelectedDateObj(null);
+            setEditDate('');
+          }
+        }}
+        readOnly={false}
       />
     </View>
   );
@@ -915,13 +1404,17 @@ const AdminDashboard = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
   },
   backgroundGradient: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
   },
   floatingBgContainer: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: -1,
+    zIndex: 1,
+    overflow: 'hidden',
   },
   cloudWrapper: {
     position: 'absolute',
@@ -1040,12 +1533,27 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    zIndex: 1,
+    width: '100%',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  cardsScrollView: {
+    flex: 1,
+    flexShrink: 1,
+  },
+  bottomNavContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 998,
   },
   welcomeSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+    flexShrink: 0,
   },
   welcomeText: {
     flex: 1,
@@ -1058,6 +1566,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
     fontWeight: '600',
+  },
+  floatingAddButton: {
+    position: 'absolute',
+    right: 20,
+    zIndex: 999,
+  },
+  floatingAddButtonIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -1094,20 +1619,24 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 12,
     overflow: 'hidden',
+    flex: 1,
   },
   updatesSectionBlur: {
     borderRadius: 12,
     overflow: 'hidden',
+    flex: 1,
   },
   updatesSectionContent: {
     padding: 12,
     borderRadius: 12,
+    flex: 1,
   },
   sectionHeaderEnhanced: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
     gap: 12,
+    flexShrink: 0,
   },
   sectionIconWrapper: {
     width: 40,
@@ -1130,174 +1659,69 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   updateCard: {
-    flexDirection: 'column',
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderRadius: 12,
+    marginBottom: 8,
     borderWidth: 1,
-    borderRadius: 10,
-    marginBottom: 12,
     overflow: 'hidden',
-  },
-  cardShadow: {
     shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
     elevation: 2,
   },
-  updateImage: {
-    width: '100%',
-    height: 140,
-  },
-  updateContentWrapper: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 12,
+  updateAccent: {
+    width: 3,
+    borderRadius: 0,
   },
   updateContent: {
     flex: 1,
-    marginRight: 8,
+    flexDirection: 'column',
+    padding: 0,
+  },
+  updateImage: {
+    width: '100%',
+    height: 120,
+    resizeMode: 'cover',
+  },
+  updateTextContent: {
+    flex: 1,
+    padding: 10,
   },
   updateTitle: {
     fontSize: 15,
     fontWeight: '700',
-    marginBottom: 4,
+    marginBottom: 6,
+    lineHeight: 20,
   },
   updateDateRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
   },
   updateDate: {
     fontSize: 12,
     fontWeight: '600',
   },
-  updateTag: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
+  updateDescription: {
+    fontSize: 12,
+    marginBottom: 6,
+    lineHeight: 16,
+  },
+  updateTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  statusItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   updateTagText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#1A3E7A',
-  },
-  todaysEventsSection: {
-    marginBottom: 16,
-  },
-  eventCardContainer: {
-    borderWidth: 1,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  eventCardBlur: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  todaysEventsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 12,
-  },
-  todaysEventsTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-    marginBottom: 2,
-  },
-  todaysEventsSubtitle: {
     fontSize: 12,
-    fontWeight: '600',
-  },
-  noEventsContainer: {
-    borderWidth: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  noEventsBlur: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  noEventsCard: {
-    padding: 32,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  noEventsText: {
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  eventCardHorizontal: {
-    width: '100%',
-    height: 220,
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 0,
-  },
-  eventImageHorizontal: {
-    width: '100%',
-    height: '100%',
-  },
-  eventImagePlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  eventGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: '55%',
-    justifyContent: 'flex-end',
-    padding: 16,
-  },
-  eventOverlayContent: {
-    gap: 4,
-  },
-  eventTagOverlay: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    alignSelf: 'flex-start',
-    marginBottom: 8,
-  },
-  eventTitleOverlay: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-    lineHeight: 26,
-    letterSpacing: 0.3,
-  },
-  eventDateOverlay: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    opacity: 0.95,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  eventDateTimeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  eventTimeSeparator: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    opacity: 0.7,
-    marginHorizontal: 6,
-  },
-  eventTagText: {
-    fontSize: 11,
     fontWeight: '700',
   },
   filtersContainer: {
@@ -1320,6 +1744,79 @@ const styles = StyleSheet.create({
   },
   filterPillTextActive: {
     color: '#FFF',
+  },
+  calendarEventsSection: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  calendarEventsBlur: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  calendarEventsContent: {
+    padding: 12,
+    borderRadius: 12,
+  },
+  calendarEventCard: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  calendarEventAccent: {
+    width: 3,
+    borderRadius: 0,
+  },
+  calendarEventContent: {
+    flex: 1,
+    padding: 12,
+  },
+  calendarEventHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  calendarEventIconWrapper: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarEventTag: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  calendarEventTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  calendarEventDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  calendarEventDate: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  calendarEventDescription: {
+    fontSize: 12,
+    lineHeight: 16,
   },
 });
 

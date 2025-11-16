@@ -19,7 +19,8 @@ const isDevelopment = __DEV__;
 const API_CONFIG = {
   // Local development - adjust this if your backend runs on a different port
   development: {
-    baseUrl: 'https://dorsu-connect-clean.onrender.com',
+    baseUrl: 'https://dorsu-connect.onrender.com',
+    //baseUrl: 'https://dorsu-connect-clean.onrender.com',
     // For Android emulator, use: 'http://10.0.2.2:3000'
     // For iOS simulator, use: 'http://localhost:3000'
     // For physical device, use your computer's IP: 'http://192.168.x.x:3000'
@@ -27,8 +28,8 @@ const API_CONFIG = {
   
   // Production - Render deployment
   production: {
-    //baseUrl: 'https://dorsu-connect.onrender.com',
-    baseUrl: 'https://dorsu-connect-clean.onrender.com',
+    baseUrl: 'https://dorsu-connect.onrender.com',
+    //baseUrl: 'https://dorsu-connect-clean.onrender.com',
   },
 };
 

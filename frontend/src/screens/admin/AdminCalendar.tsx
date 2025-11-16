@@ -1,23 +1,30 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import dayjs from 'dayjs';
 import timezone from 'dayjs/plugin/timezone';
 import utc from 'dayjs/plugin/utc';
+import { BlurView } from 'expo-blur';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { memo, default as React, useCallback, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Alert, Animated, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Animated, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AddEventDrawer from '../../components/calendar/AddEventDrawer';
+import EventDetailsDrawer from '../../components/calendar/EventDetailsDrawer';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
+import AdminSidebar from '../../components/navigation/AdminSidebar';
 import { theme } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
+import CalendarHelpModal from '../../modals/CalendarHelpModal';
+import DeleteAllModal from '../../modals/DeleteAllModal';
 import MonthPickerModal from '../../modals/MonthPickerModal';
-import AdminDataService from '../../services/AdminDataService';
 import AdminFileService from '../../services/AdminFileService';
+import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
+import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
 import { formatCalendarDate, formatDate } from '../../utils/dateUtils';
 
 type RootStackParamList = {
@@ -44,47 +51,29 @@ const formatEventTitle = (raw?: string) => {
   return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 };
 
-
-const categoryToColors = (category?: string) => {
-  const key = String(category || '').toLowerCase();
-  switch (key) {
-    case 'announcement':
-      return { dot: '#1A3E7A', chipBg: '#E8F0FF', chipBorder: '#CCE0FF', chipText: '#1A3E7A' };
-    case 'academic':
-      return { dot: '#0369A1', chipBg: '#F0F9FF', chipBorder: '#CFF3FF', chipText: '#0369A1' };
-    case 'event':
-      return { dot: '#D97706', chipBg: '#FEF3C7', chipBorder: '#FDE68A', chipText: '#92400E' };
-    case 'service':
-      return { dot: '#059669', chipBg: '#ECFDF5', chipBorder: '#BBF7D0', chipText: '#065F46' };
-    case 'infrastructure':
-      return { dot: '#DC2626', chipBg: '#FEE2E2', chipBorder: '#FECACA', chipText: '#991B1B' };
-    default:
-      return { dot: '#2563EB', chipBg: '#EEF2FF', chipBorder: '#E0E7FF', chipText: '#1D4ED8' };
-  }
-};
-
-const parseAnyDateToKey = (input: any): string | null => {
-  if (!input) return null;
-  const maybe = new Date(input);
-  if (!isNaN(maybe.getTime())) return formatDateKey(maybe);
-  if (typeof input === 'string' && input.includes('/')) {
-    const parts = input.split('/');
-    if (parts.length === 3) {
-      const [dd, mm, yyyy] = parts;
-      const d = Number(dd), m = Number(mm) - 1, y = Number(yyyy);
-      const dt = new Date(y, m, d);
-      if (!isNaN(dt.getTime())) return formatDateKey(dt);
-    }
-  }
+// Get cell background color based on event types
+const getCellColor = (events: any[]): string | null => {
+  if (!events || events.length === 0) return null;
+  
+  // Check for Institutional events (blue)
+  const hasInstitutional = events.some(e => {
+    const type = String(e.type || e.category || '').toLowerCase();
+    return type === 'institutional';
+  });
+  
+  // Check for Academic events (green)
+  const hasAcademic = events.some(e => {
+    const type = String(e.type || e.category || '').toLowerCase();
+    return type === 'academic';
+  });
+  
+  // Priority: Institutional (blue) > Academic (green)
+  if (hasInstitutional) return '#2563EB'; // Blue
+  if (hasAcademic) return '#10B981'; // Green
+  
   return null;
 };
 
-const formatDateKey = (date: Date) => {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-};
 
 // Robust PH date-key comparison (avoids off-by-one no matter device tz)
 const getPHDateKey = (d: Date, PH_TZ: string) => {
@@ -141,14 +130,70 @@ const AdminCalendar = () => {
   
   // Calendar state
   const [showMonthPicker, setShowMonthPicker] = useState(false);
-  const [showAllEvents, setShowAllEvents] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showEventDrawer, setShowEventDrawer] = useState(false);
+  const [selectedDateEvents, setSelectedDateEvents] = useState<any[]>([]);
+  const [selectedDateForDrawer, setSelectedDateForDrawer] = useState<Date | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [selectedDateObj, setSelectedDateObj] = useState<Date | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [showAddEventDrawer, setShowAddEventDrawer] = useState(false);
+  const [addEventInitialDate, setAddEventInitialDate] = useState<Date | null>(null);
+  const [showHelpModal, setShowHelpModal] = useState(false);
+  
+  // Drawer animation values (shared between EventDetailsDrawer and AddEventDrawer)
+  const drawerSlideAnim = useRef(new Animated.Value(0)).current; // 0 = closed, 1 = open
+  const drawerBackdropOpacity = useRef(new Animated.Value(0)).current;
+  
+  // Help modal animation values (same as EventDetailsDrawer)
+  const helpModalSlideAnim = useRef(new Animated.Value(0)).current; // 0 = closed, 1 = open
+  const helpModalBackdropOpacity = useRef(new Animated.Value(0)).current;
+  
+  // Delete all modal animation values
+  const deleteAllModalSlideAnim = useRef(new Animated.Value(0)).current;
+  const deleteAllModalBackdropOpacity = useRef(new Animated.Value(0)).current;
+  
+  // Event type filter - single selection: 'institutional' or 'academic'
+  const [selectedEventType, setSelectedEventType] = useState<'institutional' | 'academic'>('institutional');
+  
+  // Segmented control animation and width tracking
+  const segmentAnim = useRef(new Animated.Value(0)).current; // 0 = institutional, 1 = academic
+  const segmentWidth = useRef(0);
   
   // Animation values
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
   const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
   const listAnim = useRef(new Animated.Value(0)).current;
   const dotScale = useRef(new Animated.Value(0.8)).current;
+  
+  // Update segment animation when selection changes
+  useEffect(() => {
+    if (segmentWidth.current > 0) {
+      const targetX = selectedEventType === 'academic' 
+        ? segmentWidth.current / 2 - 2 
+        : 2;
+      Animated.spring(segmentAnim, {
+        toValue: targetX,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }).start();
+    }
+  }, [selectedEventType, segmentAnim]);
+  
+  // Derived filter states for compatibility with existing code
+  const showInstitutional = selectedEventType === 'institutional';
+  const showAcademic = selectedEventType === 'academic';
 
   const getUserInitials = () => {
     if (!currentUser?.displayName) return '?';
@@ -182,7 +227,7 @@ const AdminCalendar = () => {
     useCallback(() => {
       let unsubscribe: (() => void) | null = null;
       const timeoutId = setTimeout(() => {
-        unsubscribe = onAuthStateChange((user) => {
+        unsubscribe = onAuthStateChange((user: User | null) => {
           setCurrentUser((prevUser: any) => {
             if (prevUser?.uid !== user?.uid) {
               return user;
@@ -300,46 +345,71 @@ const AdminCalendar = () => {
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
   const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
   const [isUploadingCSV, setIsUploadingCSV] = useState<boolean>(false);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        setIsLoadingPosts(true);
-        const data = await AdminDataService.getPosts();
-        if (!cancelled) setPosts(Array.isArray(data) ? data : []);
-      } catch (error) {
-        console.error('Failed to load posts:', error);
-        if (!cancelled) setPosts([]);
-      } finally {
-        if (!cancelled) setIsLoadingPosts(false);
+  
+  // Calculate min/max years from events to dynamically adjust calendar range
+  const eventYearRange = React.useMemo(() => {
+    const years = new Set<number>();
+    
+    // Add years from calendar events
+    calendarEvents.forEach(event => {
+      if (event.year) {
+        years.add(event.year);
+      } else if (event.isoDate || event.date) {
+        const date = new Date(event.isoDate || event.date);
+        if (!isNaN(date.getTime())) {
+          years.add(date.getFullYear());
+        }
       }
-    };
-    // Use requestAnimationFrame to defer to next frame, allowing screen to render immediately
-    const rafId = requestAnimationFrame(() => {
-      load();
+      // Also check startDate and endDate for date ranges
+      if (event.startDate) {
+        const date = new Date(event.startDate);
+        if (!isNaN(date.getTime())) {
+          years.add(date.getFullYear());
+        }
+      }
+      if (event.endDate) {
+        const date = new Date(event.endDate);
+        if (!isNaN(date.getTime())) {
+          years.add(date.getFullYear());
+        }
+      }
     });
-    return () => { 
-      cancelled = true;
-      cancelAnimationFrame(rafId);
+    
+    // Add current year as fallback
+    const currentYear = new Date().getFullYear();
+    years.add(currentYear);
+    
+    const yearArray = Array.from(years).sort((a, b) => a - b);
+    return {
+      min: yearArray.length > 0 ? yearArray[0] : currentYear,
+      max: yearArray.length > 0 ? yearArray[yearArray.length - 1] : currentYear,
+      all: yearArray
     };
+  }, [calendarEvents, posts]);
+
+  
+  
+  // Set posts to empty array - only CSV calendar events will be shown
+  React.useEffect(() => {
+    setPosts([]);
+    setIsLoadingPosts(false);
   }, []);
 
-  // Load calendar events from backend - only load once on component mount
+  // Load calendar events from backend - load all events (or wide range)
   React.useEffect(() => {
     let cancelled = false;
     const loadEvents = async () => {
       try {
         setIsLoadingEvents(true);
-        // Get events for current year (or all events if no date range specified)
-        const currentYear = new Date().getFullYear();
-        const startDate = new Date(currentYear, 0, 1).toISOString(); // January 1
-        const endDate = new Date(currentYear, 11, 31).toISOString(); // December 31
+        // Load events for a wide range (2020-2030) to cover all possible dates
+        // This ensures we get all events regardless of year
+        const startDate = new Date(2020, 0, 1).toISOString(); // January 1, 2020
+        const endDate = new Date(2030, 11, 31).toISOString(); // December 31, 2030
         
         const events = await CalendarService.getEvents({
           startDate,
           endDate,
-          limit: 500, // Get up to 500 events
+          limit: 2000, // Increased limit to get more events
         });
         
         if (!cancelled) {
@@ -394,13 +464,30 @@ const AdminCalendar = () => {
     return dayjs.utc(date).tz(PH_TZ).format('MMMM');
   };
 
-  const selectMonth = (monthIndex: number) => {
-    const newMonth = new Date(Date.UTC(currentMonth.getUTCFullYear(), monthIndex, 1));
+  const selectMonth = (monthIndex: number, year?: number) => {
+    const targetYear = year || currentMonth.getUTCFullYear();
+    const newMonth = new Date(Date.UTC(targetYear, monthIndex, 1));
     setCurrentMonth(newMonth);
     // Ensure the selected date moves into the chosen month so the week view reflects it
     setSelectedDate(new Date(Date.UTC(newMonth.getUTCFullYear(), newMonth.getUTCMonth(), 1)));
     closeMonthPicker();
   };
+
+  const navigateToNextMonth = useCallback(() => {
+    const nextMonth = new Date(currentMonth);
+    nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
+    setCurrentMonth(nextMonth);
+    setSelectedDate(new Date(Date.UTC(nextMonth.getUTCFullYear(), nextMonth.getUTCMonth(), 1)));
+    Haptics.selectionAsync();
+  }, [currentMonth]);
+
+  const navigateToPreviousMonth = useCallback(() => {
+    const prevMonth = new Date(currentMonth);
+    prevMonth.setUTCMonth(prevMonth.getUTCMonth() - 1);
+    setCurrentMonth(prevMonth);
+    setSelectedDate(new Date(Date.UTC(prevMonth.getUTCFullYear(), prevMonth.getUTCMonth(), 1)));
+    Haptics.selectionAsync();
+  }, [currentMonth]);
 
   const openMonthPicker = () => {
     setShowMonthPicker(true);
@@ -453,38 +540,81 @@ const AdminCalendar = () => {
     const key = formatDateKey(date);
     const events: any[] = [];
     
-    // Add events from AdminDataService (posts)
-    if (Array.isArray(posts)) {
-      posts.forEach(p => {
-        const eventDateKey = parseAnyDateToKey(p.isoDate || p.date);
-        if (eventDateKey === key) {
-          events.push({
-            id: p.id,
-            title: p.title,
-            dateKey: eventDateKey,
-            time: p.time || '',
-            type: p.category || 'Announcement',
-            color: categoryToColors(p.category).dot,
-            chip: categoryToColors(p.category),
-          });
-        }
-      });
-    }
+    // DISABLED: Posts from AdminDataService - Only showing CSV calendar events
+    // if (Array.isArray(posts)) {
+    //   posts.forEach(p => {
+    //     // Only include posts that are NOT from CSV uploads (to avoid duplicates)
+    //     if (p.source !== 'CSV Upload') {
+    //       const eventDateKey = parseAnyDateToKey(p.isoDate || p.date);
+    //       if (eventDateKey === key) {
+    //         events.push({
+    //           id: p.id,
+    //           title: p.title,
+    //           dateKey: eventDateKey,
+    //           time: p.time || '',
+    //           type: p.category || 'Announcement',
+    //           color: categoryToColors(p.category).dot,
+    //           chip: categoryToColors(p.category),
+    //         });
+    //       }
+    //     }
+    //   });
+    // }
     
     // Add events from CalendarService (backend calendar events)
     if (Array.isArray(calendarEvents)) {
       calendarEvents.forEach(event => {
-        const eventDateKey = parseAnyDateToKey(event.isoDate || event.date);
-        if (eventDateKey === key) {
-          events.push({
-            id: event._id || `calendar-${event.isoDate}-${event.title}`,
-            title: event.title,
-            dateKey: eventDateKey,
-            time: event.time || 'All Day',
-            type: event.category || 'Announcement',
-            color: categoryToColors(event.category).dot,
-            chip: categoryToColors(event.category),
-          });
+        // Skip week/month-only events for calendar grid (they only show in All tab)
+        if (event.dateType === 'week' || event.dateType === 'month') {
+          return;
+        }
+        
+        // Handle date ranges - check if date falls within range
+        if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+          const startDate = new Date(event.startDate);
+          const endDate = new Date(event.endDate);
+          const checkDate = new Date(date);
+          
+          // Normalize to start of day for comparison
+          startDate.setHours(0, 0, 0, 0);
+          endDate.setHours(0, 0, 0, 0);
+          checkDate.setHours(0, 0, 0, 0);
+          
+          if (checkDate >= startDate && checkDate <= endDate) {
+            events.push({
+              id: event._id || `calendar-${event.isoDate}-${event.title}`,
+              title: event.title,
+              dateKey: key,
+              time: event.time || 'All Day',
+              type: event.category || 'Announcement',
+              color: categoryToColors(event.category).dot,
+              chip: categoryToColors(event.category),
+              dateType: event.dateType,
+              category: event.category,
+              description: event.description,
+              startDate: event.startDate,
+              endDate: event.endDate,
+            });
+          }
+        } else {
+          // Single date event
+          const eventDateKey = parseAnyDateToKey(event.isoDate || event.date);
+          if (eventDateKey === key) {
+            events.push({
+              id: event._id || `calendar-${event.isoDate}-${event.title}`,
+              title: event.title,
+              dateKey: eventDateKey,
+              time: event.time || 'All Day',
+              type: event.category || 'Announcement',
+              color: categoryToColors(event.category).dot,
+              chip: categoryToColors(event.category),
+              dateType: event.dateType,
+              category: event.category,
+              description: event.description,
+              startDate: event.startDate,
+              endDate: event.endDate,
+            });
+          }
         }
       });
     }
@@ -502,64 +632,239 @@ const AdminCalendar = () => {
 
   const handleDayPress = useCallback((date: Date) => {
     setSelectedDate(date);
-    Haptics.selectionAsync();
-  }, []);
+    const events = getEventsForDate(date);
+    if (events && events.length > 0) {
+      // Get the first event and find its full data from calendarEvents
+      const firstEvent = events[0];
+      const fullEvent = calendarEvents.find((e: any) => {
+        // Try to match by _id first
+        if (e._id === firstEvent.id) return true;
+        // Try to match by constructed ID
+        if (`calendar-${e.isoDate}-${e.title}` === firstEvent.id) return true;
+        // Try to match by date and title
+        const eventDateKey = parseAnyDateToKey(e.isoDate || e.date);
+        const checkDateKey = formatDateKey(date);
+        return eventDateKey === checkDateKey && e.title === firstEvent.title;
+      });
+      
+      const eventData = fullEvent || firstEvent;
+      
+      // Set the selected event and initialize edit fields
+      setSelectedEvent(eventData);
+      setEditTitle(eventData?.title || '');
+      setEditDescription(eventData?.description || '');
+      
+      // Set date and time for editing
+      if (eventData?.isoDate || eventData?.date) {
+        const eventDate = new Date(eventData.isoDate || eventData.date);
+        setSelectedDateObj(eventDate);
+        setEditDate(formatDate(eventDate));
+      } else {
+        // If no date in event, use the clicked date
+        setSelectedDateObj(date);
+        setEditDate(formatDate(date));
+      }
+      setEditTime(eventData?.time || '');
+      setIsEditing(false);
+      
+      // Also keep selectedDateEvents for backward compatibility
+      setSelectedDateEvents(events);
+      setSelectedDateForDrawer(date);
+      setShowEventDrawer(true);
+      
+      // Animate drawer opening
+      Animated.parallel([
+        Animated.spring(drawerSlideAnim, {
+          toValue: 1,
+          useNativeDriver: true,
+          tension: 65,
+          friction: 11,
+        }),
+        Animated.timing(drawerBackdropOpacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } else {
+      Haptics.selectionAsync();
+    }
+  }, [getEventsForDate, calendarEvents, drawerSlideAnim, drawerBackdropOpacity]);
+  
+  const closeEventDrawer = useCallback(() => {
+    Animated.parallel([
+      Animated.spring(drawerSlideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }),
+      Animated.timing(drawerBackdropOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowEventDrawer(false);
+    });
+  }, [drawerSlideAnim, drawerBackdropOpacity]);
+
+  const openDeleteAllModal = useCallback(() => {
+    if (calendarEvents.length === 0) {
+      Alert.alert('No Events', 'There are no events to delete.');
+      return;
+    }
+    
+    setShowDeleteAllModal(true);
+    
+    // Animate modal opening
+    Animated.parallel([
+      Animated.spring(deleteAllModalSlideAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }),
+      Animated.timing(deleteAllModalBackdropOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  }, [calendarEvents.length, deleteAllModalSlideAnim, deleteAllModalBackdropOpacity]);
+
+  const closeDeleteAllModal = useCallback(() => {
+    Animated.parallel([
+      Animated.spring(deleteAllModalSlideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }),
+      Animated.timing(deleteAllModalBackdropOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowDeleteAllModal(false);
+    });
+  }, [deleteAllModalSlideAnim, deleteAllModalBackdropOpacity]);
 
   const filteredEvents = React.useMemo(() => {
-    if (!Array.isArray(posts) && !Array.isArray(calendarEvents)) return [];
-    if (selectedDate && !showAllEvents) {
-      return getEventsForDate(selectedDate);
-    }
+    if (!Array.isArray(calendarEvents)) return [];
     
-    // Combine all events from both sources when showing all events
+    // Combine all events from calendarEvents (backend) - include ALL events including week/month-only
+    // Use a Set to track date ranges we've already added (to avoid duplicates)
+    const dateRangeKeys = new Set<string>();
     const allEvents: any[] = [];
     
-    // Add events from posts (AdminDataService)
-    if (Array.isArray(posts)) {
-      allEvents.push(...posts.map(transformPostToEvent));
-    }
-    
-    // Add events from calendarEvents (backend)
     if (Array.isArray(calendarEvents)) {
       calendarEvents.forEach(event => {
-        allEvents.push({
-          id: event._id || `calendar-${event.isoDate}-${event.title}`,
-          title: event.title,
-          dateKey: parseAnyDateToKey(event.isoDate || event.date),
-          time: event.time || 'All Day',
-          type: event.category || 'Announcement',
-          color: categoryToColors(event.category).dot,
-          chip: categoryToColors(event.category),
-        });
-      });
-    }
-    
-    return allEvents;
-  }, [selectedDate, showAllEvents, posts, calendarEvents, getEventsForDate]);
-
-  const getAllEventsGrouped = React.useCallback(() => {
-    if (!Array.isArray(posts) && !Array.isArray(calendarEvents)) return [];
-    
-    const all: any[] = [];
-    
-    // Add events from posts (AdminDataService)
-    if (Array.isArray(posts)) {
-      posts.forEach(p => {
-        const eventDateKey = parseAnyDateToKey(p.isoDate || p.date);
-        if (eventDateKey) {
-          all.push({
-            ...transformPostToEvent(p),
-            dateKey: eventDateKey,
-            dateObj: new Date(eventDateKey)
+        const eventType = String(event.category || 'Announcement').toLowerCase();
+        
+        // Apply filters
+        if (!showInstitutional && eventType === 'institutional') return;
+        if (!showAcademic && eventType === 'academic') return;
+        
+        // For date ranges, create a single entry with range info (avoid duplicates)
+        if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+          const rangeKey = `${event.title}-${event.startDate}-${event.endDate}`;
+          if (!dateRangeKeys.has(rangeKey)) {
+            dateRangeKeys.add(rangeKey);
+            allEvents.push({
+              id: event._id || `calendar-${event.startDate}-${event.title}`,
+              title: event.title,
+              dateKey: parseAnyDateToKey(event.startDate),
+              time: event.time || 'All Day',
+              type: event.category || 'Announcement',
+              color: categoryToColors(event.category).dot,
+              chip: categoryToColors(event.category),
+              dateType: event.dateType,
+              startDate: event.startDate,
+              endDate: event.endDate,
+            });
+          }
+        } else if (event.dateType === 'week' || event.dateType === 'month') {
+          // Week/month-only events
+          allEvents.push({
+            id: event._id || `calendar-${event.isoDate}-${event.title}`,
+            title: event.title,
+            dateKey: parseAnyDateToKey(event.isoDate || event.date),
+            time: event.time || 'All Day',
+            type: event.category || 'Announcement',
+            color: categoryToColors(event.category).dot,
+            chip: categoryToColors(event.category),
+            dateType: event.dateType,
+            weekOfMonth: event.weekOfMonth,
+            month: event.month,
+            year: event.year,
+          });
+        } else {
+          // Single date events
+          allEvents.push({
+            id: event._id || `calendar-${event.isoDate}-${event.title}`,
+            title: event.title,
+            dateKey: parseAnyDateToKey(event.isoDate || event.date),
+            time: event.time || 'All Day',
+            type: event.category || 'Announcement',
+            color: categoryToColors(event.category).dot,
+            chip: categoryToColors(event.category),
+            dateType: event.dateType,
           });
         }
       });
     }
     
+    return allEvents;
+  }, [calendarEvents, showInstitutional, showAcademic]);
+
+  const getAllEventsGrouped = React.useCallback(() => {
+    if (!Array.isArray(calendarEvents)) return [];
+    
+    const all: any[] = [];
+    
     // Add events from calendarEvents (CalendarService)
+    // Use a Set to track date ranges we've already added (to avoid duplicates)
+    const dateRangeKeys = new Set<string>();
+    
     if (Array.isArray(calendarEvents)) {
       calendarEvents.forEach(event => {
-        const eventDateKey = parseAnyDateToKey(event.isoDate || event.date);
+        const eventType = String(event.category || 'Announcement').toLowerCase();
+        
+        // Apply filters
+        if (!showInstitutional && eventType === 'institutional') return;
+        if (!showAcademic && eventType === 'academic') return;
+        
+        // For date ranges, use start date as the key and avoid duplicates
+        let eventDateKey: string | null = null;
+        let dateObj: Date | null = null;
+        let eventYear: number | null = null;
+        
+        if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+          const rangeKey = `${event.title}-${event.startDate}-${event.endDate}`;
+          if (dateRangeKeys.has(rangeKey)) {
+            return; // Skip duplicate date range
+          }
+          dateRangeKeys.add(rangeKey);
+          eventDateKey = parseAnyDateToKey(event.startDate);
+          dateObj = new Date(event.startDate);
+          eventYear = dateObj.getFullYear();
+        } else if (event.dateType === 'week' || event.dateType === 'month') {
+          // Week/month-only events - use placeholder date for grouping
+          eventDateKey = parseAnyDateToKey(event.isoDate || event.date);
+          dateObj = new Date(event.isoDate || event.date);
+          eventYear = event.year || dateObj.getFullYear();
+        } else {
+          eventDateKey = parseAnyDateToKey(event.isoDate || event.date);
+          dateObj = new Date(event.isoDate || event.date);
+          eventYear = dateObj.getFullYear();
+        }
+        
         if (eventDateKey) {
           all.push({
             id: event._id || `calendar-${event.isoDate}-${event.title}`,
@@ -569,23 +874,49 @@ const AdminCalendar = () => {
             type: event.category || 'Announcement',
             color: categoryToColors(event.category).dot,
             chip: categoryToColors(event.category),
-            dateObj: new Date(eventDateKey)
+            dateObj: dateObj,
+            year: eventYear,
+            dateType: event.dateType,
+            startDate: event.startDate,
+            endDate: event.endDate,
+            weekOfMonth: event.weekOfMonth,
+            month: event.month,
           });
         }
       });
     }
     
-    const groupedMap = new Map();
+    // Group by year first, then by date
+    const yearMap = new Map<number, Map<string, any[]>>();
+    
     all.forEach(e => {
-      const key = e.dateKey;
-      if (!groupedMap.has(key)) groupedMap.set(key, []);
-      groupedMap.get(key).push(e);
+      const year = e.year || new Date(e.dateKey).getFullYear();
+      const dateKey = e.dateKey;
+      
+      if (!yearMap.has(year)) {
+        yearMap.set(year, new Map());
+      }
+      const dateMap = yearMap.get(year)!;
+      if (!dateMap.has(dateKey)) {
+        dateMap.set(dateKey, []);
+      }
+      dateMap.get(dateKey)!.push(e);
     });
     
-    return Array.from(groupedMap.entries())
-      .sort((a, b) => new Date(b[0]).getTime() - new Date(a[0]).getTime())
-      .map(([key, items]) => ({ key, items: items as any[] }));
-  }, [posts, calendarEvents]); // Only recompute when posts or calendarEvents change
+    // Convert to nested structure: year -> dates -> events
+    const result: Array<{ year: number; dates: Array<{ key: string; items: any[] }> }> = [];
+    
+    Array.from(yearMap.entries())
+      .sort((a, b) => a[0] - b[0]) // Sort years ascending
+      .forEach(([year, dateMap]) => {
+        const dates = Array.from(dateMap.entries())
+          .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime()) // Sort dates ascending
+          .map(([key, items]) => ({ key, items }));
+        result.push({ year, dates });
+      });
+    
+    return result;
+  }, [calendarEvents, showInstitutional, showAcademic]); // Only recompute when calendarEvents or filters change
   
   const groupedEvents = React.useMemo(() => getAllEventsGrouped(), [getAllEventsGrouped]);
 
@@ -595,16 +926,41 @@ const AdminCalendar = () => {
     
     let count = 0;
     
-    // Count events from posts (AdminDataService)
-    count += posts.reduce((acc, p) => {
-      const key = parseAnyDateToKey(p.isoDate || p.date);
-      if (!key) return acc;
-      const [yy, mm] = key.split('-');
-      return acc + ((Number(yy) === y && Number(mm) === m) ? 1 : 0);
-    }, 0);
+    // DISABLED: Count events from posts (AdminDataService) - Only counting CSV calendar events
+    // count += posts
+    //   .filter(p => p.source !== 'CSV Upload')
+    //   .reduce((acc, p) => {
+    //     const key = parseAnyDateToKey(p.isoDate || p.date);
+    //     if (!key) return acc;
+    //     const [yy, mm] = key.split('-');
+    //     return acc + ((Number(yy) === y && Number(mm) === m) ? 1 : 0);
+    //   }, 0);
     
     // Count events from calendarEvents (CalendarService)
+    // For date ranges, count if any date in range falls in the month
+    // For week/month-only events, count if the month matches
     count += calendarEvents.reduce((acc, event) => {
+      // Skip week/month-only events for calendar grid count
+      if (event.dateType === 'week' || event.dateType === 'month') {
+        // Only count if month matches
+        if (event.month === m && event.year === y) {
+          return acc + 1;
+        }
+        return acc;
+      }
+      
+      if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+        const startDate = new Date(event.startDate);
+        const endDate = new Date(event.endDate);
+        // Check if range overlaps with the month
+        const monthStart = new Date(y, m - 1, 1);
+        const monthEnd = new Date(y, m, 0);
+        if (startDate <= monthEnd && endDate >= monthStart) {
+          return acc + 1;
+        }
+        return acc;
+      }
+      
       const key = parseAnyDateToKey(event.isoDate || event.date);
       if (!key) return acc;
       const [yy, mm] = key.split('-');
@@ -613,6 +969,29 @@ const AdminCalendar = () => {
     
     return count;
   };
+
+  // Refresh calendar events from backend
+  const refreshCalendarEvents = useCallback(async () => {
+    try {
+      setIsLoadingEvents(true);
+      // Load events for a wide range (2020-2030) to cover all possible dates
+      const startDate = new Date(2020, 0, 1).toISOString(); // January 1, 2020
+      const endDate = new Date(2030, 11, 31).toISOString(); // December 31, 2030
+      
+      const events = await CalendarService.getEvents({
+        startDate,
+        endDate,
+        limit: 2000, // Increased limit to get more events
+      });
+      
+      setCalendarEvents(Array.isArray(events) ? events : []);
+    } catch (error) {
+      console.error('Failed to refresh calendar events:', error);
+      setCalendarEvents([]);
+    } finally {
+      setIsLoadingEvents(false);
+    }
+  }, []);
 
   // CSV upload handler
   const handleCSVUpload = useCallback(async () => {
@@ -638,52 +1017,135 @@ const AdminCalendar = () => {
 
       const uploadResult = await AdminFileService.uploadCalendarCSV(fileUri, fileName);
 
+      // Upload successful - refresh calendar immediately
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      // Refresh calendar events to show new dates
+      await refreshCalendarEvents();
+      
+      // Show success message after refresh
+      const eventsAdded = uploadResult.eventsAdded || 0;
+      const eventsUpdated = uploadResult.eventsUpdated || 0;
+      const totalEvents = eventsAdded + eventsUpdated;
+      
       Alert.alert(
         'Upload Successful',
-        `Calendar CSV uploaded successfully.\n\n${uploadResult.eventsAdded} new events added.\n${uploadResult.eventsUpdated} events updated.`,
-        [
-          { 
-            text: 'OK',
-            onPress: () => {
-              // Reload calendar events to show new events
-              refreshCalendarEvents();
-            }
-          }
-        ]
+        `File uploaded successfully!\n\n${eventsAdded} new event${eventsAdded !== 1 ? 's' : ''} added.\n${eventsUpdated} event${eventsUpdated !== 1 ? 's' : ''} updated.\n\nTotal: ${totalEvents} event${totalEvents !== 1 ? 's' : ''} processed.\n\nThe calendar has been refreshed.`,
+        [{ text: 'OK' }]
       );
     } catch (error: any) {
-      Alert.alert('Upload Failed', error.message || 'Failed to upload CSV file');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      const errorMessage = error.message || 'Failed to upload CSV file';
+      let displayMessage = 'Upload Failed - Wrong Format';
+      let alertTitle = 'Upload Failed';
+      
+      if (errorMessage.includes('must contain at least 3')) {
+        displayMessage = 'Your CSV must contain at least 3 of the required fields:\n\n• Type (Institutional or Academic)\n• Event (Required)\n• DateType\n• StartDate\n• EndDate\n• Year\n• Month\n• WeekOfMonth\n• Description';
+        alertTitle = 'Upload Failed - Wrong Format';
+      } else if (errorMessage.includes('must contain "Event"')) {
+        displayMessage = 'Your CSV must contain an "Event" column (or "Title"/"Name").\n\nThe Event field is required.';
+        alertTitle = 'Upload Failed - Missing Event Field';
+      } else if (errorMessage.includes('HTTP error')) {
+        displayMessage = 'Failed to connect to the server. Please check your internet connection and try again.';
+        alertTitle = 'Upload Failed - Connection Error';
+      } else {
+        displayMessage = `Upload failed: ${errorMessage}\n\nPlease check your CSV file format and try again.`;
+        alertTitle = 'Upload Failed';
+      }
+      
+      Alert.alert(alertTitle, displayMessage);
     } finally {
       setIsUploadingCSV(false);
     }
-  }, []);
+  }, [refreshCalendarEvents]);
 
-  // Refresh calendar events from backend
-  const refreshCalendarEvents = useCallback(async () => {
+  const handleDeleteAllConfirm = useCallback(async () => {
+    setIsDeletingAll(true);
     try {
-      setIsLoadingEvents(true);
-      // Get events for current year
-      const currentYear = new Date().getFullYear();
-      const startDate = new Date(currentYear, 0, 1).toISOString(); // January 1
-      const endDate = new Date(currentYear, 11, 31).toISOString(); // December 31
+      const result = await CalendarService.deleteAllEvents();
       
-      const events = await CalendarService.getEvents({
-        startDate,
-        endDate,
-        limit: 500, // Get up to 500 events
-      });
-      
-      setCalendarEvents(Array.isArray(events) ? events : []);
+      if (result.success) {
+        // Refresh calendar events
+        await refreshCalendarEvents();
+        
+        // Close modal
+        closeDeleteAllModal();
+        
+        // Show success message
+        Alert.alert('Success', `All ${result.deletedCount || calendarEvents.length} events deleted successfully.`);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        Alert.alert('Error', 'Failed to delete all events. Please try again.');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
     } catch (error) {
-      console.error('Failed to refresh calendar events:', error);
-      setCalendarEvents([]);
+      console.error('Failed to delete all events:', error);
+      Alert.alert('Error', 'Failed to delete all events. Please check your connection and try again.');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
-      setIsLoadingEvents(false);
+      setIsDeletingAll(false);
     }
-  }, []);
+  }, [refreshCalendarEvents, closeDeleteAllModal, calendarEvents.length]);
 
-  // Memoized Calendar Day Component
-  const CalendarDay = memo(({ date, day, isCurrentDay, isSelectedDay, index, eventsForDay, theme, onPress }: { date: Date; day: number | null; isCurrentDay: boolean; isSelectedDay: boolean; index: number; eventsForDay: any[]; theme: any; onPress: (date: Date) => void }) => {
+  // Handler for opening add event drawer
+  const handleOpenAddEvent = useCallback((date?: Date) => {
+    const targetDate = date || selectedDate || new Date();
+    setAddEventInitialDate(targetDate);
+    setShowAddEventDrawer(true);
+    
+    // Animate drawer opening - same as EventDetailsDrawer
+    Animated.parallel([
+      Animated.spring(drawerSlideAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }),
+      Animated.timing(drawerBackdropOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  }, [selectedDate, drawerSlideAnim, drawerBackdropOpacity]);
+
+  const handleCloseAddEvent = useCallback(() => {
+    // Animate drawer closing - same as EventDetailsDrawer
+    Animated.parallel([
+      Animated.spring(drawerSlideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }),
+      Animated.timing(drawerBackdropOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowAddEventDrawer(false);
+      setAddEventInitialDate(null);
+    });
+  }, [drawerSlideAnim, drawerBackdropOpacity]);
+
+  // Memoized Calendar Day Component with long press detection for unmarked cells
+  const CalendarDay = memo(({ date, day, isCurrentDay, isSelectedDay, index, eventsForDay, theme, onPress, onLongPress }: { date: Date; day: number | null; isCurrentDay: boolean; isSelectedDay: boolean; index: number; eventsForDay: any[]; theme: any; onPress: (date: Date) => void; onLongPress: (date: Date) => void }) => {
+    const hasEvents = eventsForDay && eventsForDay.length > 0;
+    
+    const handlePress = () => {
+      onPress(date);
+    };
+    
+    const handleLongPress = () => {
+      // Only allow long press on unmarked cells (no events)
+      if (!hasEvents) {
+        onLongPress(date);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+    };
     if (!day) return (
       <View
         style={[
@@ -698,50 +1160,58 @@ const AdminCalendar = () => {
       />
     );
     
+    // Get cell color based on event types
+    const cellColor = getCellColor(eventsForDay);
+    
+    // Determine border styling
+    const isLastColumn = (index % 7) === 6;
+    const isSelected = isSelectedDay && !isCurrentDay;
+    
     return (
       <TouchableOpacity 
         style={[
           styles.calendarDay,
           { 
-            backgroundColor: theme.colors.card,
-            borderRightColor: theme.colors.border, 
-            borderBottomColor: theme.colors.border,
-            borderRightWidth: (index % 7) === 6 ? 0 : StyleSheet.hairlineWidth
+            backgroundColor: cellColor || theme.colors.card,
+            // Selected day: orange border around entire cell (2px)
+            // Non-selected: normal grid borders (hairline)
+            borderTopWidth: isSelected ? 2 : 0,
+            borderTopColor: isSelected ? '#FF9500' : 'transparent',
+            borderLeftWidth: isSelected ? 2 : 0,
+            borderLeftColor: isSelected ? '#FF9500' : 'transparent',
+            borderRightWidth: isLastColumn ? (isSelected ? 2 : 0) : (isSelected ? 2 : StyleSheet.hairlineWidth),
+            borderRightColor: isSelected ? '#FF9500' : theme.colors.border,
+            borderBottomWidth: isSelected ? 2 : StyleSheet.hairlineWidth,
+            borderBottomColor: isSelected ? '#FF9500' : theme.colors.border,
+            opacity: cellColor ? 0.85 : 1,
           }
         ]}
-        onPress={() => onPress(date)}
+        onPress={handlePress}
+        onLongPress={handleLongPress}
+        activeOpacity={0.7}
       >
         <View style={styles.dayContent}>
           <View style={[
             styles.dayNumberContainer,
             isCurrentDay && styles.todayContainer,
-            isCurrentDay && { backgroundColor: theme.colors.accent },
-            isSelectedDay && [styles.selectedContainer, { borderColor: theme.colors.accent }]
+            isCurrentDay && { backgroundColor: '#FF9500' }, // Always orange for current day
+            !isCurrentDay && cellColor && { backgroundColor: cellColor }, // Only apply cell color if not current day
           ]}>
             <Text
               accessibilityRole="button"
               accessibilityLabel={`Select ${date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`}
-              accessibilityHint="Selects this date to view events"
+              accessibilityHint={hasEvents ? "Tap to view events for this date" : "Selects this date"}
               style={[
                 styles.dayNumber,
-                { color: theme.colors.text },
+                isCurrentDay && { color: '#FFFFFF', fontWeight: '700' }, // White text for current day (orange background)
+                !isCurrentDay && { color: cellColor ? '#FFFFFF' : theme.colors.text }, // White if cell has color, otherwise theme text
                 isCurrentDay && styles.todayText,
-                isSelectedDay && styles.selectedText
+                !isCurrentDay && cellColor && { color: '#FFFFFF', fontWeight: '700' } // White text for colored cells (non-current day)
               ]}
             >
               {day}
             </Text>
           </View>
-          {eventsForDay && eventsForDay.length > 0 && (
-            <View style={styles.eventIndicators}>
-              {eventsForDay.slice(0, 3).map((event, eventIndex) => (
-                <View 
-                  key={eventIndex} 
-                  style={[styles.eventDot, { backgroundColor: event.color }]} 
-                />
-              ))}
-            </View>
-          )}
         </View>
       </TouchableOpacity>
     );
@@ -760,9 +1230,10 @@ const AdminCalendar = () => {
         eventsForDay={eventsForDay}
         theme={t}
         onPress={handleDayPress}
+        onLongPress={handleOpenAddEvent}
       />
     );
-  }, [getEventsForDate, t, handleDayPress]);
+  }, [getEventsForDate, t, handleDayPress, handleOpenAddEvent]);
 
 
   // List animation - DISABLED FOR PERFORMANCE DEBUGGING
@@ -770,7 +1241,7 @@ const AdminCalendar = () => {
     // Set values immediately without animation
     listAnim.setValue(1);
     dotScale.setValue(1);
-  }, [showAllEvents, selectedDate, posts]);
+  }, [selectedDate]);
 
   const days = React.useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
   const weekDays = React.useMemo(() => ['S', 'M', 'T', 'W', 'T', 'F', 'S'], []);
@@ -1053,23 +1524,32 @@ const AdminCalendar = () => {
             </View>
           </TouchableOpacity>
         </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>School Calendar</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>DOrSU Calendar</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity 
             style={styles.profileButton} 
-            onPress={() => navigation.navigate('AdminSettings')} 
-            accessibilityLabel="Admin profile - Go to settings"
+            onPress={() => {
+              setShowHelpModal(true);
+              Animated.parallel([
+                Animated.spring(helpModalSlideAnim, {
+                  toValue: 1,
+                  useNativeDriver: true,
+                  tension: 65,
+                  friction: 11,
+                }),
+                Animated.timing(helpModalBackdropOpacity, {
+                  toValue: 1,
+                  duration: 300,
+                  useNativeDriver: true,
+                }),
+              ]).start();
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }}
+            accessibilityLabel="Calendar help and instructions"
           >
-            {backendUserPhoto ? (
-              <Image 
-                source={{ uri: backendUserPhoto }} 
-                style={styles.profileImage}
-              />
-            ) : (
-              <View style={[styles.profileIconCircle, { backgroundColor: '#FF9500' }]}>
-                <Text style={styles.profileInitials}>{getUserInitials()}</Text>
-              </View>
-            )}
+            <View style={[styles.profileIconCircle, { backgroundColor: '#FF9500' }]}>
+              <Text style={styles.profileInitials}>?</Text>
+            </View>
           </TouchableOpacity>
         </View>
       </View>
@@ -1100,22 +1580,46 @@ const AdminCalendar = () => {
 
           {/* Month selector at top of calendar */}
           <View style={[styles.calendarMonthHeader, { backgroundColor: 'transparent', borderBottomColor: 'rgba(255, 255, 255, 0.2)' }]}>
-            <TouchableOpacity
-              style={styles.monthSelectorButton}
-              onPress={openMonthPicker}
-              activeOpacity={0.7}
-              accessibilityRole="button"
-              accessibilityLabel="Open month picker"
-              accessibilityHint="Opens a modal to select a month"
-            >
-              <View style={styles.monthSelectorContent}>
-                <Ionicons name="calendar" size={18} color={t.colors.text} />
+            <View style={styles.monthSelectorContent}>
+              <TouchableOpacity
+                style={styles.monthNavButton}
+                onPress={navigateToPreviousMonth}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Previous month"
+                accessibilityHint="Navigate to previous month"
+              >
+                <Text style={[styles.angleBrackets, { color: t.colors.textMuted }]}>
+                  {'<'}
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.monthSelectorButton}
+                onPress={navigateToNextMonth}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Next month"
+                accessibilityHint="Navigate to next month"
+              >
                 <Text style={[styles.monthHeaderText, { color: t.colors.text }]}>
                   {getMonthName(currentMonth)} {currentMonth.getFullYear()}
                 </Text>
-                <Ionicons name="chevron-down" size={14} color={t.colors.textMuted} />
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.monthNavButton}
+                onPress={navigateToNextMonth}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Next month"
+                accessibilityHint="Navigate to next month"
+              >
+                <Text style={[styles.angleBrackets, { color: t.colors.textMuted }]}>
+                  {'>'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Week day headers */}
@@ -1153,7 +1657,10 @@ const AdminCalendar = () => {
           onSelectMonth={selectMonth}
           scaleAnim={monthPickerScaleAnim}
           opacityAnim={monthPickerOpacityAnim}
+          minYear={eventYearRange.min}
+          maxYear={eventYearRange.max}
         />
+
 
         {/* Day Summary removed by request (Events section already shows count) */}
 
@@ -1195,47 +1702,105 @@ const AdminCalendar = () => {
                   </>
                 )}
               </TouchableOpacity>
-              <View style={[styles.segmentedToggle, { backgroundColor: t.colors.card, borderColor: t.colors.border }]}>
               <TouchableOpacity
-                style={[styles.segmentItem, !showAllEvents && [styles.segmentItemActive, { backgroundColor: t.colors.surfaceAlt }]]}
-                onPress={() => { setShowAllEvents(false); AccessibilityInfo.announceForAccessibility?.('Switched to Day view'); Haptics.selectionAsync(); }}
-                accessibilityRole="button"
-                accessibilityLabel="Day view"
+                style={[styles.deleteAllButton, { 
+                  backgroundColor: t.colors.surface,
+                  borderColor: '#DC2626',
+                  opacity: isDeletingAll ? 0.6 : 1
+                }]}
+                onPress={openDeleteAllModal}
+                disabled={isDeletingAll || calendarEvents.length === 0}
+                activeOpacity={0.7}
               >
-                <Text style={[styles.segmentText, { color: t.colors.textMuted }, !showAllEvents && styles.segmentTextActive]}>Day</Text>
+                {isDeletingAll ? (
+                  <ActivityIndicator size="small" color="#DC2626" />
+                ) : (
+                  <>
+                    <Ionicons name="trash-outline" size={14} color="#DC2626" />
+                    <Text style={[styles.deleteAllText, { color: '#DC2626' }]}>Delete All</Text>
+                  </>
+                )}
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.segmentItem, showAllEvents && [styles.segmentItemActive, { backgroundColor: t.colors.surfaceAlt }]]}
-                onPress={() => { setShowAllEvents(true); AccessibilityInfo.announceForAccessibility?.('Switched to All events'); Haptics.selectionAsync(); }}
-                accessibilityRole="button"
-                accessibilityLabel="All events"
-              >
-                <Text style={[styles.segmentText, { color: t.colors.textMuted }, showAllEvents && styles.segmentTextActive]}>All</Text>
-              </TouchableOpacity>
-            </View>
             </View>
           </View>
+          
+          {/* Event Type Segmented Control */}
+          <View style={styles.segmentedControlContainer}>
+            <View 
+              style={[styles.segmentedControl, { backgroundColor: selectedEventType === 'institutional' ? '#2563EB' : '#10B981' }]}
+              onLayout={(e) => {
+                segmentWidth.current = e.nativeEvent.layout.width;
+                // Initialize animation position
+                const targetX = selectedEventType === 'academic' 
+                  ? segmentWidth.current / 2 - 2 
+                  : 2;
+                segmentAnim.setValue(targetX);
+              }}
+            >
+              <Animated.View
+                style={[
+                  styles.segmentedSelector,
+                  {
+                    transform: [
+                      {
+                        translateX: segmentAnim,
+                      },
+                    ],
+                  }
+                ]}
+              />
+              <View style={styles.segmentedOptionsContainer}>
+                <TouchableOpacity
+                  style={styles.segmentedOption}
+                  onPress={() => {
+                    setSelectedEventType('institutional');
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[
+                    styles.segmentedOptionText,
+                    { color: selectedEventType === 'institutional' ? '#2563EB' : '#FFFFFF' }
+                  ]}>
+                    Institutional
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.segmentedOption}
+                  onPress={() => {
+                    setSelectedEventType('academic');
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[
+                    styles.segmentedOptionText,
+                    { color: selectedEventType === 'academic' ? '#10B981' : '#FFFFFF' }
+                  ]}>
+                    Academic
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+          
           <View style={styles.eventsSubtitleRowEnhanced}>
             <Text style={[styles.eventsSubtitle, { color: t.colors.textMuted }]} numberOfLines={1}>
-              {showAllEvents
-                ? 'All dates'
-                : selectedDate
-                  ? formatDate(selectedDate)
-                  : 'All dates'} — {filteredEvents.length} {filteredEvents.length === 1 ? 'event' : 'events'}
+              All events — {filteredEvents.length} {filteredEvents.length === 1 ? 'event' : 'events'}
             </Text>
           </View>
           <LinearGradient colors={[t.colors.border, 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ height: 1, marginBottom: 10 }} />
 
-          {filteredEvents.length === 0 && !isLoadingPosts && (
+          {filteredEvents.length === 0 && !isLoadingEvents && (
             <View style={[styles.emptyStateCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
               <View style={[styles.emptyStateIconWrap, { backgroundColor: t.colors.surfaceAlt }]}>
                 <Ionicons name="calendar-outline" size={20} color={t.colors.accent} />
               </View>
               <Text style={[styles.emptyStateTitle, { color: t.colors.text }]}>No events yet</Text>
               <Text style={[styles.emptyStateSubtitle, { color: t.colors.textMuted }]}>
-                {showAllEvents
-                  ? 'Create your first event or announcement.'
-                  : `No events for ${selectedDate ? formatDate(selectedDate) : 'this day'}`}
+                {!showInstitutional && !showAcademic
+                  ? 'Please enable at least one event type filter.'
+                  : 'Upload a CSV file to add calendar events.'}
               </Text>
               <TouchableOpacity 
                 style={[
@@ -1245,7 +1810,7 @@ const AdminCalendar = () => {
                     backgroundColor: t.colors.surface,
                   }
                 ]} 
-                onPress={() => navigation.navigate('PostUpdate')}
+                onPress={() => handleOpenAddEvent()}
                 activeOpacity={0.7}
               >
                 <Ionicons name="add" size={14} color={t.colors.accent} />
@@ -1254,121 +1819,223 @@ const AdminCalendar = () => {
             </View>
           )}
 
-          {isLoadingPosts && (
+          {isLoadingEvents && (
             <View style={[styles.emptyStateCard, { paddingVertical: 16, overflow: 'hidden', backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
               <LinearGradient colors={[t.colors.surfaceAlt, t.colors.surface]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ ...StyleSheet.absoluteFillObject, opacity: 0.6 }} />
               <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>Loading…</Text>
             </View>
           )}
 
-          {!showAllEvents && (
-            <View>
-            {Array.isArray(filteredEvents) && filteredEvents.map((event: any) => (
-            <TouchableOpacity
-              key={event.id}
-              style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
-              onPress={() => navigation.navigate('PostUpdate', { postId: event.id })}
-              accessibilityRole="button"
-              accessibilityLabel={`Open event ${event.title}`}
-              accessibilityHint="Opens the event to view or edit"
-              activeOpacity={0.7}
-            >
-              <View style={[styles.eventAccent, { backgroundColor: event.color }]} />
-              <View style={styles.eventContent}>
-                <Text style={[styles.eventTitle, { color: t.colors.text }]} numberOfLines={1}>{formatEventTitle(event.title)}</Text>
-                <View style={styles.eventInnerDivider} />
-                <View style={styles.eventTimeRow}>
-                  <Ionicons name="time-outline" size={12} color={t.colors.textMuted} />
-                  <Text style={[styles.eventTimeText, { color: t.colors.textMuted }]}>{event.time || '—'}</Text>
-                </View>
-                <View style={styles.statusInline}>
-                  {event.isPinned && (
-                    <View style={styles.statusItem}>
-                      <Ionicons name="pin" size={12} color="#0284C7" />
-                      <Text style={[styles.statusText, { color: '#0369A1' }]}>Pinned</Text>
-                    </View>
-                  )}
-                  {event.isPinned && (event.isUrgent || event.type) && <Text style={styles.statusSep}>•</Text>}
-                  {event.isUrgent && (
-                    <View style={styles.statusItem}>
-                      <Ionicons name="alert-circle" size={12} color="#DC2626" />
-                      <Text style={[styles.statusText, { color: '#B91C1C' }]}>Urgent</Text>
-                    </View>
-                  )}
-                  {event.isUrgent && event.type && <Text style={[styles.statusSep, { color: t.colors.textMuted }]}>•</Text>}
-                  {!!event.type && (
-                    <View style={styles.statusItem}>
-                      <Ionicons name="pricetag-outline" size={12} color={event.color} />
-                      <Text style={[styles.statusText, { color: event.color }]}>
-                        {String(event.type || '').charAt(0).toUpperCase() + String(event.type || '').slice(1)}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-            </TouchableOpacity>
-            ))}
-            </View>
-          )}
-
-          {showAllEvents && (
-            <View>
-            {Array.isArray(groupedEvents) && groupedEvents.map(group => (
-            <View key={group.key} style={styles.groupContainer}>
-              <Text style={[styles.groupHeaderText, { color: t.colors.textMuted }]}>
-                {formatCalendarDate(new Date(group.key))}
-              </Text>
-              {Array.isArray(group.items) && group.items.map((event: any) => (
-                <TouchableOpacity
-                  key={event.id}
-                  style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
-                  onPress={() => navigation.navigate('PostUpdate', { postId: event.id })}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open event ${event.title}`}
-                  accessibilityHint="Opens the event to view or edit"
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.eventAccent, { backgroundColor: event.color }]} />
-                  <View style={styles.eventContent}>
-                    <Text style={[styles.eventTitle, { color: t.colors.text }]} numberOfLines={1}>{event.title}</Text>
-                    <View style={styles.eventInnerDivider} />
-                    <View style={styles.eventTimeRow}>
-                      <Ionicons name="time-outline" size={12} color={t.colors.textMuted} />
-                      <Text style={[styles.eventTimeText, { color: t.colors.textMuted }]}>{event.time || '—'}</Text>
-                    </View>
-                    <View style={styles.statusInline}>
-                      {event.isPinned && (
-                        <View style={styles.statusItem}>
-                          <Ionicons name="pin" size={12} color="#0284C7" />
-                          <Text style={[styles.statusText, { color: '#0369A1' }]}>Pinned</Text>
-                        </View>
-                      )}
-                      {event.isPinned && (event.isUrgent || event.type) && <Text style={styles.statusSep}>•</Text>}
-                      {event.isUrgent && (
-                        <View style={styles.statusItem}>
-                          <Ionicons name="alert-circle" size={12} color="#DC2626" />
-                          <Text style={[styles.statusText, { color: '#B91C1C' }]}>Urgent</Text>
-                        </View>
-                      )}
-                      {event.isUrgent && event.type && <Text style={[styles.statusSep, { color: t.colors.textMuted }]}>•</Text>}
-                      {!!event.type && (
-                        <View style={styles.statusItem}>
-                          <Ionicons name="pricetag-outline" size={12} color={event.color} />
-                          <Text style={[styles.statusText, { color: event.color }]}>
-                            {String(event.type || '').charAt(0).toUpperCase() + String(event.type || '').slice(1)}
+          {/* All Events List - Flat list with dates inside cards */}
+          <View>
+            {Array.isArray(groupedEvents) && groupedEvents.map((yearGroup) => (
+              <View key={yearGroup.year} style={styles.yearGroupContainer}>
+                <Text style={[styles.yearHeaderText, { color: t.colors.text }]}>
+                  {yearGroup.year}
+                </Text>
+                {Array.isArray(yearGroup.dates) && yearGroup.dates.map((dateGroup) => (
+                  <View key={dateGroup.key}>
+                    {Array.isArray(dateGroup.items) && dateGroup.items.map((event: any) => (
+                      <TouchableOpacity
+                        key={event.id}
+                        style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
+                        onPress={() => {
+                          // Find the full event from calendarEvents
+                          const fullEvent = calendarEvents.find((e: any) => e._id === event.id || `calendar-${e.isoDate}-${e.title}` === event.id);
+                          const eventData = fullEvent || event;
+                          setSelectedEvent(eventData);
+                          setEditTitle(eventData?.title || '');
+                          setEditDescription(eventData?.description || '');
+                          
+                          // Set date and time for editing
+                          if (eventData?.isoDate || eventData?.date) {
+                            const eventDate = new Date(eventData.isoDate || eventData.date);
+                            setSelectedDateObj(eventDate);
+                            setEditDate(formatDate(eventDate));
+                          } else {
+                            setSelectedDateObj(null);
+                            setEditDate('');
+                          }
+                          setEditTime(eventData?.time || '');
+                          
+                          setIsEditing(false);
+                          setShowEventDrawer(true);
+                          
+                          // Animate drawer opening
+                          Animated.parallel([
+                            Animated.spring(drawerSlideAnim, {
+                              toValue: 1,
+                              useNativeDriver: true,
+                              tension: 65,
+                              friction: 11,
+                            }),
+                            Animated.timing(drawerBackdropOpacity, {
+                              toValue: 1,
+                              duration: 300,
+                              useNativeDriver: true,
+                            }),
+                          ]).start();
+                          
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open event ${event.title}`}
+                        accessibilityHint="Opens the event to view or edit"
+                        activeOpacity={0.7}
+                      >
+                        <View style={[styles.eventAccent, { backgroundColor: event.color }]} />
+                        <View style={styles.eventContent}>
+                          {/* Date inside the card */}
+                          <View style={styles.eventDateRow}>
+                            <Text style={[styles.eventDateText, { color: t.colors.textMuted }]}>
+                              {formatCalendarDate(new Date(dateGroup.key))}
+                            </Text>
+                          </View>
+                          <Text style={[styles.eventTitle, { color: t.colors.text }]} numberOfLines={2}>
+                            {event.title}
                           </Text>
+                          <View style={styles.eventInnerDivider} />
+                          <View style={styles.eventTimeRow}>
+                            <Ionicons name="time-outline" size={12} color={t.colors.textMuted} />
+                            <Text style={[styles.eventTimeText, { color: t.colors.textMuted }]}>
+                              {event.dateType === 'date_range' && event.startDate && event.endDate
+                                ? `${formatDate(new Date(event.startDate))} - ${formatDate(new Date(event.endDate))}`
+                                : event.dateType === 'week' && event.weekOfMonth && event.month
+                                ? `Week ${event.weekOfMonth} of ${new Date(2000, event.month - 1, 1).toLocaleString('default', { month: 'long' })}`
+                                : event.dateType === 'month' && event.month
+                                ? new Date(2000, event.month - 1, 1).toLocaleString('default', { month: 'long' })
+                                : event.time || 'All Day'}
+                            </Text>
+                          </View>
+                          <View style={styles.statusInline}>
+                            {!!event.type && (
+                              <View style={styles.statusItem}>
+                                <Ionicons name="pricetag-outline" size={12} color={event.color} />
+                                <Text style={[styles.statusText, { color: event.color }]}>
+                                  {String(event.type || '').charAt(0).toUpperCase() + String(event.type || '').slice(1)}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
                         </View>
-                      )}
-                    </View>
+                      </TouchableOpacity>
+                    ))}
                   </View>
-                </TouchableOpacity>
-              ))}
-            </View>
+                ))}
+              </View>
             ))}
-            </View>
-          )}
+          </View>
         </BlurView>
       </ScrollView>
+
+      {/* Event Details Drawer */}
+      <EventDetailsDrawer
+        visible={showEventDrawer}
+        onClose={closeEventDrawer}
+        selectedEvent={selectedEvent}
+        isEditing={isEditing}
+        setIsEditing={setIsEditing}
+        editTitle={editTitle}
+        setEditTitle={setEditTitle}
+        editDescription={editDescription}
+        setEditDescription={setEditDescription}
+        editDate={editDate}
+        setEditDate={setEditDate}
+        editTime={editTime}
+        setEditTime={setEditTime}
+        selectedDateObj={selectedDateObj}
+        setSelectedDateObj={setSelectedDateObj}
+        showDatePicker={showDatePicker}
+        setShowDatePicker={setShowDatePicker}
+        isDeleting={isDeleting}
+        setIsDeleting={setIsDeleting}
+        isUpdating={isUpdating}
+        setIsUpdating={setIsUpdating}
+        selectedDateEvents={selectedDateEvents}
+        selectedDateForDrawer={selectedDateForDrawer}
+        calendarEvents={calendarEvents}
+        refreshCalendarEvents={refreshCalendarEvents}
+        slideAnim={drawerSlideAnim}
+        backdropOpacity={drawerBackdropOpacity}
+        monthPickerScaleAnim={monthPickerScaleAnim}
+        monthPickerOpacityAnim={monthPickerOpacityAnim}
+        onSelectEvent={(event) => {
+          if (!event) {
+            // Clear selected event if null is passed (e.g., after deletion)
+            setSelectedEvent(null);
+            setEditTitle('');
+            setEditDescription('');
+            setSelectedDateObj(null);
+            setEditDate('');
+            setEditTime('');
+            // Also clear selected date events to refresh the list
+            setSelectedDateEvents([]);
+            return;
+          }
+          setSelectedEvent(event);
+          setEditTitle(event?.title || '');
+          setEditDescription(event?.description || '');
+          if (event?.isoDate || event?.date) {
+            const eventDate = new Date(event.isoDate || event.date);
+            setSelectedDateObj(eventDate);
+            setEditDate(formatDate(eventDate));
+          } else if (selectedDateForDrawer) {
+            setSelectedDateObj(selectedDateForDrawer);
+            setEditDate(formatDate(selectedDateForDrawer));
+          }
+          setEditTime(event?.time || '');
+        }}
+      />
+
+      {/* Delete All Confirmation Modal */}
+      <DeleteAllModal
+        visible={showDeleteAllModal}
+        onClose={closeDeleteAllModal}
+        onConfirm={handleDeleteAllConfirm}
+        eventCount={calendarEvents.length}
+        isDeleting={isDeletingAll}
+        slideAnim={deleteAllModalSlideAnim}
+        backdropOpacity={deleteAllModalBackdropOpacity}
+      />
+
+      {/* Add Event Drawer */}
+      <AddEventDrawer
+        visible={showAddEventDrawer}
+        onClose={handleCloseAddEvent}
+        initialDate={addEventInitialDate}
+        refreshCalendarEvents={refreshCalendarEvents}
+        slideAnim={drawerSlideAnim}
+        backdropOpacity={drawerBackdropOpacity}
+        monthPickerScaleAnim={monthPickerScaleAnim}
+        monthPickerOpacityAnim={monthPickerOpacityAnim}
+        eventYearRange={{ minYear: eventYearRange.min, maxYear: eventYearRange.max }}
+      />
+
+      {/* Help Modal */}
+      {showHelpModal && (
+        <CalendarHelpModal
+          visible={showHelpModal}
+          onClose={() => {
+            Animated.parallel([
+              Animated.spring(helpModalSlideAnim, {
+                toValue: 0,
+                useNativeDriver: true,
+                tension: 65,
+                friction: 11,
+              }),
+              Animated.timing(helpModalBackdropOpacity, {
+                toValue: 0,
+                duration: 200,
+                useNativeDriver: true,
+              }),
+            ]).start(() => {
+              setShowHelpModal(false);
+            });
+          }}
+          slideAnim={helpModalSlideAnim}
+          backdropOpacity={helpModalBackdropOpacity}
+        />
+      )}
 
       {/* Bottom Navigation Bar - Fixed position */}
       <View style={[styles.bottomNavContainer, {
@@ -1552,18 +2219,29 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     justifyContent: 'center',
   },
-  monthSelectorButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   monthSelectorContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    gap: 12,
+  },
+  monthSelectorButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  monthNavButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    minWidth: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   monthHeaderText: {
     fontSize: 16,
+    fontWeight: '700',
+  },
+  angleBrackets: {
+    fontSize: 18,
     fontWeight: '700',
   },
   weekHeader: {
@@ -1593,9 +2271,7 @@ const styles = StyleSheet.create({
   calendarDay: {
     width: '14.285%', // 100% / 7 days
     aspectRatio: 1,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: theme.colors.border,
+    // Border widths and colors are set dynamically in the component
   },
   dayContent: {
     flex: 1,
@@ -1616,7 +2292,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
   },
   todayContainer: {
-    backgroundColor: '#2563EB',
+    backgroundColor: '#FF9500', // Orange for current day
   },
   todayText: {
     color: '#fff',
@@ -1805,6 +2481,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 6,
   },
+  eventDateRow: {
+    marginBottom: 4,
+  },
+  eventDateText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   eventSmallTag: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1988,6 +2673,326 @@ const styles = StyleSheet.create({
   },
   csvUploadText: {
     fontSize: 12,
+    fontWeight: '600',
+  },
+  deleteAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  deleteAllText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  segmentedControlContainer: {
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    padding: 2,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  segmentedSelector: {
+    position: 'absolute',
+    top: 2,
+    bottom: 2,
+    left: 0,
+    width: '48%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  segmentedOptionsContainer: {
+    flexDirection: 'row',
+    width: '100%',
+    zIndex: 1,
+  },
+  segmentedOption: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentedOptionText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  yearGroupContainer: {
+    marginBottom: 24,
+  },
+  yearHeaderText: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 12,
+    marginTop: 4,
+  },
+  drawerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  drawerContentContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '85%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 20,
+  },
+  drawerHandle: {
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  drawerHandleBar: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    opacity: 0.3,
+  },
+  drawerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    paddingTop: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0, 0, 0, 0.08)',
+  },
+  drawerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  drawerCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  drawerScrollView: {
+    flex: 1,
+  },
+  drawerScrollContent: {
+    padding: 20,
+    paddingTop: 16,
+  },
+  drawerEventCard: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  drawerEventAccent: {
+    width: 3,
+    borderRadius: 2,
+    marginRight: 12,
+  },
+  drawerEventContent: {
+    flex: 1,
+  },
+  drawerEventTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  drawerEventDivider: {
+    height: 1,
+    marginVertical: 8,
+  },
+  drawerEventRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  drawerEventText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  drawerEventDescription: {
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 4,
+  },
+  drawerEmptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  drawerEmptyText: {
+    fontSize: 14,
+  },
+  drawerSection: {
+    marginBottom: 20,
+  },
+  drawerEditField: {
+    marginBottom: 20,
+  },
+  drawerFieldLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  drawerInputContainer: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  drawerInput: {
+    flex: 1,
+    fontSize: 16,
+    padding: 0,
+  },
+  drawerTextAreaContainer: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 120,
+  },
+  drawerTextArea: {
+    flex: 1,
+    fontSize: 16,
+    padding: 0,
+    minHeight: 100,
+  },
+  drawerCharCount: {
+    fontSize: 12,
+    marginTop: 4,
+    alignSelf: 'flex-end',
+  },
+  drawerAttachmentsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 8,
+  },
+  drawerAttachmentItem: {
+    width: 100,
+    height: 100,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  drawerAttachmentImage: {
+    width: '100%',
+    height: '100%',
+  },
+  drawerAttachmentIcon: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  drawerActions: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 20,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 12,
+  },
+  drawerActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  drawerDeleteButton: {
+    backgroundColor: '#DC2626',
+  },
+  drawerEditButton: {
+    backgroundColor: '#2563EB',
+  },
+  drawerSaveButton: {
+    backgroundColor: '#10B981',
+  },
+  drawerCancelButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+  },
+  drawerActionButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deleteAllWarningContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+    gap: 12,
+  },
+  deleteAllWarningText: {
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+  },
+  deleteAllDescription: {
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 12,
+  },
+  deleteAllSubtext: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  drawerEventSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    gap: 12,
+  },
+  drawerEventSelectorAccent: {
+    width: 3,
+    height: 24,
+    borderRadius: 2,
+  },
+  drawerEventSelectorText: {
+    flex: 1,
+    fontSize: 15,
     fontWeight: '600',
   },
 });

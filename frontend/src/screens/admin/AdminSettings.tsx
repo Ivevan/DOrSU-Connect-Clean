@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Platform, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme as themeConfig } from '../../config/theme';
 import { useThemeActions, useThemeValues } from '../../contexts/ThemeContext';
@@ -488,7 +488,7 @@ const AdminSettings = () => {
               <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>About</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
-          </View>
+          </BlurView>
 
           {/* Sign Out Button */}
           <TouchableOpacity 

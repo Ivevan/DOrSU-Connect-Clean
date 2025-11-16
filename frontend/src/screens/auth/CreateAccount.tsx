@@ -36,10 +36,7 @@ const CreateAccount = () => {
   const lightSpot2 = useRef(new Animated.Value(0)).current;
   const lightSpot3 = useRef(new Animated.Value(0)).current;
   
-  // Screen transition animations
-  const screenOpacity = useRef(new Animated.Value(0)).current;
-  const contentTranslateY = useRef(new Animated.Value(50)).current;
-  const backgroundOpacity = useRef(new Animated.Value(0)).current;
+  // Screen transition animations - REMOVED for performance debugging
   
   // Form state
   const [username, setUsername] = React.useState('');
@@ -59,33 +56,7 @@ const CreateAccount = () => {
   const confirmPasswordFocus = useRef(new Animated.Value(0)).current;
   const loadingRotation = useRef(new Animated.Value(0)).current;
 
-  // Start screen transition animation on mount
-  React.useEffect(() => {
-    const startScreenTransition = () => {
-      Animated.timing(backgroundOpacity, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }).start();
-
-      Animated.parallel([
-        Animated.timing(screenOpacity, {
-          toValue: 1,
-          duration: 1000,
-          delay: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(contentTranslateY, {
-          toValue: 0,
-          duration: 1000,
-          delay: 200,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    };
-    startScreenTransition();
-  }, []);
+  // Start screen transition animation on mount - REMOVED for performance debugging
 
   // Start floating animation on mount
   React.useEffect(() => {
@@ -342,7 +313,7 @@ const CreateAccount = () => {
       />
         
         {/* Gradient Background */}
-        <Animated.View style={[styles.gradientBackground, { opacity: backgroundOpacity }]}>
+        <View style={styles.gradientBackground}>
           <LinearGradient
             colors={isDarkMode 
               ? ['#0B1220', '#111827', '#1F2937'] 
@@ -352,7 +323,7 @@ const CreateAccount = () => {
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           />
-        </Animated.View>
+        </View>
         
         {/* Blur overlay on entire background - very subtle */}
         <BlurView
@@ -538,15 +509,13 @@ const CreateAccount = () => {
           keyboardDismissMode="interactive"
           style={styles.scrollView}
         >
-          <Animated.View style={[
+          <View style={[
             styles.content,
             {
               paddingTop: insets.top,
               paddingBottom: insets.bottom,
               paddingLeft: insets.left,
               paddingRight: insets.right,
-              opacity: screenOpacity,
-              transform: [{ translateY: contentTranslateY }],
             },
           ]}>
         {/* Logo and Title Section */}
@@ -579,23 +548,23 @@ const CreateAccount = () => {
             <Animated.View style={[
               styles.inputWrapper,
               {
-                backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.9)',
+                backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.8)' : 'rgba(255, 255, 255, 0.9)',
                 borderColor: usernameFocus.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)', '#FF9500'],
+                  outputRange: [isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)', '#2196F3'],
                 }),
               }
             ]}>
               <MaterialIcons 
                 name="person" 
                 size={20} 
-                color="#666" 
+                color={isDarkMode ? '#9CA3AF' : '#666'} 
                 style={styles.inputIcon} 
               />
             <TextInput
-              style={styles.input}
+              style={[styles.input, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}
               placeholder="Username"
-              placeholderTextColor="#666"
+              placeholderTextColor={isDarkMode ? '#9CA3AF' : '#666'}
                 value={username}
                 onChangeText={setUsername}
                 autoCapitalize="none"
@@ -619,23 +588,23 @@ const CreateAccount = () => {
             <Animated.View style={[
               styles.inputWrapper,
               {
-                backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.9)',
+                backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.8)' : 'rgba(255, 255, 255, 0.9)',
                 borderColor: emailFocus.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)', '#FF9500'],
+                  outputRange: [isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)', '#2196F3'],
                 }),
               }
             ]}>
               <MaterialIcons 
                 name="email" 
                 size={20} 
-                color="#666" 
+                color={isDarkMode ? '#9CA3AF' : '#666'} 
                 style={styles.inputIcon} 
             />
             <TextInput
-              style={styles.input}
+              style={[styles.input, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}
               placeholder="Email"
-              placeholderTextColor="#666"
+              placeholderTextColor={isDarkMode ? '#9CA3AF' : '#666'}
               keyboardType="email-address"
               autoCapitalize="none"
                 value={email}
@@ -660,23 +629,23 @@ const CreateAccount = () => {
             <Animated.View style={[
               styles.inputWrapper,
               {
-                backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.9)',
+                backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.8)' : 'rgba(255, 255, 255, 0.9)',
                 borderColor: passwordFocus.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)', '#FF9500'],
+                  outputRange: [isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)', '#2196F3'],
                 }),
               }
             ]}>
               <MaterialIcons 
                 name="lock" 
                 size={20} 
-                color="#666" 
+                color={isDarkMode ? '#9CA3AF' : '#666'} 
                 style={styles.inputIcon} 
             />
             <TextInput
-              style={styles.input}
+              style={[styles.input, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}
               placeholder="Password"
-              placeholderTextColor="#666"
+              placeholderTextColor={isDarkMode ? '#9CA3AF' : '#666'}
                 secureTextEntry={!showPassword}
                 value={password}
                 onChangeText={setPassword}
@@ -703,7 +672,7 @@ const CreateAccount = () => {
                 <MaterialIcons 
                   name={showPassword ? "visibility-off" : "visibility"} 
                   size={20} 
-                  color="#666" 
+                  color={isDarkMode ? '#9CA3AF' : '#666'} 
                 />
               </TouchableOpacity>
             </Animated.View>
@@ -711,23 +680,23 @@ const CreateAccount = () => {
             <Animated.View style={[
               styles.inputWrapper,
               {
-                backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.9)',
+                backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.8)' : 'rgba(255, 255, 255, 0.9)',
                 borderColor: confirmPasswordFocus.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)', '#FF9500'],
+                  outputRange: [isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)', '#2196F3'],
                 }),
               }
             ]}>
               <MaterialIcons 
                 name="lock-outline" 
                 size={20} 
-                color="#666" 
+                color={isDarkMode ? '#9CA3AF' : '#666'} 
                 style={styles.inputIcon} 
             />
             <TextInput
-              style={styles.input}
+              style={[styles.input, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}
               placeholder="Confirm Password"
-              placeholderTextColor="#666"
+              placeholderTextColor={isDarkMode ? '#9CA3AF' : '#666'}
                 secureTextEntry={!showConfirmPassword}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
@@ -754,7 +723,7 @@ const CreateAccount = () => {
                 <MaterialIcons 
                   name={showConfirmPassword ? "visibility-off" : "visibility"} 
                   size={20} 
-                  color="#666" 
+                  color={isDarkMode ? '#9CA3AF' : '#666'} 
                 />
               </TouchableOpacity>
             </Animated.View>
@@ -826,7 +795,7 @@ const CreateAccount = () => {
             </TouchableOpacity>
           </View>
         </View>
-          </Animated.View>
+          </View>
         </ScrollView>
       </KeyboardWrapper>
       
@@ -955,6 +924,7 @@ const styles = StyleSheet.create({
     width: '100%',
     flex: 1,
     justifyContent: 'center',
+    paddingHorizontal: 24,
   },
   inputContainer: {
     marginBottom: 16,
@@ -962,7 +932,7 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 16,
+    borderRadius: 12,
     marginBottom: 16,
     paddingHorizontal: 16,
     borderWidth: 1,
@@ -975,7 +945,6 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     fontSize: 16,
     fontWeight: '500',
-    color: '#1F2937',
   },
   passwordToggle: {
     padding: 8,

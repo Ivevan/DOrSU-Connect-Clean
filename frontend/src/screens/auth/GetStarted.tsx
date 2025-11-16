@@ -53,34 +53,7 @@ const GetStarted = () => {
   const techFloat7 = useRef(new Animated.Value(0)).current;
   const techFloat8 = useRef(new Animated.Value(0)).current;
   
-  // Screen transition animations
-  const screenOpacity = useRef(new Animated.Value(0)).current;
-  const contentTranslateY = useRef(new Animated.Value(50)).current;
-  const backgroundOpacity = useRef(new Animated.Value(0)).current;
-
-  // Start screen transition animation on mount
-  React.useEffect(() => {
-    const startScreenTransition = () => {
-      // Screen content fade in and slide up
-      Animated.parallel([
-        Animated.timing(screenOpacity, {
-          toValue: 1,
-          duration: 1000,
-          delay: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(contentTranslateY, {
-          toValue: 0,
-          duration: 1000,
-          delay: 200,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    };
-
-    startScreenTransition();
-  }, []);
+  // Screen transition animations - REMOVED for performance debugging
 
   // Start floating animation on mount
   React.useEffect(() => {
@@ -710,15 +683,13 @@ const GetStarted = () => {
         <MaterialIcons name="dashboard" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
       </TouchableOpacity>
       
-      <Animated.View style={[
+      <View style={[
         styles.content,
         {
           paddingTop: insets.top,
           paddingBottom: insets.bottom,
           paddingLeft: insets.left,
           paddingRight: insets.right,
-          opacity: screenOpacity,
-          transform: [{ translateY: contentTranslateY }],
         },
       ]}>
         {/* Logo Section */}
@@ -930,7 +901,7 @@ const GetStarted = () => {
             Empowering Minds • Connecting Futures
           </Text>
         </View>
-      </Animated.View>
+      </View>
 
       {/* Error Modal */}
       <Modal

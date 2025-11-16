@@ -1,94 +1,103 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import DeleteEventModal from '../../modals/DeleteEventModal';
 import MonthPickerModal from '../../modals/MonthPickerModal';
-import CalendarService, { CalendarEvent } from '../../services/CalendarService';
-import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
+import AdminDataService, { Post } from '../../services/AdminDataService';
+import { categoryToColors } from '../../utils/calendarUtils';
 import { formatDate } from '../../utils/dateUtils';
 
-interface EventDetailsDrawerProps {
+interface PostDetailsDrawerProps {
   visible: boolean;
   onClose: () => void;
-  selectedEvent: CalendarEvent | null;
-  isEditing: boolean;
-  setIsEditing: (editing: boolean) => void;
-  editTitle: string;
-  setEditTitle: (title: string) => void;
-  editDescription: string;
-  setEditDescription: (description: string) => void;
-  editDate: string;
-  setEditDate: (date: string) => void;
-  editTime: string;
-  setEditTime: (time: string) => void;
-  selectedDateObj: Date | null;
-  setSelectedDateObj: (date: Date | null) => void;
-  showDatePicker: boolean;
-  setShowDatePicker: (show: boolean) => void;
-  isDeleting: boolean;
-  setIsDeleting: (deleting: boolean) => void;
-  isUpdating: boolean;
-  setIsUpdating: (updating: boolean) => void;
-  selectedDateEvents: any[];
-  selectedDateForDrawer: Date | null;
-  calendarEvents: CalendarEvent[];
-  refreshCalendarEvents: () => Promise<void>;
+  selectedPost: Post | null;
+  onRefresh?: () => Promise<void>;
+  onPostUpdated?: (updatedPost: Post) => void; // Callback to update selectedPost after edit
   slideAnim: Animated.Value;
   backdropOpacity: Animated.Value;
   monthPickerScaleAnim: Animated.Value;
   monthPickerOpacityAnim: Animated.Value;
-  onSelectEvent?: (event: CalendarEvent) => void;
-  readOnly?: boolean; // If true, hide edit/delete buttons (for user view)
+  readOnly?: boolean; // If true, hides edit/delete buttons
 }
 
-const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
+const PostDetailsDrawer: React.FC<PostDetailsDrawerProps> = ({
   visible,
   onClose,
-  selectedEvent,
-  isEditing,
-  setIsEditing,
-  editTitle,
-  setEditTitle,
-  editDescription,
-  setEditDescription,
-  editDate,
-  setEditDate,
-  editTime,
-  setEditTime,
-  selectedDateObj,
-  setSelectedDateObj,
-  showDatePicker,
-  setShowDatePicker,
-  isDeleting,
-  setIsDeleting,
-  isUpdating,
-  setIsUpdating,
-  selectedDateEvents,
-  selectedDateForDrawer,
-  calendarEvents,
-  refreshCalendarEvents,
+  selectedPost,
+  onRefresh,
+  onPostUpdated,
   slideAnim,
   backdropOpacity,
   monthPickerScaleAnim,
   monthPickerOpacityAnim,
-  onSelectEvent,
   readOnly = false,
 }) => {
   const { theme: t } = useThemeValues();
   const insets = useSafeAreaInsets();
   
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [selectedDateObj, setSelectedDateObj] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [pickedFile, setPickedFile] = useState<{
+    name: string;
+    size: number;
+    mimeType: string | null;
+    uri: string;
+    fileCopyUri: string | null;
+    cachedUri: string | null;
+  } | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+  
   // Delete modal state and animations
-  const [showDeleteModal, setShowDeleteModal] = React.useState(false);
-  const deleteModalSlideAnim = React.useRef(new Animated.Value(0)).current;
-  const deleteModalBackdropOpacity = React.useRef(new Animated.Value(0)).current;
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const deleteModalSlideAnim = useRef(new Animated.Value(0)).current;
+  const deleteModalBackdropOpacity = useRef(new Animated.Value(0)).current;
+
+  // Initialize edit fields when post is selected or editing starts
+  useEffect(() => {
+    if (selectedPost && visible) {
+      if (isEditing) {
+        setEditTitle(selectedPost.title || '');
+        setEditDescription(selectedPost.description || '');
+        setEditCategory(selectedPost.category || '');
+        if (selectedPost.isoDate || selectedPost.date) {
+          const eventDate = new Date(selectedPost.isoDate || selectedPost.date);
+          setSelectedDateObj(eventDate);
+          setEditDate(formatDate(eventDate));
+        } else {
+          setSelectedDateObj(null);
+          setEditDate('');
+        }
+        setPickedFile(null);
+      } else {
+        // Reset to original values when not editing
+        setEditTitle(selectedPost.title || '');
+        setEditDescription(selectedPost.description || '');
+        setEditCategory(selectedPost.category || '');
+        if (selectedPost.isoDate || selectedPost.date) {
+          const eventDate = new Date(selectedPost.isoDate || selectedPost.date);
+          setSelectedDateObj(eventDate);
+          setEditDate(formatDate(eventDate));
+        }
+        setPickedFile(null);
+      }
+    }
+  }, [selectedPost, visible, isEditing]);
 
   // Animate month picker when it opens/closes
-  React.useEffect(() => {
+  useEffect(() => {
     if (showDatePicker) {
-      // Animate in
       Animated.parallel([
         Animated.spring(monthPickerScaleAnim, {
           toValue: 1,
@@ -103,7 +112,6 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
         }),
       ]).start();
     } else {
-      // Animate out
       Animated.parallel([
         Animated.spring(monthPickerScaleAnim, {
           toValue: 0,
@@ -122,78 +130,167 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
 
   const handleCancelEdit = () => {
     setIsEditing(false);
-    if (selectedEvent) {
-      setEditTitle(selectedEvent.title || '');
-      setEditDescription(selectedEvent.description || '');
-      if (selectedEvent?.isoDate || selectedEvent?.date) {
-        const eventDate = new Date(selectedEvent.isoDate || selectedEvent.date);
+    if (selectedPost) {
+      setEditTitle(selectedPost.title || '');
+      setEditDescription(selectedPost.description || '');
+      setEditCategory(selectedPost.category || '');
+      if (selectedPost.isoDate || selectedPost.date) {
+        const eventDate = new Date(selectedPost.isoDate || selectedPost.date);
         setSelectedDateObj(eventDate);
         setEditDate(formatDate(eventDate));
       } else {
         setSelectedDateObj(null);
         setEditDate('');
       }
-      setEditTime(selectedEvent?.time || '');
+      setPickedFile(null);
     }
   };
 
+  const handleAddPhoto = async () => {
+    if (isAnimating) return;
+
+    setIsAnimating(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'image/*',
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+
+      const asset = Array.isArray((result as any).assets)
+        ? (result as any).assets[0]
+        : (result as any);
+
+      if (result.canceled) {
+        setIsAnimating(false);
+        return;
+      }
+
+      const mime = asset.mimeType || '';
+      if (!mime.startsWith('image/')) {
+        Alert.alert('Invalid file', 'Please select a JPEG or PNG image.');
+        setIsAnimating(false);
+        return;
+      }
+
+      let cachedUri: string | null = null;
+      try {
+        const source = (asset.fileCopyUri || asset.uri) as string;
+        const extension = (asset.name || 'image').split('.').pop() || 'jpg';
+        const targetPath = `${FileSystem.cacheDirectory}preview_${Date.now()}.${extension}`;
+        if (source && !source.startsWith('file://')) {
+          await FileSystem.copyAsync({ from: source, to: targetPath });
+          cachedUri = targetPath;
+        } else if (source) {
+          cachedUri = source;
+        }
+      } catch {}
+
+      setPickedFile({
+        name: asset.name || 'Unnamed file',
+        size: asset.size,
+        mimeType: asset.mimeType ?? null,
+        uri: asset.uri,
+        fileCopyUri: asset.fileCopyUri ?? null,
+        cachedUri,
+      });
+      setIsAnimating(false);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (e) {
+      Alert.alert('Error', 'Unable to pick a file.');
+      setIsAnimating(false);
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    setPickedFile(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   const handleSaveEdit = async () => {
-    if (!selectedEvent?._id) {
-      Alert.alert('Error', 'Cannot update event: missing event ID');
+    console.log('💾 handleSaveEdit called', { postId: selectedPost?.id, hasSelectedPost: !!selectedPost });
+    
+    if (!selectedPost?.id) {
+      console.error('❌ Save failed: Missing post ID');
+      Alert.alert('Error', 'Cannot update post: missing post ID');
       return;
     }
     if (!editTitle.trim()) {
+      console.warn('⚠️ Validation failed: Title is required');
       Alert.alert('Validation Error', 'Title is required');
       return;
     }
     if (!editDate && !selectedDateObj) {
+      console.warn('⚠️ Validation failed: Date is required');
       Alert.alert('Validation Error', 'Date is required');
       return;
     }
     
+    console.log('🔄 Setting isUpdating to true');
     setIsUpdating(true);
+    
     try {
-      const isoDate = selectedDateObj ? selectedDateObj.toISOString() : (selectedEvent.isoDate || selectedEvent.date);
+      const isoDate = selectedDateObj ? selectedDateObj.toISOString() : (selectedPost.isoDate || selectedPost.date);
+      console.log('📝 Preparing update data', { isoDate, hasPickedFile: !!pickedFile });
       
-      const updated = await CalendarService.updateEvent(selectedEvent._id, {
+      // Prepare update data
+      const updateData: any = {
         title: editTitle.trim(),
         description: editDescription.trim(),
-        date: editDate,
+        category: editCategory.trim(),
+        date: isoDate, // Use ISO date string for backend
         isoDate: isoDate,
-        time: editTime.trim() || 'All Day',
-      });
+      };
+
+      // If new image is picked, include it
+      if (pickedFile) {
+        updateData.image = pickedFile.uri;
+        updateData.images = [pickedFile.uri];
+        updateData.imageFile = pickedFile;
+        console.log('📸 Including image in update', { uri: pickedFile.uri.substring(0, 50) + '...' });
+      }
+
+      console.log('📤 Calling AdminDataService.updatePost', { postId: selectedPost.id, updateData: { ...updateData, imageFile: updateData.imageFile ? 'present' : 'none' } });
+      const updated = await AdminDataService.updatePost(selectedPost.id, updateData);
+      console.log('📥 AdminDataService.updatePost response', { updated: !!updated });
       
       if (updated) {
-        // Refresh calendar events first
-        await refreshCalendarEvents();
+        console.log('✅ Post updated successfully, refreshing dashboard');
         
-        // Update the selected event with the new data so it displays immediately
-        if (onSelectEvent) {
-          onSelectEvent(updated);
+        // Update the selectedPost immediately with the updated data
+        if (onPostUpdated && updated) {
+          console.log('🔄 Updating selectedPost with new data');
+          onPostUpdated(updated);
+        }
+        
+        // Refresh the dashboard
+        if (onRefresh) {
+          await onRefresh();
         }
         
         setIsEditing(false);
-        Alert.alert('Success', 'Event updated successfully');
+        Alert.alert('Success', 'Post updated successfully');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
-        Alert.alert('Error', 'Failed to update event');
+        console.error('❌ Update failed: AdminDataService returned null');
+        Alert.alert('Error', 'Failed to update post');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
     } catch (error) {
-      console.error('Failed to update event:', error);
-      Alert.alert('Error', 'Failed to update event');
+      console.error('❌ Failed to update post:', error);
+      Alert.alert('Error', 'Failed to update post');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
+      console.log('🔄 Setting isUpdating to false');
       setIsUpdating(false);
     }
   };
 
-  // Show delete confirmation modal
   const handleDelete = () => {
-    console.log('🗑️ handleDelete called', { selectedEvent: selectedEvent?._id, hasSelectedEvent: !!selectedEvent });
+    console.log('🗑️ handleDelete called', { selectedPost: selectedPost?.id, hasSelectedPost: !!selectedPost });
     
-    if (!selectedEvent) {
-      console.warn('⚠️ handleDelete: No selected event');
+    if (!selectedPost) {
+      console.warn('⚠️ handleDelete: No selected post');
       return;
     }
     
@@ -235,13 +332,12 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
     });
   };
 
-  // Confirm delete
   const handleDeleteConfirm = async () => {
-    console.log('✅ Delete confirmed in modal, starting deletion process', { eventId: selectedEvent?._id });
+    console.log('✅ Delete confirmed in modal, starting deletion process', { postId: selectedPost?.id });
     
-    if (!selectedEvent || !selectedEvent._id) {
-      console.error('❌ Delete failed: Missing event ID');
-      Alert.alert('Error', 'Cannot delete event: missing event ID');
+    if (!selectedPost || !selectedPost.id) {
+      console.error('❌ Delete failed: Missing post ID');
+      Alert.alert('Error', 'Cannot delete post: missing post ID');
       handleCloseDeleteModal();
       return;
     }
@@ -250,19 +346,16 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
       console.log('🔄 Setting isDeleting to true');
       setIsDeleting(true);
       
-      console.log('📤 Calling CalendarService.deleteEvent', { eventId: selectedEvent._id });
-      const deleted = await CalendarService.deleteEvent(selectedEvent._id);
-      console.log('📥 CalendarService.deleteEvent response', { deleted });
+      console.log('📤 Calling AdminDataService.deletePost', { postId: selectedPost.id });
+      const deleted = await AdminDataService.deletePost(selectedPost.id);
+      console.log('📥 AdminDataService.deletePost response', { deleted });
       
       if (deleted) {
-        console.log('✅ Event deleted successfully, refreshing calendar');
-        // Refresh calendar events first to update the grid and list
-        await refreshCalendarEvents();
+        console.log('✅ Post deleted successfully, refreshing dashboard');
         
-        // Clear the selected event so it doesn't show stale data
-        if (onSelectEvent) {
-          console.log('🧹 Clearing selected event');
-          onSelectEvent(null as any); // Clear selected event
+        // Refresh the dashboard first
+        if (onRefresh) {
+          await onRefresh();
         }
         
         // Close delete modal
@@ -273,22 +366,84 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
         onClose();
         
         // Show success message
-        Alert.alert('Success', 'Event deleted successfully');
+        Alert.alert('Success', 'Post deleted successfully');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } else {
-        console.error('❌ Delete failed: CalendarService returned false');
-        Alert.alert('Error', 'Failed to delete event. Please try again.');
+        console.error('❌ Delete failed: AdminDataService returned false');
+        Alert.alert('Error', 'Failed to delete post. Please try again.');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
     } catch (error) {
-      console.error('❌ Failed to delete event:', error);
-      Alert.alert('Error', 'Failed to delete event. Please check your connection and try again.');
+      console.error('❌ Failed to delete post:', error);
+      Alert.alert('Error', 'Failed to delete post. Please check your connection and try again.');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       console.log('🔄 Setting isDeleting to false');
       setIsDeleting(false);
     }
   };
+
+  const handleSelectMonth = (monthIndex: number, year?: number, day?: number) => {
+    if (year !== undefined) {
+      try {
+        const selectedDay = day !== undefined ? day : (selectedDateObj ? selectedDateObj.getDate() : 1);
+        const maxDaysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+        const newDay = Math.min(selectedDay, maxDaysInMonth);
+        const newDate = new Date(year, monthIndex, newDay);
+        
+        setSelectedDateObj(newDate);
+        setEditDate(formatDate(newDate));
+        
+        // Animate out before closing
+        Animated.parallel([
+          Animated.spring(monthPickerScaleAnim, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 100,
+            friction: 8,
+          }),
+          Animated.timing(monthPickerOpacityAnim, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+        ]).start(() => {
+          setShowDatePicker(false);
+          Haptics.selectionAsync();
+        });
+      } catch (error) {
+        console.error('Error selecting date:', error);
+        Animated.parallel([
+          Animated.spring(monthPickerScaleAnim, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 100,
+            friction: 8,
+          }),
+          Animated.timing(monthPickerOpacityAnim, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+        ]).start(() => {
+          setShowDatePicker(false);
+        });
+      }
+    }
+  };
+
+  const displayImage = pickedFile?.uri || selectedPost?.image || selectedPost?.images?.[0];
+  const tagLower = selectedPost?.category?.toLowerCase() || '';
+  let accentColor = '#93C5FD';
+  
+  if (tagLower === 'institutional') {
+    accentColor = '#2563EB';
+  } else if (tagLower === 'academic') {
+    accentColor = '#10B981';
+  } else if (selectedPost?.category) {
+    const colors = categoryToColors(selectedPost.category);
+    accentColor = colors.dot || '#93C5FD';
+  }
 
   return (
     <>
@@ -336,7 +491,7 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
             
             <View style={styles.drawerHeader}>
               <Text style={[styles.drawerTitle, { color: t.colors.text }]}>
-                {isEditing && !readOnly ? 'Edit Event' : 'Event Details'}
+                {isEditing ? 'Edit Post' : 'Post Details'}
               </Text>
               <TouchableOpacity
                 onPress={onClose}
@@ -353,55 +508,43 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
               showsVerticalScrollIndicator={true}
               bounces={true}
             >
-              {/* Show event selector if multiple events on this date */}
-              {selectedDateEvents && selectedDateEvents.length > 1 && !isEditing ? (
-                <View style={styles.drawerSection}>
-                  <Text style={[styles.drawerFieldLabel, { color: t.colors.textMuted }]}>
-                    Multiple events on {selectedDateForDrawer ? formatDate(selectedDateForDrawer) : 'this date'}
-                  </Text>
-                  {selectedDateEvents.map((event: any, index: number) => {
-                    const fullEvent = calendarEvents.find((e: any) => 
-                      e._id === event.id || 
-                      `calendar-${e.isoDate}-${e.title}` === event.id ||
-                      (parseAnyDateToKey(e.isoDate || e.date) === formatDateKey(selectedDateForDrawer || new Date()) && e.title === event.title)
-                    ) || event;
-                    const isSelected = selectedEvent && (selectedEvent._id === fullEvent._id || selectedEvent.title === fullEvent.title);
-                    
-                    return (
-                      <TouchableOpacity
-                        key={event.id || index}
-                        style={[
-                          styles.drawerEventSelector,
-                          { 
-                            backgroundColor: isSelected ? t.colors.surfaceAlt : t.colors.surface,
-                            borderColor: isSelected ? t.colors.accent : t.colors.border,
-                          }
-                        ]}
-                        onPress={() => {
-                          if (onSelectEvent) {
-                            onSelectEvent(fullEvent);
-                          }
-                          Haptics.selectionAsync();
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <View style={[styles.drawerEventSelectorAccent, { backgroundColor: (event as any).color || categoryToColors((event as any).type).dot }]} />
-                        <Text style={[styles.drawerEventSelectorText, { color: t.colors.text }]} numberOfLines={1}>
-                          {event.title}
-                        </Text>
-                        {isSelected && (
-                          <Ionicons name="checkmark-circle" size={20} color={t.colors.accent} />
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              ) : null}
-              
-              {selectedEvent ? (
+              {selectedPost ? (
                 <View>
+                  {/* Image */}
+                  {displayImage && (
+                    <View style={styles.drawerSection}>
+                      <Image 
+                        source={{ uri: displayImage }} 
+                        style={styles.drawerImage}
+                        resizeMode="cover"
+                        onError={(error) => {
+                          console.error('Image load error:', error.nativeEvent.error);
+                        }}
+                      />
+                      {isEditing && (
+                        <View style={styles.imageActions}>
+                          <TouchableOpacity
+                            style={[styles.imageActionButton, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
+                            onPress={handleAddPhoto}
+                            disabled={isAnimating}
+                          >
+                            <Ionicons name="camera-outline" size={18} color={t.colors.text} />
+                            <Text style={[styles.imageActionText, { color: t.colors.text }]}>Change</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.imageActionButton, { backgroundColor: '#DC2626' }]}
+                            onPress={handleRemovePhoto}
+                          >
+                            <Ionicons name="trash-outline" size={18} color="#FFFFFF" />
+                            <Text style={[styles.imageActionText, { color: '#FFFFFF' }]}>Remove</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
                   {/* Title */}
-                  {isEditing && !readOnly ? (
+                  {isEditing ? (
                     <View style={styles.drawerEditField}>
                       <Text style={[styles.drawerFieldLabel, { color: t.colors.text }]}>Title *</Text>
                       <View style={[styles.drawerInputContainer, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
@@ -409,7 +552,7 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
                           style={[styles.drawerInput, { color: t.colors.text }]}
                           value={editTitle}
                           onChangeText={setEditTitle}
-                          placeholder="Enter event title"
+                          placeholder="Enter post title"
                           placeholderTextColor={t.colors.textMuted}
                           maxLength={100}
                         />
@@ -422,42 +565,27 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
                     <View style={styles.drawerSection}>
                       <Text style={[styles.drawerFieldLabel, { color: t.colors.textMuted }]}>Title</Text>
                       <Text style={[styles.drawerEventTitle, { color: t.colors.text }]}>
-                        {selectedEvent.title}
+                        {selectedPost.title}
                       </Text>
                     </View>
                   )}
 
                   {/* Date */}
-                  {isEditing && !readOnly ? (
+                  {isEditing ? (
                     <View style={styles.drawerEditField}>
                       <Text style={[styles.drawerFieldLabel, { color: t.colors.text }]}>Date *</Text>
                       <TouchableOpacity
                         style={[styles.drawerInputContainer, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
                         onPress={() => {
-                          // Ensure selectedDateObj is set before opening picker
                           if (!selectedDateObj) {
-                            // Try to parse from editDate, or use selectedEvent date, or default to today
-                            let initialDate: Date;
-                            if (editDate) {
-                              const parsed = new Date(editDate);
-                              if (!isNaN(parsed.getTime())) {
-                                initialDate = parsed;
-                              } else {
-                                initialDate = selectedEvent?.isoDate || selectedEvent?.date 
-                                  ? new Date(selectedEvent.isoDate || selectedEvent.date)
-                                  : new Date();
-                              }
-                            } else {
-                              initialDate = selectedEvent?.isoDate || selectedEvent?.date 
-                                ? new Date(selectedEvent.isoDate || selectedEvent.date)
-                                : new Date();
-                            }
+                            const initialDate = selectedPost?.isoDate || selectedPost?.date 
+                              ? new Date(selectedPost.isoDate || selectedPost.date)
+                              : new Date();
                             setSelectedDateObj(initialDate);
                             if (!editDate) {
                               setEditDate(formatDate(initialDate));
                             }
                           }
-                          // Use setTimeout to ensure state updates are processed before opening
                           setTimeout(() => {
                             setShowDatePicker(true);
                           }, 0);
@@ -475,58 +603,69 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
                       <View style={styles.drawerEventRow}>
                         <Ionicons name="calendar-outline" size={18} color={t.colors.textMuted} />
                         <Text style={[styles.drawerEventText, { color: t.colors.text }]}>
-                          {selectedEvent.dateType === 'date_range' && selectedEvent.startDate && selectedEvent.endDate
-                            ? `${formatDate(new Date(selectedEvent.startDate))} - ${formatDate(new Date(selectedEvent.endDate))}`
-                            : selectedEvent.isoDate || selectedEvent.date
-                            ? formatDate(new Date(selectedEvent.isoDate || selectedEvent.date))
+                          {selectedPost.isoDate || selectedPost.date
+                            ? formatDate(new Date(selectedPost.isoDate || selectedPost.date))
                             : 'No date specified'}
                         </Text>
                       </View>
                     </View>
                   )}
 
-                  {/* Time */}
-                  {isEditing && !readOnly ? (
+                  {/* Category */}
+                  {isEditing ? (
                     <View style={styles.drawerEditField}>
-                      <Text style={[styles.drawerFieldLabel, { color: t.colors.text }]}>Time</Text>
-                      <View style={[styles.drawerInputContainer, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
-                        <TextInput
-                          style={[styles.drawerInput, { color: t.colors.text }]}
-                          value={editTime}
-                          onChangeText={setEditTime}
-                          placeholder="e.g., 9:00 AM - 5:00 PM or All Day"
-                          placeholderTextColor={t.colors.textMuted}
-                        />
-                        <Ionicons name="time-outline" size={20} color={t.colors.textMuted} />
+                      <Text style={[styles.drawerFieldLabel, { color: t.colors.text }]}>Category</Text>
+                      <View style={styles.categoryButtons}>
+                        <TouchableOpacity
+                          style={[
+                            styles.categoryButton,
+                            { 
+                              backgroundColor: editCategory === 'Institutional' ? accentColor : t.colors.surface,
+                              borderColor: t.colors.border,
+                            }
+                          ]}
+                          onPress={() => setEditCategory('Institutional')}
+                        >
+                          <Text style={[
+                            styles.categoryButtonText,
+                            { color: editCategory === 'Institutional' ? '#FFFFFF' : t.colors.text }
+                          ]}>
+                            Institutional
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[
+                            styles.categoryButton,
+                            { 
+                              backgroundColor: editCategory === 'Academic' ? accentColor : t.colors.surface,
+                              borderColor: t.colors.border,
+                            }
+                          ]}
+                          onPress={() => setEditCategory('Academic')}
+                        >
+                          <Text style={[
+                            styles.categoryButtonText,
+                            { color: editCategory === 'Academic' ? '#FFFFFF' : t.colors.text }
+                          ]}>
+                            Academic
+                          </Text>
+                        </TouchableOpacity>
                       </View>
                     </View>
                   ) : (
-                    (selectedEvent.time || selectedEvent.dateType === 'date') && (
-                      <View style={styles.drawerSection}>
-                        <Text style={[styles.drawerFieldLabel, { color: t.colors.textMuted }]}>Time</Text>
-                        <View style={styles.drawerEventRow}>
-                          <Ionicons name="time-outline" size={18} color={t.colors.textMuted} />
-                          <Text style={[styles.drawerEventText, { color: t.colors.text }]}>
-                            {selectedEvent.time || 'All Day'}
-                          </Text>
-                        </View>
+                    <View style={styles.drawerSection}>
+                      <Text style={[styles.drawerFieldLabel, { color: t.colors.textMuted }]}>Category</Text>
+                      <View style={styles.drawerEventRow}>
+                        <Ionicons name="pricetag-outline" size={18} color={accentColor} />
+                        <Text style={[styles.drawerEventText, { color: accentColor }]}>
+                          {selectedPost.category || 'Event'}
+                        </Text>
                       </View>
-                    )
+                    </View>
                   )}
 
-                  {/* Category */}
-                  <View style={styles.drawerSection}>
-                    <Text style={[styles.drawerFieldLabel, { color: t.colors.textMuted }]}>Category</Text>
-                    <View style={styles.drawerEventRow}>
-                      <Ionicons name="pricetag-outline" size={18} color={(selectedEvent as any).color || categoryToColors(selectedEvent.category || (selectedEvent as any).type).dot} />
-                      <Text style={[styles.drawerEventText, { color: (selectedEvent as any).color || categoryToColors(selectedEvent.category || (selectedEvent as any).type).dot }]}>
-                        {String(selectedEvent.category || (selectedEvent as any).type || 'Event').charAt(0).toUpperCase() + String(selectedEvent.category || (selectedEvent as any).type || 'Event').slice(1)}
-                      </Text>
-                    </View>
-                  </View>
-
                   {/* Description */}
-                  {isEditing && !readOnly ? (
+                  {isEditing ? (
                     <View style={styles.drawerEditField}>
                       <Text style={[styles.drawerFieldLabel, { color: t.colors.text }]}>Description</Text>
                       <View style={[styles.drawerTextAreaContainer, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
@@ -534,7 +673,7 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
                           style={[styles.drawerTextArea, { color: t.colors.text }]}
                           value={editDescription}
                           onChangeText={setEditDescription}
-                          placeholder="Enter event description"
+                          placeholder="Enter post description"
                           placeholderTextColor={t.colors.textMuted}
                           multiline
                           numberOfLines={6}
@@ -550,46 +689,22 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
                     <View style={styles.drawerSection}>
                       <Text style={[styles.drawerFieldLabel, { color: t.colors.textMuted }]}>Description</Text>
                       <Text style={[styles.drawerEventDescription, { color: t.colors.text }]}>
-                        {selectedEvent.description || 'No description provided'}
+                        {selectedPost.description || 'No description provided'}
                       </Text>
-                    </View>
-                  )}
-
-                  {/* Attachments/Images */}
-                  {(selectedEvent as any).attachments && Array.isArray((selectedEvent as any).attachments) && (selectedEvent as any).attachments.length > 0 && (
-                    <View style={styles.drawerSection}>
-                      <Text style={[styles.drawerFieldLabel, { color: t.colors.textMuted }]}>Attachments</Text>
-                      <View style={styles.drawerAttachmentsContainer}>
-                        {(selectedEvent as any).attachments.map((attachment: any, index: number) => (
-                          <View key={index} style={[styles.drawerAttachmentItem, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
-                            {attachment.type?.startsWith('image/') ? (
-                              <Image
-                                source={{ uri: attachment.url || attachment }}
-                                style={styles.drawerAttachmentImage}
-                                resizeMode="cover"
-                              />
-                            ) : (
-                              <View style={styles.drawerAttachmentIcon}>
-                                <Ionicons name="document-outline" size={24} color={t.colors.textMuted} />
-                              </View>
-                            )}
-                          </View>
-                        ))}
-                      </View>
                     </View>
                   )}
                 </View>
               ) : (
                 <View style={styles.drawerEmptyState}>
                   <Text style={[styles.drawerEmptyText, { color: t.colors.textMuted }]}>
-                    No event selected
+                    No post selected
                   </Text>
                 </View>
               )}
             </ScrollView>
 
-            {/* Action Buttons - Hidden in read-only mode */}
-            {selectedEvent && !readOnly && (
+            {/* Action Buttons - Only show if not read-only */}
+            {selectedPost && !readOnly && (
               <View 
                 style={[
                   styles.drawerActions, 
@@ -605,15 +720,23 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
                   <>
                     <TouchableOpacity
                       style={[styles.drawerActionButton, styles.drawerCancelButton, { borderColor: t.colors.border }]}
-                      onPress={handleCancelEdit}
+                      onPress={() => {
+                        console.log('❌ Cancel button pressed!');
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        handleCancelEdit();
+                      }}
                       disabled={isUpdating}
                       activeOpacity={0.7}
                     >
                       <Text style={[styles.drawerActionButtonText, { color: t.colors.text }]}>Cancel</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.drawerActionButton, styles.drawerSaveButton, { backgroundColor: t.colors.accent }]}
-                      onPress={handleSaveEdit}
+                      style={[styles.drawerActionButton, styles.drawerSaveButton, { backgroundColor: '#FF9500' }]}
+                      onPress={() => {
+                        console.log('💾 Save button pressed!');
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        handleSaveEdit();
+                      }}
                       disabled={isUpdating}
                       activeOpacity={0.7}
                     >
@@ -646,8 +769,9 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
                       )}
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.drawerActionButton, styles.drawerEditButton, { backgroundColor: t.colors.accent }]}
+                      style={[styles.drawerActionButton, styles.drawerEditButton, { backgroundColor: '#FF9500' }]}
                       onPress={() => {
+                        console.log('✏️ Edit button pressed!');
                         setIsEditing(true);
                         Haptics.selectionAsync();
                       }}
@@ -664,13 +788,12 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
         </Animated.View>
       </Modal>
 
-      {/* Date Picker Modal for Event Editing */}
+      {/* Date Picker Modal */}
       {showDatePicker && selectedDateObj && (
         <MonthPickerModal
           visible={showDatePicker}
           currentMonth={selectedDateObj}
           onClose={() => {
-            // Animate out first, then close
             Animated.parallel([
               Animated.spring(monthPickerScaleAnim, {
                 toValue: 0,
@@ -688,56 +811,7 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             });
           }}
-          onSelectMonth={(monthIndex, year, day) => {
-            if (year !== undefined) {
-              try {
-                // Use provided day, or fall back to current day, or 1
-                const selectedDay = day !== undefined ? day : (selectedDateObj ? selectedDateObj.getDate() : 1);
-                const maxDaysInMonth = new Date(year, monthIndex + 1, 0).getDate();
-                const newDay = Math.min(selectedDay, maxDaysInMonth);
-                const newDate = new Date(year, monthIndex, newDay);
-                
-                setSelectedDateObj(newDate);
-                setEditDate(formatDate(newDate));
-                
-                // Animate out before closing
-                Animated.parallel([
-                  Animated.spring(monthPickerScaleAnim, {
-                    toValue: 0,
-                    useNativeDriver: true,
-                    tension: 100,
-                    friction: 8,
-                  }),
-                  Animated.timing(monthPickerOpacityAnim, {
-                    toValue: 0,
-                    duration: 200,
-                    useNativeDriver: true,
-                  }),
-                ]).start(() => {
-                  setShowDatePicker(false);
-                  Haptics.selectionAsync();
-                });
-              } catch (error) {
-                console.error('Error selecting date:', error);
-                // Animate out on error too
-                Animated.parallel([
-                  Animated.spring(monthPickerScaleAnim, {
-                    toValue: 0,
-                    useNativeDriver: true,
-                    tension: 100,
-                    friction: 8,
-                  }),
-                  Animated.timing(monthPickerOpacityAnim, {
-                    toValue: 0,
-                    duration: 200,
-                    useNativeDriver: true,
-                  }),
-                ]).start(() => {
-                  setShowDatePicker(false);
-                });
-              }
-            }
-          }}
+          onSelectMonth={handleSelectMonth}
           scaleAnim={monthPickerScaleAnim}
           opacityAnim={monthPickerOpacityAnim}
           minYear={2020}
@@ -750,7 +824,7 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
         visible={showDeleteModal}
         onClose={handleCloseDeleteModal}
         onConfirm={handleDeleteConfirm}
-        eventTitle={selectedEvent?.title || ''}
+        eventTitle={selectedPost?.title || ''}
         isDeleting={isDeleting}
         slideAnim={deleteModalSlideAnim}
         backdropOpacity={deleteModalBackdropOpacity}
@@ -864,6 +938,30 @@ const styles = StyleSheet.create({
     marginTop: 4,
     alignSelf: 'flex-end',
   },
+  drawerImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  imageActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  imageActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 6,
+  },
+  imageActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   drawerEventTitle: {
     fontSize: 16,
     fontWeight: '700',
@@ -884,30 +982,21 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 4,
   },
-  drawerAttachmentsContainer: {
+  categoryButtons: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 12,
-    marginTop: 8,
   },
-  drawerAttachmentItem: {
-    width: 100,
-    height: 100,
+  categoryButton: {
+    flex: 1,
+    paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
-    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  drawerAttachmentImage: {
-    width: '100%',
-    height: '100%',
-  },
-  drawerAttachmentIcon: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
+  categoryButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   drawerEmptyState: {
     alignItems: 'center',
@@ -941,10 +1030,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#DC2626',
   },
   drawerEditButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: '#FF9500',
   },
   drawerSaveButton: {
-    backgroundColor: '#10B981',
+    backgroundColor: '#FF9500',
   },
   drawerCancelButton: {
     backgroundColor: 'transparent',
@@ -954,26 +1043,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  drawerEventSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    gap: 12,
-  },
-  drawerEventSelectorAccent: {
-    width: 3,
-    height: 24,
-    borderRadius: 2,
-  },
-  drawerEventSelectorText: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-  },
 });
 
-export default EventDetailsDrawer;
+export default PostDetailsDrawer;
 

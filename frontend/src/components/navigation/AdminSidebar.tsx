@@ -33,6 +33,7 @@ interface AdminSidebarProps {
   getUserToken?: () => Promise<string | null>;
   sessionId?: string;
   onDeleteChat?: (chatId: string) => void;
+  onDeleteAllChats?: () => Promise<void>;
 }
 
 const AdminSidebar: React.FC<AdminSidebarProps> = ({
@@ -44,6 +45,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
   getUserToken,
   sessionId,
   onDeleteChat,
+  onDeleteAllChats,
 }) => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute();
@@ -284,9 +286,28 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
         {/* Chat History Section */}
         <View style={styles.sidebarHistorySection}>
-          <Text style={[styles.sidebarSectionTitle, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
-            Recent Chats
-          </Text>
+          <View style={styles.sidebarSectionHeader}>
+            <Text style={[styles.sidebarSectionTitle, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+              Recent Chats
+            </Text>
+            {chatHistory.length > 0 && onDeleteAllChats && (
+              <TouchableOpacity
+                style={styles.clearAllButton}
+                onPress={async () => {
+                  try {
+                    await onDeleteAllChats();
+                  } catch (error) {
+                    console.error('Failed to delete all chats:', error);
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.clearAllText, { color: isDarkMode ? '#EF4444' : '#DC2626' }]}>
+                  Clear All
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <ScrollView style={styles.sidebarContent} showsVerticalScrollIndicator={false}>
             {chatHistory.length === 0 ? (
               <View style={styles.emptyHistoryContainer}>
@@ -309,13 +330,25 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
                       }
                       onClose();
                     }}
+                    activeOpacity={0.7}
                   >
-                    <Text style={[styles.historyTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]} numberOfLines={1}>
-                      {chat.title}
-                    </Text>
-                    <Text style={[styles.historyPreview, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]} numberOfLines={1}>
-                      {chat.preview}
-                    </Text>
+                    {/* Color accent bar - similar to event cards */}
+                    {chat.userType && (
+                      <View style={[
+                        styles.historyAccent,
+                        { backgroundColor: chat.userType === 'student' ? '#10B981' : '#2563EB' }
+                      ]} />
+                    )}
+                    <View style={styles.historyItemContent}>
+                      <View style={styles.historyItemTextContainer}>
+                        <Text style={[styles.historyTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]} numberOfLines={1}>
+                          {chat.title}
+                        </Text>
+                        <Text style={[styles.historyPreview, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]} numberOfLines={1}>
+                          {chat.preview}
+                        </Text>
+                      </View>
+                    </View>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.deleteHistoryBtn}
@@ -475,13 +508,26 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: 8,
   },
+  sidebarSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+  },
   sidebarSectionTitle: {
     fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    paddingHorizontal: 20,
-    paddingVertical: 8,
+  },
+  clearAllButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  clearAllText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   sidebarContent: {
     flex: 1,
@@ -492,9 +538,28 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   historyItemButton: {
+    flexDirection: 'row',
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 10,
+    position: 'relative',
+  },
+  historyAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    borderRadius: 2,
+  },
+  historyItemContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  historyItemTextContainer: {
+    flex: 1,
+    marginLeft: 8,
   },
   historyTitle: {
     fontSize: 14,

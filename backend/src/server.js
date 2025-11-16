@@ -10,18 +10,20 @@ import conversationService from './services/conversation.js';
 import { getDataRefreshService } from './services/data-refresh.js';
 import { getFileProcessorService } from './services/file-processor.js';
 import responseFormatter from './services/formatter.js';
+import { getGridFSService } from './services/gridfs.js';
 import { getMongoDBService } from './services/mongodb.js';
+import { getPostService } from './services/posts.js';
 import { OptimizedRAGService } from './services/rag.js';
 import { getNewsScraperService } from './services/scraper.js';
 import { LlamaService } from './services/service.js';
 import {
-    generateCampusesResponse,
-    generateFacultiesResponse,
-    generateOfficersResponse,
-    generateProgramListResponse,
-    generateVisionMissionResponse
+  generateCampusesResponse,
+  generateFacultiesResponse,
+  generateOfficersResponse,
+  generateProgramListResponse,
+  generateVisionMissionResponse
 } from './services/structured-responses.js';
-import { buildSystemInstructions } from './services/system.js';
+import { buildSystemInstructions, getCalendarEventsInstructions } from './services/system.js';
 import { GPUMonitor } from './utils/gpu-monitor.js';
 import { IntentClassifier } from './utils/intent-classifier.js';
 import { Logger } from './utils/logger.js';
@@ -47,6 +49,7 @@ let newsScraperService = null;
 let authService = null;
 let chatHistoryService = null;
 let calendarService = null;
+let postService = null;
 
 // ===== FALLBACK CONTEXT =====
 const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
@@ -61,6 +64,11 @@ const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
     await mongoService.connect();
     Logger.success('MongoDB initialized');
     
+    // Initialize GridFS service for image storage
+    const gridFSService = getGridFSService();
+    await gridFSService.initialize();
+    Logger.success('GridFS service initialized');
+    
     // Initialize authentication service
     authService = new AuthService(mongoService);
     Logger.success('Auth service initialized');
@@ -72,6 +80,10 @@ const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
     // Initialize calendar service
     calendarService = getCalendarService(mongoService, authService);
     Logger.success('Calendar service initialized');
+    
+    // Initialize post service
+    postService = getPostService(mongoService, authService);
+    Logger.success('Post service initialized');
     
     // Initialize data refresh service
     dataRefreshService = getDataRefreshService();
@@ -145,6 +157,9 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/admin/upload-calendar-csv' || rawUrl.includes('upload-calendar-csv')) {
     Logger.info(`🔍 Calendar CSV Request: ${method} ${rawUrl} -> Parsed: ${url}`);
     Logger.info(`🔍 Calendar service available: ${calendarService ? 'YES' : 'NO'}`);
+  }
+  if (url === '/api/admin/posts' || rawUrl.includes('/api/admin/posts')) {
+    Logger.info(`🔍 Posts Request: ${method} ${rawUrl} -> Parsed: ${url}`);
   }
 
   // ===== CORS HEADERS =====
@@ -688,6 +703,69 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ===== POSTS ENDPOINTS =====
+  // All post routes are handled by PostService
+  if (url === '/api/admin/create-post' || url === '/api/admin/posts' || url.startsWith('/api/admin/posts/')) {
+    // Initialize post service if not already initialized (for early requests)
+    if (!postService && mongoService && authService) {
+      postService = getPostService(mongoService, authService);
+      if (postService) {
+        Logger.info('📝 Post service initialized on-demand');
+      }
+    }
+    
+    if (postService) {
+      Logger.info(`📝 Post service check: ${method} ${url}`);
+      const handled = await postService.handleRoute(req, res, method, url, rawUrl);
+      if (handled) {
+        Logger.info(`✅ Post service handled route: ${method} ${url}`);
+        return;
+      } else {
+        Logger.warn(`⚠️ Post service did not handle route: ${method} ${url} - will continue to other handlers`);
+      }
+    } else {
+      Logger.warn(`⚠️ Post service not initialized. mongoService: ${!!mongoService}, authService: ${!!authService}`);
+    }
+  }
+
+  // ===== IMAGE ENDPOINTS (GridFS) =====
+  // Serve images from GridFS
+  if (method === 'GET' && url.startsWith('/api/images/')) {
+    try {
+      const fileId = url.split('/api/images/')[1];
+      if (!fileId) {
+        sendJson(res, 400, { error: 'File ID required' });
+        return;
+      }
+
+      const gridFSService = getGridFSService();
+      const { stream, metadata } = await gridFSService.downloadImage(fileId);
+
+      // Set appropriate headers
+      res.setHeader('Content-Type', metadata.contentType || 'image/jpeg');
+      res.setHeader('Content-Length', metadata.length);
+      res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+      res.setHeader('Content-Disposition', `inline; filename="${metadata.filename}"`);
+
+      // Stream the image to response
+      stream.on('error', (error) => {
+        Logger.error('Error streaming image:', error);
+        if (!res.headersSent) {
+          sendJson(res, 500, { error: 'Failed to stream image' });
+        }
+      });
+
+      stream.pipe(res);
+      return;
+    } catch (error) {
+      Logger.error('Image retrieval error:', error);
+      if (!res.headersSent) {
+        sendJson(res, 404, { error: 'Image not found' });
+      }
+      return;
+    }
+  }
+
   // ===== CALENDAR ENDPOINTS =====
   // All calendar routes are handled by CalendarService
   // Check for calendar routes BEFORE other admin routes to ensure proper routing
@@ -730,6 +808,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const json = JSON.parse(body);
         const prompt = json.prompt || json.message || '';
+        const userType = json.userType || null; // 'student' or 'faculty' or null
         if (!prompt.trim()) { sendJson(res, 400, { error: 'prompt required' }); return; }
         
         // Try to get userId from auth token (optional - chat can work without auth)
@@ -800,6 +879,10 @@ const server = http.createServer(async (req, res) => {
         if (coursesPattern.test(prompt)) {
           processedPrompt = prompt.replace(/\b(course|courses)\b/gi, 'program');
         }
+        
+        // Detect calendar-related queries (dates, events, announcements, schedules)
+        const calendarPattern = /\b(date|dates|event|events|announcement|announcements|schedule|schedules|calendar|when|upcoming|coming|next|this\s+(week|month|year)|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule)\b/i;
+        const isCalendarQuery = calendarPattern.test(prompt);
         
         // SMART FALLBACK: Detect "list all" queries and return structured data without AI
         // Programs/Courses
@@ -1026,7 +1109,8 @@ const server = http.createServer(async (req, res) => {
 
         // --- Context Retrieval & System Prompt Building ---
         
-        const isDOrSUQuery = intentClassification.source === 'knowledge_base';
+        // Calendar queries should always be treated as DOrSU queries to fetch calendar data
+        const isDOrSUQuery = intentClassification.source === 'knowledge_base' || isCalendarQuery;
         let systemPrompt = '';
         
         if (isDOrSUQuery) {
@@ -1055,9 +1139,154 @@ const server = http.createServer(async (req, res) => {
           relevantContext = await ragService.getContextForTopic(
             processedPrompt,
             ragTokens,
-            ragSections
+            ragSections,
+            false, // suggestMore
+            calendarService // Pass calendarService for calendar event retrieval
           );
           Logger.info(`📊 RAG: ${ragSections} sections, ${relevantContext.length} chars ${retrievalType}`);
+        }
+          
+          // Fetch calendar events if query is calendar-related
+          let calendarContext = '';
+          let calendarInstruction = '';
+          if (isCalendarQuery && calendarService && mongoService) {
+            try {
+              // Get current date and date range (past 30 days to future 365 days)
+              const now = new Date();
+              const startDate = new Date(now);
+              startDate.setDate(startDate.getDate() - 30); // Past 30 days
+              const endDate = new Date(now);
+              endDate.setDate(endDate.getDate() + 365); // Next 365 days
+              
+              const events = await calendarService.getEvents({
+                startDate: startDate.toISOString(),
+                endDate: endDate.toISOString(),
+                limit: 100 // Get up to 100 events
+              });
+              
+              if (events && events.length > 0) {
+                // Helper function to format date concisely (e.g., "Jan 11" or "Jan 11 - Jan 15")
+                const formatDateConcise = (date) => {
+                  if (!date) return 'Date TBD';
+                  const d = new Date(date);
+                  const month = d.toLocaleDateString('en-US', { month: 'short' });
+                  const day = d.getDate();
+                  return `${month} ${day}`;
+                };
+                
+                // Group events by title to avoid redundancy
+                const groupedEvents = new Map();
+                events.forEach(event => {
+                  const title = event.title || 'Untitled Event';
+                  if (!groupedEvents.has(title)) {
+                    groupedEvents.set(title, []);
+                  }
+                  groupedEvents.get(title).push(event);
+                });
+                
+                // Format grouped events
+                const formattedEvents = [];
+                for (const [title, eventGroup] of groupedEvents) {
+                  // Sort events by date
+                  eventGroup.sort((a, b) => {
+                    const dateA = a.isoDate || a.date || a.startDate || '';
+                    const dateB = b.isoDate || b.date || b.startDate || '';
+                    return new Date(dateA) - new Date(dateB);
+                  });
+                  
+                  // Get unique properties from the group
+                  const firstEvent = eventGroup[0];
+                  const category = firstEvent.category;
+                  const time = firstEvent.time;
+                  const description = firstEvent.description;
+                  
+                  let eventInfo = `- **${title}**\n`;
+                  
+                  // Check if all events in group are date ranges
+                  const allAreDateRanges = eventGroup.every(e => 
+                    e.dateType === 'date_range' && e.startDate && e.endDate
+                  );
+                  
+                  if (allAreDateRanges && eventGroup.length > 0) {
+                    // For date ranges, show the range concisely
+                    const startDate = eventGroup[0].startDate;
+                    const endDate = eventGroup[eventGroup.length - 1].endDate;
+                    
+                    // If all events are part of the same range, show single range
+                    if (eventGroup.length === 1) {
+                      const start = formatDateConcise(startDate);
+                      const end = formatDateConcise(endDate);
+                      const year = new Date(startDate).getFullYear();
+                      eventInfo += `  📅 Date: ${start} - ${end}, ${year}\n`;
+                    } else {
+                      // Multiple ranges - show first and last
+                      const firstStart = formatDateConcise(startDate);
+                      const lastEnd = formatDateConcise(endDate);
+                      const year = new Date(startDate).getFullYear();
+                      eventInfo += `  📅 Dates: ${firstStart} - ${lastEnd}, ${year}\n`;
+                    }
+                  } else {
+                    // Mix of single dates and ranges, or all single dates
+                    const dates = [];
+                    eventGroup.forEach(event => {
+                      if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+                        const start = formatDateConcise(event.startDate);
+                        const end = formatDateConcise(event.endDate);
+                        dates.push(`${start} - ${end}`);
+                      } else if (event.isoDate || event.date) {
+                        dates.push(formatDateConcise(event.isoDate || event.date));
+                      }
+                    });
+                    
+                    if (dates.length > 0) {
+                      // Remove duplicates and format
+                      const uniqueDates = [...new Set(dates)];
+                      const year = eventGroup[0].isoDate || eventGroup[0].date 
+                        ? new Date(eventGroup[0].isoDate || eventGroup[0].date).getFullYear()
+                        : eventGroup[0].startDate 
+                          ? new Date(eventGroup[0].startDate).getFullYear()
+                          : new Date().getFullYear();
+                      
+                      if (uniqueDates.length === 1) {
+                        eventInfo += `  📅 Date: ${uniqueDates[0]}, ${year}\n`;
+                      } else if (uniqueDates.length <= 3) {
+                        eventInfo += `  📅 Dates: ${uniqueDates.join(', ')}, ${year}\n`;
+                      } else {
+                        // Too many dates, show range
+                        const firstDate = uniqueDates[0];
+                        const lastDate = uniqueDates[uniqueDates.length - 1];
+                        eventInfo += `  📅 Dates: ${firstDate} - ${lastDate}, ${year}\n`;
+                      }
+                    }
+                  }
+                  
+                  if (time) eventInfo += `  ⏰ Time: ${time}\n`;
+                  if (category) eventInfo += `  🏷️ Category: ${category}\n`;
+                  if (description) {
+                    const desc = description.length > 150 
+                      ? description.substring(0, 150) + '...' 
+                      : description;
+                    eventInfo += `  📝 ${desc}\n`;
+                  }
+                  
+                  formattedEvents.push(eventInfo);
+                }
+                
+                calendarContext = `\n\n=== DOrSU CALENDAR EVENTS (${groupedEvents.size} unique events found) ===\n` +
+                  `The following are calendar events, announcements, and schedules from DOrSU:\n\n` +
+                  formattedEvents.join('\n') +
+                  `\n=== END OF CALENDAR EVENTS ===\n`;
+                
+                calendarInstruction = getCalendarEventsInstructions();
+                
+                Logger.info(`📅 Calendar: Fetched ${events.length} events for calendar query`);
+              } else {
+                Logger.info('📅 Calendar: No events found in database');
+              }
+            } catch (calendarError) {
+              Logger.error('📅 Calendar: Error fetching events:', calendarError);
+              // Continue without calendar data if there's an error
+            }
         }
           
           // Build system instructions with conversation context AND intent classification
@@ -1084,6 +1313,7 @@ const server = http.createServer(async (req, res) => {
             '=== DOrSU KNOWLEDGE BASE (YOUR ONLY SOURCE OF TRUTH - STRICTLY ENFORCED) ===\n' + 
             (hasContext ? relevantContext : '[NO KNOWLEDGE BASE DATA AVAILABLE - You MUST inform the user you don\'t have this information]') + 
             newsContext +  // Include news if query is about news
+            calendarContext +  // Include calendar events if query is calendar-related
             '\n=== END OF KNOWLEDGE BASE ===\n\n' +
             (articleContent ? 
               `=== NEWS ARTICLE TO SUMMARIZE ===\n` +
@@ -1106,7 +1336,8 @@ const server = http.createServer(async (req, res) => {
               '• Student manuals are on heyzine.com - NEVER create dorsu.edu.ph/wp-content/uploads URLs for manuals\n' +
               (hasContext ? '' : '• ⚠️ WARNING: Knowledge base chunks are empty or insufficient - You MUST tell the user: "I don\'t have that specific information in the knowledge base yet."\n')) +
             (summarizationInstruction || '') +
-            (newsInstruction || '');  // Include news instruction only if present
+            (newsInstruction || '') +  // Include news instruction only if present
+            (calendarInstruction || '');  // Include calendar instruction only if present
         } else {
           // For non-DOrSU queries, still restrict to knowledge base if available
           if (ragService && relevantContext && relevantContext.trim().length > 100) {
@@ -1166,8 +1397,9 @@ const server = http.createServer(async (req, res) => {
           mongoService.logQuery(processedPrompt, queryAnalysis.complexity, responseTime, false);
           
           // Track user query for frequency analysis (if userId is available)
+          // Include userType for categorization (student/faculty)
           if (userId) {
-            await mongoService.logUserQuery(userId, processedPrompt);
+            await mongoService.logUserQuery(userId, processedPrompt, userType);
           }
         }
         

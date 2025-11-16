@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import MonthPickerModal from '../../modals/MonthPickerModal';
-import CalendarService, { CalendarEvent } from '../../services/CalendarService';
+import CalendarService from '../../services/CalendarService';
 import { formatDate } from '../../utils/dateUtils';
 
 interface AddEventDrawerProps {
@@ -42,6 +44,15 @@ const AddEventDrawer: React.FC<AddEventDrawerProps> = ({
   const [eventType, setEventType] = useState<'Academic' | 'Institutional'>('Institutional');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [pickedFile, setPickedFile] = useState<{
+    name: string;
+    size: number;
+    mimeType: string | null;
+    uri: string;
+    fileCopyUri: string | null;
+    cachedUri: string | null;
+  } | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
 
   // Animate month picker when it opens/closes
   useEffect(() => {
@@ -88,6 +99,7 @@ const AddEventDrawer: React.FC<AddEventDrawerProps> = ({
       setDescription('');
       setTime('All Day');
       setEventType('Institutional');
+      setPickedFile(null);
     }
   }, [visible, initialDate]);
 
@@ -118,6 +130,67 @@ const AddEventDrawer: React.FC<AddEventDrawerProps> = ({
     setShowDatePicker(false);
   };
 
+  const handleAddPhoto = async () => {
+    if (isAnimating) return;
+
+    setIsAnimating(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'image/*',
+        multiple: false,
+        copyToCacheDirectory: true,
+      });
+
+      const asset = Array.isArray((result as any).assets)
+        ? (result as any).assets[0]
+        : (result as any);
+
+      if (result.canceled) {
+        setIsAnimating(false);
+        return;
+      }
+
+      const mime = asset.mimeType || '';
+      if (!mime.startsWith('image/')) {
+        Alert.alert('Invalid file', 'Please select a JPEG or PNG image.');
+        setIsAnimating(false);
+        return;
+      }
+
+      let cachedUri: string | null = null;
+      try {
+        const source = (asset.fileCopyUri || asset.uri) as string;
+        const extension = (asset.name || 'image').split('.').pop() || 'jpg';
+        const targetPath = `${FileSystem.cacheDirectory}preview_${Date.now()}.${extension}`;
+        if (source && !source.startsWith('file://')) {
+          await FileSystem.copyAsync({ from: source, to: targetPath });
+          cachedUri = targetPath;
+        } else if (source) {
+          cachedUri = source;
+        }
+      } catch {}
+
+      setPickedFile({
+        name: asset.name || 'Unnamed file',
+        size: asset.size,
+        mimeType: asset.mimeType ?? null,
+        uri: asset.uri,
+        fileCopyUri: asset.fileCopyUri ?? null,
+        cachedUri,
+      });
+      setIsAnimating(false);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (e) {
+      Alert.alert('Error', 'Unable to pick a file.');
+      setIsAnimating(false);
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    setPickedFile(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   const handleSave = async () => {
     if (!title.trim()) {
       Alert.alert('Error', 'Please enter an event title');
@@ -137,34 +210,60 @@ const AddEventDrawer: React.FC<AddEventDrawerProps> = ({
       const isoDate = new Date(selectedDate);
       isoDate.setHours(0, 0, 0, 0);
 
-      const eventData: Partial<CalendarEvent> = {
+      // Create calendar event data for calendar collection
+      const eventData: any = {
         title: title.trim(),
         description: description.trim() || '',
+        category: eventType, // 'Academic' or 'Institutional'
+        date: isoDate.toISOString(),
         isoDate: isoDate.toISOString(),
-        date: dateString,
         time: time.trim() || 'All Day',
-        category: eventType,
-        dateType: 'date',
-        startDate: isoDate.toISOString(),
-        endDate: isoDate.toISOString(),
-        year: selectedDate.getFullYear(),
-        month: selectedDate.getMonth() + 1,
+        dateType: 'date', // Single date event
       };
 
-      const createdEvent = await CalendarService.createEvent(eventData);
-
-      if (createdEvent) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert('Success', 'Event created successfully');
-        await refreshCalendarEvents();
-        onClose();
-      } else {
-        throw new Error('Failed to create event');
+      // Note: Calendar events don't support images in the current implementation
+      // If you need image support for calendar events, it would need to be added to the backend
+      if (pickedFile) {
+        console.warn('⚠️ Image upload not supported for calendar events. Image will be ignored.');
       }
-    } catch (error) {
-      console.error('Error creating event:', error);
+
+      console.log('📅 Creating calendar event with data:', { ...eventData });
+      
+      const createdEvent = await CalendarService.createEvent(eventData);
+      
+      if (!createdEvent) {
+        throw new Error('Failed to create calendar event');
+      }
+      
+      console.log('✅ Calendar event created successfully:', createdEvent);
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      // Reset form immediately
+      setTitle('');
+      setDescription('');
+      setTime('All Day');
+      setEventType('Institutional');
+      setPickedFile(null);
+      setSelectedDate(initialDate || new Date());
+      
+      // Close drawer immediately (don't wait for alert or refresh)
+      onClose();
+      
+      // Show non-blocking success message
+      Alert.alert(
+        'Success', 
+        'Event created successfully and saved to calendar collection!'
+      );
+      
+      // Refresh calendar events in background (non-blocking)
+      refreshCalendarEvents().catch((err) => {
+        console.error('Error refreshing calendar events:', err);
+      });
+    } catch (error: any) {
+      console.error('❌ Error creating calendar event:', error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Error', 'Failed to create event. Please try again.');
+      Alert.alert('Error', error.message || 'Failed to create event. Please try again.');
     } finally {
       setIsCreating(false);
     }
@@ -176,6 +275,7 @@ const AddEventDrawer: React.FC<AddEventDrawerProps> = ({
     setTime('All Day');
     setEventType('Institutional');
     setSelectedDate(initialDate || new Date());
+    setPickedFile(null);
     onClose();
   };
 
@@ -298,6 +398,7 @@ const AddEventDrawer: React.FC<AddEventDrawerProps> = ({
                   placeholder="Enter event title"
                   placeholderTextColor={t.colors.textMuted}
                   maxLength={100}
+                  editable={!isCreating}
                 />
                 <Text style={[styles.charCount, { color: t.colors.textMuted }]}>
                   {title.length}/100
@@ -316,9 +417,12 @@ const AddEventDrawer: React.FC<AddEventDrawerProps> = ({
                     },
                   ]}
                   onPress={() => {
-                    setShowDatePicker(true);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    if (!isCreating) {
+                      setShowDatePicker(true);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
                   }}
+                  disabled={isCreating}
                 >
                   <Ionicons name="calendar-outline" size={20} color={t.colors.text} />
                   <Text style={[styles.dateButtonText, { color: t.colors.text }]}>
@@ -345,6 +449,7 @@ const AddEventDrawer: React.FC<AddEventDrawerProps> = ({
                   placeholder="e.g., 9:00 AM or All Day"
                   placeholderTextColor={t.colors.textMuted}
                   maxLength={50}
+                  editable={!isCreating}
                 />
               </View>
 
@@ -368,10 +473,47 @@ const AddEventDrawer: React.FC<AddEventDrawerProps> = ({
                   numberOfLines={4}
                   maxLength={500}
                   textAlignVertical="top"
+                  editable={!isCreating}
                 />
                 <Text style={[styles.charCount, { color: t.colors.textMuted }]}>
                   {description.length}/500
                 </Text>
+              </View>
+
+              {/* Photo Upload */}
+              <View style={styles.section}>
+                <Text style={[styles.label, { color: t.colors.text }]}>Photo</Text>
+                {pickedFile ? (
+                  <View style={styles.imagePreviewContainer}>
+                    <Image
+                      source={{ uri: pickedFile.cachedUri || pickedFile.uri }}
+                      style={styles.imagePreview}
+                      resizeMode="cover"
+                    />
+                    <TouchableOpacity
+                      style={styles.removeImageButton}
+                      onPress={handleRemovePhoto}
+                      disabled={isCreating}
+                    >
+                      <Ionicons name="close-circle" size={24} color="#DC2626" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={[
+                      styles.photoButton,
+                      {
+                        backgroundColor: t.colors.surfaceAlt,
+                        borderColor: t.colors.border,
+                      },
+                    ]}
+                    onPress={handleAddPhoto}
+                    disabled={isCreating || isAnimating}
+                  >
+                    <Ionicons name="image-outline" size={24} color={t.colors.text} />
+                    <Text style={[styles.photoButtonText, { color: t.colors.text }]}>Add Photo</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </ScrollView>
 
@@ -567,6 +709,41 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  imagePreviewContainer: {
+    position: 'relative',
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  imagePreview: {
+    width: '100%',
+    height: '100%',
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 12,
+    padding: 4,
+  },
+  photoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  photoButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

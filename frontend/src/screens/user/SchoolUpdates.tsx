@@ -1,19 +1,22 @@
-import React, { useMemo, useState, useRef, useEffect, useCallback, memo } from 'react';
-import { View, Text, StyleSheet, StatusBar, Platform, TextInput, ScrollView, Pressable, Image, FlatList, Animated, InteractionManager, Easing, Alert, TouchableOpacity } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Animated, Dimensions, Easing, Image, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import EventDetailsDrawer from '../../components/calendar/EventDetailsDrawer';
+import PostDetailsDrawer from '../../components/dashboard/PostDetailsDrawer';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import UserSidebar from '../../components/navigation/UserSidebar';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { theme as themeStyle } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
-import AdminDataService from '../../services/AdminDataService';
-import { formatDate, timeAgo } from '../../utils/dateUtils';
-import PreviewModal from '../../modals/PreviewModal';
+import AdminDataService, { Post } from '../../services/AdminDataService';
+import CalendarService, { CalendarEvent } from '../../services/CalendarService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
+import { categoryToColors } from '../../utils/calendarUtils';
+import { formatDate } from '../../utils/dateUtils';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -139,34 +142,7 @@ const getTagTextColor = (tag: string) => {
   }
 };
 
-// Memoized Update Card Component
-const UpdateCard = memo(({ update, onPress, theme }: { update: any; onPress: () => void; theme: any }) => {
-  const imageUrl = update.images?.[0] || update.image;
-  
-  return (
-    <Pressable style={[styles.updateCard, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
-      {imageUrl && (
-        <Image 
-          source={{ uri: imageUrl }} 
-          style={styles.updateImage}
-          resizeMode="cover"
-        />
-      )}
-      <View style={styles.updateContentWrapper}>
-        <View style={styles.updateContent}>
-          <Text style={[styles.updateTitle, { color: theme.colors.text }]} numberOfLines={2}>{update.title}</Text>
-          <View style={styles.updateDateRow}>
-            <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} style={{ marginRight: 4 }} />
-            <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
-          </View>
-        </View>
-        <View style={[styles.updateTag, { backgroundColor: getTagColor(update.tag) }]}>
-          <Text style={[styles.updateTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
-        </View>
-      </View>
-    </Pressable>
-  );
-});
+// Note: UpdateCard component is no longer used - cards are rendered inline to match AdminDashboard design
 
 // Event Card with Image Preview (Horizontal Scrollable)
 const EventCard = memo(({ update, onPress, theme }: { update: any; onPress: () => void; theme: any }) => {
@@ -217,16 +193,53 @@ const SchoolUpdates = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [query, setQuery] = useState('');
   const [isSearchVisible, setIsSearchVisible] = useState(false);
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [activePreviewIndex, setActivePreviewIndex] = useState(0);
-  const [previewUpdate, setPreviewUpdate] = useState<{ title: string; date: string; tag: string; time?: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean } | null>(null);
   const [updates, setUpdates] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'recent'>('all');
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [isLoadingCalendarEvents, setIsLoadingCalendarEvents] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const searchRef = useRef<TextInput>(null);
+  
+  // Event Details Drawer state (view-only)
+  const [showEventDrawer, setShowEventDrawer] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [selectedDateForDrawer, setSelectedDateForDrawer] = useState<Date | null>(null);
+  const [selectedDateEvents, setSelectedDateEvents] = useState<any[]>([]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('');
+  const [selectedDateObj, setSelectedDateObj] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const drawerSlideAnim = useRef(new Animated.Value(0)).current;
+  const drawerBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
+  const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
+
+  // Post Details Drawer state (view-only)
+  const [showPostDrawer, setShowPostDrawer] = useState(false);
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const postDrawerSlideAnim = useRef(new Animated.Value(0)).current;
+  const postDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
+  const postMonthPickerScaleAnim = useRef(new Animated.Value(0)).current;
+  const postMonthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
+
+  // Memoize safe area insets to prevent recalculation during navigation
+  const safeInsets = useMemo(() => ({
+    top: insets.top,
+    bottom: insets.bottom,
+    left: insets.left,
+    right: insets.right,
+  }), [insets.top, insets.bottom, insets.left, insets.right]);
+
+  // Calculate available height for scrollable cards section (will be recalculated after currentMonthEvents is defined)
+  const screenHeight = Dimensions.get('window').height;
 
   // Auth state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -404,16 +417,40 @@ const SchoolUpdates = () => {
     Alert.alert('Notifications', 'Notifications feature coming soon.');
   }, []);
 
-  const handleUpdatePress = useCallback((update: { title: string; date: string; tag: string; time?: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean }) => {
-    // Open preview modal for all updates
-    setPreviewUpdate(update);
-    setActivePreviewIndex(0);
-    setIsPreviewOpen(true);
-  }, []);
-
-  const handleClosePreview = useCallback(() => {
-    setIsPreviewOpen(false);
-  }, []);
+  const handleUpdatePress = useCallback((update: { id?: string; title: string; date: string; tag: string; time?: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean; isoDate?: string; category?: string }) => {
+    // Convert update to Post format and open PostDetailsDrawer
+    const post: Post = {
+      id: update.id || `post-${Date.now()}`,
+      title: update.title,
+      description: update.description,
+      category: update.category || update.tag,
+      date: update.date,
+      isoDate: update.isoDate || update.date,
+      time: update.time,
+      images: update.images || (update.image ? [update.image] : undefined),
+      image: update.image,
+      isPinned: update.pinned,
+      source: update.source,
+    };
+    
+    setSelectedPost(post);
+    setShowPostDrawer(true);
+    
+    // Animate drawer in
+    Animated.parallel([
+      Animated.spring(postDrawerSlideAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }),
+      Animated.timing(postDrawerBackdropOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [postDrawerSlideAnim, postDrawerBackdropOpacity]);
 
   // Fetch data from AdminDataService
   useEffect(() => {
@@ -496,6 +533,172 @@ const SchoolUpdates = () => {
     return filtered; // 'all'
   }, [timeFilter, upcomingUpdates, recentUpdates, filtered]);
 
+  // Current month calendar events (separate from posts/announcements)
+  const currentMonthEvents = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    
+    return calendarEvents
+      .filter(event => {
+        const eventDate = event.isoDate || event.date;
+        if (!eventDate) return false;
+        const eventDateObj = new Date(eventDate);
+        return eventDateObj.getFullYear() === currentYear &&
+               eventDateObj.getMonth() === currentMonth;
+      })
+      .map(event => ({
+        id: event._id || `calendar-${event.isoDate}-${event.title}`,
+        title: event.title,
+        date: new Date(event.isoDate || event.date).toLocaleDateString(),
+        tag: event.category || 'Event',
+        description: event.description || '',
+        image: undefined,
+        images: undefined,
+        pinned: false,
+        isoDate: event.isoDate || event.date,
+      }))
+      .sort((a, b) => {
+        const dateA = new Date(a.isoDate || a.date).getTime();
+        const dateB = new Date(b.isoDate || b.date).getTime();
+        return dateA - dateB; // Sort ascending (earliest first)
+      });
+  }, [calendarEvents]);
+
+  // Calculate available height for scrollable cards section (after currentMonthEvents is defined)
+  const cardsScrollViewHeight = useMemo(() => {
+    const headerHeight = safeInsets.top + 60; // Header height
+    const welcomeSectionHeight = 60; // Welcome section approximate height
+    const calendarSectionHeight = currentMonthEvents.length > 0 ? 200 : 0; // Calendar events section approximate height (if visible)
+    const updatesHeaderHeight = 120; // Updates header + filters approximate height
+    const bottomNavHeight = safeInsets.bottom + 80; // Bottom nav + safe area
+    return screenHeight - headerHeight - welcomeSectionHeight - calendarSectionHeight - updatesHeaderHeight - bottomNavHeight - 50; // 50 for padding/margins
+  }, [screenHeight, safeInsets.top, safeInsets.bottom, currentMonthEvents.length]);
+
+  // Refresh calendar events function
+  const refreshCalendarEvents = useCallback(async () => {
+    try {
+      setIsLoadingCalendarEvents(true);
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      
+      // Get first and last day of current month
+      const startDate = new Date(currentYear, currentMonth, 1);
+      const endDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
+      
+      const events = await CalendarService.getEvents({
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        limit: 1000,
+      });
+      
+      setCalendarEvents(Array.isArray(events) ? events : []);
+    } catch (error) {
+      console.error('Failed to load calendar events:', error);
+      setCalendarEvents([]);
+    } finally {
+      setIsLoadingCalendarEvents(false);
+    }
+  }, []);
+
+  // Fetch calendar events for current month
+  useEffect(() => {
+    refreshCalendarEvents();
+  }, [refreshCalendarEvents]);
+
+  // Open event drawer (view-only)
+  const openEventDrawer = useCallback((event: CalendarEvent, date?: Date) => {
+    setSelectedEvent(event);
+    if (date) {
+      setSelectedDateForDrawer(date);
+      // Find all events on this date
+      const eventsOnDate = calendarEvents.filter(e => {
+        const eventDate = new Date(e.isoDate || e.date);
+        return eventDate.toDateString() === date.toDateString();
+      });
+      setSelectedDateEvents(eventsOnDate.map(e => ({
+        id: e._id || `calendar-${e.isoDate}-${e.title}`,
+        title: e.title,
+        color: categoryToColors(e.category || 'Event').dot,
+        type: e.category || 'Event',
+      })));
+    } else {
+      setSelectedDateForDrawer(null);
+      setSelectedDateEvents([]);
+    }
+    setShowEventDrawer(true);
+    setIsEditing(false);
+    // Set edit fields for display (read-only)
+    setEditTitle(event.title || '');
+    setEditDescription(event.description || '');
+    setEditTime(event.time || 'All Day');
+    if (event.isoDate || event.date) {
+      const eventDate = new Date(event.isoDate || event.date);
+      setSelectedDateObj(eventDate);
+      setEditDate(formatDate(eventDate));
+    } else {
+      setSelectedDateObj(null);
+      setEditDate('');
+    }
+    Animated.parallel([
+      Animated.spring(drawerSlideAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }),
+      Animated.timing(drawerBackdropOpacity, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [calendarEvents, drawerSlideAnim, drawerBackdropOpacity]);
+  
+  // Close event drawer
+  const closeEventDrawer = useCallback(() => {
+    Animated.parallel([
+      Animated.spring(drawerSlideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }),
+      Animated.timing(drawerBackdropOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowEventDrawer(false);
+      setSelectedEvent(null);
+      setSelectedDateForDrawer(null);
+      setSelectedDateEvents([]);
+      setIsEditing(false);
+    });
+  }, [drawerSlideAnim, drawerBackdropOpacity]);
+
+  // Close post drawer
+  const closePostDrawer = useCallback(() => {
+    Animated.parallel([
+      Animated.spring(postDrawerSlideAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }),
+      Animated.timing(postDrawerBackdropOpacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowPostDrawer(false);
+      setSelectedPost(null);
+    });
+  }, [postDrawerSlideAnim, postDrawerBackdropOpacity]);
+
   return (
     <View style={styles.container}>
       <StatusBar
@@ -520,6 +723,7 @@ const SchoolUpdates = () => {
         style={styles.backgroundGradient}
         start={{ x: 0, y: 0 }}
         end={{ x: 0, y: 1 }}
+        pointerEvents="none"
       />
         
       {/* Blur overlay on entire background - very subtle */}
@@ -527,10 +731,11 @@ const SchoolUpdates = () => {
         intensity={Platform.OS === 'ios' ? 5 : 3}
         tint="default"
         style={styles.backgroundGradient}
+        pointerEvents="none"
       />
   
       {/* Animated Floating Background Orbs (Copilot-style) */}
-      <View style={styles.floatingBgContainer} pointerEvents="none">
+      <View style={styles.floatingBgContainer} pointerEvents="none" collapsable={false}>
         {/* Light Spot 1 - Top right gentle glow */}
         <Animated.View
           style={[
@@ -768,10 +973,10 @@ const SchoolUpdates = () => {
 
       {/* Header - Copilot Style */}
       <View style={[styles.header, { 
-        marginTop: insets.top,
-        marginLeft: insets.left,
-        marginRight: insets.right,
-      }]}>
+        marginTop: safeInsets.top,
+        marginLeft: safeInsets.left,
+        marginRight: safeInsets.right,
+      }]} collapsable={false}>
         <View style={styles.headerLeft}>
           <TouchableOpacity 
             onPress={() => setIsHistoryOpen(true)} 
@@ -812,187 +1017,326 @@ const SchoolUpdates = () => {
         onClose={() => setIsHistoryOpen(false)}
       />
 
-      {/* Search Bar */}
-      {isSearchVisible && (
-        <View style={[styles.searchContainer, { backgroundColor: theme.colors.background, borderBottomColor: theme.colors.border }]}>
-          <View style={[styles.searchInputContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-            <Ionicons name="search" size={20} color={theme.colors.textMuted} style={styles.searchIcon} />
-            <TextInput
-              style={[styles.searchInput, { color: theme.colors.text }]}
-              placeholder="Search updates..."
-              placeholderTextColor={theme.colors.textMuted}
-              value={query}
-              onChangeText={setQuery}
-              autoFocus={true}
-            />
-            {query.length > 0 && (
-              <Pressable onPress={() => setQuery('')} style={styles.clearButton}>
-                <Ionicons name="close-circle" size={20} color={theme.colors.textMuted} />
-              </Pressable>
-            )}
-          </View>
-        </View>
-      )}
 
-      <ScrollView 
-        ref={scrollRef} 
-        style={styles.content} 
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingTop: 12,
-          paddingBottom: 20,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
-        <Animated.View
-          style={{
-            opacity: fadeAnim,
-            transform: [
-              { translateY: slideAnim }
-            ],
-          }}
-        >
-          {/* Welcome Section */}
-          <View style={styles.welcomeSection}>
+      {/* Main Content - Fixed Header Section */}
+      <View style={styles.content}>
+        <View style={styles.welcomeSection}>
           <View style={styles.welcomeText}>
-            <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>Hello {userName}, I’m DOrSU AI</Text>
-            <Text style={[styles.welcomeSubtitle, { color: theme.colors.textMuted }]}>Here are your latest campus updates tailored for you</Text>
+            <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>Hello {userName},</Text>
+            <Text style={[styles.welcomeSubtitle, { color: theme.colors.textMuted }]}>Here are your latest campus updates</Text>
           </View>
         </View>
 
-        {/* Filters removed */}
-
-        {/* Totals removed */}
-
-        {/* Today's Events - Single Card Display */}
-        {!isLoading && !error && (
-          <View style={styles.todaysEventsSection}>
-            <View style={styles.todaysEventsHeader}>
-              <View style={[styles.sectionIconWrapper, { backgroundColor: theme.colors.accent + '15' }]}>
-                <Ionicons name="calendar-outline" size={20} color={theme.colors.accent} />
-              </View>
-              <View style={styles.sectionTitleWrapper}>
-                <Text style={[styles.todaysEventsTitle, { color: theme.colors.text }]}>Today's Events</Text>
-                <Text style={[styles.todaysEventsSubtitle, { color: theme.colors.textMuted }]}>
-                  {todaysEvents.length > 0 ? 'Happening now' : 'No events today'}
-                </Text>
-              </View>
-            </View>
-            {todaysEvents.length > 0 ? (
-              <View style={[styles.eventCardContainer, { borderColor: theme.colors.border }]}>
-                <BlurView
-                  intensity={Platform.OS === 'ios' ? 20 : 15}
-                  tint={isDarkMode ? 'dark' : 'light'}
-                  style={styles.eventCardBlur}
-                >
-                  <View style={{ backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.5)' : 'rgba(255, 255, 255, 0.5)' }}>
-                    <EventCard update={todaysEvents[0]} onPress={() => handleUpdatePress(todaysEvents[0])} theme={theme} />
+        {/* Current Month Calendar Events Section */}
+        {currentMonthEvents.length > 0 && (
+          <View style={[styles.calendarEventsSection, { borderColor: theme.colors.border, marginBottom: 12 }]} collapsable={false}>
+            <BlurView
+              intensity={Platform.OS === 'ios' ? 20 : 15}
+              tint={isDarkMode ? 'dark' : 'light'}
+              style={styles.calendarEventsBlur}
+            >
+              <View style={[styles.calendarEventsContent, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]} collapsable={false}>
+                <View style={styles.sectionHeaderEnhanced}>
+                  <View style={[styles.sectionIconWrapper, { backgroundColor: '#FF9500' + '15' }]}>
+                    <Ionicons 
+                      name="calendar-outline" 
+                      size={20} 
+                      color="#FF9500" 
+                    />
                   </View>
-                </BlurView>
-              </View>
-            ) : (
-              <View style={[styles.noEventsContainer, { borderColor: theme.colors.border }]}>
-                <BlurView
-                  intensity={Platform.OS === 'ios' ? 20 : 15}
-                  tint={isDarkMode ? 'dark' : 'light'}
-                  style={styles.noEventsBlur}
-                >
-                  <View style={[styles.noEventsCard, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.5)' : 'rgba(255, 255, 255, 0.5)' }]}>
-                    <NoEventsAnimation theme={theme} />
-                    <Text style={[styles.noEventsText, { color: theme.colors.textMuted }]}>No events scheduled for today</Text>
+                  <View style={styles.sectionTitleWrapper}>
+                    <Text style={[styles.sectionTitleEnhanced, { color: theme.colors.text }]}>
+                      DOrSU Calendar - {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                    </Text>
+                    <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
+                      {currentMonthEvents.length} event{currentMonthEvents.length !== 1 ? 's' : ''} this month
+                    </Text>
                   </View>
-                </BlurView>
+                </View>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={true}
+                  contentContainerStyle={{ paddingRight: 12, gap: 12 }}
+                  style={{ flexShrink: 0 }}
+                >
+                  {currentMonthEvents.map((event) => {
+                    const tagLower = event.tag?.toLowerCase() || '';
+                    let accentColor = '#93C5FD';
+                    
+                    if (tagLower === 'institutional') {
+                      accentColor = '#2563EB';
+                    } else if (tagLower === 'academic') {
+                      accentColor = '#10B981';
+                    } else {
+                      const colors = categoryToColors(event.tag);
+                      accentColor = colors.dot || '#93C5FD';
+                    }
+                    
+                    // Find the full CalendarEvent object
+                    const fullEvent = calendarEvents.find(e => 
+                      e._id === event.id || 
+                      `calendar-${e.isoDate}-${e.title}` === event.id
+                    ) || null;
+                    
+                    return (
+                      <TouchableOpacity
+                        key={event.id}
+                        style={[styles.calendarEventCard, { 
+                          backgroundColor: theme.colors.surface, 
+                          borderColor: theme.colors.border,
+                          minWidth: 280,
+                        }]}
+                        activeOpacity={0.7}
+                        delayPressIn={0}
+                        onPress={() => {
+                          if (fullEvent) {
+                            const eventDate = fullEvent.isoDate || fullEvent.date 
+                              ? new Date(fullEvent.isoDate || fullEvent.date)
+                              : new Date();
+                            openEventDrawer(fullEvent, eventDate);
+                          }
+                        }}
+                      >
+                        <View style={[styles.calendarEventAccent, { backgroundColor: accentColor }]} collapsable={false} />
+                        <View style={styles.calendarEventContent} collapsable={false}>
+                          <View style={styles.calendarEventHeader}>
+                            <View style={[styles.calendarEventIconWrapper, { backgroundColor: accentColor + '20' }]}>
+                              <Ionicons name="calendar" size={16} color={accentColor} />
+                            </View>
+                            <Text style={[styles.calendarEventTag, { color: accentColor }]}>{event.tag}</Text>
+                          </View>
+                          <Text style={[styles.calendarEventTitle, { color: theme.colors.text }]} numberOfLines={2}>
+                            {event.title}
+                          </Text>
+                          <View style={styles.calendarEventDateRow}>
+                            <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
+                            <Text style={[styles.calendarEventDate, { color: theme.colors.textMuted }]}>
+                              {event.date}
+                            </Text>
+                          </View>
+                          {event.description && (
+                            <Text style={[styles.calendarEventDescription, { color: theme.colors.textMuted }]} numberOfLines={2}>
+                              {event.description}
+                            </Text>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
               </View>
-            )}
+            </BlurView>
           </View>
         )}
 
-        {/* Updates Section (filtered by time) */}
-        <View style={[styles.recentUpdatesSection, { borderColor: theme.colors.border }]}>
+        {/* Recent Updates Section - Fixed Header */}
+        <View style={[styles.recentUpdatesSection, { borderColor: theme.colors.border }]} collapsable={false}>
           <BlurView
             intensity={Platform.OS === 'ios' ? 20 : 15}
             tint={isDarkMode ? 'dark' : 'light'}
             style={styles.updatesSectionBlur}
           >
-            <View style={[styles.updatesSectionContent, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
-          <View style={styles.sectionHeaderEnhanced}>
-            <View style={[styles.sectionIconWrapper, { backgroundColor: theme.colors.accent + '15' }]}>
-              <Ionicons 
-                name={timeFilter === 'upcoming' ? 'time-outline' : timeFilter === 'recent' ? 'calendar-outline' : 'grid-outline'} 
-                size={20} 
-                color={theme.colors.accent} 
-              />
-            </View>
-            <View style={styles.sectionTitleWrapper}>
-              <Text style={[styles.sectionTitleEnhanced, { color: theme.colors.text }]}>Updates</Text>
-              <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
-                {timeFilter === 'upcoming' ? 'Coming soon' : timeFilter === 'recent' ? 'Past events' : 'All events'}
-              </Text>
-            </View>
-          </View>
+            <View style={[styles.updatesSectionContent, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]} collapsable={false}>
+              {/* Fixed Header Section */}
+              <View style={styles.sectionHeaderEnhanced}>
+                <View style={[styles.sectionIconWrapper, { backgroundColor: '#FF9500' + '15' }]}>
+                  <Ionicons 
+                    name={timeFilter === 'upcoming' ? 'time-outline' : timeFilter === 'recent' ? 'calendar-outline' : 'grid-outline'} 
+                    size={20} 
+                    color="#FF9500" 
+                  />
+                </View>
+                <View style={styles.sectionTitleWrapper}>
+                  <Text style={[styles.sectionTitleEnhanced, { color: theme.colors.text }]}>Updates</Text>
+                  <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
+                    {timeFilter === 'upcoming' ? 'Coming soon' : timeFilter === 'recent' ? 'Past events' : 'All events'}
+                  </Text>
+                </View>
+              </View>
 
-          {/* Time Filter Pills */}
-          <View style={styles.filtersContainer}>
-            <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'all' && styles.filterPillActive]}
-              onPress={() => setTimeFilter('all')}
-            >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'all' && styles.filterPillTextActive]}>All</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'upcoming' && styles.filterPillActive]}
-              onPress={() => setTimeFilter('upcoming')}
-            >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'upcoming' && styles.filterPillTextActive]}>Upcoming</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'recent' && styles.filterPillActive]}
-              onPress={() => setTimeFilter('recent')}
-            >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'recent' && styles.filterPillTextActive]}>Recent</Text>
-            </Pressable>
-          </View>
-          
-          {error && (
-            <View style={{ alignItems: 'center', paddingVertical: 16 }}>
-              <Ionicons name="alert-circle-outline" size={40} color="#DC2626" />
-              <Text style={{ marginTop: 6, fontSize: 12, color: '#DC2626', fontWeight: '600' }}>{error}</Text>
-            </View>
-          )}
-          
-          {isLoading && (
-            <View style={{ alignItems: 'center', paddingVertical: 16 }}>
-              <Ionicons name="hourglass-outline" size={40} color={theme.colors.textMuted} />
-              <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>Loading updates...</Text>
-            </View>
-          )}
-          
-          {!isLoading && !error && displayedUpdates.length === 0 && (
-            <View style={{ alignItems: 'center', paddingVertical: 16 }}>
-              <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
-              <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>
-                {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : 'No updates found'}
-              </Text>
-            </View>
-          )}
+              {/* Time Filter Pills - Fixed */}
+              <View style={[styles.filtersContainer, { flexShrink: 0 }]} collapsable={false}>
+                <Pressable
+                  style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'all' && styles.filterPillActive]}
+                  onPress={() => setTimeFilter('all')}
+                >
+                  <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'all' && styles.filterPillTextActive]}>All</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'upcoming' && styles.filterPillActive]}
+                  onPress={() => setTimeFilter('upcoming')}
+                >
+                  <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'upcoming' && styles.filterPillTextActive]}>Upcoming</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'recent' && styles.filterPillActive]}
+                  onPress={() => setTimeFilter('recent')}
+                >
+                  <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'recent' && styles.filterPillTextActive]}>Recent</Text>
+                </Pressable>
+              </View>
+              
+              {/* Scrollable Cards Section */}
+              <ScrollView
+                style={[styles.cardsScrollView, { maxHeight: cardsScrollViewHeight }]}
+                contentContainerStyle={{ paddingBottom: safeInsets.bottom + 60 }}
+                showsVerticalScrollIndicator={true}
+                showsHorizontalScrollIndicator={false}
+                nestedScrollEnabled={true}
+                keyboardShouldPersistTaps="handled"
+                bounces={true}
+                scrollEventThrottle={16}
+                removeClippedSubviews={true}
+                horizontal={false}
+              >
+                {error && (
+                  <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+                    <Ionicons name="alert-circle-outline" size={40} color="#DC2626" />
+                    <Text style={{ marginTop: 6, fontSize: 12, color: '#DC2626', fontWeight: '600' }}>{error}</Text>
+                  </View>
+                )}
 
-          {!isLoading && !error && displayedUpdates.map((update) => (
-            <UpdateCard key={update.id} update={update} onPress={() => handleUpdatePress(update)} theme={theme} />
-          ))}
+                {isLoading && (
+                  <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+                    <Ionicons name="hourglass-outline" size={40} color={theme.colors.textMuted} />
+                    <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>Loading updates...</Text>
+                  </View>
+                )}
+
+                {!isLoading && !error && displayedUpdates.length === 0 && (
+                  <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+                    <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
+                    <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>
+                      {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : 'No updates found'}
+                    </Text>
+                  </View>
+                )}
+
+                {!isLoading && !error && displayedUpdates.map((update) => {
+                  // Get color for accent bar based on category (institutional/academic)
+                  const tagLower = update.tag?.toLowerCase() || '';
+                  let accentColor = '#93C5FD'; // Default blue
+                  
+                  if (tagLower === 'institutional') {
+                    accentColor = '#2563EB'; // Blue for Institutional
+                  } else if (tagLower === 'academic') {
+                    accentColor = '#10B981'; // Green for Academic
+                  } else {
+                    // For other categories (event, announcement, etc.), use categoryToColors
+                    const colors = categoryToColors(update.tag);
+                    accentColor = colors.dot || '#93C5FD';
+                  }
+                  
+                  return (
+                    <TouchableOpacity
+                      key={update.id}
+                      style={[styles.updateCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                      activeOpacity={0.7}
+                      delayPressIn={0}
+                      onPress={() => handleUpdatePress(update)}
+                    >
+                      <View style={[styles.updateAccent, { backgroundColor: accentColor }]} collapsable={false} />
+                      <View style={styles.updateContent} collapsable={false}>
+                        {(update.images?.[0] || update.image) && (
+                          <Image 
+                            source={{ uri: update.images?.[0] || update.image || '' }} 
+                            style={styles.updateImage}
+                            resizeMode="cover"
+                            onError={(error) => {
+                              console.error('Image load error:', error.nativeEvent.error);
+                              console.log('Failed image URL:', update.images?.[0] || update.image);
+                            }}
+                          />
+                        )}
+                        <View style={styles.updateTextContent}>
+                          <Text style={[styles.updateTitle, { color: theme.colors.text }]} numberOfLines={2}>{update.title}</Text>
+                          <View style={styles.updateDateRow}>
+                            <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
+                            <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
+                          </View>
+                          {update.description && (
+                            <Text style={[styles.updateDescription, { color: theme.colors.textMuted }]} numberOfLines={2}>
+                              {update.description}
+                            </Text>
+                          )}
+                          <View style={styles.updateTagRow}>
+                            <View style={styles.statusItem}>
+                              <Ionicons name="pricetag-outline" size={12} color={accentColor} />
+                              <Text style={[styles.updateTagText, { color: accentColor }]}>{update.tag}</Text>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
             </View>
           </BlurView>
         </View>
-        </Animated.View>
-      </ScrollView>
+      </View>
       
-      {/* Preview Modal */}
-      <PreviewModal
-        visible={isPreviewOpen}
-        update={previewUpdate}
-        onClose={handleClosePreview}
+      {/* Post Details Drawer - View Only */}
+      <PostDetailsDrawer
+        visible={showPostDrawer}
+        onClose={closePostDrawer}
+        selectedPost={selectedPost}
+        slideAnim={postDrawerSlideAnim}
+        backdropOpacity={postDrawerBackdropOpacity}
+        monthPickerScaleAnim={postMonthPickerScaleAnim}
+        monthPickerOpacityAnim={postMonthPickerOpacityAnim}
+        readOnly={true}
       />
 
-      <UserBottomNavBar />
+      {/* Event Details Drawer - View Only */}
+      <EventDetailsDrawer
+        visible={showEventDrawer}
+        onClose={closeEventDrawer}
+        selectedEvent={selectedEvent}
+        isEditing={isEditing}
+        setIsEditing={setIsEditing}
+        editTitle={editTitle}
+        setEditTitle={setEditTitle}
+        editDescription={editDescription}
+        setEditDescription={setEditDescription}
+        editDate={editDate}
+        setEditDate={setEditDate}
+        editTime={editTime}
+        setEditTime={setEditTime}
+        selectedDateObj={selectedDateObj}
+        setSelectedDateObj={setSelectedDateObj}
+        showDatePicker={showDatePicker}
+        setShowDatePicker={setShowDatePicker}
+        isDeleting={isDeleting}
+        setIsDeleting={setIsDeleting}
+        isUpdating={isUpdating}
+        setIsUpdating={setIsUpdating}
+        selectedDateEvents={selectedDateEvents}
+        selectedDateForDrawer={selectedDateForDrawer}
+        calendarEvents={calendarEvents}
+        refreshCalendarEvents={refreshCalendarEvents}
+        slideAnim={drawerSlideAnim}
+        backdropOpacity={drawerBackdropOpacity}
+        monthPickerScaleAnim={monthPickerScaleAnim}
+        monthPickerOpacityAnim={monthPickerOpacityAnim}
+        onSelectEvent={(event) => {
+          if (!event) {
+            setSelectedEvent(null);
+            return;
+          }
+          setSelectedEvent(event);
+        }}
+        readOnly={true}
+      />
+
+      {/* Bottom Navigation Bar - Fixed position */}
+      <View style={[styles.bottomNavContainer, {
+        bottom: 0,
+        paddingBottom: safeInsets.bottom,
+      }]} collapsable={false}>
+        <UserBottomNavBar />
+      </View>
     </View>
   );
 };
@@ -1000,24 +1344,18 @@ const SchoolUpdates = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
   },
   backgroundGradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: -1,
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
   },
   // Floating background orbs container (Copilot-style)
   floatingBgContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
     overflow: 'hidden',
-    zIndex: 0,
   },
   floatingOrbWrapper: {
     position: 'absolute',
@@ -1139,12 +1477,27 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    zIndex: 1,
+    width: '100%',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  cardsScrollView: {
+    flex: 1,
+    flexShrink: 1,
+  },
+  bottomNavContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 998,
   },
   welcomeSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+    flexShrink: 0,
   },
   welcomeText: {
     flex: 1,
@@ -1162,6 +1515,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginBottom: 12,
+    flexShrink: 0,
   },
   filterPill: {
     borderWidth: 1,
@@ -1218,6 +1572,80 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 12,
     overflow: 'hidden',
+    flex: 1,
+  },
+  calendarEventsSection: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  calendarEventsBlur: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  calendarEventsContent: {
+    padding: 12,
+    borderRadius: 12,
+  },
+  calendarEventCard: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  calendarEventAccent: {
+    width: 3,
+    borderRadius: 0,
+  },
+  calendarEventContent: {
+    flex: 1,
+    padding: 12,
+  },
+  calendarEventHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  calendarEventIconWrapper: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarEventTag: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  calendarEventTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  calendarEventDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  calendarEventDate: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  calendarEventDescription: {
+    fontSize: 12,
+    lineHeight: 16,
   },
   updatesSectionBlur: {
     borderRadius: 12,
@@ -1237,6 +1665,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
     gap: 12,
+    flexShrink: 0,
   },
   sectionIconWrapper: {
     width: 40,
@@ -1264,11 +1693,30 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   updateCard: {
-    flexDirection: 'column',
-    borderWidth: 1,
-    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    borderRadius: 12,
     marginBottom: 8,
+    borderWidth: 1,
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  updateAccent: {
+    width: 3,
+    borderRadius: 0,
+  },
+  updateContent: {
+    flex: 1,
+    flexDirection: 'column',
+    padding: 0,
+  },
+  updateTextContent: {
+    flex: 1,
+    padding: 10,
   },
   cardShadow: {
     shadowColor: '#000',
@@ -1280,45 +1728,42 @@ const styles = StyleSheet.create({
   updateImage: {
     width: '100%',
     height: 120,
-  },
-  updateContentWrapper: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-  },
-  updateContent: {
-    flex: 1,
+    resizeMode: 'cover',
   },
   updateTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    lineHeight: 22,
+    fontSize: 15,
+    fontWeight: '700',
     marginBottom: 6,
+    lineHeight: 20,
   },
   updateDateRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
   },
   updateDate: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
-  updateTag: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    backgroundColor: '#E8F0FF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
+  updateDescription: {
+    fontSize: 12,
+    marginBottom: 6,
+    lineHeight: 16,
+  },
+  updateTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  statusItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   updateTagText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#1A3E7A',
   },
   searchContainer: {
     paddingHorizontal: 16,

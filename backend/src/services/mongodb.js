@@ -376,9 +376,9 @@ class MongoDBService {
   }
 
   /**
-   * Log user query with frequency tracking
+   * Log user query with frequency tracking and user type categorization
    */
-  async logUserQuery(userId, query) {
+  async logUserQuery(userId, query, userType = null) {
     try {
       if (!userId || !query || !query.trim()) {
         return;
@@ -390,7 +390,7 @@ class MongoDBService {
       const normalizedQuery = query.toLowerCase().trim().replace(/\s+/g, ' ');
       
       // Use a hash to avoid MongoDB field name issues with special characters
-      // Store queries in an array with frequency count
+      // Store queries in an array with frequency count and userType
       const userDoc = await collection.findOne({ userId: userId });
       
       if (!userDoc || !userDoc.queryFrequency) {
@@ -400,7 +400,7 @@ class MongoDBService {
           {
             $set: {
               userId: userId,
-              queryFrequency: [{ query: normalizedQuery, count: 1 }],
+              queryFrequency: [{ query: normalizedQuery, count: 1, userType: userType || null }],
               updatedAt: new Date()
             },
             $setOnInsert: {
@@ -419,7 +419,10 @@ class MongoDBService {
             { userId: userId, 'queryFrequency.query': normalizedQuery },
             {
               $inc: { 'queryFrequency.$.count': 1 },
-              $set: { updatedAt: new Date() }
+              $set: { 
+                'queryFrequency.$.userType': userType || userDoc.queryFrequency[queryIndex].userType,
+                updatedAt: new Date() 
+              }
             }
           );
         } else {
@@ -427,21 +430,67 @@ class MongoDBService {
           await collection.updateOne(
             { userId: userId },
             {
-              $push: { queryFrequency: { query: normalizedQuery, count: 1 } },
+              $push: { queryFrequency: { query: normalizedQuery, count: 1, userType: userType || null } },
               $set: { updatedAt: new Date() }
             }
           );
         }
       }
       
-      Logger.info(`✅ Logged user query for userId: ${userId}`);
+      // Also log to global FAQs collection for cross-user analytics
+      if (userType) {
+        await this.logGlobalQuery(normalizedQuery, userType);
+      }
+      
+      Logger.info(`✅ Logged user query for userId: ${userId}, userType: ${userType || 'none'}`);
     } catch (error) {
       Logger.error('Failed to log user query:', error);
     }
   }
 
   /**
-   * Get top N most frequently asked questions for a user
+   * Log query to global FAQs collection (accessible across all users)
+   */
+  async logGlobalQuery(query, userType) {
+    try {
+      if (!query || !query.trim() || !userType) {
+        return;
+      }
+
+      const collection = this.getCollection('global_faqs');
+      const normalizedQuery = query.toLowerCase().trim().replace(/\s+/g, ' ');
+      
+      // Find or create FAQ document
+      const faqDoc = await collection.findOne({ query: normalizedQuery, userType: userType });
+      
+      if (!faqDoc) {
+        // Create new FAQ entry
+        await collection.insertOne({
+          query: normalizedQuery,
+          userType: userType,
+          count: 1,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      } else {
+        // Increment count
+        await collection.updateOne(
+          { query: normalizedQuery, userType: userType },
+          {
+            $inc: { count: 1 },
+            $set: { updatedAt: new Date() }
+          }
+        );
+      }
+      
+      Logger.info(`✅ Logged global FAQ query: ${normalizedQuery}, userType: ${userType}`);
+    } catch (error) {
+      Logger.error('Failed to log global query:', error);
+    }
+  }
+
+  /**
+   * Get top N most frequently asked questions for a user (DEPRECATED - use getGlobalFAQs instead)
    */
   async getTopQueries(userId, limit = 5) {
     try {
@@ -471,6 +520,38 @@ class MongoDBService {
       
     } catch (error) {
       Logger.error('Failed to get top queries:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get global FAQs from knowledge base (accessible across all users and devices)
+   * Returns top N FAQs based on frequency across all users
+   */
+  async getGlobalFAQs(userType = null, limit = 5) {
+    try {
+      const collection = this.getCollection('global_faqs');
+      
+      // Build query filter
+      const filter = userType ? { userType: userType } : {};
+      
+      // Get top FAQs sorted by count
+      const faqs = await collection
+        .find(filter)
+        .sort({ count: -1 }) // Sort by count descending
+        .limit(limit)
+        .toArray();
+      
+      // Format and return FAQs
+      return faqs.map(faq => {
+        const query = faq.query || '';
+        // Capitalize first letter of query for display
+        return query.charAt(0).toUpperCase() + query.slice(1);
+      });
+      
+    } catch (error) {
+      Logger.error('Failed to get global FAQs:', error);
+      // If collection doesn't exist yet, return empty array
       return [];
     }
   }
@@ -724,18 +805,25 @@ class MongoDBService {
   /**
    * Save a specific chat session
    */
-  async saveChatSession(userId, sessionId, messages) {
+  async saveChatSession(userId, sessionId, messages, userType = null) {
     try {
       const collection = this.getCollection(mongoConfig.collections.conversations);
       
       // Update or create chat session within user's document
+      const updateData = {
+        [`sessions.${sessionId}.messages`]: messages,
+        [`sessions.${sessionId}.updatedAt`]: new Date()
+      };
+      
+      // Add userType if provided
+      if (userType) {
+        updateData[`sessions.${sessionId}.userType`] = userType;
+      }
+      
       const result = await collection.updateOne(
         { userId: userId },
         {
-          $set: {
-            [`sessions.${sessionId}.messages`]: messages,
-            [`sessions.${sessionId}.updatedAt`]: new Date()
-          },
+          $set: updateData,
           $setOnInsert: {
             userId: userId,
             history: [],
@@ -746,7 +834,8 @@ class MongoDBService {
         { upsert: true }
       );
       
-      Logger.success(`✅ Chat session saved for user: ${userId}, session: ${sessionId}`);
+      Logger.success(`✅ Chat session saved for user: ${userId}, session: ${sessionId}, userType: ${userType || 'none'}, messages: ${messages.length}`);
+      Logger.info(`   Collection: ${mongoConfig.collections.conversations}, Matched: ${result.matchedCount}, Modified: ${result.modifiedCount}, Upserted: ${result.upsertedCount}`);
       return result;
     } catch (error) {
       Logger.error('Failed to save chat session:', error);
@@ -783,14 +872,21 @@ class MongoDBService {
       const collection = this.getCollection(mongoConfig.collections.conversations);
       
       // First try to update existing history entry with same id
+      const updateData = {
+        'history.$.title': chatInfo.title,
+        'history.$.preview': chatInfo.preview,
+        'history.$.timestamp': chatInfo.timestamp
+      };
+      
+      // Add userType if provided
+      if (chatInfo.userType) {
+        updateData['history.$.userType'] = chatInfo.userType;
+      }
+      
       const updateExisting = await collection.updateOne(
         { userId: userId, 'history.id': chatInfo.id },
         {
-          $set: {
-            'history.$.title': chatInfo.title,
-            'history.$.preview': chatInfo.preview,
-            'history.$.timestamp': chatInfo.timestamp
-          },
+          $set: updateData,
           $setOnInsert: { userId: userId }
         }
       );

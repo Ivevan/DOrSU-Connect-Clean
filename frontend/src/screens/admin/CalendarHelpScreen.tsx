@@ -264,6 +264,7 @@ const CalendarHelpScreen = () => {
               { icon: 'add-circle', text: 'Double-tap any calendar cell to quickly add an event' },
               { icon: 'create', text: 'Click on marked dates to view and edit event details' },
               { icon: 'pencil', text: 'Use the Edit button to update missing information after upload' },
+              { icon: 'time-outline', text: 'Use the Yearly/Monthly dropdown to filter events by time range' },
               { icon: 'filter', text: 'Filter events by type using the Institutional/Academic toggle' },
             ].map((tip, index) => (
               <View key={index} style={[styles.tipCard, { 

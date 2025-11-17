@@ -9,7 +9,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AddEventDrawer from '../../components/calendar/AddEventDrawer';
@@ -159,6 +159,10 @@ const AdminCalendar = () => {
   
   // Event type filter - single selection: 'institutional' or 'academic'
   const [selectedEventType, setSelectedEventType] = useState<'institutional' | 'academic'>('institutional');
+  
+  // Event time range filter - 'allYear' or 'byMonth'
+  const [eventTimeRange, setEventTimeRange] = useState<'allYear' | 'byMonth'>('byMonth');
+  const [showTimeRangeDropdown, setShowTimeRangeDropdown] = useState(false);
   
   // Animation values
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
@@ -730,78 +734,14 @@ const AdminCalendar = () => {
     });
   }, [deleteAllModalSlideAnim, deleteAllModalBackdropOpacity]);
 
-  const filteredEvents = React.useMemo(() => {
-    if (!Array.isArray(calendarEvents)) return [];
-    
-    // Combine all events from calendarEvents (backend) - include ALL events including week/month-only
-    // Use a Set to track date ranges we've already added (to avoid duplicates)
-    const dateRangeKeys = new Set<string>();
-    const allEvents: any[] = [];
-    
-    if (Array.isArray(calendarEvents)) {
-      calendarEvents.forEach(event => {
-        const eventType = String(event.category || 'Announcement').toLowerCase();
-        
-        // Apply filters
-        if (!showInstitutional && eventType === 'institutional') return;
-        if (!showAcademic && eventType === 'academic') return;
-        
-        // For date ranges, create a single entry with range info (avoid duplicates)
-        if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-          const rangeKey = `${event.title}-${event.startDate}-${event.endDate}`;
-          if (!dateRangeKeys.has(rangeKey)) {
-            dateRangeKeys.add(rangeKey);
-            allEvents.push({
-              id: event._id || `calendar-${event.startDate}-${event.title}`,
-              title: event.title,
-              dateKey: parseAnyDateToKey(event.startDate),
-              time: event.time || 'All Day',
-              type: event.category || 'Announcement',
-              color: categoryToColors(event.category).dot,
-              chip: categoryToColors(event.category),
-              dateType: event.dateType,
-              startDate: event.startDate,
-              endDate: event.endDate,
-            });
-          }
-        } else if (event.dateType === 'week' || event.dateType === 'month') {
-          // Week/month-only events
-          allEvents.push({
-            id: event._id || `calendar-${event.isoDate}-${event.title}`,
-            title: event.title,
-            dateKey: parseAnyDateToKey(event.isoDate || event.date),
-            time: event.time || 'All Day',
-            type: event.category || 'Announcement',
-            color: categoryToColors(event.category).dot,
-            chip: categoryToColors(event.category),
-            dateType: event.dateType,
-            weekOfMonth: event.weekOfMonth,
-            month: event.month,
-            year: event.year,
-          });
-        } else {
-          // Single date events
-          allEvents.push({
-            id: event._id || `calendar-${event.isoDate}-${event.title}`,
-            title: event.title,
-            dateKey: parseAnyDateToKey(event.isoDate || event.date),
-            time: event.time || 'All Day',
-            type: event.category || 'Announcement',
-            color: categoryToColors(event.category).dot,
-            chip: categoryToColors(event.category),
-            dateType: event.dateType,
-          });
-        }
-      });
-    }
-    
-    return allEvents;
-  }, [calendarEvents, showInstitutional, showAcademic]);
-
   const getAllEventsGrouped = React.useCallback(() => {
     if (!Array.isArray(calendarEvents)) return [];
     
     const all: any[] = [];
+    
+    // Get current month and year for filtering
+    const currentYear = currentMonth.getUTCFullYear();
+    const currentMonthIndex = currentMonth.getUTCMonth() + 1; // 1-12
     
     // Add events from calendarEvents (CalendarService)
     // Use a Set to track date ranges we've already added (to avoid duplicates)
@@ -814,6 +754,33 @@ const AdminCalendar = () => {
         // Apply filters
         if (!showInstitutional && eventType === 'institutional') return;
         if (!showAcademic && eventType === 'academic') return;
+        
+        // Filter by current month (only if byMonth mode is selected)
+        if (eventTimeRange === 'byMonth') {
+          let isInCurrentMonth = false;
+          
+          if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+            // Check if date range overlaps with current month
+            const startDate = new Date(event.startDate);
+            const endDate = new Date(event.endDate);
+            const monthStart = new Date(Date.UTC(currentYear, currentMonthIndex - 1, 1));
+            const monthEnd = new Date(Date.UTC(currentYear, currentMonthIndex, 0, 23, 59, 59));
+            
+            // Check if range overlaps with current month (compare UTC timestamps)
+            isInCurrentMonth = (startDate.getTime() <= monthEnd.getTime() && endDate.getTime() >= monthStart.getTime());
+          } else if (event.dateType === 'week' || event.dateType === 'month') {
+            // For week/month events, check if month and year match
+            isInCurrentMonth = event.month === currentMonthIndex && event.year === currentYear;
+          } else {
+            // Single date events - check if date is in current month
+            const eventDate = new Date(event.isoDate || event.date);
+            isInCurrentMonth = eventDate.getUTCFullYear() === currentYear && 
+                              eventDate.getUTCMonth() + 1 === currentMonthIndex;
+          }
+          
+          // Skip events not in current month
+          if (!isInCurrentMonth) return;
+        }
         
         // For date ranges, use start date as the key and avoid duplicates
         let eventDateKey: string | null = null;
@@ -891,7 +858,7 @@ const AdminCalendar = () => {
       });
     
     return result;
-  }, [calendarEvents, showInstitutional, showAcademic]); // Only recompute when calendarEvents or filters change
+  }, [calendarEvents, showInstitutional, showAcademic, currentMonth, eventTimeRange]); // Only recompute when calendarEvents, filters, currentMonth, or eventTimeRange change
   
   const groupedEvents = React.useMemo(() => getAllEventsGrouped(), [getAllEventsGrouped]);
 
@@ -1697,68 +1664,152 @@ const AdminCalendar = () => {
                 </TouchableOpacity>
               </View>
             </View>
-            {/* Bottom Row: Filter Events label | Institutional | Academic */}
+            {/* Bottom Row: Yearly/Monthly Dropdown | Institutional | Academic */}
             <View style={styles.eventsHeaderBottomRow}>
-              <Text style={[styles.filterEventsLabel, { color: t.colors.textMuted }]}>Filter Events</Text>
-              <View style={styles.eventTypeToggleContainer}>
-                <TouchableOpacity
-                  style={[
-                    styles.eventTypeToggleButton,
-                    {
-                      backgroundColor: selectedEventType === 'institutional' ? '#2563EB' : 'transparent',
-                      borderColor: selectedEventType === 'institutional' ? '#2563EB' : t.colors.border,
-                    }
-                  ]}
-                  onPress={() => {
-                    setSelectedEventType('institutional');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[
-                    styles.eventTypeToggleText,
-                    { 
-                      color: selectedEventType === 'institutional' ? '#FFFFFF' : t.colors.textMuted 
-                    }
-                  ]}>
-                    Institutional
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.eventTypeToggleButton,
-                    {
-                      backgroundColor: selectedEventType === 'academic' ? '#10B981' : 'transparent',
-                      borderColor: selectedEventType === 'academic' ? '#10B981' : t.colors.border,
-                    }
-                  ]}
-                  onPress={() => {
-                    setSelectedEventType('academic');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[
-                    styles.eventTypeToggleText,
-                    { 
-                      color: selectedEventType === 'academic' ? '#FFFFFF' : t.colors.textMuted 
-                    }
-                  ]}>
-                    Academic
-                  </Text>
-                </TouchableOpacity>
+              <View style={styles.eventFilterContainer}>
+                <View style={styles.timeRangeDropdownWrapper}>
+                  <TouchableOpacity
+                    style={[
+                      styles.timeRangeDropdownButton,
+                      {
+                        backgroundColor: t.colors.surface,
+                        borderColor: t.colors.border,
+                      }
+                    ]}
+                    onPress={() => {
+                      setShowTimeRangeDropdown(!showTimeRangeDropdown);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.timeRangeDropdownText,
+                      { color: t.colors.text }
+                    ]}>
+                      {eventTimeRange === 'allYear' ? 'Yearly' : 'Monthly'}
+                    </Text>
+                    <Ionicons 
+                      name={showTimeRangeDropdown ? 'chevron-up' : 'chevron-down'} 
+                      size={16} 
+                      color={t.colors.textMuted} 
+                    />
+                  </TouchableOpacity>
+                  
+                  {/* Dropdown Options */}
+                  {showTimeRangeDropdown && (
+                    <View style={[styles.timeRangeDropdownOptions, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
+                        <TouchableOpacity
+                          style={[
+                            styles.timeRangeDropdownOption,
+                            { borderBottomColor: t.colors.border },
+                            eventTimeRange === 'allYear' && { backgroundColor: t.colors.surfaceAlt }
+                          ]}
+                          onPress={() => {
+                            setEventTimeRange('allYear');
+                            setShowTimeRangeDropdown(false);
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.timeRangeDropdownOptionText, { color: t.colors.text }]}>Yearly</Text>
+                          {eventTimeRange === 'allYear' && (
+                            <Ionicons name="checkmark" size={16} color="#8B5CF6" />
+                          )}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[
+                            styles.timeRangeDropdownOption,
+                            eventTimeRange === 'byMonth' && { backgroundColor: t.colors.surfaceAlt }
+                          ]}
+                          onPress={() => {
+                            setEventTimeRange('byMonth');
+                            setShowTimeRangeDropdown(false);
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.timeRangeDropdownOptionText, { color: t.colors.text }]}>Monthly</Text>
+                          {eventTimeRange === 'byMonth' && (
+                            <Ionicons name="checkmark" size={16} color="#8B5CF6" />
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                  )}
+                </View>
+                <View style={styles.eventTypeToggleContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.eventTypeToggleButton,
+                      {
+                        backgroundColor: selectedEventType === 'institutional' ? '#2563EB' : 'transparent',
+                        borderColor: selectedEventType === 'institutional' ? '#2563EB' : t.colors.border,
+                      }
+                    ]}
+                    onPress={() => {
+                      setSelectedEventType('institutional');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.eventTypeToggleText,
+                      { 
+                        color: selectedEventType === 'institutional' ? '#FFFFFF' : t.colors.textMuted 
+                      }
+                    ]}>
+                      Institutional
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.eventTypeToggleButton,
+                      {
+                        backgroundColor: selectedEventType === 'academic' ? '#10B981' : 'transparent',
+                        borderColor: selectedEventType === 'academic' ? '#10B981' : t.colors.border,
+                      }
+                    ]}
+                    onPress={() => {
+                      setSelectedEventType('academic');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.eventTypeToggleText,
+                      { 
+                        color: selectedEventType === 'academic' ? '#FFFFFF' : t.colors.textMuted 
+                      }
+                    ]}>
+                      Academic
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           </View>
           
           <View style={styles.eventsSubtitleRowEnhanced}>
             <Text style={[styles.eventsSubtitle, { color: t.colors.textMuted }]} numberOfLines={1}>
-              All events — {filteredEvents.length} {filteredEvents.length === 1 ? 'event' : 'events'}
+              {(() => {
+                const eventCount = groupedEvents.reduce((sum, yearGroup) => 
+                  sum + yearGroup.dates.reduce((dateSum, dateGroup) => dateSum + dateGroup.items.length, 0), 0
+                );
+                if (eventTimeRange === 'byMonth') {
+                  return `${getMonthName(currentMonth)} ${currentMonth.getFullYear()} — ${eventCount} ${eventCount === 1 ? 'event' : 'events'}`;
+                } else {
+                  return `Year ${currentMonth.getFullYear()} — ${eventCount} ${eventCount === 1 ? 'event' : 'events'}`;
+                }
+              })()}
             </Text>
           </View>
           <LinearGradient colors={[t.colors.border, 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ height: 1, marginBottom: 10 }} />
 
-          {filteredEvents.length === 0 && !isLoadingEvents && (
+          {(() => {
+            const monthEventCount = groupedEvents.reduce((sum, yearGroup) => 
+              sum + yearGroup.dates.reduce((dateSum, dateGroup) => dateSum + dateGroup.items.length, 0), 0
+            );
+            return monthEventCount === 0 && !isLoadingEvents;
+          })() && (
             <View style={[styles.emptyStateCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
               <View style={[styles.emptyStateIconWrap, { backgroundColor: t.colors.surfaceAlt }]}>
                 <Ionicons name="calendar-outline" size={20} color={t.colors.accent} />
@@ -1786,21 +1837,16 @@ const AdminCalendar = () => {
             </View>
           )}
 
-          {isLoadingEvents && (
+          {isLoadingEvents ? (
             <View style={[styles.emptyStateCard, { paddingVertical: 16, overflow: 'hidden', backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
               <LinearGradient colors={[t.colors.surfaceAlt, t.colors.surface]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ ...StyleSheet.absoluteFillObject, opacity: 0.6 }} />
               <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>Loading…</Text>
             </View>
-          )}
-
-          {/* All Events List - Flat list with dates inside cards */}
-          <View>
-            {Array.isArray(groupedEvents) && groupedEvents.map((yearGroup) => (
-              <View key={yearGroup.year} style={styles.yearGroupContainer}>
-                <Text style={[styles.yearHeaderText, { color: t.colors.text }]}>
-                  {yearGroup.year}
-                </Text>
-                {Array.isArray(yearGroup.dates) && yearGroup.dates.flatMap((dateGroup) => 
+          ) : (
+            /* All Events List - Flat list with dates inside cards */
+            <View>
+              {Array.isArray(groupedEvents) && groupedEvents.length > 0 && groupedEvents.flatMap((yearGroup) => 
+                Array.isArray(yearGroup.dates) ? yearGroup.dates.flatMap((dateGroup) => 
                   Array.isArray(dateGroup.items) ? dateGroup.items.map((event: any) => (
                     <TouchableOpacity
                       key={event.id}
@@ -1886,10 +1932,10 @@ const AdminCalendar = () => {
                       </View>
                     </TouchableOpacity>
                   )) : []
-                )}
-              </View>
-            ))}
-          </View>
+                ) : []
+              )}
+            </View>
+          )}
         </BlurView>
       </ScrollView>
 
@@ -2332,6 +2378,61 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  eventFilterContainer: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    flexShrink: 1,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  timeRangeToggleContainer: {
+    flexDirection: 'row',
+    gap: 4,
+    alignItems: 'center',
+  },
+  timeRangeDropdownWrapper: {
+    position: 'relative',
+    zIndex: 10,
+  },
+  timeRangeDropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    minWidth: 100,
+  },
+  timeRangeDropdownText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  timeRangeDropdownOptions: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    marginTop: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    overflow: 'hidden',
+    zIndex: 1000,
+  },
+  timeRangeDropdownOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  timeRangeDropdownOptionText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
   eventTypeToggleButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2377,9 +2478,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 4,
     alignItems: 'center',
-    flexShrink: 1,
-    flex: 1,
-    justifyContent: 'flex-end',
   },
   eventsIconWrap: {
     width: 22,

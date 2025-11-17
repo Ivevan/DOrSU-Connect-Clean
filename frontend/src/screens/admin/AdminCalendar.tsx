@@ -1636,7 +1636,8 @@ const AdminCalendar = () => {
           ]}
         >
           <View style={styles.eventsHeader}>
-            <View style={styles.eventsHeaderLeft}>
+            {/* Top Row: Events title with help icon | Upload CSV | Delete All */}
+            <View style={styles.eventsHeaderTopRow}>
               <View style={styles.eventsTitleRow}>
                 <View style={[styles.eventsIconWrap, { borderColor: t.colors.border }]}>
                   <Ionicons name="calendar-outline" size={14} color={t.colors.accent} />
@@ -1655,10 +1656,7 @@ const AdminCalendar = () => {
                   <Ionicons name="information-circle-outline" size={18} color={t.colors.textMuted} />
                 </TouchableOpacity>
               </View>
-            </View>
-            <View style={styles.eventsHeaderRight}>
-              {/* Top Row: Upload and Delete Buttons */}
-              <View style={styles.eventsHeaderRightTop}>
+              <View style={styles.eventsHeaderTopRight}>
                 <TouchableOpacity
                   style={[styles.csvUploadButton, { 
                     backgroundColor: t.colors.surface,
@@ -1698,7 +1696,10 @@ const AdminCalendar = () => {
                   )}
                 </TouchableOpacity>
               </View>
-              {/* Bottom Row: Event Type Toggle Buttons */}
+            </View>
+            {/* Bottom Row: Filter Events label | Institutional | Academic */}
+            <View style={styles.eventsHeaderBottomRow}>
+              <Text style={[styles.filterEventsLabel, { color: t.colors.textMuted }]}>Filter Events</Text>
               <View style={styles.eventTypeToggleContainer}>
                 <TouchableOpacity
                   style={[
@@ -2301,32 +2302,51 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   eventsHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
+    gap: 8,
     marginBottom: 16,
+  },
+  eventsHeaderTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  eventsHeaderTopRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 1,
+  },
+  eventsHeaderBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   eventsTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 8,
   },
-  eventTypeToggleContainer: {
-    flexDirection: 'row',
-    gap: 6,
-    alignItems: 'center',
-    width: '100%',
+  filterEventsLabel: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   eventTypeToggleButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
+    flexShrink: 1,
+    minWidth: 80,
   },
   eventTypeToggleText: {
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '600',
   },
   segmentedToggle: {
     flexDirection: 'row',
@@ -2349,28 +2369,17 @@ const styles = StyleSheet.create({
   segmentTextActive: {
     color: theme.colors.accent,
   },
-  eventsHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexShrink: 1,
-    flex: 1,
-  },
   infoIconButton: {
     padding: 2,
     marginLeft: -6,
   },
-  eventsHeaderRight: {
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    gap: 8,
-    flexShrink: 1,
-  },
-  eventsHeaderRightTop: {
+  eventTypeToggleContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 4,
-    width: '100%',
+    alignItems: 'center',
+    flexShrink: 1,
+    flex: 1,
+    justifyContent: 'flex-end',
   },
   eventsIconWrap: {
     width: 22,

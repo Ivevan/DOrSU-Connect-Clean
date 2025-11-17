@@ -8,8 +8,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Animated, Dimensions, Image, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import EventDetailsDrawer from '../../components/calendar/EventDetailsDrawer';
-import AddPostDrawer from '../../components/dashboard/AddPostDrawer';
-import PostDetailsDrawer from '../../components/dashboard/PostDetailsDrawer';
+// import AddPostDrawer from '../../components/dashboard/AddPostDrawer'; // Replaced with PostUpdate screen navigation
+import PreviewEditDeleteModal from '../../modals/PreviewEditDeleteModal';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import AdminSidebar from '../../components/navigation/AdminSidebar';
 import { useThemeValues } from '../../contexts/ThemeContext';
@@ -31,7 +31,7 @@ type RootStackParamList = {
   AdminAIChat: undefined;
   AdminCalendar: undefined;
   AdminSettings: undefined;
-  PostUpdate: undefined;
+  PostUpdate: { postId?: string } | undefined;
   ManagePosts: undefined;
 };
 
@@ -112,18 +112,9 @@ const AdminDashboard = () => {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [isLoadingCalendarEvents, setIsLoadingCalendarEvents] = useState(false);
   
-  // Drawer state
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isPostDrawerOpen, setIsPostDrawerOpen] = useState(false);
+  // Modal state (using PreviewEditDeleteModal instead of PostDetailsDrawer)
+  const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   const [selectedPost, setSelectedPost] = useState<any | null>(null);
-  const slideAnim = useRef(new Animated.Value(0)).current; // 0 = closed, 1 = open
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
-  const postDrawerSlideAnim = useRef(new Animated.Value(0)).current;
-  const postDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
-  const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
-  const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
-  const postDrawerMonthPickerScaleAnim = useRef(new Animated.Value(0)).current;
-  const postDrawerMonthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
   
   // Event drawer state
   const [showEventDrawer, setShowEventDrawer] = useState(false);
@@ -219,7 +210,7 @@ const AdminDashboard = () => {
     return () => unsubscribe();
   }, []);
 
-  // Load backend user photo on screen focus
+  // Load backend user photo and refresh dashboard data on screen focus
   useFocusEffect(
     useCallback(() => {
       const loadBackendUserData = async () => {
@@ -231,7 +222,69 @@ const AdminDashboard = () => {
           console.error('Failed to load backend user data:', error);
         }
       };
+      
+      const refreshData = async () => {
+        try {
+          setIsLoadingDashboard(true);
+          setDashboardError(null);
+          
+          // Fetch dashboard statistics
+          const dashboardStats = await AdminDataService.getDashboard();
+          
+          // Fetch recent updates (posts/announcements)
+          const posts = await AdminDataService.getPosts();
+          const postsData = posts.map(post => {
+            // Ensure images array is properly set
+            let images = post.images;
+            if (!images || !Array.isArray(images) || images.length === 0) {
+              // If images array is empty but image field exists, create array from it
+              if (post.image) {
+                images = [post.image];
+              } else {
+                images = [];
+              }
+            }
+            
+            return {
+              id: post.id,
+              title: post.title,
+              date: new Date(post.date).toLocaleDateString(),
+              tag: post.category,
+              description: post.description,
+              image: post.image,
+              images: images,
+              pinned: (post as any).pinned || false,
+              isoDate: post.date,
+            };
+          });
+          
+          // Only use posts data - calendar events are shown in separate section
+          // Remove duplicates from posts only
+          const uniqueUpdates = postsData.filter((update, index, self) =>
+            index === self.findIndex(u => u.id === update.id)
+          );
+          
+          // Sort by date (newest first)
+          uniqueUpdates.sort((a, b) => {
+            const dateA = new Date(a.isoDate || a.date).getTime();
+            const dateB = new Date(b.isoDate || b.date).getTime();
+            return dateB - dateA;
+          });
+          
+          setAllUpdates(uniqueUpdates);
+          setDashboardData({
+            recentUpdates: uniqueUpdates,
+          });
+        } catch (error: any) {
+          console.error('Failed to refresh dashboard data:', error);
+          setDashboardError(error.message || 'Failed to load dashboard data');
+        } finally {
+          setIsLoadingDashboard(false);
+        }
+      };
+      
       loadBackendUserData();
+      refreshData();
     }, [])
   );
 
@@ -1061,20 +1114,7 @@ const AdminDashboard = () => {
                           images: update.images,
                         };
                         setSelectedPost(post);
-                        setIsPostDrawerOpen(true);
-                        Animated.parallel([
-                          Animated.spring(postDrawerSlideAnim, {
-                            toValue: 1,
-                            useNativeDriver: true,
-                            tension: 65,
-                            friction: 11,
-                          }),
-                          Animated.timing(postDrawerBackdropOpacity, {
-                            toValue: 1,
-                            duration: 300,
-                            useNativeDriver: true,
-                          }),
-                        ]).start();
+                        setIsPostModalOpen(true);
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       }}
                     >
@@ -1125,20 +1165,8 @@ const AdminDashboard = () => {
           bottom: safeInsets.bottom + 80, // Above nav bar
         }]}
         onPress={() => {
-          setIsDrawerOpen(true);
-          Animated.parallel([
-            Animated.spring(slideAnim, {
-              toValue: 1,
-              useNativeDriver: true,
-              tension: 65,
-              friction: 11,
-            }),
-            Animated.timing(backdropOpacity, {
-              toValue: 1,
-              duration: 300,
-              useNativeDriver: true,
-            }),
-          ]).start();
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          navigation.navigate('PostUpdate');
         }}
         activeOpacity={0.8}
       >
@@ -1160,130 +1188,33 @@ const AdminDashboard = () => {
         />
       </View>
 
-      {/* Add Event/Announcement Drawer */}
-      <AddPostDrawer
-        visible={isDrawerOpen}
-        onClose={() => {
-          Animated.parallel([
-            Animated.spring(slideAnim, {
-              toValue: 0,
-              useNativeDriver: true,
-              tension: 65,
-              friction: 11,
-            }),
-            Animated.timing(backdropOpacity, {
-              toValue: 0,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-          ]).start(() => {
-            setIsDrawerOpen(false);
-          });
-        }}
-        type={null}
-        onSuccess={async () => {
-          // Refresh dashboard data
-          try {
-            setIsLoadingDashboard(true);
-            setDashboardError(null);
-            
-            // Fetch posts and calendar events in parallel for faster loading
-            const [events, posts] = await Promise.all([
-              // Refresh calendar events for current month only (reduced limit for speed)
-              (async () => {
-                const now = new Date();
-                const currentYear = now.getFullYear();
-                const currentMonth = now.getMonth();
-                const startDate = new Date(currentYear, currentMonth, 1);
-                const endDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
-                
-                return CalendarService.getEvents({
-                  startDate: startDate.toISOString(),
-                  endDate: endDate.toISOString(),
-                  limit: 100, // Reduced from 1000 for faster loading
-                });
-              })(),
-              // Fetch posts
-              AdminDataService.getPosts(),
-            ]);
-            
-            setCalendarEvents(Array.isArray(events) ? events : []);
-            const postsData = posts.map(post => {
-              // Ensure images array is properly set
-              let images = post.images;
-              if (!images || !Array.isArray(images) || images.length === 0) {
-                // If images array is empty but image field exists, create array from it
-                if (post.image) {
-                  images = [post.image];
-                } else {
-                  images = [];
-                }
-              }
-              
-              return {
-                id: post.id,
-                title: post.title,
-                date: new Date(post.date).toLocaleDateString(),
-                tag: post.category,
-                description: post.description,
-                image: post.image,
-                images: images,
-                pinned: (post as any).pinned || false,
-                isoDate: post.date,
-              };
-            });
-            
-            // Only use posts data - calendar events are shown in separate section
-            // Remove duplicates from posts only
-            const uniqueUpdates = postsData.filter((update, index, self) =>
-              index === self.findIndex(u => u.id === update.id)
-            );
-            
-            // Sort by date (newest first)
-            uniqueUpdates.sort((a, b) => {
-              const dateA = new Date(a.isoDate || a.date).getTime();
-              const dateB = new Date(b.isoDate || b.date).getTime();
-              return dateB - dateA;
-            });
-            
-            setAllUpdates(uniqueUpdates);
-            setDashboardData({
-              recentUpdates: uniqueUpdates.slice(0, 5),
-            });
-          } catch (err: any) {
-            setDashboardError(err?.message || 'Failed to load dashboard data');
-          } finally {
-            setIsLoadingDashboard(false);
-          }
-        }}
-        slideAnim={slideAnim}
-        backdropOpacity={backdropOpacity}
-        monthPickerScaleAnim={monthPickerScaleAnim}
-        monthPickerOpacityAnim={monthPickerOpacityAnim}
-      />
+      {/* AddPostDrawer removed - using PostUpdate screen navigation instead */}
 
-      {/* Post Details Drawer */}
-      <PostDetailsDrawer
-        visible={isPostDrawerOpen}
+      {/* Post Preview Edit Delete Modal */}
+      <PreviewEditDeleteModal
+        visible={isPostModalOpen}
+        update={selectedPost ? {
+          id: selectedPost.id,
+          title: selectedPost.title,
+          date: selectedPost.isoDate || selectedPost.date,
+          tag: selectedPost.category,
+          time: selectedPost.time,
+          image: selectedPost.image,
+          images: selectedPost.images,
+          description: selectedPost.description,
+          source: selectedPost.source,
+          pinned: selectedPost.isPinned,
+          isoDate: selectedPost.isoDate || selectedPost.date,
+        } : null}
         onClose={() => {
-          Animated.parallel([
-            Animated.spring(postDrawerSlideAnim, {
-              toValue: 0,
-              useNativeDriver: true,
-              tension: 65,
-              friction: 11,
-            }),
-            Animated.timing(postDrawerBackdropOpacity, {
-              toValue: 0,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-          ]).start(() => {
-            setIsPostDrawerOpen(false);
-            setSelectedPost(null);
-          });
+          setIsPostModalOpen(false);
+          setSelectedPost(null);
         }}
-        selectedPost={selectedPost}
+        onEdit={() => {
+          // Navigate to PostUpdate screen for editing
+          setIsPostModalOpen(false);
+          navigation.navigate('PostUpdate', { postId: selectedPost?.id });
+        }}
         onPostUpdated={(updatedPost) => {
           // Update selectedPost with the updated data immediately
           console.log('🔄 Updating selectedPost in AdminDashboard', { updatedPost });
@@ -1339,10 +1270,6 @@ const AdminDashboard = () => {
             setIsLoadingDashboard(false);
           }
         }}
-        slideAnim={postDrawerSlideAnim}
-        backdropOpacity={postDrawerBackdropOpacity}
-        monthPickerScaleAnim={postDrawerMonthPickerScaleAnim}
-        monthPickerOpacityAnim={postDrawerMonthPickerOpacityAnim}
       />
 
       {/* Event Details Drawer */}

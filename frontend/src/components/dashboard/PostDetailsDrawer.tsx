@@ -230,27 +230,32 @@ const PostDetailsDrawer: React.FC<PostDetailsDrawerProps> = ({
     setIsUpdating(true);
     
     try {
+      // Use ISO date string for backend consistency (matching PostUpdate.tsx pattern)
       const isoDate = selectedDateObj ? selectedDateObj.toISOString() : (selectedPost.isoDate || selectedPost.date);
       console.log('📝 Preparing update data', { isoDate, hasPickedFile: !!pickedFile });
       
-      // Prepare update data
+      // Prepare update data with proper date format (matching PostUpdate.tsx pattern)
       const updateData: any = {
         title: editTitle.trim(),
         description: editDescription.trim(),
         category: editCategory.trim(),
         date: isoDate, // Use ISO date string for backend
-        isoDate: isoDate,
+        isoDate: isoDate, // Include isoDate for consistency
       };
 
-      // If new image is picked, include it
+      // If new image is picked, include imageFile object for proper backend handling (matching PostUpdate.tsx pattern)
       if (pickedFile) {
         updateData.image = pickedFile.uri;
         updateData.images = [pickedFile.uri];
-        updateData.imageFile = pickedFile;
-        console.log('📸 Including image in update', { uri: pickedFile.uri.substring(0, 50) + '...' });
+        updateData.imageFile = pickedFile; // Pass full file object for backend multipart upload
+        console.log('📸 Including imageFile in update', { uri: pickedFile.uri.substring(0, 50) + '...', hasImageFile: !!pickedFile });
       }
 
-      console.log('📤 Calling AdminDataService.updatePost', { postId: selectedPost.id, updateData: { ...updateData, imageFile: updateData.imageFile ? 'present' : 'none' } });
+      console.log('📤 Calling AdminDataService.updatePost', { 
+        postId: selectedPost.id, 
+        updateData: { ...updateData, imageFile: updateData.imageFile ? 'present' : 'none' } 
+      });
+      
       const updated = await AdminDataService.updatePost(selectedPost.id, updateData);
       console.log('📥 AdminDataService.updatePost response', { updated: !!updated });
       
@@ -276,9 +281,9 @@ const PostDetailsDrawer: React.FC<PostDetailsDrawerProps> = ({
         Alert.alert('Error', 'Failed to update post');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to update post:', error);
-      Alert.alert('Error', 'Failed to update post');
+      Alert.alert('Error', error.message || 'Failed to update post');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       console.log('🔄 Setting isUpdating to false');

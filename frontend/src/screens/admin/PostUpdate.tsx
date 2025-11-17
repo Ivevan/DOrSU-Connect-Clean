@@ -20,6 +20,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import * as FileSystem from 'expo-file-system';
+import * as Haptics from 'expo-haptics';
 import AdminDataService from '../../services/AdminDataService';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -333,27 +334,53 @@ const PostUpdate: React.FC = () => {
     // Simulate publishing then go to ManagePosts
     setTimeout(() => {
       const now = new Date();
+      // Use ISO date string for backend consistency
+      const isoDate = selectedDateObj ? selectedDateObj.toISOString() : (date ? new Date(date).toISOString() : now.toISOString());
       const displayDate = now.toLocaleString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
-      const images: string[] = [];
-      if (pickedFile?.uri) {
-        images.push(pickedFile.uri);
-      }
-      const payload = {
+      
+      // Prepare payload with proper date format
+      const payload: any = {
         title: title || 'Untitled',
         category,
-        date: date || displayDate,
+        date: isoDate, // Use ISO date string for backend
+        isoDate: isoDate, // Include isoDate for consistency
         time: time || '',
         description,
-        images: images.length > 0 ? images : undefined,
       };
+
+      // If new image is picked, include imageFile object for proper backend handling
+      if (pickedFile) {
+        payload.image = pickedFile.uri;
+        payload.images = [pickedFile.uri];
+        payload.imageFile = pickedFile; // Pass full file object for backend multipart upload
+        console.log('📸 Including imageFile in payload', { uri: pickedFile.uri.substring(0, 50) + '...', hasImageFile: !!pickedFile });
+      }
+      
+      console.log('📤 Calling AdminDataService', { 
+        isEdit: !!editingPostId, 
+        postId: editingPostId,
+        payload: { ...payload, imageFile: payload.imageFile ? 'present' : 'none' } 
+      });
+      
       const op = editingPostId
         ? AdminDataService.updatePost(editingPostId, payload)
         : AdminDataService.createPost(payload);
-      Promise.resolve(op).finally(() => {
-        navigation.navigate('AdminDashboard');
-      });
+      
+      Promise.resolve(op)
+        .then((result) => {
+          console.log('✅ Post operation successful', { result: !!result });
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        })
+        .catch((error) => {
+          console.error('❌ Post operation failed:', error);
+          Alert.alert('Error', error.message || 'Failed to save post');
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        })
+        .finally(() => {
+          navigation.navigate('AdminDashboard');
+        });
     }, 500);
-  }, [title, category, date, time, description, pickedFile, editingPostId, navigation]);
+  }, [title, category, date, time, description, pickedFile, editingPostId, navigation, selectedDateObj]);
 
   const confirmCancel = useCallback(() => {
     setIsCancelAlertOpen(false);

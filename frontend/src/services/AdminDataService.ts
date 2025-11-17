@@ -161,15 +161,20 @@ const AdminDataService = {
       const token = await this.getToken();
       if (!token) {
         console.warn('⚠️ AdminDataService.getPosts: No token available, using local store');
+        console.log('📦 Local store has', postsStore.length, 'posts');
         // Fallback to local store if no token
         await delay();
-        return [...postsStore].sort((a, b) => {
+        const sorted = [...postsStore].sort((a, b) => {
           const da = dateToSortKey(a);
           const db = dateToSortKey(b);
           return db - da;
         });
+        console.log('✅ Returning', sorted.length, 'posts from local store (no token)');
+        return sorted;
       }
 
+      console.log('🌐 Fetching posts from backend:', `${apiConfig.baseUrl}/api/admin/posts?limit=1000`);
+      
       // Fetch from backend MongoDB
       const response = await fetch(`${apiConfig.baseUrl}/api/admin/posts?limit=1000`, {
         method: 'GET',
@@ -179,33 +184,52 @@ const AdminDataService = {
         },
       });
 
+      console.log('📥 Backend response status:', response.status);
+
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Backend HTTP error:', response.status, errorText);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
+      console.log('📦 Backend response data:', { success: data.success, postsCount: Array.isArray(data.posts) ? data.posts.length : 'not an array' });
+      
       if (data.success && Array.isArray(data.posts)) {
         // Update local store for offline access
         postsStore = data.posts;
+        console.log('✅ Updated local store with', data.posts.length, 'posts from backend');
         return data.posts;
       }
       
-      // Fallback to local store
+      // Fallback to local store if response format is unexpected
+      console.warn('⚠️ Unexpected response format, using local store');
+      console.log('📦 Local store has', postsStore.length, 'posts');
       await delay();
-      return [...postsStore].sort((a, b) => {
+      const sorted = [...postsStore].sort((a, b) => {
         const da = dateToSortKey(a);
         const db = dateToSortKey(b);
         return db - da;
       });
-    } catch (error) {
-      console.error('Failed to fetch posts from backend:', error);
+      console.log('✅ Returning', sorted.length, 'posts from local store (unexpected format)');
+      return sorted;
+    } catch (error: any) {
+      console.error('❌ Failed to fetch posts from backend:', error);
+      console.error('❌ Error details:', {
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+      });
       // Fallback to local store
+      console.log('📦 Local store has', postsStore.length, 'posts');
       await delay();
-      return [...postsStore].sort((a, b) => {
+      const sorted = [...postsStore].sort((a, b) => {
         const da = dateToSortKey(a);
         const db = dateToSortKey(b);
         return db - da;
       });
+      console.log('✅ Returning', sorted.length, 'posts from local store (error fallback)');
+      return sorted;
     }
   },
 
@@ -545,7 +569,10 @@ const AdminDataService = {
         isUrgent: Boolean(partial?.isUrgent),
         source: eventData?.source || partial?.source || 'Admin',
       };
+        console.log('📦 Adding post to local store:', { id: next.id, title: next.title });
+        console.log('📦 Local store before:', postsStore.length, 'posts');
         postsStore = [next, ...postsStore];
+        console.log('✅ Local store after:', postsStore.length, 'posts');
         return next;
       } catch (fetchError: any) {
         console.error('❌ Fetch error:', fetchError);

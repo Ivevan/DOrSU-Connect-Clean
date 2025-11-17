@@ -453,15 +453,28 @@ const SchoolUpdates = () => {
   }, [postDrawerSlideAnim, postDrawerBackdropOpacity]);
 
   // Fetch data from AdminDataService
-  useEffect(() => {
-    const fetchUpdates = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const posts = await AdminDataService.getPosts();
+  const fetchUpdates = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const posts = await AdminDataService.getPosts();
+      
+      console.log('📥 Fetched posts from AdminDataService:', posts.length);
+      
+      // Map AdminDataService posts to our component format (matching AdminDashboard pattern)
+      const postsData = posts.map(post => {
+        // Ensure images array is properly set
+        let images = post.images;
+        if (!images || !Array.isArray(images) || images.length === 0) {
+          // If images array is empty but image field exists, create array from it
+          if (post.image) {
+            images = [post.image];
+          } else {
+            images = [];
+          }
+        }
         
-        // Map AdminDataService posts to our component format
-        const mappedUpdates = posts.map(post => ({
+        return {
           id: post.id,
           title: post.title,
           body: post.description,
@@ -473,26 +486,65 @@ const SchoolUpdates = () => {
           description: post.description,
           source: post.source,
           image: post.image,
-          images: post.images,
-        }));
-        
-        setUpdates(mappedUpdates);
-      } catch (err: any) {
-        setError(err?.message || 'Failed to load updates');
-      } finally {
-        setIsLoading(false);
+          images: images,
+        };
+      });
+      
+      // Remove duplicates (matching AdminDashboard pattern)
+      const uniqueUpdates = postsData.filter((update, index, self) =>
+        index === self.findIndex(u => u.id === update.id)
+      );
+      
+      // Sort by date (newest first) - matching AdminDashboard pattern
+      uniqueUpdates.sort((a, b) => {
+        const dateA = new Date(a.isoDate || a.date).getTime();
+        const dateB = new Date(b.isoDate || b.date).getTime();
+        return dateB - dateA; // Newest first
+      });
+      
+      console.log('✅ Mapped updates:', uniqueUpdates.length, '(removed', posts.length - uniqueUpdates.length, 'duplicates)');
+      if (uniqueUpdates.length > 0) {
+        console.log('📝 Sample update:', { 
+          id: uniqueUpdates[0].id, 
+          title: uniqueUpdates[0].title, 
+          isoDate: uniqueUpdates[0].isoDate,
+          tag: uniqueUpdates[0].tag 
+        });
       }
-    };
-
-    fetchUpdates();
+      setUpdates(uniqueUpdates);
+      console.log('✅ State updated with', uniqueUpdates.length, 'updates');
+    } catch (err: any) {
+      console.error('❌ Error fetching updates:', err);
+      setError(err?.message || 'Failed to load updates');
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
+  // Fetch updates on mount
+  useEffect(() => {
+    fetchUpdates();
+  }, [fetchUpdates]);
+
+  // Refresh updates when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchUpdates();
+    }, [fetchUpdates])
+  );
+
   const filtered = useMemo(() => {
-    return updates.filter(u => {
+    const result = updates.filter(u => {
       const q = query.trim().toLowerCase();
-      const byQuery = q.length === 0 || u.title.toLowerCase().includes(q) || u.body.toLowerCase().includes(q);
+      const byQuery = q.length === 0 || u.title.toLowerCase().includes(q) || (u.body && u.body.toLowerCase().includes(q));
       return byQuery;
     });
+    console.log('🔍 Filtered updates:', { 
+      total: updates.length, 
+      query: query.trim(), 
+      filtered: result.length 
+    });
+    return result;
   }, [updates, query]);
 
   // Today's events (category Event occurring today) - using timezone-aware comparison
@@ -528,10 +580,48 @@ const SchoolUpdates = () => {
 
   // Filtered by time (all, upcoming, or recent)
   const displayedUpdates = useMemo(() => {
-    if (timeFilter === 'upcoming') return upcomingUpdates;
-    if (timeFilter === 'recent') return recentUpdates;
-    return filtered; // 'all'
-  }, [timeFilter, upcomingUpdates, recentUpdates, filtered]);
+    console.log('🔍 Computing displayedUpdates:', {
+      timeFilter,
+      updatesCount: updates.length,
+      filteredCount: filtered.length,
+      upcomingCount: upcomingUpdates.length,
+      recentCount: recentUpdates.length,
+    });
+    
+    let result;
+    if (timeFilter === 'upcoming') {
+      result = [...upcomingUpdates];
+    } else if (timeFilter === 'recent') {
+      result = [...recentUpdates];
+    } else {
+      // 'all' - show all posts, including those without dates
+      result = [...filtered];
+    }
+    
+    console.log('📋 Result before sorting:', result.length, 'items');
+    
+    // Sort by date (newest first) - posts without dates go to the end
+    result.sort((a, b) => {
+      if (!a.isoDate && !b.isoDate) return 0;
+      if (!a.isoDate) return 1; // Posts without dates go to end
+      if (!b.isoDate) return -1; // Posts without dates go to end
+      
+      try {
+        const dateA = new Date(a.isoDate).getTime();
+        const dateB = new Date(b.isoDate).getTime();
+        if (isNaN(dateA) || isNaN(dateB)) return 0;
+        return dateB - dateA; // Newest first
+      } catch {
+        return 0;
+      }
+    });
+    
+    console.log(`📊 Displayed updates (${timeFilter}):`, result.length, 'out of', updates.length, 'total');
+    if (result.length > 0) {
+      console.log('📝 First update:', { id: result[0].id, title: result[0].title, isoDate: result[0].isoDate });
+    }
+    return result;
+  }, [timeFilter, upcomingUpdates, recentUpdates, filtered, updates.length]);
 
   // Current month calendar events (separate from posts/announcements)
   const currentMonthEvents = useMemo(() => {
@@ -572,7 +662,15 @@ const SchoolUpdates = () => {
     const calendarSectionHeight = currentMonthEvents.length > 0 ? 200 : 0; // Calendar events section approximate height (if visible)
     const updatesHeaderHeight = 120; // Updates header + filters approximate height
     const bottomNavHeight = safeInsets.bottom + 80; // Bottom nav + safe area
-    return screenHeight - headerHeight - welcomeSectionHeight - calendarSectionHeight - updatesHeaderHeight - bottomNavHeight - 50; // 50 for padding/margins
+    const calculatedHeight = screenHeight - headerHeight - welcomeSectionHeight - calendarSectionHeight - updatesHeaderHeight - bottomNavHeight - 50; // 50 for padding/margins
+    const finalHeight = Math.max(calculatedHeight, 300); // Ensure minimum 300px height
+    console.log('📏 ScrollView height calculation:', {
+      screenHeight,
+      calculatedHeight,
+      finalHeight,
+      calendarSectionHeight,
+    });
+    return finalHeight;
   }, [screenHeight, safeInsets.top, safeInsets.bottom, currentMonthEvents.length]);
 
   // Refresh calendar events function
@@ -1180,14 +1278,14 @@ const SchoolUpdates = () => {
               {/* Scrollable Cards Section */}
               <ScrollView
                 style={[styles.cardsScrollView, { maxHeight: cardsScrollViewHeight }]}
-                contentContainerStyle={{ paddingBottom: safeInsets.bottom + 60 }}
+                contentContainerStyle={{ paddingBottom: safeInsets.bottom + 60, minHeight: 100 }}
                 showsVerticalScrollIndicator={true}
                 showsHorizontalScrollIndicator={false}
                 nestedScrollEnabled={true}
                 keyboardShouldPersistTaps="handled"
                 bounces={true}
                 scrollEventThrottle={16}
-                removeClippedSubviews={true}
+                removeClippedSubviews={false}
                 horizontal={false}
               >
                 {error && (
@@ -1204,6 +1302,17 @@ const SchoolUpdates = () => {
                   </View>
                 )}
 
+                {(() => {
+                  console.log('🎨 Render check:', {
+                    isLoading,
+                    error,
+                    displayedUpdatesLength: displayedUpdates.length,
+                    willShowEmpty: !isLoading && !error && displayedUpdates.length === 0,
+                    willShowPosts: !isLoading && !error && displayedUpdates.length > 0,
+                  });
+                  return null;
+                })()}
+
                 {!isLoading && !error && displayedUpdates.length === 0 && (
                   <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                     <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
@@ -1213,7 +1322,8 @@ const SchoolUpdates = () => {
                   </View>
                 )}
 
-                {!isLoading && !error && displayedUpdates.map((update) => {
+                {!isLoading && !error && displayedUpdates.length > 0 && displayedUpdates.map((update) => {
+                  console.log('🎨 Rendering update:', update.id, update.title);
                   // Get color for accent bar based on category (institutional/academic)
                   const tagLower = update.tag?.toLowerCase() || '';
                   let accentColor = '#93C5FD'; // Default blue
@@ -1271,6 +1381,14 @@ const SchoolUpdates = () => {
                     </TouchableOpacity>
                   );
                 })}
+                
+                {!isLoading && !error && displayedUpdates.length > 0 && (
+                  <View style={{ paddingVertical: 8, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 10, color: theme.colors.textMuted, opacity: 0.5 }}>
+                      Showing {displayedUpdates.length} update{displayedUpdates.length !== 1 ? 's' : ''}
+                    </Text>
+                  </View>
+                )}
               </ScrollView>
             </View>
           </BlurView>
@@ -1485,6 +1603,7 @@ const styles = StyleSheet.create({
   cardsScrollView: {
     flex: 1,
     flexShrink: 1,
+    minHeight: 200,
   },
   bottomNavContainer: {
     position: 'absolute',
@@ -1650,10 +1769,12 @@ const styles = StyleSheet.create({
   updatesSectionBlur: {
     borderRadius: 12,
     overflow: 'hidden',
+    flex: 1,
   },
   updatesSectionContent: {
     padding: 12,
     borderRadius: 12,
+    flex: 1,
   },
   sectionHeader: {
     flexDirection: 'row',

@@ -481,10 +481,14 @@ const PostDetailsDrawer: React.FC<PostDetailsDrawerProps> = ({
                   }),
                 },
               ],
+              height: '85%',
+              maxHeight: '85%',
+              paddingBottom: insets.bottom,
             }
           ]}
         >
-          <View style={{ flex: 1 }}>
+          {/* Fixed Header Section */}
+          <View style={styles.drawerHeaderFixed}>
             <View style={styles.drawerHandle}>
               <View style={[styles.drawerHandleBar, { backgroundColor: t.colors.textMuted }]} />
             </View>
@@ -501,13 +505,20 @@ const PostDetailsDrawer: React.FC<PostDetailsDrawerProps> = ({
                 <Ionicons name="close" size={22} color={t.colors.text} />
               </TouchableOpacity>
             </View>
-            
-            <ScrollView
-              style={styles.drawerScrollView}
-              contentContainerStyle={[styles.drawerScrollContent, { paddingBottom: 20 }]}
-              showsVerticalScrollIndicator={true}
-              bounces={true}
-            >
+          </View>
+          
+          {/* Scrollable Content Area */}
+          <ScrollView
+            style={styles.drawerScrollView}
+            contentContainerStyle={[styles.drawerScrollContent, { paddingBottom: 20 }]}
+            showsVerticalScrollIndicator={true}
+            bounces={true}
+            nestedScrollEnabled={true}
+            keyboardShouldPersistTaps="handled"
+            scrollEventThrottle={16}
+            alwaysBounceVertical={false}
+            removeClippedSubviews={false}
+          >
               {selectedPost ? (
                 <View>
                   {/* Image */}
@@ -701,21 +712,20 @@ const PostDetailsDrawer: React.FC<PostDetailsDrawerProps> = ({
                   </Text>
                 </View>
               )}
-            </ScrollView>
+          </ScrollView>
 
-            {/* Action Buttons - Only show if not read-only */}
-            {selectedPost && !readOnly && (
-              <View 
-                style={[
-                  styles.drawerActions, 
-                  { 
-                    backgroundColor: t.colors.card, 
-                    borderTopColor: t.colors.border, 
-                    paddingBottom: insets.bottom + 20,
-                  }
-                ]}
-                pointerEvents="box-none"
-              >
+          {/* Action Buttons - Only show if not read-only */}
+          {selectedPost && !readOnly && (
+            <View 
+              style={[
+                styles.drawerActions, 
+                { 
+                  backgroundColor: t.colors.card, 
+                  borderTopColor: t.colors.border,
+                }
+              ]}
+              pointerEvents="box-none"
+            >
                 {isEditing ? (
                   <>
                     <TouchableOpacity
@@ -782,9 +792,8 @@ const PostDetailsDrawer: React.FC<PostDetailsDrawerProps> = ({
                     </TouchableOpacity>
                   </>
                 )}
-              </View>
-            )}
-          </View>
+            </View>
+          )}
         </Animated.View>
       </Modal>
 
@@ -845,12 +854,17 @@ const styles = StyleSheet.create({
     right: 0,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '85%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 20,
+    flexDirection: 'column',
+  },
+  drawerHeaderFixed: {
+    flexShrink: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0, 0, 0, 0.08)',
   },
   drawerHandle: {
     alignItems: 'center',
@@ -870,8 +884,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 16,
     paddingTop: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0, 0, 0, 0.08)',
   },
   drawerTitle: {
     fontSize: 20,
@@ -888,6 +900,7 @@ const styles = StyleSheet.create({
   },
   drawerScrollView: {
     flex: 1,
+    overflow: 'hidden',
   },
   drawerScrollContent: {
     padding: 20,

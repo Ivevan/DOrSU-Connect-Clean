@@ -160,30 +160,11 @@ const AdminCalendar = () => {
   // Event type filter - single selection: 'institutional' or 'academic'
   const [selectedEventType, setSelectedEventType] = useState<'institutional' | 'academic'>('institutional');
   
-  // Segmented control animation and width tracking
-  const segmentAnim = useRef(new Animated.Value(0)).current; // 0 = institutional, 1 = academic
-  const segmentWidth = useRef(0);
-  
   // Animation values
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
   const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
   const listAnim = useRef(new Animated.Value(0)).current;
   const dotScale = useRef(new Animated.Value(0.8)).current;
-  
-  // Update segment animation when selection changes
-  useEffect(() => {
-    if (segmentWidth.current > 0) {
-      const targetX = selectedEventType === 'academic' 
-        ? segmentWidth.current / 2 - 2 
-        : 2;
-      Animated.spring(segmentAnim, {
-        toValue: targetX,
-        useNativeDriver: true,
-        tension: 100,
-        friction: 8,
-      }).start();
-    }
-  }, [selectedEventType, segmentAnim]);
   
   // Derived filter states for compatibility with existing code
   const showInstitutional = selectedEventType === 'institutional';
@@ -1656,117 +1637,111 @@ const AdminCalendar = () => {
         >
           <View style={styles.eventsHeader}>
             <View style={styles.eventsHeaderLeft}>
-              <View style={[styles.eventsIconWrap, { borderColor: t.colors.border }]}>
-                <Ionicons name="calendar-outline" size={14} color={t.colors.accent} />
-        </View>
-              <Text style={[styles.eventsTitle, { color: t.colors.text }]}>Events</Text>
-          <TouchableOpacity 
-            style={styles.infoIconButton}
-            onPress={() => {
-              navigation.navigate('CalendarHelp');
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }}
-            accessibilityLabel="Calendar help and information"
-            activeOpacity={0.7}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="information-circle-outline" size={18} color={t.colors.textMuted} />
-          </TouchableOpacity>
+              <View style={styles.eventsTitleRow}>
+                <View style={[styles.eventsIconWrap, { borderColor: t.colors.border }]}>
+                  <Ionicons name="calendar-outline" size={14} color={t.colors.accent} />
+                </View>
+                <Text style={[styles.eventsTitle, { color: t.colors.text }]}>Events</Text>
+                <TouchableOpacity 
+                  style={styles.infoIconButton}
+                  onPress={() => {
+                    navigation.navigate('CalendarHelp');
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  accessibilityLabel="Calendar help and information"
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="information-circle-outline" size={18} color={t.colors.textMuted} />
+                </TouchableOpacity>
+              </View>
             </View>
             <View style={styles.eventsHeaderRight}>
-              <TouchableOpacity
-                style={[styles.csvUploadButton, { 
-                  backgroundColor: t.colors.surface,
-                  borderColor: t.colors.border,
-                  opacity: isUploadingCSV ? 0.6 : 1
-                }]}
-                onPress={handleCSVUpload}
-                disabled={isUploadingCSV}
-                activeOpacity={0.7}
-              >
-                {isUploadingCSV ? (
-                  <ActivityIndicator size="small" color={t.colors.accent} />
-                ) : (
-                  <>
-                    <Ionicons name="cloud-upload-outline" size={14} color={t.colors.accent} />
-                    <Text style={[styles.csvUploadText, { color: t.colors.accent }]}>Upload CSV</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.deleteAllButton, { 
-                  backgroundColor: t.colors.surface,
-                  borderColor: '#DC2626',
-                  opacity: isDeletingAll ? 0.6 : 1
-                }]}
-                onPress={openDeleteAllModal}
-                disabled={isDeletingAll || calendarEvents.length === 0}
-                activeOpacity={0.7}
-              >
-                {isDeletingAll ? (
-                  <ActivityIndicator size="small" color="#DC2626" />
-                ) : (
-                  <>
-                    <Ionicons name="trash-outline" size={14} color="#DC2626" />
-                    <Text style={[styles.deleteAllText, { color: '#DC2626' }]}>Delete All</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-          
-          {/* Event Type Segmented Control */}
-          <View style={styles.segmentedControlContainer}>
-            <View 
-              style={[styles.segmentedControl, { backgroundColor: selectedEventType === 'institutional' ? '#2563EB' : '#10B981' }]}
-              onLayout={(e) => {
-                segmentWidth.current = e.nativeEvent.layout.width;
-                // Initialize animation position
-                const targetX = selectedEventType === 'academic' 
-                  ? segmentWidth.current / 2 - 2 
-                  : 2;
-                segmentAnim.setValue(targetX);
-              }}
-            >
-              <Animated.View
-                style={[
-                  styles.segmentedSelector,
-                  {
-                    transform: [
-                      {
-                        translateX: segmentAnim,
-                      },
-                    ],
-                  }
-                ]}
-              />
-              <View style={styles.segmentedOptionsContainer}>
+              {/* Top Row: Upload and Delete Buttons */}
+              <View style={styles.eventsHeaderRightTop}>
                 <TouchableOpacity
-                  style={styles.segmentedOption}
+                  style={[styles.csvUploadButton, { 
+                    backgroundColor: t.colors.surface,
+                    borderColor: t.colors.border,
+                    opacity: isUploadingCSV ? 0.6 : 1
+                  }]}
+                  onPress={handleCSVUpload}
+                  disabled={isUploadingCSV}
+                  activeOpacity={0.7}
+                >
+                  {isUploadingCSV ? (
+                    <ActivityIndicator size="small" color={t.colors.accent} />
+                  ) : (
+                    <>
+                      <Ionicons name="cloud-upload-outline" size={14} color={t.colors.accent} />
+                      <Text style={[styles.csvUploadText, { color: t.colors.accent }]}>Upload CSV</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.deleteAllButton, { 
+                    backgroundColor: t.colors.surface,
+                    borderColor: '#DC2626',
+                    opacity: isDeletingAll ? 0.6 : 1
+                  }]}
+                  onPress={openDeleteAllModal}
+                  disabled={isDeletingAll || calendarEvents.length === 0}
+                  activeOpacity={0.7}
+                >
+                  {isDeletingAll ? (
+                    <ActivityIndicator size="small" color="#DC2626" />
+                  ) : (
+                    <>
+                      <Ionicons name="trash-outline" size={14} color="#DC2626" />
+                      <Text style={[styles.deleteAllText, { color: '#DC2626' }]}>Delete All</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+              {/* Bottom Row: Event Type Toggle Buttons */}
+              <View style={styles.eventTypeToggleContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.eventTypeToggleButton,
+                    {
+                      backgroundColor: selectedEventType === 'institutional' ? '#2563EB' : 'transparent',
+                      borderColor: selectedEventType === 'institutional' ? '#2563EB' : t.colors.border,
+                    }
+                  ]}
                   onPress={() => {
                     setSelectedEventType('institutional');
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }}
-                  activeOpacity={0.8}
+                  activeOpacity={0.7}
                 >
                   <Text style={[
-                    styles.segmentedOptionText,
-                    { color: selectedEventType === 'institutional' ? '#2563EB' : '#FFFFFF' }
+                    styles.eventTypeToggleText,
+                    { 
+                      color: selectedEventType === 'institutional' ? '#FFFFFF' : t.colors.textMuted 
+                    }
                   ]}>
                     Institutional
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.segmentedOption}
+                  style={[
+                    styles.eventTypeToggleButton,
+                    {
+                      backgroundColor: selectedEventType === 'academic' ? '#10B981' : 'transparent',
+                      borderColor: selectedEventType === 'academic' ? '#10B981' : t.colors.border,
+                    }
+                  ]}
                   onPress={() => {
                     setSelectedEventType('academic');
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }}
-                  activeOpacity={0.8}
+                  activeOpacity={0.7}
                 >
                   <Text style={[
-                    styles.segmentedOptionText,
-                    { color: selectedEventType === 'academic' ? '#10B981' : '#FFFFFF' }
+                    styles.eventTypeToggleText,
+                    { 
+                      color: selectedEventType === 'academic' ? '#FFFFFF' : t.colors.textMuted 
+                    }
                   ]}>
                     Academic
                   </Text>
@@ -1824,95 +1799,93 @@ const AdminCalendar = () => {
                 <Text style={[styles.yearHeaderText, { color: t.colors.text }]}>
                   {yearGroup.year}
                 </Text>
-                {Array.isArray(yearGroup.dates) && yearGroup.dates.map((dateGroup) => (
-                  <View key={dateGroup.key}>
-                    {Array.isArray(dateGroup.items) && dateGroup.items.map((event: any) => (
-                      <TouchableOpacity
-                        key={event.id}
-                        style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
-                        onPress={() => {
-                          // Find the full event from calendarEvents
-                          const fullEvent = calendarEvents.find((e: any) => e._id === event.id || `calendar-${e.isoDate}-${e.title}` === event.id);
-                          const eventData = fullEvent || event;
-                          setSelectedEvent(eventData);
-                          setEditTitle(eventData?.title || '');
-                          setEditDescription(eventData?.description || '');
-                          
-                          // Set date and time for editing
-                          if (eventData?.isoDate || eventData?.date) {
-                            const eventDate = new Date(eventData.isoDate || eventData.date);
-                            setSelectedDateObj(eventDate);
-                            setEditDate(formatDate(eventDate));
-                          } else {
-                            setSelectedDateObj(null);
-                            setEditDate('');
-                          }
-                          setEditTime(eventData?.time || '');
-                          
-                          setIsEditing(false);
-                          setShowEventDrawer(true);
-                          
-                          // Animate drawer opening
-                          Animated.parallel([
-                            Animated.spring(drawerSlideAnim, {
-                              toValue: 1,
-                              useNativeDriver: true,
-                              tension: 65,
-                              friction: 11,
-                            }),
-                            Animated.timing(drawerBackdropOpacity, {
-                              toValue: 1,
-                              duration: 300,
-                              useNativeDriver: true,
-                            }),
-                          ]).start();
-                          
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Open event ${event.title}`}
-                        accessibilityHint="Opens the event to view or edit"
-                        activeOpacity={0.7}
-                      >
-                        <View style={[styles.eventAccent, { backgroundColor: event.color }]} />
-                        <View style={styles.eventContent}>
-                          {/* Date inside the card */}
-                          <View style={styles.eventDateRow}>
-                            <Text style={[styles.eventDateText, { color: t.colors.textMuted }]}>
-                              {formatCalendarDate(new Date(dateGroup.key))}
-                            </Text>
-                          </View>
-                          <Text style={[styles.eventTitle, { color: t.colors.text }]} numberOfLines={2}>
-                            {event.title}
+                {Array.isArray(yearGroup.dates) && yearGroup.dates.flatMap((dateGroup) => 
+                  Array.isArray(dateGroup.items) ? dateGroup.items.map((event: any) => (
+                    <TouchableOpacity
+                      key={event.id}
+                      style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
+                      onPress={() => {
+                        // Find the full event from calendarEvents
+                        const fullEvent = calendarEvents.find((e: any) => e._id === event.id || `calendar-${e.isoDate}-${e.title}` === event.id);
+                        const eventData = fullEvent || event;
+                        setSelectedEvent(eventData);
+                        setEditTitle(eventData?.title || '');
+                        setEditDescription(eventData?.description || '');
+                        
+                        // Set date and time for editing
+                        if (eventData?.isoDate || eventData?.date) {
+                          const eventDate = new Date(eventData.isoDate || eventData.date);
+                          setSelectedDateObj(eventDate);
+                          setEditDate(formatDate(eventDate));
+                        } else {
+                          setSelectedDateObj(null);
+                          setEditDate('');
+                        }
+                        setEditTime(eventData?.time || '');
+                        
+                        setIsEditing(false);
+                        setShowEventDrawer(true);
+                        
+                        // Animate drawer opening
+                        Animated.parallel([
+                          Animated.spring(drawerSlideAnim, {
+                            toValue: 1,
+                            useNativeDriver: true,
+                            tension: 65,
+                            friction: 11,
+                          }),
+                          Animated.timing(drawerBackdropOpacity, {
+                            toValue: 1,
+                            duration: 300,
+                            useNativeDriver: true,
+                          }),
+                        ]).start();
+                        
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open event ${event.title}`}
+                      accessibilityHint="Opens the event to view or edit"
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.eventAccent, { backgroundColor: event.color }]} />
+                      <View style={styles.eventContent}>
+                        {/* Date inside the card */}
+                        <View style={styles.eventDateRow}>
+                          <Text style={[styles.eventDateText, { color: t.colors.textMuted }]}>
+                            {formatCalendarDate(new Date(dateGroup.key))}
                           </Text>
-                          <View style={styles.eventInnerDivider} />
-                          <View style={styles.eventTimeRow}>
-                            <Ionicons name="time-outline" size={12} color={t.colors.textMuted} />
-                            <Text style={[styles.eventTimeText, { color: t.colors.textMuted }]}>
-                              {event.dateType === 'date_range' && event.startDate && event.endDate
-                                ? `${formatDate(new Date(event.startDate))} - ${formatDate(new Date(event.endDate))}`
-                                : event.dateType === 'week' && event.weekOfMonth && event.month
-                                ? `Week ${event.weekOfMonth} of ${new Date(2000, event.month - 1, 1).toLocaleString('default', { month: 'long' })}`
-                                : event.dateType === 'month' && event.month
-                                ? new Date(2000, event.month - 1, 1).toLocaleString('default', { month: 'long' })
-                                : event.time || 'All Day'}
-                            </Text>
-                          </View>
-                          <View style={styles.statusInline}>
-                            {!!event.type && (
-                              <View style={styles.statusItem}>
-                                <Ionicons name="pricetag-outline" size={12} color={event.color} />
-                                <Text style={[styles.statusText, { color: event.color }]}>
-                                  {String(event.type || '').charAt(0).toUpperCase() + String(event.type || '').slice(1)}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
                         </View>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ))}
+                        <Text style={[styles.eventTitle, { color: t.colors.text }]} numberOfLines={2}>
+                          {event.title}
+                        </Text>
+                        <View style={styles.eventInnerDivider} />
+                        <View style={styles.eventTimeRow}>
+                          <Ionicons name="time-outline" size={12} color={t.colors.textMuted} />
+                          <Text style={[styles.eventTimeText, { color: t.colors.textMuted }]}>
+                            {event.dateType === 'date_range' && event.startDate && event.endDate
+                              ? `${formatDate(new Date(event.startDate))} - ${formatDate(new Date(event.endDate))}`
+                              : event.dateType === 'week' && event.weekOfMonth && event.month
+                              ? `Week ${event.weekOfMonth} of ${new Date(2000, event.month - 1, 1).toLocaleString('default', { month: 'long' })}`
+                              : event.dateType === 'month' && event.month
+                              ? new Date(2000, event.month - 1, 1).toLocaleString('default', { month: 'long' })
+                              : event.time || 'All Day'}
+                          </Text>
+                        </View>
+                        <View style={styles.statusInline}>
+                          {!!event.type && (
+                            <View style={styles.statusItem}>
+                              <Ionicons name="pricetag-outline" size={12} color={event.color} />
+                              <Text style={[styles.statusText, { color: event.color }]}>
+                                {String(event.type || '').charAt(0).toUpperCase() + String(event.type || '').slice(1)}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  )) : []
+                )}
               </View>
             ))}
           </View>
@@ -2296,11 +2269,6 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     borderWidth: 1,
     borderRadius: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
   emptyStateIconWrap: {
     width: 40,
@@ -2334,10 +2302,31 @@ const styles = StyleSheet.create({
   },
   eventsHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: 16,
-    minHeight: 40,
+  },
+  eventsTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  eventTypeToggleContainer: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    width: '100%',
+  },
+  eventTypeToggleButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  eventTypeToggleText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   segmentedToggle: {
     flexDirection: 'row',
@@ -2365,16 +2354,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flexShrink: 1,
+    flex: 1,
   },
   infoIconButton: {
     padding: 2,
     marginLeft: -6,
   },
   eventsHeaderRight: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 8,
+    flexShrink: 1,
+  },
+  eventsHeaderRightTop: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    flexShrink: 1,
+    width: '100%',
   },
   eventsIconWrap: {
     width: 22,
@@ -2497,11 +2493,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginBottom: 10,
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
   },
   eventAccent: {
     width: 2,

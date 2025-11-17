@@ -46,7 +46,7 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
 
           <TouchableOpacity style={styles.tab} onPress={onDashboardPress}>
             <Ionicons 
-              name={activeTab === 'dashboard' ? 'compass' : 'compass-outline'} 
+              name={activeTab === 'dashboard' ? 'newspaper' : 'newspaper-outline'} 
               size={28} 
               color={activeTab === 'dashboard' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />

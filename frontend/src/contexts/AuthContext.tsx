@@ -40,8 +40,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [userName, setUserName] = useState<string | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   
-  // Inactivity timer - auto logout after 5 minutes (300,000ms)
-  const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes in milliseconds
+  // Inactivity timer - auto logout after 30 seconds (30,000ms)
+  // DISABLED: Commented out for now - can be re-enabled later
+  // const INACTIVITY_TIMEOUT = 30 * 1000; // 30 seconds in milliseconds
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
@@ -223,8 +224,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  // Track timer start time for debugging
+  // DISABLED: Commented out for now
+  // const timerStartTimeRef = useRef<number | null>(null);
+  
   // Reset inactivity timer - memoized with useCallback
+  // DISABLED: Inactivity timer is currently disabled
   const resetInactivityTimer = useCallback(() => {
+    // Inactivity timer is disabled - no-op function
+    // Uncomment below to re-enable inactivity timer
+    /*
     // Clear existing timer
     if (inactivityTimerRef.current) {
       clearTimeout(inactivityTimerRef.current);
@@ -233,18 +242,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     
     // Only set timer if user is authenticated
     if (isAuthenticated) {
+      // Record when timer starts
+      timerStartTimeRef.current = Date.now();
+      const timeoutSeconds = INACTIVITY_TIMEOUT / 1000;
+      console.log(`🔄 Inactivity timer RESET - Auto-logout will trigger in ${timeoutSeconds} seconds if no activity`);
+      
       // Set new timer
       inactivityTimerRef.current = setTimeout(async () => {
-        console.log('⏰ Auto-logout: User inactive for 5 minutes');
+        const elapsed = timerStartTimeRef.current ? Date.now() - timerStartTimeRef.current : INACTIVITY_TIMEOUT;
+        console.log(`⏰ Auto-logout TRIGGERED: User inactive for ${Math.round(elapsed / 1000)} seconds`);
         try {
           await logout();
+          console.log('✅ User logged out due to inactivity');
           // Navigate to GetStarted screen after logout
           // Note: Navigation will be handled by AppNavigator detecting auth state change
         } catch (error) {
-          console.error('Auto-logout error:', error);
+          console.error('❌ Auto-logout error:', error);
         }
       }, INACTIVITY_TIMEOUT);
     }
+    */
   }, [isAuthenticated]);
 
   // Logout function
@@ -303,9 +320,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   }, []);
 
   // Set up inactivity timer when authenticated
+  // DISABLED: Inactivity timer is currently disabled
   useEffect(() => {
+    // Inactivity timer is disabled - no-op
+    // Uncomment below to re-enable inactivity timer
+    /*
     if (isAuthenticated) {
       // Reset timer on authentication
+      console.log('🔐 User authenticated - Starting inactivity timer');
       resetInactivityTimer();
       
       // Track app state changes (background/foreground)
@@ -315,9 +337,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           nextAppState === 'active'
         ) {
           // App came to foreground - reset timer
+          console.log('📱 App returned to foreground - Resetting inactivity timer');
           resetInactivityTimer();
         } else if (nextAppState.match(/inactive|background/)) {
           // App went to background - clear timer (will reset when app comes back)
+          console.log('📱 App went to background - Pausing inactivity timer');
           if (inactivityTimerRef.current) {
             clearTimeout(inactivityTimerRef.current);
             inactivityTimerRef.current = null;
@@ -335,12 +359,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       };
     } else {
       // Clear timer if not authenticated
+      console.log('🔓 User logged out - Clearing inactivity timer');
       if (inactivityTimerRef.current) {
         clearTimeout(inactivityTimerRef.current);
         inactivityTimerRef.current = null;
       }
     }
-  }, [isAuthenticated]);
+    */
+  }, [isAuthenticated, resetInactivityTimer]);
 
   const value: AuthContextType = {
     isAuthenticated,

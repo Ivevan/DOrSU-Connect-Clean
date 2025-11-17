@@ -132,10 +132,12 @@ const AppNavigator = () => {
       ref={navigationRef}
       onReady={() => {
         // Reset timer when navigation is ready (user is active)
+        console.log('🧭 Navigation ready - Resetting inactivity timer');
         resetInactivityTimer();
       }}
       onStateChange={() => {
         // Reset timer on any navigation state change (user is active)
+        console.log('🧭 Navigation state changed - Resetting inactivity timer');
         resetInactivityTimer();
       }}
     >

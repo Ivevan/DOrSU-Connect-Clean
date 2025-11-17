@@ -420,9 +420,20 @@ const GetStarted = () => {
       // Success
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
-      // Navigate based on user role or default screen
-      // TODO: You can check user.uid or other properties to determine if admin or user
-      navigation.navigate('SchoolUpdates');
+      // Navigate based on user role - check if admin email
+      const userEmail = user.email?.toLowerCase().trim();
+      const isAdminEmail = userEmail === 'admin@dorsu.edu.ph' || userEmail === 'admin';
+      
+      // Check AsyncStorage for admin status (set during token exchange if applicable)
+      const storedIsAdmin = await AsyncStorage.getItem('isAdmin');
+      
+      if (isAdminEmail || storedIsAdmin === 'true') {
+        // Navigate to Admin AI Chat
+        navigation.navigate('AdminAIChat');
+      } else {
+        // Navigate to regular user AI Chat
+        navigation.navigate('AIChat');
+      }
     } catch (error: any) {
       console.error('Google Sign-In Error:', error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);

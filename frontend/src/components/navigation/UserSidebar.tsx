@@ -205,7 +205,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
             }}
           >
             <Ionicons 
-              name={currentScreen === 'SchoolUpdates' ? 'compass' : 'compass-outline'} 
+              name={currentScreen === 'SchoolUpdates' ? 'newspaper' : 'newspaper-outline'} 
               size={24} 
               color={currentScreen === 'SchoolUpdates' ? '#FF9500' : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />

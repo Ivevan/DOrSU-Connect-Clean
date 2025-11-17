@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useRef } from 'react';
 import { useColorScheme, Platform, Animated } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Theme, getTheme, ColorTheme } from '../config/theme';
 
 // Split context into values and actions to reduce re-renders
@@ -52,11 +53,59 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   }, []);
 
   // Optional user preference override: 'light' | 'dark' | null (follow system)
-  // Default to 'light' mode on app launch
-  const [userPreference, setUserPreference] = useState<null | 'light' | 'dark'>('light');
+  // Initialize with null to show loading state, then load from AsyncStorage
+  const [userPreference, setUserPreference] = useState<null | 'light' | 'dark'>(null);
+  const [isLoadingTheme, setIsLoadingTheme] = useState(true);
   
   // Color theme preference - default to 'facet'
   const [selectedColorTheme, setSelectedColorTheme] = useState<ColorTheme>('facet');
+  
+  // Load saved theme preference from AsyncStorage on mount
+  useEffect(() => {
+    const loadThemePreference = async () => {
+      try {
+        const savedPreference = await AsyncStorage.getItem('themePreference');
+        if (savedPreference === 'light' || savedPreference === 'dark') {
+          setUserPreference(savedPreference);
+        } else {
+          // Default to 'light' if no preference is saved
+          setUserPreference('light');
+        }
+        
+        // Load color theme preference
+        const savedColorTheme = await AsyncStorage.getItem('colorTheme');
+        if (savedColorTheme && ['facet', 'fnahs', 'fals'].includes(savedColorTheme)) {
+          setSelectedColorTheme(savedColorTheme as ColorTheme);
+        }
+      } catch (error) {
+        console.error('Failed to load theme preference:', error);
+        // Default to 'light' on error
+        setUserPreference('light');
+      } finally {
+        setIsLoadingTheme(false);
+      }
+    };
+    
+    loadThemePreference();
+  }, []);
+  
+  // Save theme preference to AsyncStorage whenever it changes
+  useEffect(() => {
+    if (!isLoadingTheme && userPreference !== null) {
+      AsyncStorage.setItem('themePreference', userPreference).catch(error => {
+        console.error('Failed to save theme preference:', error);
+      });
+    }
+  }, [userPreference, isLoadingTheme]);
+  
+  // Save color theme preference to AsyncStorage whenever it changes
+  useEffect(() => {
+    if (!isLoadingTheme) {
+      AsyncStorage.setItem('colorTheme', selectedColorTheme).catch(error => {
+        console.error('Failed to save color theme preference:', error);
+      });
+    }
+  }, [selectedColorTheme, isLoadingTheme]);
 
   // Animation for theme transition - use refs to avoid triggering re-renders
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -65,11 +114,13 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const nextIsDarkMode = useRef<boolean | null>(null);
 
   // Compute effective mode
+  // While loading, default to light mode to prevent flash
   const isDarkMode = useMemo(() => {
+    if (isLoadingTheme) return false; // Default to light while loading
     if (userPreference) return userPreference === 'dark';
     const system = Platform.OS === 'web' ? webScheme : (rnScheme ? (rnScheme === 'dark' ? 'dark' : 'light') : null);
     return system === 'dark';
-  }, [rnScheme, webScheme, userPreference]);
+  }, [rnScheme, webScheme, userPreference, isLoadingTheme]);
 
   // Removed animation trigger - no longer needed for instant theme switching
 

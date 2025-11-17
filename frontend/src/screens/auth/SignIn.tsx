@@ -15,9 +15,8 @@ type RootStackParamList = {
   GetStarted: undefined;
   SignIn: undefined;
   CreateAccount: undefined;
-  SchoolUpdates: undefined;
-  AdminDashboard: undefined;
   AdminAIChat: undefined;
+  AIChat: undefined;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'SignIn'>;
@@ -409,9 +408,9 @@ const SignIn = () => {
       setIsLoading(false);
       loadingRotation.stopAnimation();
       
-      // Success - navigate to main app
+      // Success - navigate to AI Chat for regular users
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      navigation.navigate('SchoolUpdates');
+      (navigation as any).navigate('AIChat');
     } catch (error: any) {
       setIsLoading(false);
       loadingRotation.stopAnimation();

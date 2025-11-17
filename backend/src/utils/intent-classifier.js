@@ -1,12 +1,3 @@
-/**
- * Intent Classifier - Smart Query Routing & Conversational Intent Detection
- * 
- * Two-Layer Classification:
- * 1. Content Layer: DOrSU-specific vs. general knowledge routing
- * 2. Conversational Layer: User interaction intent (greeting, emotion, task, etc.)
- * 
- * Routes to appropriate data source and adjusts response style accordingly
- */
 
 export class IntentClassifier {
   

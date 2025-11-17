@@ -182,22 +182,23 @@ export class QueryAnalyzer {
    * Groq is FAST - maximize data retrieval for better answers!
    */
   static getOptimalSettings(ragMultiplier, query) {
-    // Base settings - OPTIMIZED to prevent token limit errors
+    // Base settings - AGGRESSIVELY OPTIMIZED to minimize input tokens
+    // Input tokens are the main cost - need to reduce RAG context significantly
     const baseSettings = {
-      maxTokens: 800,          // Reduced from 900 to save tokens
+      maxTokens: 500,          // Output tokens (response length)
       numCtx: 4096,
-      ragSections: 15,         // Reduced from 20 to limit context size
-      ragMaxTokens: 2000,      // Reduced from 2500 to prevent rate limits
+      ragSections: 8,          // Reduced from 12 - focus on top 8 most relevant chunks only
+      ragMaxTokens: 800,       // Reduced from 1500 - CRITICAL: This controls input token cost
       temperature: 0.3
     };
     
     // Calculate scaled settings based on multiplier
     // Balance comprehensiveness with token limits (8K for most Groq models)
     const scaledSettings = {
-      maxTokens: Math.min(1500, Math.round(baseSettings.maxTokens * ragMultiplier)),  // Cap at 1500 (reduced from 2000)
+      maxTokens: Math.min(1000, Math.round(baseSettings.maxTokens * ragMultiplier)),  // Cap at 1000
       numCtx: Math.min(16384, Math.round(baseSettings.numCtx * Math.sqrt(ragMultiplier))),
-      ragSections: Math.min(40, Math.round(baseSettings.ragSections * ragMultiplier)),  // Cap at 40 (reduced from 50)
-      ragMaxTokens: Math.min(4000, Math.round(baseSettings.ragMaxTokens * ragMultiplier)),  // Cap at 4000 (reduced from 5000)
+      ragSections: Math.min(15, Math.round(baseSettings.ragSections * ragMultiplier)),  // Cap at 15 (reduced from 30)
+      ragMaxTokens: Math.min(1500, Math.round(baseSettings.ragMaxTokens * ragMultiplier)),  // Cap at 1500 (reduced from 3000) - CRITICAL for input token control
       temperature: 0.3  // Keep consistent for quality
     };
     

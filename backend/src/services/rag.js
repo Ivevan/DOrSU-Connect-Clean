@@ -3,6 +3,7 @@ import faiss from 'faiss-node';
 import NodeCache from 'node-cache';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Logger } from '../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,12 +14,13 @@ export class OptimizedRAGService {
     this.mongoService = mongoService; // MongoDB service for dynamic data
     this.lastMongoSync = null; // Track last sync time
     
-    // Initialize caching system with optimized settings
+    // Initialize caching system with NO automatic expiration
+    // Cache will only be cleared at scheduled times (not by TTL)
     this.cache = new NodeCache({ 
-      stdTTL: 900,        // 15 minutes default TTL
-      checkperiod: 180,    // Check for expired keys every 3 minutes
+      stdTTL: 0,          // 0 = no automatic expiration (cache persists until manually cleared)
+      checkperiod: 0,    // Disable automatic expiration checking
       useClones: false,   // Better performance
-      maxKeys: 2000      // Increased for more chunks
+      maxKeys: 5000       // Increased capacity for persistent cache
     });
     
     // Cache statistics
@@ -54,32 +56,78 @@ export class OptimizedRAGService {
     // All data now comes from MongoDB via syncWithMongoDB()
     // This method is kept for backward compatibility but no longer loads from file
     this.faissOptimizedData = { chunks: [] };
-    console.log('ℹ️ RAG service will load data from MongoDB...');
+    Logger.info('RAG service will load data from MongoDB');
   }
 
-  // Setup cache monitoring and statistics
+  // Setup cache monitoring and scheduled clearing
   setupCacheMonitoring() {
-    // Auto-clear cache every 1 minute to keep data fresh
-    setInterval(() => {
-      const keysBeforeClear = this.cache.keys().length;
-      this.cache.flushAll();
-      this.cacheStats = { hits: 0, misses: 0, sets: 0, deletes: 0 };
-      console.log(`🔄 Auto-cleared ${keysBeforeClear} cached responses (keeps data fresh)`);
-    }, 60000); // 1 minute
-    
     // Log cache statistics every 5 minutes
     setInterval(() => {
       const stats = this.getCacheStats();
       if (stats.total > 0) {
-        console.log(`📊 RAG Cache: ${stats.hitRate}% hit rate (${stats.hits}/${stats.total})`);
+        Logger.debug(`RAG Cache: ${stats.hitRate}% hit rate (${stats.hits}/${stats.total}), ${stats.keys} entries`);
       }
     }, 300000); // 5 minutes
+    
+    // Schedule cache clearing at specific times
+    this.scheduleCacheClearing();
+  }
+  
+  // Schedule cache clearing at specific times (configurable)
+  scheduleCacheClearing() {
+    // Get scheduled times from environment variable or use defaults
+    // Format: "HH:MM,HH:MM" (24-hour format, comma-separated)
+    // Example: "00:00,12:00" = clear at midnight and noon
+    const scheduledTimes = process.env.CACHE_CLEAR_TIMES || '00:00,06:00,12:00,18:00';
+    const times = scheduledTimes.split(',').map(t => t.trim());
+    
+    // Remove duplicates (case-insensitive)
+    const uniqueTimes = [...new Set(times)];
+    if (times.length !== uniqueTimes.length) {
+      Logger.warn(`Removed ${times.length - uniqueTimes.length} duplicate cache clear time(s)`);
+    }
+    
+    Logger.info(`Cache scheduled to clear at: ${uniqueTimes.join(', ')}`);
+    
+    // Calculate next clear time for each scheduled time
+    const scheduleNextClear = (hour, minute) => {
+      const now = new Date();
+      const clearTime = new Date();
+      clearTime.setHours(hour, minute, 0, 0);
+      
+      // If the time has passed today, schedule for tomorrow
+      if (clearTime <= now) {
+        clearTime.setDate(clearTime.getDate() + 1);
+      }
+      
+      const msUntilClear = clearTime.getTime() - now.getTime();
+      
+      setTimeout(() => {
+        const keysBeforeClear = this.cache.keys().length;
+        this.cache.flushAll();
+        this.cacheStats = { hits: 0, misses: 0, sets: 0, deletes: 0 };
+        Logger.info(`Scheduled cache clear: Cleared ${keysBeforeClear} entries at ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`);
+        
+        // Schedule next clear (24 hours later)
+        scheduleNextClear(hour, minute);
+      }, msUntilClear);
+    };
+    
+    // Schedule each unique time
+    uniqueTimes.forEach(timeStr => {
+      const [hour, minute] = timeStr.split(':').map(Number);
+      if (!isNaN(hour) && !isNaN(minute) && hour >= 0 && hour < 24 && minute >= 0 && minute < 60) {
+        scheduleNextClear(hour, minute);
+      } else {
+        Logger.warn(`Invalid cache clear time format: ${timeStr}. Use HH:MM format.`);
+      }
+    });
   }
 
   // Initialize transformer embedding model
   async initializeEmbeddingModel() {
     try {
-      console.log('🤖 Loading transformer embedding model (all-MiniLM-L6-v2)...');
+      Logger.info('Loading transformer embedding model (all-MiniLM-L6-v2)...');
       
       // Load the sentence-transformers model for feature extraction
       this.embeddingModel = await pipeline(
@@ -88,14 +136,14 @@ export class OptimizedRAGService {
       );
       
       this.modelLoaded = true;
-      console.log('✅ Transformer embedding model loaded successfully');
+      Logger.success('Transformer embedding model loaded successfully');
       
       // Now initialize FAISS with the transformer model
       await this.initializeFAISS();
       
     } catch (error) {
-      console.error('❌ Failed to load transformer model:', error);
-      console.log('⚠️ Falling back to simple embeddings');
+      Logger.error('Failed to load transformer model', error);
+      Logger.warn('Falling back to simple embeddings');
       this.modelLoaded = false;
       
       // Fallback to simple embeddings
@@ -105,12 +153,36 @@ export class OptimizedRAGService {
 
   // Generate cache key from query (optimized for better hit rates)
   generateCacheKey(query, maxResults) {
-    // Normalize query more aggressively for better cache hits
-    const normalizedQuery = query.toLowerCase()
-      .trim()
+    // IMPROVED: Better normalization that handles date/schedule queries consistently
+    let normalizedQuery = query.toLowerCase()
+      .trim();
+    
+    // Normalize date-related terms for better cache hits
+    // "when is", "what is the date", "schedule" all map to similar intent
+    const dateSynonyms = {
+      'when is': 'date',
+      'when are': 'dates',
+      'what is the date': 'date',
+      'what are the dates': 'dates',
+      'what date': 'date',
+      'what dates': 'dates',
+      'tell me about': 'info',
+      'what is': 'info',
+      'what are': 'info'
+    };
+    
+    // Replace synonyms to normalize similar queries
+    Object.entries(dateSynonyms).forEach(([synonym, replacement]) => {
+      if (normalizedQuery.startsWith(synonym)) {
+        normalizedQuery = normalizedQuery.replace(synonym, replacement);
+      }
+    });
+    
+    // Remove punctuation and normalize whitespace
+    normalizedQuery = normalizedQuery
       .replace(/[^\w\s]/g, '') // Remove punctuation
       .replace(/\s+/g, '_')    // Replace spaces with underscores
-      .substring(0, 50);       // Limit length for consistent keys
+      .substring(0, 60);       // Increased length for better matching
     
     return `opt_rag_${normalizedQuery}_${maxResults}`;
   }
@@ -135,20 +207,20 @@ export class OptimizedRAGService {
   clearCache() {
     this.cache.flushAll();
     this.cacheStats = { hits: 0, misses: 0, sets: 0, deletes: 0 };
-    console.log('🧹 Optimized RAG Cache cleared');
+    Logger.info('RAG Cache cleared');
   }
 
   // Initialize FAISS index and create embeddings
   async initializeFAISS() {
     try {
-      console.log('🔧 Initializing OPTIMIZED FAISS vector search...');
+      Logger.info('Initializing FAISS vector search...');
       
       // Try to create FAISS index
       try {
         this.faissIndex = new faiss.IndexFlatL2(this.embeddingDimension);
-        console.log('✅ FAISS index created successfully');
+        Logger.success('FAISS index created successfully');
       } catch (faissError) {
-        console.log('⚠️ FAISS initialization failed, using enhanced keyword search:', faissError.message);
+        Logger.warn(`FAISS initialization failed, using enhanced keyword search: ${faissError.message}`);
         this.faissIndex = null;
         return; // Exit early if FAISS fails
       }
@@ -159,9 +231,9 @@ export class OptimizedRAGService {
       // Generate embeddings
       await this.generateEmbeddings();
       
-      console.log(`✅ OPTIMIZED FAISS initialized: ${this.textChunks.length} chunks indexed`);
+      Logger.success(`FAISS initialized: ${this.textChunks.length} chunks indexed`);
     } catch (error) {
-      console.error('❌ OPTIMIZED FAISS initialization failed:', error);
+      Logger.error('FAISS initialization failed', error);
       this.faissIndex = null;
     }
   }
@@ -185,12 +257,12 @@ export class OptimizedRAGService {
       });
     });
     
-    console.log(`📚 Created ${this.textChunks.length} OPTIMIZED text chunks for FAISS indexing`);
+    Logger.debug(`Created ${this.textChunks.length} text chunks for FAISS indexing`);
   }
 
   // Generate embeddings using transformer model
   async generateEmbeddings() {
-    console.log('🔄 Generating transformer-based embeddings...');
+    Logger.info('Generating transformer-based embeddings...');
     
     this.embeddings = [];
     
@@ -206,26 +278,46 @@ export class OptimizedRAGService {
       try {
       this.faissIndex.add(embedding);
       } catch (addError) {
-        console.warn(`⚠️ Failed to add embedding ${i} to FAISS index:`, addError.message);
+        Logger.debug(`Failed to add embedding ${i} to FAISS index: ${addError.message}`);
         // Continue with other embeddings
       }
       
       // Progress indicator for large datasets
       if ((i + 1) % 20 === 0) {
-        console.log(`   Progress: ${i + 1}/${this.textChunks.length} embeddings generated`);
+        Logger.debug(`Progress: ${i + 1}/${this.textChunks.length} embeddings generated`);
       }
     }
     
-    console.log(`✅ Generated ${this.embeddings.length} transformer-based embeddings`);
+    Logger.success(`Generated ${this.embeddings.length} transformer-based embeddings`);
   }
 
   // Create transformer-based embedding
   async createTransformerEmbedding(chunk) {
     if (this.modelLoaded && this.embeddingModel) {
       try {
-        // Combine text, keywords, and metadata for richer embeddings
-        const text = chunk.text;
+        // IMPROVED: Better text combination for date/schedule queries
+        let text = chunk.text;
         const keywords = (chunk.keywords || []).join(' ');
+        
+        // Extract and normalize dates in text for better semantic matching
+        // This helps match "January 15" with "Jan 15" or "1/15"
+        if (chunk.metadata && (chunk.metadata.date || chunk.metadata.startDate)) {
+          const date = chunk.metadata.date || chunk.metadata.startDate;
+          try {
+            const dateObj = new Date(date);
+            // Add multiple date formats to improve matching
+            const dateFormats = [
+              dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+              dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+              dateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric' }),
+              dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            ];
+            text = `${text} ${dateFormats.join(' ')}`;
+          } catch (e) {
+            // Date parsing failed, continue with original text
+          }
+        }
+        
         const combinedText = `${text} ${keywords}`.trim();
         
         // Generate embedding using transformer
@@ -239,7 +331,7 @@ export class OptimizedRAGService {
         
         return embedding;
       } catch (error) {
-        console.warn(`⚠️ Transformer embedding failed, using fallback:`, error.message);
+        Logger.debug(`Transformer embedding failed, using fallback: ${error.message}`);
         return this.createFallbackEmbedding(chunk);
       }
     } else {
@@ -304,7 +396,7 @@ export class OptimizedRAGService {
   // FAISS-based vector similarity search (OPTIMIZED)
   async findRelevantDataFAISS(query, maxResults = 5) {
     if (!this.faissIndex || this.textChunks.length === 0) {
-      console.log('⚠️ FAISS not available, falling back to keyword search');
+      Logger.debug('FAISS not available, falling back to keyword search');
       return this.findRelevantDataKeyword(query, maxResults);
     }
 
@@ -316,20 +408,31 @@ export class OptimizedRAGService {
     const cachedResults = this.cache.get(faissCacheKey);
     if (cachedResults) {
       this.cacheStats.hits++;
-      console.log(`🎯 OPTIMIZED FAISS Cache HIT: "${query.substring(0, 30)}..."`);
+      Logger.debug(`FAISS Cache HIT: "${query.substring(0, 30)}..."`);
       return cachedResults;
     }
 
     try {
+      // IMPROVED: Enhance query for date/schedule queries
+      let enhancedQuery = query;
+      const isCalendarQuery = /\b(date|dates|schedule|schedules|calendar|event|when|deadline)\b/i.test(query);
+      
+      if (isCalendarQuery) {
+        // Add synonyms and related terms to improve semantic matching
+        const dateSynonyms = ' date dates schedule schedules calendar event events timeline deadline deadlines';
+        enhancedQuery = `${query}${dateSynonyms}`;
+      }
+      
       // Create query embedding using transformer or fallback
       const queryEmbedding = await this.createTransformerEmbedding({
-        text: query,
+        text: enhancedQuery,
         keywords: [],
         metadata: {}
       });
       
       // Search FAISS index (capped to available chunks)
-      const searchResult = this.faissIndex.search(queryEmbedding, actualMaxResults);
+      // IMPROVED: Get more results initially, then filter/rerank
+      const searchResult = this.faissIndex.search(queryEmbedding, Math.min(actualMaxResults * 2, this.textChunks.length));
       
       const results = [];
       
@@ -344,7 +447,12 @@ export class OptimizedRAGService {
         
         if (chunk) {
           // Convert distance to similarity score (lower distance = higher similarity)
-          const similarity = 1 / (1 + distance);
+          let similarity = 1 / (1 + distance);
+          
+          // IMPROVED: Boost score for calendar events in calendar queries
+          if (isCalendarQuery && (chunk.section === 'calendar_events' || chunk.type === 'calendar_event')) {
+            similarity *= 1.2; // 20% boost
+          }
           
           results.push({
             id: chunk.id,
@@ -359,16 +467,21 @@ export class OptimizedRAGService {
         }
       }
       
-      // Cache the results
-      this.cache.set(faissCacheKey, results, 900); // 15 minutes
+      // Sort by score and take top results
+      const sortedResults = results
+        .sort((a, b) => b.score - a.score)
+        .slice(0, actualMaxResults);
+      
+      // Cache the results (no TTL - persists until scheduled clear)
+      this.cache.set(faissCacheKey, sortedResults);
       this.cacheStats.sets++;
       
-      console.log(`🔍 OPTIMIZED FAISS search: ${results.length} results for "${query.substring(0, 30)}..."`);
+      Logger.debug(`FAISS search: ${sortedResults.length} results for "${query.substring(0, 30)}..."`);
       
-      return results;
+      return sortedResults;
       
     } catch (error) {
-      console.error('❌ OPTIMIZED FAISS search failed:', error);
+      Logger.error('FAISS search failed', error);
       return this.findRelevantDataKeyword(query, maxResults); // Fallback to keyword search
     }
   }
@@ -390,9 +503,10 @@ export class OptimizedRAGService {
     const queryLower = query.toLowerCase();
     const queryWords = queryLower.split(/\s+/).filter(word => word.length > 2);
     
-    // Detect calendar-related query
-    const calendarPattern = /\b(date|dates|event|events|announcement|announcements|schedule|schedules|calendar|when|upcoming|coming|next|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule)\b/i;
-    const isCalendarQuery = calendarPattern.test(query);
+    // IMPROVED: Better calendar query detection - understands intent, not just keywords
+    const calendarPattern = /\b(date|dates|event|events|announcement|announcements|schedule|schedules|calendar|when|upcoming|coming|next|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule|timeline|time\s+table)\b/i;
+    const calendarIntentPattern = /\b(when\s+(is|are|will|does)|what\s+(date|dates|time|schedule)|tell\s+me\s+(about\s+)?(the\s+)?(schedule|dates?|events?))\b/i;
+    const isCalendarQuery = calendarPattern.test(query) || calendarIntentPattern.test(query);
     
     const results = [];
     
@@ -462,8 +576,8 @@ export class OptimizedRAGService {
       .sort((a, b) => b.score - a.score)
       .slice(0, maxResults);
     
-    // Cache the search results
-    this.cache.set(keywordCacheKey, sortedResults, 600); // 10 minutes
+    // Cache the search results (no TTL - persists until scheduled clear)
+    this.cache.set(keywordCacheKey, sortedResults);
     this.cacheStats.sets++;
     
     return sortedResults;
@@ -473,7 +587,7 @@ export class OptimizedRAGService {
   async getContextForTopic(query, maxTokens = 500, maxSections = 10, suggestMore = false, calendarService = null) {
     // Debug: Verify we have optimized data
     if (!this.faissOptimizedData || !this.faissOptimizedData.chunks) {
-      console.log('⚠️ OPTIMIZED RAG: No optimized data available, using fallback');
+      Logger.warn('RAG: No optimized data available, using fallback');
       return this.getBasicInfo();
     }
     
@@ -484,16 +598,17 @@ export class OptimizedRAGService {
     const cached = this.cache.get(cacheKey);
     if (cached) {
       this.cacheStats.hits++;
-      console.log(`🎯 OPTIMIZED RAG Cache HIT: "${query.substring(0, 30)}..."`);
+      Logger.debug(`RAG Cache HIT: "${query.substring(0, 30)}..."`);
       return cached;
     }
     
     this.cacheStats.misses++;
-    console.log(`🔍 OPTIMIZED RAG Cache MISS: "${query.substring(0, 30)}..." (${this.faissOptimizedData.chunks.length} chunks available)`);
+    Logger.debug(`RAG Cache MISS: "${query.substring(0, 30)}..." (${this.faissOptimizedData.chunks.length} chunks available)`);
     
-    // Detect calendar-related queries
-    const calendarPattern = /\b(date|dates|event|events|announcement|announcements|schedule|schedules|calendar|when|upcoming|coming|next|this\s+(week|month|year)|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule)\b/i;
-    const isCalendarQuery = calendarPattern.test(query);
+    // IMPROVED: Better calendar query detection - understands intent, not just keywords
+    const calendarPattern = /\b(date|dates|event|events|announcement|announcements|schedule|schedules|calendar|when|upcoming|coming|next|this\s+(week|month|year)|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule|timeline|time\s+table)\b/i;
+    const calendarIntentPattern = /\b(when\s+(is|are|will|does)|what\s+(date|dates|time|schedule)|tell\s+me\s+(about\s+)?(the\s+)?(schedule|dates?|events?))\b/i;
+    const isCalendarQuery = calendarPattern.test(query) || calendarIntentPattern.test(query);
     
     // Check if this is a comprehensive query that needs ALL related chunks
     const comprehensiveKeywords = [
@@ -531,7 +646,7 @@ export class OptimizedRAGService {
     
     // For vision/mission queries, prioritize exact section retrieval
     if (isVisionMissionQuery) {
-      console.log(`🎯 VISION/MISSION QUERY: Prioritizing exact section retrieval for "${query.substring(0, 40)}..."`);
+      Logger.debug(`VISION/MISSION QUERY: Prioritizing exact section retrieval for "${query.substring(0, 40)}..."`);
       
       // Force keyword search to get ALL vision/mission chunks
       const visionMissionSections = ['vision_mission', 'visionMission', 'mandate', 'values', 'graduate_outcomes', 'quality_policy'];
@@ -543,7 +658,7 @@ export class OptimizedRAGService {
       );
       
       if (sectionChunks.length > 0) {
-        console.log(`✓ Found ${sectionChunks.length} exact vision/mission chunks`);
+        Logger.debug(`Found ${sectionChunks.length} exact vision/mission chunks`);
         relevantData = sectionChunks.map(chunk => ({
           id: chunk.id,
           section: chunk.section,
@@ -560,7 +675,7 @@ export class OptimizedRAGService {
     // For comprehensive/listing queries, get MORE chunks - prioritize completeness
     let relevantData;
     if ((isComprehensive && maxSections >= 8) || isListingQuery || hasPluralKeyword) {
-      console.log(`🔍 COMPREHENSIVE QUERY: Getting ALL related chunks for "${query.substring(0, 40)}..."`);
+      Logger.debug(`COMPREHENSIVE QUERY: Getting ALL related chunks for "${query.substring(0, 40)}..."`);
       
       // Increase retrieval significantly for comprehensive queries
       const expandedMaxSections = Math.max(maxSections * 3, 30);
@@ -605,7 +720,7 @@ export class OptimizedRAGService {
           // Get ALL chunks from that specific section
           const sectionChunks = relevantData.filter(chunk => chunk.section === sectionName);
           if (sectionChunks.length > 0) {
-            console.log(`✓ Found ${sectionChunks.length} chunks in section "${sectionName}"`);
+            Logger.debug(`Found ${sectionChunks.length} chunks in section "${sectionName}"`);
             relevantData = sectionChunks;
           }
         }
@@ -690,17 +805,17 @@ export class OptimizedRAGService {
             relevantData = [...relevantData, ...calendarEventsData];
           }
           
-          console.log(`📅 RAG: Added ${calendarEventsData.length} calendar events to context`);
+          Logger.debug(`RAG: Added ${calendarEventsData.length} calendar events to context`);
         }
       } catch (calendarError) {
-        console.error('📅 RAG: Error fetching calendar events:', calendarError);
+        Logger.error('RAG: Error fetching calendar events', calendarError);
         // Continue without calendar data if there's an error
       }
     }
     
     if (relevantData.length === 0) {
       const basicInfo = this.getBasicInfo();
-      this.cache.set(cacheKey, basicInfo, 600); // Cache basic info for 10 minutes
+      this.cache.set(cacheKey, basicInfo); // Cache basic info (no TTL - persists until scheduled clear)
       this.cacheStats.sets++;
       return basicInfo;
     }
@@ -878,7 +993,7 @@ export class OptimizedRAGService {
     
     // Log context size for comprehensive queries
     if (shouldIncludeAll) {
-      console.log(`✓ Built comprehensive context: ${relevantData.length} chunks, ${currentTokens} tokens (~${Math.round(currentTokens * 1.3)} with overhead), ${context.length} chars`);
+      Logger.debug(`Built comprehensive context: ${relevantData.length} chunks, ${currentTokens} tokens (~${Math.round(currentTokens * 1.3)} with overhead), ${context.length} chars`);
     }
 
     // Add suggestion for basic queries
@@ -891,19 +1006,8 @@ export class OptimizedRAGService {
 • Campus locations and enrollment`;
     }
 
-    // Cache the result with different TTL based on query type
-    const queryLower = query.toLowerCase();
-    let ttl = 600; // Default 10 minutes
-    
-    if (queryLower.includes('what is dorsu') || queryLower.includes('about dorsu')) {
-      ttl = 1800; // 30 minutes for basic info
-    } else if (queryLower.includes('dean') || queryLower.includes('program')) {
-      ttl = 1200; // 20 minutes for structural info
-    } else if (queryLower.includes('history') || queryLower.includes('founded')) {
-      ttl = 3600; // 1 hour for historical info
-    }
-    
-    this.cache.set(cacheKey, context, ttl);
+    // Cache the result (no TTL - persists until scheduled clear)
+    this.cache.set(cacheKey, context);
     this.cacheStats.sets++;
     
     return context;
@@ -930,44 +1034,91 @@ export class OptimizedRAGService {
   }
 
   // Cache AI responses for common queries
-  cacheAIResponse(query, response, complexity) {
-    const cacheKey = `ai_opt_${query.toLowerCase().trim().replace(/\s+/g, '_')}`;
-    let ttl = 600; // Default 10 minutes
+  // NOTE: No TTL - cache persists until scheduled clear time
+  async cacheAIResponse(query, response, complexity) {
+    const normalizedQuery = query.toLowerCase().trim();
+    const cacheKey = `ai_opt_${normalizedQuery.replace(/\s+/g, '_')}`;
     
-    // Different TTL based on complexity and query type
-    if (complexity === 'simple') {
-      ttl = 2400; // 40 minutes for simple queries
-    } else if (complexity === 'complex') {
-      ttl = 1200; // 20 minutes for complex queries
-    } else if (complexity === 'multi-complex') {
-      ttl = 900; // 15 minutes for multi-complex queries
+    // Store in-memory cache (fast access)
+    this.cache.set(cacheKey, {
+      response: response,
+      complexity: complexity,
+      cachedAt: Date.now()
+    });
+    
+    // Also store in MongoDB for persistence (survives server restarts)
+    if (this.mongoService) {
+      try {
+        // Store in MongoDB ai_cache collection (no expiration - cleared at scheduled times)
+        await this.mongoService.cacheResponse(normalizedQuery, response, complexity, 0); // 0 = no expiration
+        Logger.debug(`Cached AI response in MongoDB for "${query.substring(0, 30)}..."`);
+      } catch (error) {
+        Logger.warn(`Failed to cache in MongoDB (using in-memory only): ${error.message}`);
+      }
     }
     
-    this.cache.set(cacheKey, response, ttl);
     this.cacheStats.sets++;
-    console.log(`💾 Cached OPTIMIZED AI response for "${query.substring(0, 30)}..." (TTL: ${ttl}s)`);
+    Logger.debug(`Cached AI response for "${query.substring(0, 30)}..." (in-memory + MongoDB)`);
   }
 
-  // Get cached AI response
-  getCachedAIResponse(query) {
-    const cacheKey = `ai_opt_${query.toLowerCase().trim().replace(/\s+/g, '_')}`;
+  // Get cached AI response (checks both in-memory and MongoDB)
+  async getCachedAIResponse(query) {
+    const normalizedQuery = query.toLowerCase().trim();
+    const cacheKey = `ai_opt_${normalizedQuery.replace(/\s+/g, '_')}`;
+    
+    // First check in-memory cache (fastest)
     const cached = this.cache.get(cacheKey);
     if (cached) {
       this.cacheStats.hits++;
-      console.log(`🎯 OPTIMIZED AI Cache HIT: "${query.substring(0, 30)}..."`);
-      return cached;
+      // Handle both old format (string) and new format (object with metadata)
+      const response = typeof cached === 'string' ? cached : cached.response;
+      Logger.debug(`Cache HIT (in-memory): "${query.substring(0, 30)}..."`);
+      return response;
     }
+    
+    // If not in memory, check MongoDB (persistent cache)
+    if (this.mongoService) {
+      try {
+        const mongoCached = await this.mongoService.getCachedResponse(normalizedQuery);
+        if (mongoCached) {
+          // Restore to in-memory cache for faster future access
+          this.cache.set(cacheKey, {
+            response: mongoCached,
+            complexity: 'unknown',
+            cachedAt: Date.now()
+          });
+          this.cacheStats.hits++;
+          Logger.debug(`Cache HIT (MongoDB): "${query.substring(0, 30)}..."`);
+          return mongoCached;
+        }
+      } catch (error) {
+        Logger.debug(`MongoDB cache check failed (continuing): ${error.message}`);
+      }
+    }
+    
     this.cacheStats.misses++;
     return null;
   }
   
-  // Clear all AI response cache
-  clearAIResponseCache() {
+  // Clear all AI response cache (both in-memory and MongoDB)
+  async clearAIResponseCache() {
+    // Clear in-memory cache
     const keys = this.cache.keys();
     const aiResponseKeys = keys.filter(key => key.startsWith('ai_opt_'));
     aiResponseKeys.forEach(key => this.cache.del(key));
     this.cacheStats.deletes += aiResponseKeys.length;
-    console.log(`🗑️ Cleared ${aiResponseKeys.length} AI response cache entries`);
+    
+    // Clear MongoDB cache collection
+    if (this.mongoService && this.mongoService.db) {
+      try {
+        const collection = this.mongoService.db.collection('ai_cache');
+        const result = await collection.deleteMany({});
+        Logger.info(`Cleared ${result.deletedCount} cached responses from MongoDB ai_cache collection`);
+      } catch (error) {
+        Logger.warn(`Failed to clear MongoDB cache: ${error.message}`);
+      }
+    }
+    Logger.info(`Cleared ${aiResponseKeys.length} AI response cache entries`);
     return aiResponseKeys.length;
   }
 
@@ -982,11 +1133,11 @@ export class OptimizedRAGService {
       const mongoChunks = await this.mongoService.getAllChunks();
       
       if (!mongoChunks || mongoChunks.length === 0) {
-        console.log('⚠️ No chunks found in MongoDB');
+        Logger.warn('No chunks found in MongoDB');
         return; // No data in MongoDB
       }
       
-      console.log(`🔄 Syncing with MongoDB: ${mongoChunks.length} total chunks`);
+      Logger.info(`Syncing with MongoDB: ${mongoChunks.length} total chunks`);
       
       // Convert ALL MongoDB chunks to RAG format (replace, not merge)
       const allChunks = [];
@@ -1008,7 +1159,7 @@ export class OptimizedRAGService {
       }
       
       if (allChunks.length > 0) {
-        console.log(`📥 Loading ${allChunks.length} chunks from MongoDB (replacing local data)`);
+        Logger.info(`Loading ${allChunks.length} chunks from MongoDB (replacing local data)`);
         
         // REPLACE textChunks array completely (don't merge)
         this.textChunks = allChunks;
@@ -1038,36 +1189,36 @@ export class OptimizedRAGService {
                 this.embeddings.push(chunk.embedding);
                 this.faissIndex.add(chunk.embedding);
               } catch (error) {
-                console.warn(`⚠️ Failed to add chunk to FAISS:`, error.message);
+                Logger.debug(`Failed to add chunk to FAISS: ${error.message}`);
               }
             }
             
-            console.log(`✅ FAISS index rebuilt with ${this.embeddings.length} embeddings`);
+            Logger.success(`FAISS index rebuilt with ${this.embeddings.length} embeddings`);
           } catch (faissError) {
-            console.warn(`⚠️ FAISS rebuild failed:`, faissError.message);
+            Logger.warn(`FAISS rebuild failed: ${faissError.message}`);
           }
         }
         
-        console.log(`✅ Successfully loaded ${allChunks.length} chunks from MongoDB`);
-        console.log(`   - textChunks: ${this.textChunks.length}`);
-        console.log(`   - faissOptimizedData.chunks: ${this.faissOptimizedData.chunks.length}`);
-        console.log(`   - FAISS embeddings: ${this.embeddings.length}`);
+        Logger.success(`Successfully loaded ${allChunks.length} chunks from MongoDB`);
+        Logger.debug(`   - textChunks: ${this.textChunks.length}`);
+        Logger.debug(`   - faissOptimizedData.chunks: ${this.faissOptimizedData.chunks.length}`);
+        Logger.debug(`   - FAISS embeddings: ${this.embeddings.length}`);
         
         // Clear AI cache since knowledge base changed
         this.cache.flushAll();
-        console.log(`🗑️  Cleared AI cache (knowledge base updated)`);
+        Logger.info('Cleared AI cache (knowledge base updated)');
       }
       
       this.lastMongoSync = now;
       
     } catch (error) {
-      console.error(`❌ MongoDB sync failed:`, error.message);
+      Logger.error('MongoDB sync failed', error);
     }
   }
 
   // Force sync with MongoDB (can be called manually)
   async forceSyncMongoDB() {
-    console.log(`🔄 Forcing MongoDB sync...`);
+    Logger.info('Forcing MongoDB sync...');
     await this.syncWithMongoDB();
   }
 }

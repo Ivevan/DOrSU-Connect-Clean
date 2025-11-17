@@ -18,13 +18,14 @@ For detailed deployment instructions, see [RENDER_DEPLOYMENT.md](./RENDER_DEPLOY
 - **News Scraping** - Automatically scrapes and provides latest DOrSU news
 - **Intent Classification** - Intelligently classifies user queries
 - **Response Caching** - Caches responses for faster subsequent queries
-- **GPU Support** - Optional GPU acceleration for faster inference
+- **Groq Cloud API** - Ultra-fast AI responses using cloud-based 70b models
+- **Multi-Key Support** - Rotates between multiple API keys for increased capacity
 
 ## Prerequisites
 
 - Node.js 18+ 
 - MongoDB (local or remote)
-- (Optional) CUDA-enabled GPU for faster inference
+- Groq API Key(s) - Get from [console.groq.com](https://console.groq.com)
 
 ## Setup
 
@@ -111,7 +112,6 @@ backend/
 │   │   ├── service.js          # AI model service
 │   │   └── system.js           # System prompts
 │   ├── utils/            # Utility functions
-│   │   ├── gpu-monitor.js      # GPU monitoring
 │   │   ├── intent-classifier.js # Intent classification
 │   │   ├── logger.js           # Logging utility
 │   │   ├── query-analyzer.js   # Query analysis
@@ -133,8 +133,9 @@ Edit `.env` to configure the backend:
 ```env
 PORT=3000                    # Server port
 MONGODB_URI=mongodb://...    # MongoDB connection string
-MONGODB_DB_NAME=dorsu-ai     # Database name
-ENABLE_CACHE=true           # Enable response caching
+GROQ_API_KEYS=key1,key2,...  # Groq API keys (comma-separated for multi-key support)
+# Or use single key:
+# GROQ_API_KEY=your_groq_api_key_here
 ```
 
 ### Knowledge Base
@@ -187,10 +188,11 @@ The server logs include:
 
 ### Slow responses
 
-1. Check if GPU is being utilized
-2. Review RAG settings (reduce sections/tokens)
-3. Clear cache and try again
-4. Check MongoDB query performance
+1. Review RAG settings (reduce sections/tokens)
+2. Clear cache and try again
+3. Check MongoDB query performance
+4. Verify Groq API keys are configured correctly
+5. Check API key usage statistics (may need more keys)
 
 ### News scraping fails
 

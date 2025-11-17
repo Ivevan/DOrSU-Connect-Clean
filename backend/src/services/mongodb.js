@@ -313,24 +313,38 @@ class MongoDBService {
 
   /**
    * Cache AI response
+   * @param {string} query - The query string
+   * @param {string} response - The AI response
+   * @param {string} complexity - Query complexity
+   * @param {number} ttl - Time to live in seconds (0 = no expiration, persistent until manual clear)
    */
   async cacheResponse(query, response, complexity, ttl = 3600) {
     try {
       const collection = this.getCollection(mongoConfig.collections.cache);
+      const normalizedQuery = query.toLowerCase().trim();
+      
+      const updateData = {
+        response,
+        complexity,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      
+      // Only set expiresAt if TTL > 0 (persistent cache if TTL = 0)
+      if (ttl > 0) {
+        updateData.expiresAt = new Date(Date.now() + ttl * 1000);
+      } else {
+        // For persistent cache (TTL = 0), set expiresAt to null
+        updateData.expiresAt = null;
+      }
       
       await collection.updateOne(
-        { query: query.toLowerCase().trim() },
-        {
-          $set: {
-            response,
-            complexity,
-            createdAt: new Date(),
-            expiresAt: new Date(Date.now() + ttl * 1000)
-          }
-        },
+        { query: normalizedQuery },
+        { $set: updateData },
         { upsert: true }
       );
       
+      Logger.debug(`Cached response in MongoDB ai_cache collection for query: "${normalizedQuery.substring(0, 30)}..."`);
     } catch (error) {
       Logger.error('Failed to cache response:', error);
     }
@@ -342,10 +356,16 @@ class MongoDBService {
   async getCachedResponse(query) {
     try {
       const collection = this.getCollection(mongoConfig.collections.cache);
+      const normalizedQuery = query.toLowerCase().trim();
       
+      // Find cached response - check both with and without expiration
       const cached = await collection.findOne({
-        query: query.toLowerCase().trim(),
-        expiresAt: { $gt: new Date() }
+        query: normalizedQuery,
+        $or: [
+          { expiresAt: { $gt: new Date() } },  // Not expired
+          { expiresAt: null },                   // No expiration (persistent cache)
+          { expiresAt: { $exists: false } }     // No expiration field
+        ]
       });
       
       return cached?.response || null;

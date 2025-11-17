@@ -12,8 +12,7 @@ export class ResponseCleaner {
    * @returns {string} - Cleaned text
    */
   static cleanHTMLArtifacts(text) {
-    Logger.info('🧹🧹🧹 STARTING HTML CLEANUP (ULTRA-AGGRESSIVE MODE)...');
-    Logger.info('📝 RAW AI Output (first 500 chars):', text.substring(0, 500));
+    Logger.debug('Starting HTML cleanup...');
     
     let cleaned = text;
     
@@ -61,13 +60,12 @@ export class ResponseCleaner {
     // Step 10: NUCLEAR OPTION - If HTML still detected, run multiple passes
     let maxPasses = 3;
     while (this.hasHTMLArtifacts(cleaned) && maxPasses > 0) {
-      Logger.warn(`⚠️⚠️⚠️ HTML STILL DETECTED! Running nuclear cleanup (pass ${4 - maxPasses}/3)...`);
+      Logger.debug(`HTML still detected, running cleanup (pass ${4 - maxPasses}/3)...`);
       cleaned = this.nuclearCleanup(cleaned);
       maxPasses--;
     }
     
-    Logger.info('✅✅✅ CLEANUP COMPLETE!');
-    Logger.info('📤 Sending (first 500 chars):', cleaned.substring(0, 500));
+    Logger.debug('HTML cleanup complete');
     return cleaned;
   }
   
@@ -76,25 +74,23 @@ export class ResponseCleaner {
    * This is the most aggressive cleanup that runs BEFORE everything else
    */
   static nuclearStripHTML(text) {
-    Logger.warn('☢️☢️☢️ NUCLEAR HTML STRIP ACTIVATED');
+    Logger.debug('Running nuclear HTML strip');
     
     // Pattern 1: Remove ANY text containing 'class=' or 'target=' or 'rel=' AND the text after >
     text = text.replace(/([^\s]+)(["'][^"']*(?:class|target|rel|href|title)=["'][^"']*["'][^>]*>)([^\n]*)/gi, (match, url, htmlStuff, textAfter) => {
-      Logger.warn('  ☢️ Found HTML attributes attached to URL:', match.substring(0, 80));
+      Logger.debug('Found HTML attributes attached to URL');
       const cleanUrl = url.replace(/["'].*$/, '');
-      Logger.info('  ✅ Extracted clean URL:', cleanUrl);
-      Logger.info('  🗑️ Removed trailing text:', textAfter.substring(0, 50));
       return cleanUrl + '\n';
     });
     
     // Pattern 2: Fix excessive asterisks (****text** → **text**)
     text = text.replace(/\*{4,}([^*]+)\*{2,}/g, '**$1**');
-    Logger.info('  🔧 Fixed excessive asterisks');
+    Logger.debug('Fixed excessive asterisks');
     
     // Pattern 3: Add line breaks between numbered items that got merged
     // Fixes: Report.pdf2. → Report.pdf\n2.
     text = text.replace(/\.(pdf|jpg|png|jpeg|doc|docx|xls|xlsx)(\d+\.)/gi, '.$1\n\n$2');
-    Logger.info('  🔧 Fixed merged line breaks');
+    Logger.debug('Fixed merged line breaks');
     
     // Pattern 4: Remove standalone HTML attribute blocks
     text = text.replace(/["']\s*class=["'][^"']*["']\s*target=["'][^"']*["']\s*rel=["'][^"']*["'][^>]*/gi, '');

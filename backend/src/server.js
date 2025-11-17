@@ -24,7 +24,6 @@ import {
   generateVisionMissionResponse
 } from './services/structured-responses.js';
 import { buildSystemInstructions, getCalendarEventsInstructions } from './services/system.js';
-import { GPUMonitor } from './utils/gpu-monitor.js';
 import { IntentClassifier } from './utils/intent-classifier.js';
 import { Logger } from './utils/logger.js';
 import { parseMultipartFormData } from './utils/multipart-parser.js';
@@ -99,12 +98,6 @@ const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
     Logger.success('News scraper service started');
   } catch (error) {
     Logger.error('MongoDB init failed:', error.message);
-  }
-  
-  const gpuMonitor = GPUMonitor.getInstance();
-  const cudaAvailable = await gpuMonitor.checkCUDA();
-  if (cudaAvailable) {
-    Logger.success(`GPU enabled: ${(await gpuMonitor.getGPUInfo())[0]?.name || 'Unknown'}`);
   }
 })();
 
@@ -1067,7 +1060,7 @@ const server = http.createServer(async (req, res) => {
         }
         
         const options = {
-          maxTokens: json.maxTokens ?? (isUSCQuery ? 1500 : isProgramQuery ? 1800 : smartSettings.maxTokens), // Balanced tokens to stay within 8K limit
+          maxTokens: json.maxTokens ?? (isUSCQuery ? 800 : isProgramQuery ? 900 : smartSettings.maxTokens), // Reduced to minimize token usage
           temperature: json.temperature ?? smartSettings.temperature,
           numCtx: smartSettings.numCtx,
           topP: 0.5,
@@ -1079,9 +1072,9 @@ const server = http.createServer(async (req, res) => {
         
         // --- Cache Check ---
         
-        // Check cache
+        // Check cache (now async - checks both in-memory and MongoDB)
         if (ragService) {
-          const cachedResponse = ragService.getCachedAIResponse(processedPrompt);
+          const cachedResponse = await ragService.getCachedAIResponse(processedPrompt);
           if (cachedResponse) {
             const responseTime = Date.now() - startTime;
             Logger.info(`⚡ CACHED (${responseTime}ms)`);
@@ -1095,6 +1088,7 @@ const server = http.createServer(async (req, res) => {
               complexity: queryAnalysis.complexity,
               responseTime,
               cached: true,
+              tokenUsage: null, // No token usage for cached responses
               // Conversational intent information
               intent: {
                 conversational: intentClassification.conversationalIntent,
@@ -1122,17 +1116,19 @@ const server = http.createServer(async (req, res) => {
           let ragTokens = smartSettings.ragMaxTokens;
           let retrievalType = '';
           
+          // AGGRESSIVE TOKEN REDUCTION: Reduce RAG context to minimize input tokens
+          // Input tokens are the main cost - need to be very selective
           if (isUSCQuery) {
-            ragSections = 30;       // Reduced from 40
-            ragTokens = 3000;       // Reduced from 4000 to save tokens
-            retrievalType = '(USC query - full retrieval)';
+            ragSections = 15;       // Reduced from 25 - focus on top 15 most relevant
+            ragTokens = 1200;       // Reduced from 2500 - CRITICAL: Controls input token cost
+            retrievalType = '(USC query - optimized retrieval)';
           } else if (isProgramQuery) {
-            ragSections = 35;       // Reduced from 45
-            ragTokens = 3500;       // Reduced from 4500 to prevent rate limits
-            retrievalType = '(Program list query - complete retrieval)';
+            ragSections = 18;       // Reduced from 28 - sufficient for complete lists
+            ragTokens = 1400;       // Reduced from 2800 - CRITICAL: Controls input token cost
+            retrievalType = '(Program list query - optimized retrieval)';
           } else if (isPresidentQuery) {
-            ragSections = 15;       // Reduced from 20
-            ragTokens = 2000;       // Reduced from 2500 for safety
+            ragSections = 8;        // Reduced from 12 - focused retrieval
+            ragTokens = 800;       // Reduced from 1500 - CRITICAL: Controls input token cost
             retrievalType = '(President query - focused retrieval)';
           }
           
@@ -1369,11 +1365,19 @@ const server = http.createServer(async (req, res) => {
           { role: 'assistant', content: 'The president is Dr. Roy G. Ponce.' }
         ];
         
-        const rawReply = await service.chat([
+        const chatResult = await service.chat([
           { role: 'system', content: systemPrompt },
           ...fewShotExamples,
           { role: 'user', content: processedPrompt }
         ], options);
+        
+        // Extract content and token usage from response
+        const rawReply = typeof chatResult === 'object' && chatResult.content !== undefined 
+          ? chatResult.content 
+          : chatResult;
+        const tokenUsage = typeof chatResult === 'object' && chatResult.tokenUsage !== undefined
+          ? chatResult.tokenUsage
+          : null;
         
         // --- Response Processing ---
         
@@ -1420,6 +1424,8 @@ const server = http.createServer(async (req, res) => {
           complexity: queryAnalysis.complexity,
           responseTime,
           usedKnowledgeBase: isDOrSUQuery,
+          // Token usage information
+          tokenUsage: tokenUsage || null,
           // Conversational intent information
           intent: {
             conversational: intentClassification.conversationalIntent,

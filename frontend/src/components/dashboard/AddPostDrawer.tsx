@@ -331,10 +331,15 @@ const AddEventAnnouncementDrawer: React.FC<AddEventAnnouncementDrawerProps> = ({
               },
             ],
             paddingBottom: insets.bottom,
+            zIndex: 1000,
+            elevation: 1000,
+            height: '85%',
+            maxHeight: '85%',
           }
         ]}
       >
-        <View style={{ flex: 1 }}>
+        {/* Fixed Header Section */}
+        <View style={styles.drawerHeaderFixed}>
           <View style={styles.drawerHandle}>
             <View style={[styles.drawerHandleBar, { backgroundColor: isDarkMode ? '#374151' : '#D1D5DB' }]} />
           </View>
@@ -350,13 +355,20 @@ const AddEventAnnouncementDrawer: React.FC<AddEventAnnouncementDrawerProps> = ({
               <Ionicons name="close" size={22} color={t.colors.text} />
             </TouchableOpacity>
           </View>
-          
-          <ScrollView
-            style={styles.drawerScrollView}
-            contentContainerStyle={[styles.drawerScrollContent, { paddingBottom: 20 }]}
-            showsVerticalScrollIndicator={true}
-            bounces={true}
-          >
+        </View>
+        
+        {/* Scrollable Content Area */}
+        <ScrollView
+          style={styles.drawerScrollView}
+          contentContainerStyle={[styles.drawerScrollContent, { paddingBottom: 20 }]}
+          showsVerticalScrollIndicator={true}
+          bounces={true}
+          nestedScrollEnabled={true}
+          keyboardShouldPersistTaps="handled"
+          scrollEventThrottle={16}
+          alwaysBounceVertical={false}
+          removeClippedSubviews={false}
+        >
 
             {/* Type Selector - Dropdown */}
             <View style={styles.inputGroup}>
@@ -554,7 +566,6 @@ const AddEventAnnouncementDrawer: React.FC<AddEventAnnouncementDrawerProps> = ({
               )}
             </TouchableOpacity>
           </ScrollView>
-        </View>
       </Animated.View>
 
       {/* Month Picker Modal */}
@@ -596,6 +607,8 @@ const styles = StyleSheet.create({
   drawerOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 999,
+    elevation: 999,
   },
   drawerContentContainer: {
     position: 'absolute',
@@ -604,12 +617,18 @@ const styles = StyleSheet.create({
     right: 0,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '85%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
-    elevation: 20,
+    zIndex: 1000,
+    elevation: 1000,
+    flexDirection: 'column',
+  },
+  drawerHeaderFixed: {
+    flexShrink: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0, 0, 0, 0.08)',
   },
   drawerHandle: {
     alignItems: 'center',
@@ -629,8 +648,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 16,
     paddingTop: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0, 0, 0, 0.08)',
   },
   drawerTitle: {
     fontSize: 20,
@@ -647,6 +664,7 @@ const styles = StyleSheet.create({
   },
   drawerScrollView: {
     flex: 1,
+    overflow: 'hidden',
   },
   drawerScrollContent: {
     padding: 20,

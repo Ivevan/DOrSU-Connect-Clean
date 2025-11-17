@@ -11,6 +11,7 @@ import PrivacyPolicyScreen from '../screens/about/PrivacyPolicyScreen';
 import TermsOfUseScreen from '../screens/about/TermsOfUseScreen';
 import AdminAIChat from '../screens/admin/AdminAIChat';
 import AdminCalendar from '../screens/admin/AdminCalendar';
+import CalendarHelpScreen from '../screens/admin/CalendarHelpScreen';
 import AdminDashboard from '../screens/admin/AdminDashboard';
 import AdminSettings from '../screens/admin/AdminSettings';
 import AdminAccountSettings from '../screens/admin/AdminAccountSettings';
@@ -279,6 +280,14 @@ const AppNavigator = () => {
         <Stack.Screen 
           name="AdminCalendar" 
           component={AdminCalendar}
+        />
+        <Stack.Screen 
+          name="CalendarHelp" 
+          component={CalendarHelpScreen}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
         />
         <Stack.Screen 
           name="PostUpdate" 

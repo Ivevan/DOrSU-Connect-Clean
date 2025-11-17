@@ -18,7 +18,6 @@ import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import AdminSidebar from '../../components/navigation/AdminSidebar';
 import { theme } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
-import CalendarHelpModal from '../../modals/CalendarHelpModal';
 import DeleteAllModal from '../../modals/DeleteAllModal';
 import MonthPickerModal from '../../modals/MonthPickerModal';
 import AdminFileService from '../../services/AdminFileService';
@@ -39,6 +38,7 @@ type RootStackParamList = {
   AdminAIChat: undefined;
   AdminSettings: undefined;
   AdminCalendar: undefined;
+  CalendarHelp: undefined;
   PostUpdate: { postId?: string } | undefined;
   ManagePosts: undefined;
 };
@@ -149,15 +149,9 @@ const AdminCalendar = () => {
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
   const [showAddEventDrawer, setShowAddEventDrawer] = useState(false);
   const [addEventInitialDate, setAddEventInitialDate] = useState<Date | null>(null);
-  const [showHelpModal, setShowHelpModal] = useState(false);
-  
   // Drawer animation values (shared between EventDetailsDrawer and AddEventDrawer)
   const drawerSlideAnim = useRef(new Animated.Value(0)).current; // 0 = closed, 1 = open
   const drawerBackdropOpacity = useRef(new Animated.Value(0)).current;
-  
-  // Help modal animation values (same as EventDetailsDrawer)
-  const helpModalSlideAnim = useRef(new Animated.Value(0)).current; // 0 = closed, 1 = open
-  const helpModalBackdropOpacity = useRef(new Animated.Value(0)).current;
   
   // Delete all modal animation values
   const deleteAllModalSlideAnim = useRef(new Animated.Value(0)).current;
@@ -1666,31 +1660,18 @@ const AdminCalendar = () => {
                 <Ionicons name="calendar-outline" size={14} color={t.colors.accent} />
         </View>
               <Text style={[styles.eventsTitle, { color: t.colors.text }]}>Events</Text>
-              <TouchableOpacity 
-                style={styles.infoIconButton}
-                onPress={() => {
-                  setShowHelpModal(true);
-                  Animated.parallel([
-                    Animated.spring(helpModalSlideAnim, {
-                      toValue: 1,
-                      useNativeDriver: true,
-                      tension: 65,
-                      friction: 11,
-                    }),
-                    Animated.timing(helpModalBackdropOpacity, {
-                      toValue: 1,
-                      duration: 300,
-                      useNativeDriver: true,
-                    }),
-                  ]).start();
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }}
-                accessibilityLabel="Calendar help and information"
-                activeOpacity={0.7}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="information-circle-outline" size={18} color={t.colors.textMuted} />
-              </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.infoIconButton}
+            onPress={() => {
+              navigation.navigate('CalendarHelp');
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }}
+            accessibilityLabel="Calendar help and information"
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="information-circle-outline" size={18} color={t.colors.textMuted} />
+          </TouchableOpacity>
             </View>
             <View style={styles.eventsHeaderRight}>
               <TouchableOpacity
@@ -2020,32 +2001,6 @@ const AdminCalendar = () => {
         monthPickerOpacityAnim={monthPickerOpacityAnim}
         eventYearRange={{ minYear: eventYearRange.min, maxYear: eventYearRange.max }}
       />
-
-      {/* Help Modal */}
-      {showHelpModal && (
-        <CalendarHelpModal
-          visible={showHelpModal}
-          onClose={() => {
-            Animated.parallel([
-              Animated.spring(helpModalSlideAnim, {
-                toValue: 0,
-                useNativeDriver: true,
-                tension: 65,
-                friction: 11,
-              }),
-              Animated.timing(helpModalBackdropOpacity, {
-                toValue: 0,
-                duration: 200,
-                useNativeDriver: true,
-              }),
-            ]).start(() => {
-              setShowHelpModal(false);
-            });
-          }}
-          slideAnim={helpModalSlideAnim}
-          backdropOpacity={helpModalBackdropOpacity}
-        />
-      )}
 
       {/* Bottom Navigation Bar - Fixed position */}
       <View style={[styles.bottomNavContainer, {

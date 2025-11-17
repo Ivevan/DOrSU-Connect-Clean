@@ -1213,7 +1213,13 @@ const SchoolUpdates = () => {
                 <View style={styles.sectionTitleWrapper}>
                   <Text style={[styles.sectionTitleEnhanced, { color: theme.colors.text }]}>Updates</Text>
                   <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
-                    {timeFilter === 'upcoming' ? 'Coming soon' : timeFilter === 'recent' ? 'Past events' : 'All events'}
+                    {!isLoading && !error && displayedUpdates.length > 0 
+                      ? timeFilter === 'upcoming' 
+                        ? `Upcoming · ${displayedUpdates.length}`
+                        : timeFilter === 'recent'
+                        ? `Recent · ${displayedUpdates.length}`
+                        : `All · ${displayedUpdates.length}`
+                      : timeFilter === 'upcoming' ? 'Upcoming' : timeFilter === 'recent' ? 'Recent' : 'All'}
                   </Text>
                 </View>
               </View>
@@ -1345,14 +1351,6 @@ const SchoolUpdates = () => {
                     </TouchableOpacity>
                   );
                 })}
-                
-                {!isLoading && !error && displayedUpdates.length > 0 && (
-                  <View style={{ paddingVertical: 8, alignItems: 'center' }}>
-                    <Text style={{ fontSize: 10, color: theme.colors.textMuted, opacity: 0.5 }}>
-                      Showing {displayedUpdates.length} update{displayedUpdates.length !== 1 ? 's' : ''}
-                    </Text>
-                  </View>
-                )}
               </View>
             </View>
           </BlurView>

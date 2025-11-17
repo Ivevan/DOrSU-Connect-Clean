@@ -707,13 +707,11 @@ const AdminAIChat = () => {
           <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>
             {messages.length > 0 ? 'Conversation' : 'New Conversation'}
           </Text>
-          {messages.length > 0 && (
-            <View style={[styles.userTypeLabel, { backgroundColor: '#FF9500' }]}>
-              <Text style={styles.userTypeLabelText}>
-                {selectedUserType === 'faculty' ? 'Faculty' : 'Student'}
-              </Text>
-            </View>
-          )}
+          <View style={[styles.userTypeLabel, { backgroundColor: selectedUserType === 'student' ? '#10B981' : '#2563EB' }]}>
+            <Text style={styles.userTypeLabelText}>
+              {selectedUserType === 'faculty' ? 'Faculty' : 'Student'}
+            </Text>
+          </View>
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity 
@@ -1221,8 +1219,8 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
+    flexDirection: 'column',
+    gap: 2,
   },
   headerTitle: {
     fontSize: 17,
@@ -1230,16 +1228,17 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   userTypeLabel: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginTop: 1,
   },
   userTypeLabelText: {
     color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 9,
+    fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   headerRight: {
     width: 40,

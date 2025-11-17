@@ -7,7 +7,7 @@ import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from '
 import { Alert, Animated, Dimensions, Easing, Image, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import EventDetailsDrawer from '../../components/calendar/EventDetailsDrawer';
-import PostDetailsDrawer from '../../components/dashboard/PostDetailsDrawer';
+import PreviewModal from '../../modals/PreviewModal';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import UserSidebar from '../../components/navigation/UserSidebar';
 import { theme as themeStyle } from '../../config/theme';
@@ -149,7 +149,7 @@ const EventCard = memo(({ update, onPress, theme }: { update: any; onPress: () =
   const imageUrl = update.images?.[0] || update.image;
   
   return (
-    <Pressable style={[styles.eventCardHorizontal, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
+    <Pressable style={[styles.eventCardHorizontal, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
       {imageUrl ? (
         <Image 
           source={{ uri: imageUrl }} 
@@ -222,13 +222,9 @@ const SchoolUpdates = () => {
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
   const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
 
-  // Post Details Drawer state (view-only)
-  const [showPostDrawer, setShowPostDrawer] = useState(false);
-  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
-  const postDrawerSlideAnim = useRef(new Animated.Value(0)).current;
-  const postDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
-  const postMonthPickerScaleAnim = useRef(new Animated.Value(0)).current;
-  const postMonthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
+  // Post Preview Modal state (view-only)
+  const [showPostModal, setShowPostModal] = useState(false);
+  const [selectedUpdate, setSelectedUpdate] = useState<any | null>(null);
 
   // Memoize safe area insets to prevent recalculation during navigation
   const safeInsets = useMemo(() => ({
@@ -418,39 +414,10 @@ const SchoolUpdates = () => {
   }, []);
 
   const handleUpdatePress = useCallback((update: { id?: string; title: string; date: string; tag: string; time?: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean; isoDate?: string; category?: string }) => {
-    // Convert update to Post format and open PostDetailsDrawer
-    const post: Post = {
-      id: update.id || `post-${Date.now()}`,
-      title: update.title,
-      description: update.description,
-      category: update.category || update.tag,
-      date: update.date,
-      isoDate: update.isoDate || update.date,
-      time: update.time,
-      images: update.images || (update.image ? [update.image] : undefined),
-      image: update.image,
-      isPinned: update.pinned,
-      source: update.source,
-    };
-    
-    setSelectedPost(post);
-    setShowPostDrawer(true);
-    
-    // Animate drawer in
-    Animated.parallel([
-      Animated.spring(postDrawerSlideAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 11,
-      }),
-      Animated.timing(postDrawerBackdropOpacity, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [postDrawerSlideAnim, postDrawerBackdropOpacity]);
+    // Set update and open PreviewModal
+    setSelectedUpdate(update);
+    setShowPostModal(true);
+  }, []);
 
   // Fetch data from AdminDataService
   const fetchUpdates = useCallback(async () => {
@@ -777,25 +744,11 @@ const SchoolUpdates = () => {
     });
   }, [drawerSlideAnim, drawerBackdropOpacity]);
 
-  // Close post drawer
-  const closePostDrawer = useCallback(() => {
-    Animated.parallel([
-      Animated.spring(postDrawerSlideAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 11,
-      }),
-      Animated.timing(postDrawerBackdropOpacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setShowPostDrawer(false);
-      setSelectedPost(null);
-    });
-  }, [postDrawerSlideAnim, postDrawerBackdropOpacity]);
+  // Close post modal
+  const closePostModal = useCallback(() => {
+    setShowPostModal(false);
+    setSelectedUpdate(null);
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -1116,8 +1069,20 @@ const SchoolUpdates = () => {
       />
 
 
-      {/* Main Content - Fixed Header Section */}
-      <View style={styles.content}>
+      {/* Main Content - Scrollable */}
+      <ScrollView
+        ref={scrollRef}
+        style={styles.content}
+        contentContainerStyle={{ 
+          paddingHorizontal: 16,
+          paddingTop: 12,
+          paddingBottom: safeInsets.bottom + 100 
+        }}
+        showsVerticalScrollIndicator={true}
+        bounces={true}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.welcomeSection}>
           <View style={styles.welcomeText}>
             <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>Hello {userName},</Text>
@@ -1127,7 +1092,7 @@ const SchoolUpdates = () => {
 
         {/* Current Month Calendar Events Section */}
         {currentMonthEvents.length > 0 && (
-          <View style={[styles.calendarEventsSection, { borderColor: theme.colors.border, marginBottom: 12 }]} collapsable={false}>
+          <View style={[styles.calendarEventsSection, { borderColor: theme.colors.border, marginBottom: 12, marginHorizontal: 0 }]} collapsable={false}>
             <BlurView
               intensity={Platform.OS === 'ios' ? 20 : 15}
               tint={isDarkMode ? 'dark' : 'light'}
@@ -1275,19 +1240,8 @@ const SchoolUpdates = () => {
                 </Pressable>
               </View>
               
-              {/* Scrollable Cards Section */}
-              <ScrollView
-                style={[styles.cardsScrollView, { maxHeight: cardsScrollViewHeight }]}
-                contentContainerStyle={{ paddingBottom: safeInsets.bottom + 60, minHeight: 100 }}
-                showsVerticalScrollIndicator={true}
-                showsHorizontalScrollIndicator={false}
-                nestedScrollEnabled={true}
-                keyboardShouldPersistTaps="handled"
-                bounces={true}
-                scrollEventThrottle={16}
-                removeClippedSubviews={false}
-                horizontal={false}
-              >
+              {/* Updates Cards Section - No nested scroll, part of main scroll */}
+              <View style={styles.updatesCardsContainer}>
                 {error && (
                   <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                     <Ionicons name="alert-circle-outline" size={40} color="#DC2626" />
@@ -1324,18 +1278,25 @@ const SchoolUpdates = () => {
 
                 {!isLoading && !error && displayedUpdates.length > 0 && displayedUpdates.map((update) => {
                   console.log('🎨 Rendering update:', update.id, update.title);
-                  // Get color for accent bar based on category (institutional/academic)
+                  // Get color for category tag based on category
                   const tagLower = update.tag?.toLowerCase() || '';
-                  let accentColor = '#93C5FD'; // Default blue
+                  let tagColor = '#E8F0FF'; // Default light blue
+                  let tagTextColor = '#1A3E7A'; // Default dark blue
                   
-                  if (tagLower === 'institutional') {
-                    accentColor = '#2563EB'; // Blue for Institutional
+                  if (tagLower === 'event') {
+                    tagColor = '#FEF3C7'; // Yellow
+                    tagTextColor = '#D97706';
                   } else if (tagLower === 'academic') {
-                    accentColor = '#10B981'; // Green for Academic
+                    tagColor = '#F0F9FF'; // Light blue
+                    tagTextColor = '#0369A1';
+                  } else if (tagLower === 'announcement') {
+                    tagColor = '#E8F0FF'; // Light purple/blue
+                    tagTextColor = '#1A3E7A';
                   } else {
-                    // For other categories (event, announcement, etc.), use categoryToColors
+                    // For other categories, use categoryToColors
                     const colors = categoryToColors(update.tag);
-                    accentColor = colors.dot || '#93C5FD';
+                    tagColor = colors.chipBg || '#E8F0FF';
+                    tagTextColor = colors.chipText || '#1A3E7A';
                   }
                   
                   return (
@@ -1346,35 +1307,38 @@ const SchoolUpdates = () => {
                       delayPressIn={0}
                       onPress={() => handleUpdatePress(update)}
                     >
-                      <View style={[styles.updateAccent, { backgroundColor: accentColor }]} collapsable={false} />
-                      <View style={styles.updateContent} collapsable={false}>
-                        {(update.images?.[0] || update.image) && (
-                          <Image 
-                            source={{ uri: update.images?.[0] || update.image || '' }} 
-                            style={styles.updateImage}
-                            resizeMode="cover"
-                            onError={(error) => {
-                              console.error('Image load error:', error.nativeEvent.error);
-                              console.log('Failed image URL:', update.images?.[0] || update.image);
-                            }}
-                          />
-                        )}
-                        <View style={styles.updateTextContent}>
-                          <Text style={[styles.updateTitle, { color: theme.colors.text }]} numberOfLines={2}>{update.title}</Text>
-                          <View style={styles.updateDateRow}>
-                            <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-                            <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
-                          </View>
-                          {update.description && (
-                            <Text style={[styles.updateDescription, { color: theme.colors.textMuted }]} numberOfLines={2}>
-                              {update.description}
+                      {(update.images?.[0] || update.image) ? (
+                        <Image 
+                          source={{ uri: update.images?.[0] || update.image || '' }} 
+                          style={styles.updateImage}
+                          resizeMode="cover"
+                          onError={(error) => {
+                            console.error('Image load error:', error.nativeEvent.error);
+                            console.log('Failed image URL:', update.images?.[0] || update.image);
+                          }}
+                        />
+                      ) : (
+                        <View style={[styles.updateImagePlaceholder, { backgroundColor: theme.colors.surface }]}>
+                          <Ionicons name="image-outline" size={24} color={theme.colors.textMuted} />
+                        </View>
+                      )}
+                      <View style={styles.updateCardContent}>
+                        <View style={styles.updateCardHeader}>
+                          <View style={styles.updateCardHeaderLeft}>
+                            <Text style={[styles.updateTitle, { color: theme.colors.text }]} numberOfLines={2}>
+                              {update.title}
                             </Text>
-                          )}
-                          <View style={styles.updateTagRow}>
-                            <View style={styles.statusItem}>
-                              <Ionicons name="pricetag-outline" size={12} color={accentColor} />
-                              <Text style={[styles.updateTagText, { color: accentColor }]}>{update.tag}</Text>
+                            <View style={styles.updateDateRow}>
+                              <Ionicons name="time-outline" size={14} color={theme.colors.textMuted} />
+                              <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>
+                                {update.date}
+                              </Text>
                             </View>
+                          </View>
+                          <View style={[styles.updateTagBadge, { backgroundColor: tagColor }]}>
+                            <Text style={[styles.updateTagBadgeText, { color: tagTextColor }]}>
+                              {update.tag}
+                            </Text>
                           </View>
                         </View>
                       </View>
@@ -1389,22 +1353,27 @@ const SchoolUpdates = () => {
                     </Text>
                   </View>
                 )}
-              </ScrollView>
+              </View>
             </View>
           </BlurView>
         </View>
-      </View>
+      </ScrollView>
       
-      {/* Post Details Drawer - View Only */}
-      <PostDetailsDrawer
-        visible={showPostDrawer}
-        onClose={closePostDrawer}
-        selectedPost={selectedPost}
-        slideAnim={postDrawerSlideAnim}
-        backdropOpacity={postDrawerBackdropOpacity}
-        monthPickerScaleAnim={postMonthPickerScaleAnim}
-        monthPickerOpacityAnim={postMonthPickerOpacityAnim}
-        readOnly={true}
+      {/* Post Preview Modal - View Only */}
+      <PreviewModal
+        visible={showPostModal}
+        update={selectedUpdate ? {
+          title: selectedUpdate.title,
+          date: selectedUpdate.isoDate || selectedUpdate.date,
+          tag: selectedUpdate.tag || selectedUpdate.category,
+          time: selectedUpdate.time,
+          image: selectedUpdate.image,
+          images: selectedUpdate.images,
+          description: selectedUpdate.description,
+          source: selectedUpdate.source,
+          pinned: selectedUpdate.pinned,
+        } : null}
+        onClose={closePostModal}
       />
 
       {/* Event Details Drawer - View Only */}
@@ -1597,13 +1566,10 @@ const styles = StyleSheet.create({
     flex: 1,
     zIndex: 1,
     width: '100%',
-    paddingHorizontal: 16,
-    paddingTop: 12,
   },
-  cardsScrollView: {
-    flex: 1,
-    flexShrink: 1,
-    minHeight: 200,
+  updatesCardsContainer: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
   },
   bottomNavContainer: {
     position: 'absolute',
@@ -1690,8 +1656,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     marginBottom: 12,
+    marginHorizontal: 0,
     overflow: 'hidden',
-    flex: 1,
   },
   calendarEventsSection: {
     borderWidth: 1,
@@ -1774,7 +1740,6 @@ const styles = StyleSheet.create({
   updatesSectionContent: {
     padding: 12,
     borderRadius: 12,
-    flex: 1,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -1814,42 +1779,41 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   updateCard: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    borderRadius: 12,
-    marginBottom: 8,
+    flexDirection: 'column',
+    borderRadius: 14,
+    marginBottom: 12,
     borderWidth: 1,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  updateAccent: {
-    width: 3,
-    borderRadius: 0,
-  },
-  updateContent: {
-    flex: 1,
-    flexDirection: 'column',
-    padding: 0,
-  },
-  updateTextContent: {
-    flex: 1,
-    padding: 10,
-  },
-  cardShadow: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   updateImage: {
     width: '100%',
-    height: 120,
+    height: 140,
     resizeMode: 'cover',
+  },
+  updateImagePlaceholder: {
+    width: '100%',
+    height: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  updateCardContent: {
+    padding: 12,
+  },
+  updateCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  updateCardHeaderLeft: {
+    flex: 1,
+    flexShrink: 1,
   },
   updateTitle: {
     fontSize: 15,
@@ -1861,30 +1825,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 6,
   },
   updateDate: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
   },
-  updateDescription: {
-    fontSize: 12,
-    marginBottom: 6,
-    lineHeight: 16,
+  updateTagBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    flexShrink: 0,
   },
-  updateTagRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  statusItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  updateTagText: {
+  updateTagBadgeText: {
     fontSize: 12,
     fontWeight: '700',
+    textTransform: 'capitalize',
   },
   searchContainer: {
     paddingHorizontal: 16,

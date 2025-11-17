@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Dimensions, Image, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Image, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import EventDetailsDrawer from '../../components/calendar/EventDetailsDrawer';
 // import AddPostDrawer from '../../components/dashboard/AddPostDrawer'; // Replaced with PostUpdate screen navigation
@@ -85,15 +85,6 @@ const AdminDashboard = () => {
     right: insets.right,
   }), [insets.top, insets.bottom, insets.left, insets.right]);
 
-  // Calculate available height for scrollable cards section
-  const screenHeight = Dimensions.get('window').height;
-  const cardsScrollViewHeight = useMemo(() => {
-    const headerHeight = safeInsets.top + 60; // Header height
-    const welcomeSectionHeight = 60; // Welcome section approximate height
-    const updatesHeaderHeight = 120; // Updates header + filters approximate height
-    const bottomNavHeight = safeInsets.bottom + 80; // Bottom nav + safe area
-    return screenHeight - headerHeight - welcomeSectionHeight - updatesHeaderHeight - bottomNavHeight - 50; // 50 for padding/margins
-  }, [screenHeight, safeInsets.top, safeInsets.bottom]);
   
   // Auth state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -885,8 +876,20 @@ const AdminDashboard = () => {
         onClose={() => setIsHistoryOpen(false)}
       />
 
-      {/* Main Content - Fixed Header Section */}
-      <View style={styles.content}>
+      {/* Main Content - Scrollable */}
+      <ScrollView
+        ref={scrollRef}
+        style={styles.content}
+        contentContainerStyle={{ 
+          paddingHorizontal: 16,
+          paddingTop: 12,
+          paddingBottom: safeInsets.bottom + 100 
+        }}
+        showsVerticalScrollIndicator={true}
+        bounces={true}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.welcomeSection}>
           <View style={styles.welcomeText}>
             <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>Hello {userName},</Text>
@@ -896,7 +899,7 @@ const AdminDashboard = () => {
 
         {/* Current Month Calendar Events Section */}
         {currentMonthEvents.length > 0 && (
-          <View style={[styles.calendarEventsSection, { borderColor: theme.colors.border, marginBottom: 12 }]} collapsable={false}>
+          <View style={[styles.calendarEventsSection, { borderColor: theme.colors.border, marginBottom: 12, marginHorizontal: 0 }]} collapsable={false}>
             <BlurView
               intensity={Platform.OS === 'ios' ? 20 : 15}
               tint={isDarkMode ? 'dark' : 'light'}
@@ -998,7 +1001,7 @@ const AdminDashboard = () => {
         )}
 
         {/* Recent Updates Section - Fixed Header */}
-        <View style={[styles.recentUpdatesSection, { borderColor: theme.colors.border }]} collapsable={false}>
+        <View style={[styles.recentUpdatesSection, { borderColor: theme.colors.border, marginHorizontal: 0 }]} collapsable={false}>
           <BlurView
             intensity={Platform.OS === 'ios' ? 20 : 15}
             tint={isDarkMode ? 'dark' : 'light'}
@@ -1017,7 +1020,13 @@ const AdminDashboard = () => {
                 <View style={styles.sectionTitleWrapper}>
                   <Text style={[styles.sectionTitleEnhanced, { color: theme.colors.text }]}>Updates</Text>
                   <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
-                    {timeFilter === 'upcoming' ? 'Coming soon' : timeFilter === 'recent' ? 'Past events' : 'All events'}
+                    {!isLoadingDashboard && !dashboardError && displayedUpdates.length > 0 
+                      ? timeFilter === 'upcoming' 
+                        ? `Upcoming · ${displayedUpdates.length}`
+                        : timeFilter === 'recent'
+                        ? `Recent · ${displayedUpdates.length}`
+                        : `All · ${displayedUpdates.length}`
+                      : timeFilter === 'upcoming' ? 'Upcoming' : timeFilter === 'recent' ? 'Recent' : 'All'}
                   </Text>
                 </View>
               </View>
@@ -1044,19 +1053,8 @@ const AdminDashboard = () => {
                 </Pressable>
               </View>
               
-              {/* Scrollable Cards Section */}
-              <ScrollView
-                style={[styles.cardsScrollView, { maxHeight: cardsScrollViewHeight }]}
-                contentContainerStyle={{ paddingBottom: safeInsets.bottom + 60 }}
-                showsVerticalScrollIndicator={true}
-                showsHorizontalScrollIndicator={false}
-                nestedScrollEnabled={true}
-                keyboardShouldPersistTaps="handled"
-                bounces={true}
-                scrollEventThrottle={16}
-                removeClippedSubviews={true}
-                horizontal={false}
-              >
+              {/* Updates Cards Section - No nested scroll, part of main scroll */}
+              <View style={styles.updatesCardsContainer}>
                 {dashboardError && (
                   <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                     <Ionicons name="alert-circle-outline" size={40} color="#DC2626" />
@@ -1153,11 +1151,11 @@ const AdminDashboard = () => {
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
+              </View>
             </View>
           </BlurView>
         </View>
-      </View>
+      </ScrollView>
 
       {/* Floating Plus Icon Button - Bottom Right */}
       <TouchableOpacity
@@ -1462,12 +1460,10 @@ const styles = StyleSheet.create({
     flex: 1,
     zIndex: 1,
     width: '100%',
-    paddingHorizontal: 16,
-    paddingTop: 12,
   },
-  cardsScrollView: {
-    flex: 1,
-    flexShrink: 1,
+  updatesCardsContainer: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
   },
   bottomNavContainer: {
     position: 'absolute',

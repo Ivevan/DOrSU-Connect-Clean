@@ -67,8 +67,8 @@ const AppNavigator = () => {
         const adminEmail = await AsyncStorage.getItem('userEmail');
         
         if (isAdmin === 'true' && adminToken && adminEmail) {
-          // Admin is logged in - route to admin dashboard
-          setInitialRoute('AdminDashboard');
+          // Admin is logged in - route to admin AI chat
+          setInitialRoute('AdminAIChat');
           setIsLoading(false);
           return;
         }

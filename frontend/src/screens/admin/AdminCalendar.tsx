@@ -1528,31 +1528,16 @@ const AdminCalendar = () => {
         <View style={styles.headerRight}>
           <TouchableOpacity 
             style={styles.profileButton} 
-            onPress={() => {
-              setShowHelpModal(true);
-              Animated.parallel([
-                Animated.spring(helpModalSlideAnim, {
-                  toValue: 1,
-                  useNativeDriver: true,
-                  tension: 65,
-                  friction: 11,
-                }),
-                Animated.timing(helpModalBackdropOpacity, {
-                  toValue: 1,
-                  duration: 300,
-                  useNativeDriver: true,
-                }),
-              ]).start();
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }}
-            accessibilityLabel="Calendar help and instructions"
+            onPress={() => navigation.navigate('AdminSettings')} 
+            accessibilityLabel="Admin profile - Go to settings"
           >
-            <View style={[styles.profileIconCircle, { backgroundColor: '#FF9500' }]}>
-              <Text style={styles.profileInitials}>?</Text>
+            <View style={[styles.profileIconCircle, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
+              <Text style={styles.profileInitials}>AD</Text>
             </View>
           </TouchableOpacity>
         </View>
       </View>
+
 
       <ScrollView
         ref={scrollRef}
@@ -1681,6 +1666,31 @@ const AdminCalendar = () => {
                 <Ionicons name="calendar-outline" size={14} color={t.colors.accent} />
         </View>
               <Text style={[styles.eventsTitle, { color: t.colors.text }]}>Events</Text>
+              <TouchableOpacity 
+                style={styles.infoIconButton}
+                onPress={() => {
+                  setShowHelpModal(true);
+                  Animated.parallel([
+                    Animated.spring(helpModalSlideAnim, {
+                      toValue: 1,
+                      useNativeDriver: true,
+                      tension: 65,
+                      friction: 11,
+                    }),
+                    Animated.timing(helpModalBackdropOpacity, {
+                      toValue: 1,
+                      duration: 300,
+                      useNativeDriver: true,
+                    }),
+                  ]).start();
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                accessibilityLabel="Calendar help and information"
+                activeOpacity={0.7}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="information-circle-outline" size={18} color={t.colors.textMuted} />
+              </TouchableOpacity>
             </View>
             <View style={styles.eventsHeaderRight}>
               <TouchableOpacity
@@ -2372,6 +2382,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 16,
+    minHeight: 40,
   },
   segmentedToggle: {
     flexDirection: 'row',
@@ -2398,11 +2409,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexShrink: 1,
+  },
+  infoIconButton: {
+    padding: 2,
+    marginLeft: -6,
   },
   eventsHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
+    flexShrink: 1,
   },
   eventsIconWrap: {
     width: 22,
@@ -2665,27 +2682,29 @@ const styles = StyleSheet.create({
   csvUploadButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
+    flexShrink: 1,
   },
   csvUploadText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   deleteAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
+    flexShrink: 1,
   },
   deleteAllText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   segmentedControlContainer: {

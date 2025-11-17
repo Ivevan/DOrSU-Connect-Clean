@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Linking, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Animated, Linking, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
@@ -15,6 +15,11 @@ import { useTheme } from '../../contexts/ThemeContext';
 import InfoModal from '../../modals/InfoModal';
 import AIService, { ChatHistoryItem, Message } from '../../services/AIService';
 import { formatAIResponse, getMarkdownStyles } from '../../utils/markdownFormatter';
+
+// Extended Message type to include userType
+type ExtendedMessage = Message & {
+  userType?: 'student' | 'faculty';
+};
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -43,7 +48,7 @@ const AdminAIChat = () => {
   const isWide = width > 600;
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ExtendedMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
@@ -51,8 +56,11 @@ const AdminAIChat = () => {
   const [isLoadingTopQueries, setIsLoadingTopQueries] = useState(false);
   const [selectedUserType, setSelectedUserType] = useState<'student' | 'faculty'>('student');
   const [isFaqsExpanded, setIsFaqsExpanded] = useState(true);
+  const [isUserTypeDropdownOpen, setIsUserTypeDropdownOpen] = useState(false);
+  const [isInputFocused, setIsInputFocused] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
   const sessionId = useRef<string>('');
+  const inputTagRef = useRef<View>(null);
 
   // Segmented control animation and width tracking
   const segmentAnim = useRef(new Animated.Value(0)).current;
@@ -331,7 +339,8 @@ const AdminAIChat = () => {
       
       setIsLoading(true);
       const chatMessages = await AIService.getChatSession(chatId, token);
-      setMessages(chatMessages);
+      // Cast to ExtendedMessage (messages from history may not have userType)
+      setMessages(chatMessages as ExtendedMessage[]);
       sessionId.current = chatId;
       setIsHistoryOpen(false);
     } catch (error) {
@@ -351,11 +360,12 @@ const AdminAIChat = () => {
     }
 
     // Create user message
-    const userMessage: Message = {
+    const userMessage: ExtendedMessage = {
       id: Date.now().toString(),
       role: 'user',
       content: textToSend,
       timestamp: new Date(),
+      userType: selectedUserType,
     };
 
     // Add user message to chat
@@ -372,22 +382,24 @@ const AdminAIChat = () => {
       const formattedContent = formatAIResponse(response.reply);
 
       // Create assistant message
-      const assistantMessage: Message = {
+      const assistantMessage: ExtendedMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: formattedContent,
         timestamp: new Date(),
+        userType: selectedUserType,
       };
 
       // Add assistant message to chat
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
       // Show error message
-      const errorMessage: Message = {
+      const errorMessage: ExtendedMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: 'Sorry, I encountered an error. Please make sure the AI backend is running and try again.',
         timestamp: new Date(),
+        userType: selectedUserType,
       };
       setMessages(prev => [...prev, errorMessage]);
       console.error('Failed to send message:', error);
@@ -1067,12 +1079,99 @@ const AdminAIChat = () => {
             borderColor: isDarkMode ? '#374151' : '#E5E7EB',
             shadowColor: '#000',
           }]}>
+            <View ref={inputTagRef} style={styles.inputTagWrapper}>
+              <TouchableOpacity
+                style={[styles.inputTag, { 
+                  backgroundColor: selectedUserType === 'student' 
+                    ? (isDarkMode ? 'rgba(16, 185, 129, 0.15)' : 'rgba(16, 185, 129, 0.1)')
+                    : (isDarkMode ? 'rgba(37, 99, 235, 0.15)' : 'rgba(37, 99, 235, 0.1)'),
+                  borderColor: selectedUserType === 'student' ? '#10B981' : '#2563EB',
+                  opacity: (inputText.trim().length > 0 || isInputFocused) ? 1 : 0.6,
+                }]}
+                onPress={() => {
+                  if (inputText.trim().length > 0 || isInputFocused) {
+                    setIsUserTypeDropdownOpen(!isUserTypeDropdownOpen);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }
+                }}
+                activeOpacity={(inputText.trim().length > 0 || isInputFocused) ? 0.7 : 1}
+                disabled={!(inputText.trim().length > 0 || isInputFocused)}
+              >
+                <View style={[styles.inputTagDot, { backgroundColor: selectedUserType === 'student' ? '#10B981' : '#2563EB' }]} />
+                <Text style={[styles.inputTagText, { color: selectedUserType === 'student' ? '#10B981' : '#2563EB' }]}>
+                  {selectedUserType === 'student' ? 'Student' : 'Faculty'}
+                </Text>
+                {(inputText.trim().length > 0 || isInputFocused) && (
+                  <Ionicons 
+                    name={isUserTypeDropdownOpen ? "chevron-up" : "chevron-down"} 
+                    size={12} 
+                    color={selectedUserType === 'student' ? '#10B981' : '#2563EB'} 
+                    style={{ marginLeft: 4 }}
+                  />
+                )}
+              </TouchableOpacity>
+              {isUserTypeDropdownOpen && (inputText.trim().length > 0 || isInputFocused) && (
+                <View style={[styles.userTypeDropdown, {
+                    backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
+                    borderColor: isDarkMode ? '#374151' : '#E5E7EB',
+                    shadowColor: isDarkMode ? '#000' : '#000',
+                  }]}>
+                    <TouchableOpacity
+                      style={[styles.userTypeDropdownOption, selectedUserType === 'student' && styles.userTypeDropdownOptionActive]}
+                      onPress={() => {
+                        setSelectedUserType('student');
+                        setIsUserTypeDropdownOpen(false);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.userTypeDropdownDot, { backgroundColor: '#10B981' }]} />
+                      <Text style={[styles.userTypeDropdownText, { 
+                        color: selectedUserType === 'student' 
+                          ? '#10B981' 
+                          : (isDarkMode ? '#F9FAFB' : '#111827')
+                      }]}>
+                        Student
+                      </Text>
+                      {selectedUserType === 'student' && (
+                        <Ionicons name="checkmark" size={16} color="#10B981" />
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.userTypeDropdownOption, selectedUserType === 'faculty' && styles.userTypeDropdownOptionActive]}
+                      onPress={() => {
+                        setSelectedUserType('faculty');
+                        setIsUserTypeDropdownOpen(false);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.userTypeDropdownDot, { backgroundColor: '#2563EB' }]} />
+                      <Text style={[styles.userTypeDropdownText, { 
+                        color: selectedUserType === 'faculty' 
+                          ? '#2563EB' 
+                          : (isDarkMode ? '#F9FAFB' : '#111827')
+                      }]}>
+                        Faculty
+                      </Text>
+                      {selectedUserType === 'faculty' && (
+                        <Ionicons name="checkmark" size={16} color="#2563EB" />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+              )}
+            </View>
             <TextInput
               style={[styles.input, { color: isDarkMode ? '#F9FAFB' : '#111827' }]}
               placeholder="Message DOrSU AI"
               placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
               value={inputText}
               onChangeText={setInputText}
+              onFocus={() => setIsInputFocused(true)}
+              onBlur={() => {
+                setIsInputFocused(false);
+                setIsUserTypeDropdownOpen(false);
+              }}
               onSubmitEditing={() => handleSendMessage()}
               editable={!isLoading}
               multiline
@@ -1099,6 +1198,14 @@ const AdminAIChat = () => {
           </View>
         </View>
       </View>
+
+      {/* Dropdown Overlay - Close dropdown when clicking outside */}
+      {isUserTypeDropdownOpen && (
+        <Pressable 
+          style={styles.dropdownOverlay}
+          onPress={() => setIsUserTypeDropdownOpen(false)}
+        />
+      )}
 
       <AdminBottomNavBar
         activeTab="chat"
@@ -1415,6 +1522,74 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 8,
   },
+  inputTagWrapper: {
+    position: 'relative',
+    zIndex: 1000,
+  },
+  inputTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 6,
+    marginRight: 4,
+  },
+  inputTagDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  inputTagText: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  dropdownOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 999,
+    backgroundColor: 'transparent',
+  },
+  userTypeDropdown: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    marginTop: 4,
+    minWidth: 140,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 4,
+    zIndex: 1001,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  userTypeDropdownOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
+  },
+  userTypeDropdownOptionActive: {
+    backgroundColor: 'rgba(0, 0, 0, 0.03)',
+  },
+  userTypeDropdownDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  userTypeDropdownText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+  },
   input: {
     flex: 1,
     fontSize: 15,
@@ -1461,6 +1636,20 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 20,
+  },
+  messageTag: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginBottom: 6,
+  },
+  messageTagText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   messageText: {
     fontSize: 15,

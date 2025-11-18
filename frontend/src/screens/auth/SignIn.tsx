@@ -3,10 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useRef } from 'react';
-import { Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, Dimensions, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../config/api.config';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
@@ -27,15 +26,13 @@ const { width, height } = Dimensions.get('window');
 const SignIn = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
-  const { isDarkMode, theme: t } = useTheme();
+  const { isDarkMode } = useTheme();
   const { isConnected, isInternetReachable } = useNetworkStatus();
   const isOnline = isConnected && isInternetReachable;
 
-  // Animation values
+  // Simplified animation values
   const signInButtonScale = useRef(new Animated.Value(1)).current;
-  const logoScale = useRef(new Animated.Value(1)).current;
-  const logoGlow = useRef(new Animated.Value(0)).current;
-  const floatingAnimation = useRef(new Animated.Value(0)).current;
+  const loadingRotation = useRef(new Animated.Value(0)).current;
   
   // Form state management
   const [email, setEmail] = React.useState('');
@@ -47,197 +44,9 @@ const SignIn = () => {
   // Input focus states
   const emailFocus = useRef(new Animated.Value(0)).current;
   const passwordFocus = useRef(new Animated.Value(0)).current;
-  const loadingRotation = useRef(new Animated.Value(0)).current;
-  
-  // Vibration animation states
-  const emailVibration = useRef(new Animated.Value(0)).current;
-  const passwordVibration = useRef(new Animated.Value(0)).current;
-  const techFloat1 = useRef(new Animated.Value(0)).current;
-  const techFloat2 = useRef(new Animated.Value(0)).current;
-  const techFloat3 = useRef(new Animated.Value(0)).current;
-  const techFloat4 = useRef(new Animated.Value(0)).current;
-  const techFloat5 = useRef(new Animated.Value(0)).current;
-  const floatAnim1 = useRef(new Animated.Value(0)).current;
-  const lightSpot1 = useRef(new Animated.Value(0)).current;
-  const lightSpot2 = useRef(new Animated.Value(0)).current;
-  const lightSpot3 = useRef(new Animated.Value(0)).current;
-  
-  // Screen transition animations - REMOVED for performance debugging
-
-  // Start floating animation on mount
-  React.useEffect(() => {
-    const startFloatingAnimation = () => {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(floatingAnimation, {
-            toValue: 1,
-            duration: 3000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(floatingAnimation, {
-            toValue: 0,
-            duration: 3000,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    };
-    startFloatingAnimation();
-
-    // Start main orb animation
-    const startOrbAnimations = () => {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(floatAnim1, {
-            toValue: 1,
-            duration: 8000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(floatAnim1, {
-            toValue: 0,
-            duration: 8000,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot1, {
-            toValue: 1,
-            duration: 12000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot1, {
-            toValue: 0,
-            duration: 12000,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot2, {
-            toValue: 1,
-            duration: 18000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot2, {
-            toValue: 0,
-            duration: 18000,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot3, {
-            toValue: 1,
-            duration: 14000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot3, {
-            toValue: 0,
-            duration: 14000,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    };
-    startOrbAnimations();
-  }, []);
-
-  // Start floating animation on mount
-  React.useEffect(() => {
-    const startTechAnimations = () => {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(techFloat1, {
-            toValue: 1,
-            duration: 4000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(techFloat1, {
-            toValue: 0,
-            duration: 4000,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(techFloat2, {
-            toValue: 1,
-            duration: 3500,
-            delay: 1000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(techFloat2, {
-            toValue: 0,
-            duration: 3500,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(techFloat3, {
-            toValue: 1,
-            duration: 4500,
-            delay: 2000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(techFloat3, {
-            toValue: 0,
-            duration: 4500,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      // Simplified floating elements - only 2 additional
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(techFloat4, {
-            toValue: 1,
-            duration: 3800,
-            delay: 500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(techFloat4, {
-            toValue: 0,
-            duration: 3800,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(techFloat5, {
-            toValue: 1,
-            duration: 4200,
-            delay: 1500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(techFloat5, {
-            toValue: 0,
-            duration: 4200,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    };
-    startTechAnimations();
-  }, []);
 
   // Animation functions
   const handleButtonPress = (scaleRef: Animated.Value, callback: () => void) => {
-    // Haptic feedback for button press
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
     Animated.sequence([
@@ -254,43 +63,6 @@ const SignIn = () => {
     ]).start(callback);
   };
 
-  // Function to trigger vibration animation
-  const triggerVibrationAnimation = (field: 'email' | 'password') => {
-    const vibrationRef = field === 'email' ? emailVibration : passwordVibration;
-    
-    // Phone vibration
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    
-    // Container vibration animation
-    Animated.sequence([
-      Animated.timing(vibrationRef, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(vibrationRef, {
-        toValue: -1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(vibrationRef, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(vibrationRef, {
-        toValue: -1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(vibrationRef, {
-        toValue: 0,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
-
   // Function to handle sign in button press
   const handleSignIn = async () => {
     // Check network status first
@@ -301,8 +73,6 @@ const SignIn = () => {
         password: '', 
         general: 'No internet connection. Please check your network and try again.' 
       });
-      triggerVibrationAnimation('email');
-      setTimeout(() => triggerVibrationAnimation('password'), 200);
       return;
     }
 
@@ -338,8 +108,6 @@ const SignIn = () => {
           password: '', 
           general: 'No internet connection. Please check your network and try again.' 
         });
-        triggerVibrationAnimation('email');
-        setTimeout(() => triggerVibrationAnimation('password'), 200);
         return;
       }
       
@@ -370,11 +138,9 @@ const SignIn = () => {
       if (!email.trim()) {
         newErrors.email = 'Try again with a valid email';
         hasErrors = true;
-        triggerVibrationAnimation('email');
       } else if (!/\S+@\S+\.\S+/.test(email)) {
         newErrors.email = 'Try again with a valid email';
         hasErrors = true;
-        triggerVibrationAnimation('email');
       } else {
         // Block temporary/disposable email services
         const tempEmailDomains = [
@@ -390,18 +156,15 @@ const SignIn = () => {
         if (tempEmailDomains.includes(emailDomain)) {
           newErrors.email = 'Temporary emails not allowed';
           hasErrors = true;
-          triggerVibrationAnimation('email');
         }
       }
       
       if (!password.trim()) {
         newErrors.password = 'Try again with a valid password';
         hasErrors = true;
-        triggerVibrationAnimation('password');
       } else if (password.length < 8) {
         newErrors.password = 'Password must be at least 8 characters';
         hasErrors = true;
-        triggerVibrationAnimation('password');
       }
       
       if (hasErrors) {
@@ -461,10 +224,6 @@ const SignIn = () => {
       
       setErrors(prev => ({ ...prev, general: errorMessage }));
       
-      // Trigger vibration for both fields
-      triggerVibrationAnimation('email');
-      setTimeout(() => triggerVibrationAnimation('password'), 200);
-      
       console.error('Sign in error:', error);
     }
   };
@@ -472,423 +231,134 @@ const SignIn = () => {
   const KeyboardWrapper = Platform.OS === 'ios' ? KeyboardAvoidingView : View;
   const keyboardProps = Platform.OS === 'ios' ? { behavior: 'padding' as const, keyboardVerticalOffset: 0 } : {};
 
-  return (
-    <View style={styles.container}>
-      <KeyboardWrapper 
-        style={styles.keyboardAvoidingView}
-        {...keyboardProps}
-    >
-      <StatusBar
-        backgroundColor="transparent"
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        translucent={true}
-        animated={true}
-      />
-      
-      {/* Background Gradient Layer */}
-      <LinearGradient
-        colors={[
-          isDarkMode ? '#0B1220' : '#FBF8F3',
-          isDarkMode ? '#111827' : '#F8F5F0',
-          isDarkMode ? '#1F2937' : '#F5F2ED'
-        ]}
-        style={styles.backgroundGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-      />
-      
-      {/* Blur overlay on entire background - very subtle */}
-      <BlurView
-        intensity={Platform.OS === 'ios' ? 5 : 3}
-        tint="default"
-        style={styles.backgroundGradient}
-      />
+  const isMobile = width < 768;
 
-      {/* Animated Floating Background Orbs (Copilot-style) */}
-      <View style={styles.floatingBgContainer} pointerEvents="none">
-        {/* Light Spot 1 - Top right gentle glow */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '8%',
-              right: '12%',
-              transform: [
-                {
-                  translateX: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -15],
-                  }),
-                },
-                {
-                  translateY: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 12],
-                  }),
-                },
-                {
-                  scale: lightSpot1.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.08, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot1}>
-            <LinearGradient
-              colors={['rgba(255, 220, 180, 0.35)', 'rgba(255, 200, 150, 0.18)', 'rgba(255, 230, 200, 0.08)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.2, y: 0.2 }}
-              end={{ x: 1, y: 1 }}
-            />
+  // Render form content (shared between mobile and desktop)
+  const renderFormContent = () => {
+    return (
+      <>
+        {/* Logo and Title Section */}
+        <View style={styles.logoSection}>
+          <Image 
+            source={require('../../../../assets/DOrSU.png')} 
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
+          <View style={styles.logoTextContainer}>
+            <Text style={styles.logoTitle}>DOrSU CONNECT</Text>
+            <Text style={styles.logoSubtitle}>Official University Portal</Text>
           </View>
-        </Animated.View>
-
-        {/* Light Spot 2 - Middle left soft circle */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '45%',
-              left: '8%',
-              transform: [
-                {
-                  translateX: lightSpot2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 18],
-                  }),
-                },
-                {
-                  translateY: lightSpot2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -10],
-                  }),
-                },
-                {
-                  scale: lightSpot2.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.06, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot2}>
-            <LinearGradient
-              colors={['rgba(255, 210, 170, 0.28)', 'rgba(255, 200, 160, 0.15)', 'rgba(255, 220, 190, 0.06)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.3, y: 0.3 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Light Spot 3 - Bottom center blurry glow */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              bottom: '12%',
-              left: '55%',
-              transform: [
-                {
-                  translateX: lightSpot3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -20],
-                  }),
-                },
-                {
-                  translateY: lightSpot3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 8],
-                  }),
-                },
-                {
-                  scale: lightSpot3.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.1, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot3}>
-            <LinearGradient
-              colors={['rgba(255, 190, 140, 0.25)', 'rgba(255, 180, 130, 0.12)', 'rgba(255, 210, 170, 0.05)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.4, y: 0.4 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Orb 1 - Soft Orange Glow */}
-        <Animated.View
-          style={[
-            styles.floatingOrbWrapper,
-            {
-              top: '35%',
-              left: '50%',
-              marginLeft: -250,
-              transform: [
-                {
-                  translateX: floatAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [-30, 30],
-                  }),
-                },
-                {
-                  translateY: floatAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [-20, 20],
-                  }),
-                },
-                {
-                  scale: floatAnim1.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.05, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.floatingOrb1}>
-            <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-            <BlurView
-              intensity={Platform.OS === 'ios' ? 60 : 45}
-              tint="default"
-              style={StyleSheet.absoluteFillObject}
-            />
-          </View>
-        </Animated.View>
-      </View>
-      
-      
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        bounces={Platform.OS === 'ios'}
-        keyboardDismissMode="interactive"
-        style={styles.scrollView}
-      >
-        <View style={[
-          styles.content,
-          {
-            paddingTop: insets.top,
-            paddingBottom: insets.bottom,
-            paddingLeft: insets.left,
-            paddingRight: insets.right,
-          },
-        ]}>
-          {/* Header Section - Simplified */}
-          <View style={styles.headerSection}>
-            <TouchableOpacity 
-              onPress={() => {
-                // Add haptic feedback for logo press
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              }}
-              activeOpacity={1}
-              hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-              accessibilityRole="button"
-              accessibilityLabel="DOrSU Connect logo"
-              accessibilityHint="Tap to see logo animation"
-              accessibilityState={{ disabled: false }}
-            >
-              <Animated.View style={{
-                transform: [
-                  { scale: logoScale },
-                  { 
-                    translateY: floatingAnimation.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [0, -8],
-                    })
-                  }
-                ],
-              }}>
-                {/* Glow Effect */}
-                <Animated.View style={[
-                  styles.logoGlow,
-                  {
-                    opacity: logoGlow,
-                  },
-                ]} />
-                
-                <Image source={require('../../../../assets/DOrSU.png')} style={styles.logoImage} />
-                
-                {/* Animated sparkles around logo */}
-                <View style={styles.sparkleContainer}>
-                  <Animated.View style={[styles.sparkle, styles.sparkle1, {
-                    opacity: floatingAnimation.interpolate({
-                      inputRange: [0, 0.5, 1],
-                      outputRange: [0.3, 0.8, 0.3],
-                    }),
-                    transform: [{
-                      scale: floatingAnimation.interpolate({
-                        inputRange: [0, 0.5, 1],
-                        outputRange: [0.8, 1.2, 0.8],
-                      })
-                    }]
-                  }]} />
-                  <Animated.View style={[styles.sparkle, styles.sparkle2, {
-                    opacity: floatingAnimation.interpolate({
-                      inputRange: [0, 0.5, 1],
-                      outputRange: [0.5, 1, 0.5],
-                    }),
-                    transform: [{
-                      scale: floatingAnimation.interpolate({
-                        inputRange: [0, 0.5, 1],
-                        outputRange: [1, 0.8, 1],
-                      })
-                    }]
-                  }]} />
-                  <Animated.View style={[styles.sparkle, styles.sparkle3, {
-                    opacity: floatingAnimation.interpolate({
-                      inputRange: [0, 0.5, 1],
-                      outputRange: [0.4, 0.9, 0.4],
-                    }),
-                    transform: [{
-                      scale: floatingAnimation.interpolate({
-                        inputRange: [0, 0.5, 1],
-                        outputRange: [0.9, 1.1, 0.9],
-                      })
-                    }]
-                  }]} />
-            </View>
-              </Animated.View>
-            </TouchableOpacity>
-            <Text style={[styles.welcomeText, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Welcome Back</Text>
-            <Text style={[styles.signInText, { color: isDarkMode ? '#E5E7EB' : '#374151' }]}>Sign in to your account</Text>
         </View>
 
+        {/* Welcome Text */}
+        <Text style={styles.welcomeText}>Please sign in to continue</Text>
+
         {/* Form Section */}
-        <View style={styles.formContainer}>
-          <View style={styles.inputContainer}>
+        <View style={styles.formSection}>
+          {/* Email Input */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Registered E-mail Address</Text>
             <Animated.View style={[
               styles.inputWrapper,
               {
-                backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.8)' : 'rgba(255, 255, 255, 0.9)',
                 borderColor: emailFocus.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [errors.email ? '#EF4444' : (isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)'), errors.email ? '#EF4444' : '#2196F3'],
+                  outputRange: [errors.email ? '#EF4444' : '#E5E7EB', errors.email ? '#EF4444' : '#2563EB'],
                 }),
-                shadowOpacity: emailFocus.interpolate({
+                borderWidth: emailFocus.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0.1, 0.2],
+                  outputRange: [1, 2],
                 }),
-                transform: [{
-                  translateX: emailVibration.interpolate({
-                    inputRange: [-1, 0, 1],
-                    outputRange: [-8, 0, 8],
-                  })
-                }]
               }
             ]}>
               <MaterialIcons 
-                name="person" 
+                name="email" 
                 size={20} 
-                color={errors.email ? '#EF4444' : (isDarkMode ? '#9CA3AF' : '#666')} 
+                color={errors.email ? '#EF4444' : '#9CA3AF'} 
                 style={styles.inputIcon} 
               />
-            <TextInput
-              style={[styles.input, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}
-                placeholder="Username or Email"
-              placeholderTextColor={isDarkMode ? '#9CA3AF' : '#666'}
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your email address"
+                placeholderTextColor="#9CA3AF"
                 autoCapitalize="none"
                 autoCorrect={false}
+                keyboardType="email-address"
                 value={email}
                 onChangeText={(text) => {
                   setEmail(text);
                   if (errors.email) setErrors(prev => ({ ...prev, email: '' }));
                 }}
-                   onFocus={() => {
-                     Animated.timing(emailFocus, {
-                       toValue: 1,
-                       duration: 200,
-                       useNativeDriver: true,
-                     }).start();
-                   }}
-                   onBlur={() => {
-                     Animated.timing(emailFocus, {
-                       toValue: 0,
-                       duration: 200,
-                       useNativeDriver: true,
-                     }).start();
-                   }}
-                accessibilityLabel="Username or Email"
+                onFocus={() => {
+                  Animated.timing(emailFocus, {
+                    toValue: 1,
+                    duration: 200,
+                    useNativeDriver: false,
+                  }).start();
+                }}
+                onBlur={() => {
+                  Animated.timing(emailFocus, {
+                    toValue: 0,
+                    duration: 200,
+                    useNativeDriver: false,
+                  }).start();
+                }}
+                accessibilityLabel="Registered E-mail Address"
               />
             </Animated.View>
             <View style={styles.errorContainer}>
               {errors.email ? (
-                <View style={styles.errorMessageContainer}>
-                  <View style={styles.errorIcon}>
-                    <Text style={styles.errorIconText}>!</Text>
-                  </View>
-                  <Text style={styles.errorText}>{errors.email}</Text>
-                </View>
+                <Text style={styles.errorText}>{errors.email}</Text>
               ) : null}
             </View>
-            
+          </View>
+
+          {/* Password Input */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Password</Text>
             <Animated.View style={[
               styles.inputWrapper,
               {
-                backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.8)' : 'rgba(255, 255, 255, 0.9)',
                 borderColor: passwordFocus.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [errors.password ? '#EF4444' : (isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)'), errors.password ? '#EF4444' : '#2196F3'],
+                  outputRange: [errors.password ? '#EF4444' : '#E5E7EB', errors.password ? '#EF4444' : '#2563EB'],
                 }),
-                shadowOpacity: passwordFocus.interpolate({
+                borderWidth: passwordFocus.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0.1, 0.2],
+                  outputRange: [1, 2],
                 }),
-                transform: [{
-                  translateX: passwordVibration.interpolate({
-                    inputRange: [-1, 0, 1],
-                    outputRange: [-8, 0, 8],
-                  })
-                }]
               }
             ]}>
               <MaterialIcons 
                 name="lock" 
                 size={20} 
-                color={errors.password ? '#EF4444' : (isDarkMode ? '#9CA3AF' : '#666')} 
+                color={errors.password ? '#EF4444' : '#9CA3AF'} 
                 style={styles.inputIcon} 
-            />
-            <TextInput
-              style={[styles.input, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}
-              placeholder="Password"
-              placeholderTextColor={isDarkMode ? '#9CA3AF' : '#666'}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your password"
+                placeholderTextColor="#9CA3AF"
                 secureTextEntry={!showPassword}
                 value={password}
                 onChangeText={(text) => {
                   setPassword(text);
                   if (errors.password) setErrors(prev => ({ ...prev, password: '' }));
                 }}
-                   onFocus={() => {
-                     Animated.timing(passwordFocus, {
-                       toValue: 1,
-                       duration: 200,
-                       useNativeDriver: true,
-                     }).start();
-                   }}
-                   onBlur={() => {
-                     Animated.timing(passwordFocus, {
-                       toValue: 0,
-                       duration: 200,
-                       useNativeDriver: true,
-                     }).start();
-                   }}
+                onFocus={() => {
+                  Animated.timing(passwordFocus, {
+                    toValue: 1,
+                    duration: 200,
+                    useNativeDriver: false,
+                  }).start();
+                }}
+                onBlur={() => {
+                  Animated.timing(passwordFocus, {
+                    toValue: 0,
+                    duration: 200,
+                    useNativeDriver: false,
+                  }).start();
+                }}
                 accessibilityLabel="Password"
               />
               <TouchableOpacity
@@ -900,104 +370,168 @@ const SignIn = () => {
                 <MaterialIcons 
                   name={showPassword ? "visibility-off" : "visibility"} 
                   size={20} 
-                  color={isDarkMode ? '#9CA3AF' : '#666'} 
+                  color="#9CA3AF" 
                 />
               </TouchableOpacity>
             </Animated.View>
             <View style={styles.errorContainer}>
               {errors.password ? (
-                <View style={styles.errorMessageContainer}>
-                  <View style={styles.errorIcon}>
-                    <Text style={styles.errorIconText}>!</Text>
-                  </View>
-                  <Text style={styles.errorText}>{errors.password}</Text>
-                </View>
+                <Text style={styles.errorText}>{errors.password}</Text>
               ) : null}
             </View>
-            <TouchableOpacity 
-              style={styles.forgotPassword}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Text style={[styles.forgotPasswordText, { color: isDarkMode ? '#9CA3AF' : '#1F2937' }]}>Forgot Password?</Text>
-            </TouchableOpacity>
           </View>
 
           {/* General Error Message */}
-          {errors.general ? (
-            <View style={styles.generalErrorContainer}>
-              <MaterialIcons name="error-outline" size={20} color="#EF4444" />
-              <Text style={styles.generalErrorText}>{errors.general}</Text>
-            </View>
-          ) : null}
-          
+          <View style={[
+            styles.generalErrorContainer,
+            !errors.general && styles.generalErrorContainerHidden
+          ]}>
+            {errors.general ? (
+              <>
+                <MaterialIcons name="error-outline" size={20} color="#EF4444" />
+                <Text style={styles.generalErrorText}>{errors.general}</Text>
+              </>
+            ) : null}
+          </View>
+
+          {/* Login Button */}
           <Animated.View style={{ transform: [{ scale: signInButtonScale }] }}>
-          <TouchableOpacity 
-              style={[styles.signInButton, isLoading && styles.signInButtonDisabled]}
+            <TouchableOpacity 
+              style={[styles.loginButton, (isLoading || !isOnline) && styles.loginButtonDisabled]}
               onPress={() => handleButtonPress(signInButtonScale, handleSignIn)}
               disabled={isLoading || !isOnline}
               accessibilityRole="button"
               accessibilityLabel={isLoading ? "Signing in..." : !isOnline ? "Sign in (No internet connection)" : "Sign in"}
-              accessibilityHint="Double tap to sign in to your DOrSU Connect account"
-              accessibilityState={{ disabled: isLoading || !isOnline }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               activeOpacity={0.8}
             >
-              <BlurView
-                intensity={Platform.OS === 'ios' ? 80 : 60}
-                tint={isDarkMode ? 'dark' : 'light'}
-                style={styles.buttonBlur}
-              >
-                <View style={[
-                  styles.buttonContent,
-                  { backgroundColor: isLoading ? (isDarkMode ? 'rgba(107, 114, 128, 0.3)' : 'rgba(107, 114, 128, 0.5)') : (isDarkMode ? 'rgba(37, 99, 235, 0.15)' : 'rgba(31, 41, 55, 0.15)') }
-                ]}>
-                  {isLoading ? (
-                    <>
-                      <Animated.View style={[
-                        styles.loadingSpinner,
-                        {
-                          transform: [{
-                            rotate: loadingRotation.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: ['0deg', '360deg'],
-                            })
-                          }]
-                        }
-                      ]}>
-                        <MaterialIcons name="refresh" size={24} color={isDarkMode ? '#60A5FA' : '#1F2937'} />
-                      </Animated.View>
-                      <Text style={[styles.signInButtonText, { color: isDarkMode ? '#E5E7EB' : '#1F2937' }]}>Signing In...</Text>
-                    </>
-                  ) : (
-                    <>
-                      <MaterialIcons name="login" size={24} color={isDarkMode ? '#60A5FA' : '#1F2937'} style={styles.buttonIcon} />
-                      <Text style={[styles.signInButtonText, { color: isDarkMode ? '#E5E7EB' : '#1F2937' }]}>Sign In</Text>
-                    </>
-                  )}
-                </View>
-              </BlurView>
-          </TouchableOpacity>
+              {isLoading ? (
+                <>
+                  <Animated.View style={[
+                    styles.loadingSpinner,
+                    {
+                      transform: [{
+                        rotate: loadingRotation.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['0deg', '360deg'],
+                        })
+                      }]
+                    }
+                  ]}>
+                    <MaterialIcons name="refresh" size={20} color="#FFFFFF" />
+                  </Animated.View>
+                  <Text style={styles.loginButtonText}>Signing In</Text>
+                </>
+              ) : (
+                <Text style={styles.loginButtonText}>LOGIN</Text>
+              )}
+            </TouchableOpacity>
           </Animated.View>
-          </View>
 
-          {/* Bottom Section - Always Accessible */}
-          <View style={styles.bottomSection}>
-          <View style={styles.signUpContainer}>
-            <Text style={[styles.signUpText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>Don't have an account? </Text>
+          {/* Links Section */}
+          <View style={styles.linksSection}>
             <TouchableOpacity 
+              style={styles.linkButton}
               onPress={() => navigation.navigate('CreateAccount')}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityRole="button"
-              accessibilityLabel="Create new account"
-              style={styles.signUpLinkButton}
             >
-              <Text style={[styles.signUpLink, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Sign Up</Text>
+              <Text style={styles.linkText}>Create New Account</Text>
             </TouchableOpacity>
           </View>
         </View>
+      </>
+    );
+  };
+
+  return (
+    <View style={styles.container}>
+      <StatusBar
+        backgroundColor="transparent"
+        barStyle="light-content"
+        translucent={true}
+        animated={true}
+      />
+      
+      {/* Split Screen Layout - Desktop/Tablet, Stacked - Mobile */}
+      {isMobile ? (
+        // Mobile Layout - Full screen form with background
+        <View style={styles.mobileContainer}>
+          <Image 
+            source={require('../../../../assets/DOrSU_STATUE.png')} 
+            style={styles.mobileBackgroundImage}
+            resizeMode="cover"
+          />
+          <LinearGradient
+            colors={['rgba(101, 67, 33, 0.2)', 'rgba(139, 90, 43, 0.5)', 'rgba(101, 67, 33, 0.7)']}
+            style={styles.gradientOverlay}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+          />
+          <View style={[styles.mobileOverlay, { paddingTop: insets.top }]}>
+            <KeyboardWrapper 
+              style={styles.keyboardAvoidingView}
+              {...keyboardProps}
+            >
+              <ScrollView 
+                contentContainerStyle={styles.scrollContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                bounces={Platform.OS === 'ios'}
+              >
+                <View style={styles.mobileFormCard}>
+                  {/* Form Content - Same as desktop */}
+                  {renderFormContent()}
+                </View>
+              </ScrollView>
+            </KeyboardWrapper>
+          </View>
         </View>
-      </ScrollView>
-      </KeyboardWrapper>
+      ) : (
+        // Desktop/Tablet Layout - Split Screen
+        <View style={styles.splitContainer}>
+          {/* Left Panel - Background Image with University Name */}
+          <View style={styles.leftPanel}>
+            <Image 
+              source={require('../../../../assets/DOrSU_STATUE.png')} 
+              style={styles.backgroundImage}
+              resizeMode="cover"
+            />
+            <LinearGradient
+              colors={['rgba(101, 67, 33, 0.15)', 'rgba(139, 90, 43, 0.4)', 'rgba(101, 67, 33, 0.6)']}
+              style={styles.gradientOverlay}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 0, y: 1 }}
+            />
+            <View style={styles.overlay}>
+              <View style={styles.universityTextContainer}>
+                <Text style={styles.universityText}>DAVAO ORIENTAL STATE</Text>
+                <Text style={styles.universityText}>UNIVERSITY</Text>
+              </View>
+              <View style={styles.portalBanner}>
+                <Text style={styles.portalText}>-STUDENT PORTAL-</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Right Panel - Login Form */}
+          <View style={styles.rightPanel}>
+          <KeyboardWrapper 
+            style={styles.keyboardAvoidingView}
+            {...keyboardProps}
+          >
+            <ScrollView 
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={Platform.OS === 'ios'}
+            >
+              <View style={styles.formCard}>
+                {renderFormContent()}
+              </View>
+            </ScrollView>
+          </KeyboardWrapper>
+        </View>
+        </View>
+      )}
     </View>
   );
 };
@@ -1005,328 +539,278 @@ const SignIn = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  splitContainer: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  // Left Panel Styles
+  leftPanel: {
+    flex: 1,
+    position: 'relative',
+    ...Platform.select({
+      web: {
+        minWidth: width * 0.5,
+      },
+    }),
+  },
+  backgroundImage: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+  },
+  gradientOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1,
+  },
+  overlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    zIndex: 2,
+  },
+  universityTextContainer: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  universityText: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 2,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+  },
+  portalBanner: {
+    backgroundColor: '#FFD700',
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  portalText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+    letterSpacing: 1,
+  },
+  // Right Panel Styles
+  rightPanel: {
+    flex: 1,
+    backgroundColor: '#F9FAFB',
+    ...Platform.select({
+      web: {
+        minWidth: width * 0.5,
+      },
+    }),
   },
   keyboardAvoidingView: {
     flex: 1,
   },
-  backgroundGradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: -1,
-  },
-  // Floating background orbs container (Copilot-style)
-  floatingBgContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    overflow: 'hidden',
-    zIndex: 0,
-  },
-  floatingOrbWrapper: {
-    position: 'absolute',
-  },
-  cloudWrapper: {
-    position: 'absolute',
-  },
-  lightSpot1: {
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    opacity: 0.2,
-    overflow: 'hidden',
-  },
-  lightSpot2: {
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    opacity: 0.18,
-    overflow: 'hidden',
-  },
-  lightSpot3: {
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    opacity: 0.16,
-    overflow: 'hidden',
-  },
-  floatingOrb1: {
-    width: 500,
-    height: 500,
-    borderRadius: 250,
-    opacity: 0.5,
-    overflow: 'hidden',
-  },
-  scrollView: {
-    flex: 1,
-  },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'space-between',
-    paddingBottom: Platform.OS === 'android' ? 20 : 0, // Small padding for Android
+    justifyContent: 'center',
+    paddingVertical: 20,
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'android' ? 16 : 32,
-    paddingBottom: Platform.OS === 'android' ? 32 : 48,
-    justifyContent: 'space-between',
-  },
-  headerSection: {
-    alignItems: 'center',
-    marginBottom: 16,
-    marginTop: 8,
-  },
-  logoImage: {
-    width: width * 0.28,
-    height: width * 0.28,
-    marginBottom: 16,
-    resizeMode: 'contain',
-    shadowColor: '#1F2937',
+  formCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    marginHorizontal: 40,
+    marginVertical: 20,
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    ...Platform.select({
+      web: {
+        maxWidth: 500,
+        alignSelf: 'center',
+        width: '100%',
+      },
+    }),
   },
-  logoGlow: {
-    position: 'absolute',
-    width: width * 0.32,
-    height: width * 0.32,
-    borderRadius: width * 0.16,
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#2196F3',
-    shadowColor: '#2196F3',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 15,
-    elevation: 12,
-    top: -width * 0.02,
-    left: -width * 0.02,
+  // Logo Section
+  logoSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
   },
-  sparkleContainer: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
+  logoImage: {
+    width: 50,
+    height: 50,
+    marginRight: 10,
   },
-  sparkle: {
-    position: 'absolute',
-    width: 6,
-    height: 6,
-    backgroundColor: '#2196F3',
-    borderRadius: 3,
-    shadowColor: '#2196F3',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 8,
-    elevation: 5,
+  logoTextContainer: {
+    flex: 1,
   },
-  sparkle1: {
-    top: '15%',
-    right: '10%',
+  logoTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#2563EB',
+    marginBottom: 2,
   },
-  sparkle2: {
-    bottom: '20%',
-    left: '8%',
-  },
-  sparkle3: {
-    top: '60%',
-    right: '5%',
+  logoSubtitle: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginTop: 2,
   },
   welcomeText: {
-    fontSize: 32,
-    fontWeight: '800',
-    marginBottom: 6,
-    textAlign: 'center',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    textShadowColor: 'rgba(0, 0, 0, 0.05)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-  signInText: {
     fontSize: 18,
-    fontWeight: '500',
-    textAlign: 'center',
-    letterSpacing: 0.3,
-    marginBottom: 8,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 12,
   },
-  formContainer: {
+  // Form Section
+  formSection: {
     width: '100%',
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 24,
   },
-  bottomSection: {
-    marginTop: 16,
-    paddingBottom: 8,
+  inputGroup: {
+    marginBottom: 10,
   },
-  inputContainer: {
-    marginBottom: 16,
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 4,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    marginBottom: 0, // Remove bottom margin to bring error closer
-    paddingHorizontal: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingHorizontal: 14,
     borderWidth: 1,
+    minHeight: 44,
   },
   inputIcon: {
-    marginRight: 12,
+    marginRight: 10,
   },
   input: {
     flex: 1,
-    paddingVertical: 16,
-    fontSize: 16,
-    fontWeight: '500',
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#1F2937',
   },
   passwordToggle: {
-    padding: 8,
-    marginLeft: 8,
+    padding: 4,
+    marginLeft: 6,
   },
   errorContainer: {
-    height: 20, // Fixed height to prevent layout shifts
-    justifyContent: 'center',
-    marginTop: 1, // Negative margin to move error UP closer to input
-    marginBottom: 12, // Add spacing below error for next element
-    paddingHorizontal: 0,
-  },
-  errorMessageContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  errorIcon: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: '#EF4444',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  errorIconText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    minHeight: 16,
+    marginTop: 2,
   },
   errorText: {
     color: '#EF4444',
-    fontSize: 13,
-    fontWeight: '500',
-    lineHeight: 16,
-    flex: 1,
+    fontSize: 11,
+    marginLeft: 4,
   },
   generalErrorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FEF2F2',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    marginHorizontal: 0,
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 6,
     borderWidth: 1,
     borderColor: '#FCA5A5',
-    shadowColor: '#EF4444',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    minHeight: 40,
+  },
+  generalErrorContainerHidden: {
+    opacity: 0,
+    height: 0,
+    minHeight: 0,
+    marginBottom: 0,
+    padding: 0,
+    borderWidth: 0,
   },
   generalErrorText: {
     color: '#DC2626',
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '500',
-    marginLeft: 12,
+    fontSize: 12,
+    marginLeft: 8,
     flex: 1,
   },
-  forgotPassword: {
-    alignSelf: 'flex-end',
-    marginTop: 8,
-    ...Platform.select({
-      web: {
-        cursor: 'pointer',
-      },
-    }),
+  // Login Button
+  loginButton: {
+    backgroundColor: '#2563EB',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    marginBottom: 8,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  forgotPasswordText: {
+  loginButtonDisabled: {
+    opacity: 0.6,
+    backgroundColor: '#9CA3AF',
+  },
+  loginButtonText: {
+    color: '#FFFFFF',
     fontSize: 15,
-    fontWeight: '600',
-  },
-  signInButton: {
-    borderRadius: 16,
-    alignItems: 'center',
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginBottom: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    ...Platform.select({
-      web: {
-        cursor: 'pointer',
-        userSelect: 'none',
-      },
-    }),
-  },
-  signInButtonDisabled: {
-    opacity: 0.7,
-  },
-  buttonBlur: {
-    width: '100%',
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  buttonContent: {
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    borderRadius: 16,
-    minHeight: 56,
-  },
-  signInButtonText: {
-    fontSize: 17,
-    fontWeight: '600',
-    marginLeft: 12,
-    letterSpacing: 0.3,
-  },
-  buttonIcon: {
-    marginRight: 8,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   loadingSpinner: {
     marginRight: 8,
   },
-  signUpContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+  // Links Section
+  linksSection: {
+    marginBottom: 0,
   },
-  signUpText: {
-    fontSize: 15,
-    letterSpacing: 0.2,
+  linkButton: {
+    marginBottom: 0,
   },
-  signUpLink: {
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.2,
+  linkText: {
+    color: '#2563EB',
+    fontSize: 14,
+    fontWeight: '500',
+    textDecorationLine: 'underline',
   },
-  signUpLinkButton: {
-    ...Platform.select({
-      web: {
-        cursor: 'pointer',
-      },
-    }),
+  // Mobile Styles
+  mobileContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  mobileBackgroundImage: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+  },
+  mobileOverlay: {
+    flex: 1,
+    zIndex: 2,
+  },
+  mobileFormCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    margin: 16,
+    borderRadius: 16,
+    padding: 18,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
 });
 
-export default SignIn; 
+export default SignIn;

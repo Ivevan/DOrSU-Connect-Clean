@@ -751,7 +751,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    marginBottom: 8,
+    marginBottom: 0,
     shadowColor: '#2563EB',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,

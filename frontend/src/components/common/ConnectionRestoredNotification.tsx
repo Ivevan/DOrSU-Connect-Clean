@@ -4,7 +4,6 @@ import { Animated, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useThemeValues } from '../../contexts/ThemeContext';
-import ReconnectionService from '../../services/ReconnectionService';
 
 const ConnectionRestoredNotification: React.FC = () => {
   const { isConnected, isInternetReachable, wasOffline } = useNetworkStatus();
@@ -62,10 +61,7 @@ const ConnectionRestoredNotification: React.FC = () => {
     return null;
   }
 
-  const queueSize = ReconnectionService.getQueueSize();
-  const message = queueSize > 0 
-    ? `Connection restored! Retrying ${queueSize} ${queueSize === 1 ? 'request' : 'requests'}...`
-    : 'Connection restored!';
+  const message = 'Online';
 
   return (
     <Animated.View

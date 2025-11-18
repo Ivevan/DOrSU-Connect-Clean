@@ -5,7 +5,8 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Linking, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
@@ -55,6 +56,8 @@ const AdminAIChat = () => {
   const [isLoadingTopQueries, setIsLoadingTopQueries] = useState(false);
   const [selectedUserType, setSelectedUserType] = useState<'student' | 'faculty'>('student');
   const [isFaqsExpanded, setIsFaqsExpanded] = useState(true);
+  const [actionMenuVisible, setActionMenuVisible] = useState(false);
+  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const sessionId = useRef<string>('');
 
@@ -481,6 +484,73 @@ const AdminAIChat = () => {
     handleSendMessage(suggestion);
   };
 
+  // Strip markdown formatting for cleaner clipboard text
+  const stripMarkdown = (text: string): string => {
+    return text
+      .replace(/#{1,6}\s+/g, '') // Remove headers
+      .replace(/\*\*(.+?)\*\*/g, '$1') // Remove bold
+      .replace(/\*(.+?)\*/g, '$1') // Remove italic
+      .replace(/`(.+?)`/g, '$1') // Remove inline code
+      .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+      .replace(/\[(.+?)\]\(.+?\)/g, '$1') // Convert links to text
+      .replace(/^\s*[-*+]\s+/gm, '') // Remove list markers
+      .replace(/^\s*\d+\.\s+/gm, '') // Remove numbered list markers
+      .trim();
+  };
+
+  // Copy message to clipboard
+  const handleCopyMessage = async (content: string, isMarkdown: boolean = false) => {
+    const textToCopy = isMarkdown ? stripMarkdown(content) : content;
+    await Clipboard.setStringAsync(textToCopy);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  // Edit user message
+  const handleEditMessage = (messageId: string, content: string) => {
+    // Remove the message and its response from the messages list
+    const messageIndex = messages.findIndex(msg => msg.id === messageId);
+    if (messageIndex !== -1) {
+      // Remove the user message and any assistant response that follows it
+      const newMessages = messages.slice(0, messageIndex);
+      setMessages(newMessages);
+      
+      // Put the content in the input field
+      setInputText(content);
+      
+      // Focus the input (if possible)
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
+  // Show action menu for messages
+  const handleMessageLongPress = (message: Message) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectedMessage(message);
+    setActionMenuVisible(true);
+  };
+
+  // Close action menu
+  const closeActionMenu = () => {
+    setActionMenuVisible(false);
+    setSelectedMessage(null);
+  };
+
+  // Handle copy from action menu
+  const handleCopyFromMenu = async () => {
+    if (selectedMessage) {
+      await handleCopyMessage(selectedMessage.content, selectedMessage.role === 'assistant');
+      closeActionMenu();
+    }
+  };
+
+  // Handle edit from action menu
+  const handleEditFromMenu = () => {
+    if (selectedMessage && selectedMessage.role === 'user') {
+      handleEditMessage(selectedMessage.id, selectedMessage.content);
+      closeActionMenu();
+    }
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar
@@ -889,7 +959,8 @@ const AdminAIChat = () => {
                   </View>
                 )}
                 {message.role === 'user' ? (
-                  <View
+                  <Pressable
+                    onLongPress={() => handleMessageLongPress(message)}
                     style={[
                       styles.messageBubble,
                       { backgroundColor: isDarkMode ? '#2563EB' : '#2563EB' }
@@ -898,9 +969,12 @@ const AdminAIChat = () => {
                     <Text style={[styles.messageText, { color: '#FFFFFF' }]}>
                       {message.content}
                     </Text>
-                  </View>
+                  </Pressable>
                 ) : (
-                  <View style={[styles.messageBubble, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}>
+                  <Pressable
+                    onLongPress={() => handleMessageLongPress(message)}
+                    style={[styles.messageBubble, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
+                  >
                     <Markdown
                       style={getMarkdownStyles(theme)}
                       onLinkPress={(url: string) => {
@@ -910,7 +984,7 @@ const AdminAIChat = () => {
                     >
                       {message.content}
                     </Markdown>
-                  </View>
+                  </Pressable>
                 )}
               </View>
             ))}
@@ -1170,6 +1244,93 @@ const AdminAIChat = () => {
         onDashboardPress={() => navigation.navigate('AdminDashboard')}
         onCalendarPress={() => navigation.navigate('AdminCalendar')}
       />
+
+      {/* Action Menu Modal */}
+      <Modal
+        visible={actionMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeActionMenu}
+      >
+        <Pressable 
+          style={styles.actionMenuOverlay} 
+          onPress={closeActionMenu}
+        >
+          <View 
+            style={[
+              styles.actionMenuContainer,
+              { 
+                backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
+                paddingBottom: insets.bottom + 20,
+              }
+            ]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={styles.actionMenuHeader}>
+              <Text style={[
+                styles.actionMenuTitle,
+                { color: isDarkMode ? '#F9FAFB' : '#1F2937' }
+              ]}>
+                {selectedMessage?.role === 'user' ? 'Message Options' : 'AI Response Options'}
+              </Text>
+            </View>
+            
+            <View style={styles.actionMenuButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.actionMenuButton,
+                  { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' }
+                ]}
+                onPress={handleCopyFromMenu}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="copy-outline" size={20} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+                <Text style={[
+                  styles.actionMenuButtonText,
+                  { color: isDarkMode ? '#F9FAFB' : '#1F2937' }
+                ]}>
+                  Copy
+                </Text>
+              </TouchableOpacity>
+
+              {selectedMessage?.role === 'user' && (
+                <TouchableOpacity
+                  style={[
+                    styles.actionMenuButton,
+                    { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' }
+                  ]}
+                  onPress={handleEditFromMenu}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="create-outline" size={20} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+                  <Text style={[
+                    styles.actionMenuButtonText,
+                    { color: isDarkMode ? '#F9FAFB' : '#1F2937' }
+                  ]}>
+                    Edit
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.actionMenuCancelButton,
+                { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' }
+              ]}
+              onPress={closeActionMenu}
+              activeOpacity={0.7}
+            >
+              <Text style={[
+                styles.actionMenuCancelText,
+                { color: isDarkMode ? '#F9FAFB' : '#1F2937' }
+              ]}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 };
@@ -1636,6 +1797,54 @@ const styles = StyleSheet.create({
   infoNoteText: {
     fontSize: 12,
     color: '#334155',
+    fontWeight: '600',
+  },
+  actionMenuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  actionMenuContainer: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 20,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    maxHeight: '50%',
+  },
+  actionMenuHeader: {
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  actionMenuTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  actionMenuButtons: {
+    gap: 12,
+    marginBottom: 12,
+  },
+  actionMenuButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 12,
+  },
+  actionMenuButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  actionMenuCancelButton: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  actionMenuCancelText: {
+    fontSize: 16,
     fontWeight: '600',
   },
 });

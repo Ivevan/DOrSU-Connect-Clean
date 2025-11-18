@@ -3,6 +3,7 @@ import React from 'react';
 import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import ConnectionRestoredNotification from './frontend/src/components/common/ConnectionRestoredNotification';
 import NetworkStatusIndicator from './frontend/src/components/common/NetworkStatusIndicator';
 import { AuthProvider } from './frontend/src/contexts/AuthContext';
 import { NetworkStatusProvider } from './frontend/src/contexts/NetworkStatusContext';
@@ -15,6 +16,7 @@ const Root = () => {
     <>
       <AppNavigator />
       <NetworkStatusIndicator />
+      <ConnectionRestoredNotification />
       <StatusBar style="auto" />
     </>
   );

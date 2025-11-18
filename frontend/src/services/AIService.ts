@@ -4,6 +4,25 @@ import apiConfig from '../config/api.config';
  * AI Service - Handles communication with DOrSU AI Backend
  */
 
+// Custom error class for network errors
+export class NetworkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NetworkError';
+  }
+}
+
+// Helper function to check if an error is a network error
+export function isNetworkError(error: any): boolean {
+  if (error instanceof NetworkError) return true;
+  if (error?.message?.toLowerCase().includes('network')) return true;
+  if (error?.message?.toLowerCase().includes('fetch')) return true;
+  if (error?.message?.toLowerCase().includes('failed to fetch')) return true;
+  if (error?.message?.toLowerCase().includes('network request failed')) return true;
+  if (error?.code === 'NETWORK_ERROR') return true;
+  return false;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -83,8 +102,14 @@ class AIService {
 
       const data: ChatResponse = await response.json();
       return data;
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI Service Error:', error);
+      
+      // Check if it's a network error
+      if (isNetworkError(error) || error?.message?.includes('Failed to fetch') || error?.message?.includes('NetworkError')) {
+        throw new NetworkError('No internet connection. Please check your network and try again.');
+      }
+      
       throw error;
     }
   }

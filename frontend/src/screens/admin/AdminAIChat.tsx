@@ -11,9 +11,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import AdminSidebar from '../../components/navigation/AdminSidebar';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import InfoModal from '../../modals/InfoModal';
-import AIService, { ChatHistoryItem, Message } from '../../services/AIService';
+import AIService, { ChatHistoryItem, Message, NetworkError, isNetworkError } from '../../services/AIService';
+import ReconnectionService from '../../services/ReconnectionService';
 import { formatAIResponse, getMarkdownStyles } from '../../utils/markdownFormatter';
 
 type RootStackParamList = {
@@ -39,6 +41,8 @@ const AdminAIChat = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { isDarkMode, theme } = useTheme();
   const { getUserToken } = useAuth();
+  const { isConnected, isInternetReachable } = useNetworkStatus();
+  const isOnline = isConnected && isInternetReachable;
   const { width } = useWindowDimensions();
   const isWide = width > 600;
   const [isInfoOpen, setIsInfoOpen] = useState(false);
@@ -345,6 +349,19 @@ const AdminAIChat = () => {
     const textToSend = messageText || inputText.trim();
     if (!textToSend || isLoading) return;
 
+    // Check network status before sending
+    if (!isOnline) {
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: '⚠️ No internet connection. Please check your network and try again.',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+
     // Generate a new session ID if this is the first message
     if (!sessionId.current) {
       sessionId.current = Date.now().toString();
@@ -381,15 +398,62 @@ const AdminAIChat = () => {
 
       // Add assistant message to chat
       setMessages(prev => [...prev, assistantMessage]);
-    } catch (error) {
-      // Show error message
+    } catch (error: any) {
+      // Show appropriate error message based on error type
+      let errorContent = 'Sorry, I encountered an error. Please try again.';
+      
+      if (isNetworkError(error) || error instanceof NetworkError) {
+        errorContent = '⚠️ No internet connection. This message will be sent automatically when connection is restored.';
+        
+        // Queue the message for retry when connection is restored
+        const queuedMessage = textToSend;
+        const queuedUserType = selectedUserType;
+        const queuedUserMessage = userMessage;
+        
+        ReconnectionService.queueRequest({
+          execute: async () => {
+            const token = await getUserToken();
+            const response = await AIService.sendMessage(queuedMessage, token || undefined, queuedUserType);
+            
+            // Format the AI response
+            const formattedContent = formatAIResponse(response.reply);
+            
+            // Create assistant message
+            const assistantMessage: Message = {
+              id: (Date.now() + 1).toString(),
+              role: 'assistant',
+              content: formattedContent,
+              timestamp: new Date(),
+            };
+            
+            // Add assistant message to chat
+            setMessages(prev => {
+              // Check if user message is already in the list
+              const hasUserMessage = prev.some(msg => msg.id === queuedUserMessage.id);
+              if (!hasUserMessage) {
+                return [...prev, queuedUserMessage, assistantMessage];
+              }
+              // If user message exists, just add assistant response
+              return [...prev, assistantMessage];
+            });
+          },
+          retryCount: 0,
+          maxRetries: 3,
+        });
+        
+        console.log('📦 Message queued for retry when connection is restored');
+      } else if (error?.message) {
+        errorContent = `⚠️ ${error.message}`;
+      }
+      
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Sorry, I encountered an error. Please make sure the AI backend is running and try again.',
+        content: errorContent,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       console.error('Failed to send message:', error);
     } finally {
       setIsLoading(false);
@@ -1086,8 +1150,8 @@ const AdminAIChat = () => {
                   isLoading && styles.sendBtnDisabled
                 ]}
                 onPress={() => handleSendMessage()}
-                disabled={isLoading}
-                accessibilityLabel="Send message"
+                disabled={isLoading || !isOnline}
+                accessibilityLabel={!isOnline ? "Send message (No internet connection)" : "Send message"}
               >
                 {isLoading ? (
                   <ActivityIndicator size="small" color="#fff" />

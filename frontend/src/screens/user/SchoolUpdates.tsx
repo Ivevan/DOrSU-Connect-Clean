@@ -419,14 +419,33 @@ const SchoolUpdates = () => {
     setShowPostModal(true);
   }, []);
 
+  // Track last fetch time to prevent unnecessary refetches
+  const lastFetchTime = useRef<number>(0);
+  const isFetching = useRef<boolean>(false);
+  const FETCH_COOLDOWN = 1000; // 1 second cooldown between fetches
+
   // Fetch data from AdminDataService
-  const fetchUpdates = useCallback(async () => {
+  const fetchUpdates = useCallback(async (forceRefresh: boolean = false) => {
+    // Prevent duplicate simultaneous fetches
+    if (isFetching.current && !forceRefresh) {
+      return;
+    }
+
+    // Cooldown check - prevent too frequent fetches
+    const now = Date.now();
+    if (!forceRefresh && now - lastFetchTime.current < FETCH_COOLDOWN) {
+      return;
+    }
+
+    isFetching.current = true;
+    lastFetchTime.current = now;
+
     try {
       setIsLoading(true);
       setError(null);
-      const posts = await AdminDataService.getPosts();
+      const posts = await AdminDataService.getPosts(forceRefresh);
       
-      console.log('📥 Fetched posts from AdminDataService:', posts.length);
+      if (__DEV__) console.log('📥 Fetched posts from AdminDataService:', posts.length);
       
       // Map AdminDataService posts to our component format (matching AdminDashboard pattern)
       const postsData = posts.map(post => {
@@ -469,50 +488,63 @@ const SchoolUpdates = () => {
         return dateB - dateA; // Newest first
       });
       
-      console.log('✅ Mapped updates:', uniqueUpdates.length, '(removed', posts.length - uniqueUpdates.length, 'duplicates)');
-      if (uniqueUpdates.length > 0) {
-        console.log('📝 Sample update:', { 
-          id: uniqueUpdates[0].id, 
-          title: uniqueUpdates[0].title, 
-          isoDate: uniqueUpdates[0].isoDate,
-          tag: uniqueUpdates[0].tag 
-        });
+      if (__DEV__) {
+        console.log('✅ Mapped updates:', uniqueUpdates.length, '(removed', posts.length - uniqueUpdates.length, 'duplicates)');
       }
       setUpdates(uniqueUpdates);
-      console.log('✅ State updated with', uniqueUpdates.length, 'updates');
     } catch (err: any) {
-      console.error('❌ Error fetching updates:', err);
+      if (__DEV__) console.error('❌ Error fetching updates:', err);
       setError(err?.message || 'Failed to load updates');
     } finally {
       setIsLoading(false);
+      isFetching.current = false;
     }
   }, []);
 
-  // Fetch updates on mount
+  // Fetch updates on mount only
   useEffect(() => {
-    fetchUpdates();
-  }, [fetchUpdates]);
+    fetchUpdates(true); // Force refresh on mount
+  }, []); // Empty deps - only run on mount
 
-  // Refresh updates when screen comes into focus
+  // Refresh updates when screen comes into focus (with smart refresh)
   useFocusEffect(
     useCallback(() => {
-      fetchUpdates();
+      // Only refresh if data is older than 30 seconds
+      const timeSinceLastFetch = Date.now() - lastFetchTime.current;
+      const shouldRefresh = timeSinceLastFetch > 30 * 1000; // 30 seconds
+      
+      if (shouldRefresh) {
+        fetchUpdates(false); // Use cache if available
+      }
     }, [fetchUpdates])
   );
 
+  // Debounce search query
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
   const filtered = useMemo(() => {
     const result = updates.filter(u => {
-      const q = query.trim().toLowerCase();
+      const q = debouncedQuery.trim().toLowerCase();
       const byQuery = q.length === 0 || u.title.toLowerCase().includes(q) || (u.body && u.body.toLowerCase().includes(q));
       return byQuery;
     });
-    console.log('🔍 Filtered updates:', { 
-      total: updates.length, 
-      query: query.trim(), 
-      filtered: result.length 
-    });
+    if (__DEV__) {
+      console.log('🔍 Filtered updates:', { 
+        total: updates.length, 
+        query: debouncedQuery.trim(), 
+        filtered: result.length 
+      });
+    }
     return result;
-  }, [updates, query]);
+  }, [updates, debouncedQuery]);
 
   // Today's events (category Event occurring today) - using timezone-aware comparison
   const todaysEvents = useMemo(() => {

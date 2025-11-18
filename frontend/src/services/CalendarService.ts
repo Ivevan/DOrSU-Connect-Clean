@@ -5,6 +5,8 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiConfig from '../config/api.config';
+import cacheManager from '../utils/cacheManager';
+import requestDeduplicator from '../utils/requestDeduplicator';
 import { getCurrentUser } from './authService';
 
 export interface CalendarEvent {
@@ -109,37 +111,57 @@ class CalendarService {
     endDate?: string;
     category?: string;
     limit?: number;
+    forceRefresh?: boolean;
   }): Promise<CalendarEvent[]> {
-    try {
-      const queryParams = new URLSearchParams();
-      if (params?.startDate) queryParams.append('startDate', params.startDate);
-      if (params?.endDate) queryParams.append('endDate', params.endDate);
-      if (params?.category) queryParams.append('category', params.category);
-      if (params?.limit) queryParams.append('limit', String(params.limit));
+    // Create cache key from params
+    const cacheKey = `calendar_events_${params?.startDate || 'all'}_${params?.endDate || 'all'}_${params?.category || 'all'}_${params?.limit || 'all'}`;
+    const CACHE_TTL = 3 * 60 * 1000; // 3 minutes cache
 
-      const url = `${this.baseUrl}/api/calendar/events${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+    // Check cache first (unless force refresh)
+    if (!params?.forceRefresh && cacheManager.has(cacheKey)) {
+      const cached = cacheManager.get<CalendarEvent[]>(cacheKey);
+      if (cached) {
+        if (__DEV__) console.log('📦 Returning cached calendar events:', cached.length);
+        return cached;
       }
-
-      const data = await response.json();
-      if (data.success && Array.isArray(data.events)) {
-        return data.events;
-      }
-      
-      return [];
-    } catch (error) {
-      console.error('Failed to get calendar events:', error);
-      return [];
     }
+
+    // Use request deduplication
+    return requestDeduplicator.deduplicate(cacheKey, async () => {
+      try {
+        const queryParams = new URLSearchParams();
+        if (params?.startDate) queryParams.append('startDate', params.startDate);
+        if (params?.endDate) queryParams.append('endDate', params.endDate);
+        if (params?.category) queryParams.append('category', params.category);
+        if (params?.limit) queryParams.append('limit', String(params.limit));
+
+        const url = `${this.baseUrl}/api/calendar/events${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data.success && Array.isArray(data.events)) {
+          // Cache the result
+          cacheManager.set(cacheKey, data.events, CACHE_TTL);
+          if (__DEV__) console.log('✅ Fetched and cached', data.events.length, 'calendar events');
+          return data.events;
+        }
+        
+        return [];
+      } catch (error) {
+        if (__DEV__) console.error('Failed to get calendar events:', error);
+        return [];
+      }
+    });
   }
 
   /**

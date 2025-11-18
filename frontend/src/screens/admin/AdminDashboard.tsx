@@ -201,7 +201,7 @@ const AdminDashboard = () => {
     return () => unsubscribe();
   }, []);
 
-  // Load backend user photo and refresh dashboard data on screen focus
+  // Load backend user photo on screen focus (separate from data fetching)
   useFocusEffect(
     useCallback(() => {
       const loadBackendUserData = async () => {
@@ -210,72 +210,11 @@ const AdminDashboard = () => {
           const userPhoto = await AsyncStorage.getItem('userPhoto');
           setBackendUserPhoto(userPhoto);
         } catch (error) {
-          console.error('Failed to load backend user data:', error);
-        }
-      };
-      
-      const refreshData = async () => {
-        try {
-          setIsLoadingDashboard(true);
-          setDashboardError(null);
-          
-          // Fetch dashboard statistics
-          const dashboardStats = await AdminDataService.getDashboard();
-          
-          // Fetch recent updates (posts/announcements)
-          const posts = await AdminDataService.getPosts();
-          const postsData = posts.map(post => {
-            // Ensure images array is properly set
-            let images = post.images;
-            if (!images || !Array.isArray(images) || images.length === 0) {
-              // If images array is empty but image field exists, create array from it
-              if (post.image) {
-                images = [post.image];
-              } else {
-                images = [];
-              }
-            }
-            
-            return {
-              id: post.id,
-              title: post.title,
-              date: new Date(post.date).toLocaleDateString(),
-              tag: post.category,
-              description: post.description,
-              image: post.image,
-              images: images,
-              pinned: (post as any).pinned || false,
-              isoDate: post.date,
-            };
-          });
-          
-          // Only use posts data - calendar events are shown in separate section
-          // Remove duplicates from posts only
-          const uniqueUpdates = postsData.filter((update, index, self) =>
-            index === self.findIndex(u => u.id === update.id)
-          );
-          
-          // Sort by date (newest first)
-          uniqueUpdates.sort((a, b) => {
-            const dateA = new Date(a.isoDate || a.date).getTime();
-            const dateB = new Date(b.isoDate || b.date).getTime();
-            return dateB - dateA;
-          });
-          
-          setAllUpdates(uniqueUpdates);
-          setDashboardData({
-            recentUpdates: uniqueUpdates,
-          });
-        } catch (error: any) {
-          console.error('Failed to refresh dashboard data:', error);
-          setDashboardError(error.message || 'Failed to load dashboard data');
-        } finally {
-          setIsLoadingDashboard(false);
+          if (__DEV__) console.error('Failed to load backend user data:', error);
         }
       };
       
       loadBackendUserData();
-      refreshData();
     }, [])
   );
 
@@ -381,7 +320,26 @@ const AdminDashboard = () => {
   }, []);
 
   // Refresh calendar events function
-  const refreshCalendarEvents = useCallback(async () => {
+  // Track last calendar fetch time
+  const lastCalendarFetchTime = useRef<number>(0);
+  const isFetchingCalendar = useRef<boolean>(false);
+  const CALENDAR_FETCH_COOLDOWN = 2000; // 2 seconds cooldown for calendar events
+
+  const refreshCalendarEvents = useCallback(async (forceRefresh: boolean = false) => {
+    // Prevent duplicate simultaneous fetches
+    if (isFetchingCalendar.current && !forceRefresh) {
+      return;
+    }
+
+    // Cooldown check
+    const now = Date.now();
+    if (!forceRefresh && now - lastCalendarFetchTime.current < CALENDAR_FETCH_COOLDOWN) {
+      return;
+    }
+
+    isFetchingCalendar.current = true;
+    lastCalendarFetchTime.current = now;
+
     try {
       setIsLoadingCalendarEvents(true);
       const now = new Date();
@@ -392,25 +350,29 @@ const AdminDashboard = () => {
       const startDate = new Date(currentYear, currentMonth, 1);
       const endDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
       
+      // Use caching - CalendarService now supports caching
       const events = await CalendarService.getEvents({
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
         limit: 1000,
+        forceRefresh,
       });
       
       setCalendarEvents(Array.isArray(events) ? events : []);
     } catch (error) {
-      console.error('Failed to load calendar events:', error);
+      if (__DEV__) console.error('Failed to load calendar events:', error);
       setCalendarEvents([]);
     } finally {
       setIsLoadingCalendarEvents(false);
+      isFetchingCalendar.current = false;
     }
   }, []);
 
   // Fetch calendar events for current month
+  // Fetch calendar events on mount only
   useEffect(() => {
-    refreshCalendarEvents();
-  }, [refreshCalendarEvents]);
+    refreshCalendarEvents(true); // Force refresh on mount
+  }, []); // Empty deps - only run on mount
   
   // Initialize edit fields when event is selected
   useEffect(() => {
@@ -493,18 +455,36 @@ const AdminDashboard = () => {
     });
   }, [eventDrawerSlideAnim, eventDrawerBackdropOpacity]);
 
+  // Track last fetch time to prevent unnecessary refetches
+  const lastFetchTime = useRef<number>(0);
+  const isFetching = useRef<boolean>(false);
+  const FETCH_COOLDOWN = 1000; // 1 second cooldown between fetches
+
   // Fetch dashboard data (posts/announcements) - combines with calendar events
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setIsLoadingDashboard(true);
-        setDashboardError(null);
-        
-        // Fetch dashboard statistics
-        const dashboardStats = await AdminDataService.getDashboard();
-        
-        // Fetch recent updates (posts/announcements)
-        const posts = await AdminDataService.getPosts();
+  const fetchDashboardData = useCallback(async (forceRefresh: boolean = false) => {
+    // Prevent duplicate simultaneous fetches
+    if (isFetching.current && !forceRefresh) {
+      return;
+    }
+
+    // Cooldown check - prevent too frequent fetches
+    const now = Date.now();
+    if (!forceRefresh && now - lastFetchTime.current < FETCH_COOLDOWN) {
+      return;
+    }
+
+    isFetching.current = true;
+    lastFetchTime.current = now;
+
+    try {
+      setIsLoadingDashboard(true);
+      setDashboardError(null);
+      
+      // Fetch dashboard statistics
+      const dashboardStats = await AdminDataService.getDashboard();
+      
+      // Fetch recent updates (posts/announcements) - use cache if available
+      const posts = await AdminDataService.getPosts(forceRefresh);
         const postsData = posts.map(post => {
           // Ensure images array is properly set
           let images = post.images;
@@ -549,14 +529,30 @@ const AdminDashboard = () => {
         });
       } catch (err: any) {
         setDashboardError(err?.message || 'Failed to load dashboard data');
-        console.error('Dashboard data fetch error:', err);
+        if (__DEV__) console.error('Dashboard data fetch error:', err);
       } finally {
         setIsLoadingDashboard(false);
+        isFetching.current = false;
       }
-    };
+  }, []);
 
-    fetchDashboardData();
-  }, [calendarEvents]);
+  // Fetch dashboard data on mount only
+  useEffect(() => {
+    fetchDashboardData(true); // Force refresh on mount
+  }, []); // Empty deps - only run on mount
+
+  // Refresh dashboard data when screen comes into focus (with smart refresh)
+  useFocusEffect(
+    useCallback(() => {
+      // Only refresh if data is older than 30 seconds
+      const timeSinceLastFetch = Date.now() - lastFetchTime.current;
+      const shouldRefresh = timeSinceLastFetch > 30 * 1000; // 30 seconds
+      
+      if (shouldRefresh) {
+        fetchDashboardData(false); // Use cache if available
+      }
+    }, [fetchDashboardData])
+  );
 
   return (
     <View style={styles.container} collapsable={false}>
@@ -1219,54 +1215,8 @@ const AdminDashboard = () => {
           setSelectedPost(updatedPost);
         }}
         onRefresh={async () => {
-          // Refresh dashboard data
-          try {
-            setIsLoadingDashboard(true);
-            setDashboardError(null);
-            
-            const posts = await AdminDataService.getPosts();
-            const postsData = posts.map(post => {
-              let images = post.images;
-              if (!images || !Array.isArray(images) || images.length === 0) {
-                if (post.image) {
-                  images = [post.image];
-                } else {
-                  images = [];
-                }
-              }
-              
-              return {
-                id: post.id,
-                title: post.title,
-                date: new Date(post.date).toLocaleDateString(),
-                tag: post.category,
-                description: post.description,
-                image: post.image,
-                images: images,
-                pinned: (post as any).pinned || false,
-                isoDate: post.date,
-              };
-            });
-            
-            const uniqueUpdates = postsData.filter((update, index, self) =>
-              index === self.findIndex(u => u.id === update.id)
-            );
-            
-            uniqueUpdates.sort((a, b) => {
-              const dateA = new Date(a.isoDate || a.date).getTime();
-              const dateB = new Date(b.isoDate || b.date).getTime();
-              return dateB - dateA;
-            });
-            
-            setAllUpdates(uniqueUpdates);
-            setDashboardData({
-              recentUpdates: uniqueUpdates.slice(0, 5),
-            });
-          } catch (err: any) {
-            setDashboardError(err?.message || 'Failed to load dashboard data');
-          } finally {
-            setIsLoadingDashboard(false);
-          }
+          // Refresh dashboard data (force refresh on pull-to-refresh)
+          await fetchDashboardData(true);
         }}
       />
 

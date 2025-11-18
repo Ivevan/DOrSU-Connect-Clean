@@ -5,6 +5,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
 import apiConfig from '../config/api.config';
+import cacheManager from '../utils/cacheManager';
+import requestDeduplicator from '../utils/requestDeduplicator';
 import { getCurrentUser } from './authService';
 
 export interface Post {
@@ -156,81 +158,89 @@ interface FirebaseLoginResponse {
 }
 
 const AdminDataService = {
-  async getPosts(): Promise<Post[]> {
-    try {
-      const token = await this.getToken();
-      if (!token) {
-        console.warn('⚠️ AdminDataService.getPosts: No token available, using local store');
-        console.log('📦 Local store has', postsStore.length, 'posts');
-        // Fallback to local store if no token
+  async getPosts(forceRefresh: boolean = false): Promise<Post[]> {
+    const cacheKey = 'admin_posts';
+    const CACHE_TTL = 2 * 60 * 1000; // 2 minutes cache
+
+    // Check cache first (unless force refresh)
+    if (!forceRefresh && cacheManager.has(cacheKey)) {
+      const cached = cacheManager.get<Post[]>(cacheKey);
+      if (cached) {
+        if (__DEV__) console.log('📦 Returning cached posts:', cached.length);
+        return cached;
+      }
+    }
+
+    // Use request deduplication to prevent simultaneous duplicate requests
+    return requestDeduplicator.deduplicate(cacheKey, async () => {
+      try {
+        const token = await this.getToken();
+        if (!token) {
+          if (__DEV__) console.warn('⚠️ AdminDataService.getPosts: No token available, using local store');
+          // Fallback to local store if no token
+          await delay();
+          const sorted = [...postsStore].sort((a, b) => {
+            const da = dateToSortKey(a);
+            const db = dateToSortKey(b);
+            return db - da;
+          });
+          // Cache the local store result
+          cacheManager.set(cacheKey, sorted, CACHE_TTL);
+          return sorted;
+        }
+
+        if (__DEV__) console.log('🌐 Fetching posts from backend');
+        
+        // Fetch from backend MongoDB
+        const response = await fetch(`${apiConfig.baseUrl}/api/admin/posts?limit=1000`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          if (__DEV__) console.error('❌ Backend HTTP error:', response.status, errorText);
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        if (data.success && Array.isArray(data.posts)) {
+          // Update local store for offline access
+          postsStore = data.posts;
+          // Cache the result
+          cacheManager.set(cacheKey, data.posts, CACHE_TTL);
+          if (__DEV__) console.log('✅ Fetched and cached', data.posts.length, 'posts');
+          return data.posts;
+        }
+        
+        // Fallback to local store if response format is unexpected
+        if (__DEV__) console.warn('⚠️ Unexpected response format, using local store');
         await delay();
         const sorted = [...postsStore].sort((a, b) => {
           const da = dateToSortKey(a);
           const db = dateToSortKey(b);
           return db - da;
         });
-        console.log('✅ Returning', sorted.length, 'posts from local store (no token)');
+        cacheManager.set(cacheKey, sorted, CACHE_TTL);
+        return sorted;
+      } catch (error: any) {
+        if (__DEV__) console.error('❌ Failed to fetch posts from backend:', error);
+        // Fallback to local store
+        await delay();
+        const sorted = [...postsStore].sort((a, b) => {
+          const da = dateToSortKey(a);
+          const db = dateToSortKey(b);
+          return db - da;
+        });
+        // Cache the fallback result with shorter TTL
+        cacheManager.set(cacheKey, sorted, 30 * 1000); // 30 seconds for error fallback
         return sorted;
       }
-
-      console.log('🌐 Fetching posts from backend:', `${apiConfig.baseUrl}/api/admin/posts?limit=1000`);
-      
-      // Fetch from backend MongoDB
-      const response = await fetch(`${apiConfig.baseUrl}/api/admin/posts?limit=1000`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      console.log('📥 Backend response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Backend HTTP error:', response.status, errorText);
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log('📦 Backend response data:', { success: data.success, postsCount: Array.isArray(data.posts) ? data.posts.length : 'not an array' });
-      
-      if (data.success && Array.isArray(data.posts)) {
-        // Update local store for offline access
-        postsStore = data.posts;
-        console.log('✅ Updated local store with', data.posts.length, 'posts from backend');
-        return data.posts;
-      }
-      
-      // Fallback to local store if response format is unexpected
-      console.warn('⚠️ Unexpected response format, using local store');
-      console.log('📦 Local store has', postsStore.length, 'posts');
-      await delay();
-      const sorted = [...postsStore].sort((a, b) => {
-        const da = dateToSortKey(a);
-        const db = dateToSortKey(b);
-        return db - da;
-      });
-      console.log('✅ Returning', sorted.length, 'posts from local store (unexpected format)');
-      return sorted;
-    } catch (error: any) {
-      console.error('❌ Failed to fetch posts from backend:', error);
-      console.error('❌ Error details:', {
-        message: error?.message,
-        name: error?.name,
-        stack: error?.stack,
-      });
-      // Fallback to local store
-      console.log('📦 Local store has', postsStore.length, 'posts');
-      await delay();
-      const sorted = [...postsStore].sort((a, b) => {
-        const da = dateToSortKey(a);
-        const db = dateToSortKey(b);
-        return db - da;
-      });
-      console.log('✅ Returning', sorted.length, 'posts from local store (error fallback)');
-      return sorted;
-    }
+    });
   },
 
   async getPostById(id: string | number): Promise<Post | null> {
@@ -572,7 +582,9 @@ const AdminDataService = {
         console.log('📦 Adding post to local store:', { id: next.id, title: next.title });
         console.log('📦 Local store before:', postsStore.length, 'posts');
         postsStore = [next, ...postsStore];
-        console.log('✅ Local store after:', postsStore.length, 'posts');
+        // Invalidate cache
+        cacheManager.clear('admin_posts');
+        if (__DEV__) console.log('✅ Local store after:', postsStore.length, 'posts');
         return next;
       } catch (fetchError: any) {
         console.error('❌ Fetch error:', fetchError);
@@ -723,6 +735,8 @@ const AdminDataService = {
         postsStore = postsStore.map(p => 
           p.id === String(id) ? updatedPost : p
         );
+        // Invalidate cache
+        cacheManager.clear('admin_posts');
         return updatedPost;
       }
       
@@ -742,6 +756,8 @@ const AdminDataService = {
         await delay();
         const before = postsStore.length;
         postsStore = postsStore.filter(p => p.id !== String(id));
+        // Invalidate cache
+        cacheManager.clear('admin_posts');
         return postsStore.length < before;
       }
 
@@ -763,6 +779,8 @@ const AdminDataService = {
       if (data.success) {
         // Remove from local store
         postsStore = postsStore.filter(p => p.id !== String(id));
+        // Invalidate cache
+        cacheManager.clear('admin_posts');
         return true;
       }
       
@@ -784,6 +802,8 @@ const AdminDataService = {
       }
       return p;
     });
+    // Invalidate cache
+    cacheManager.clear('admin_posts');
     return updated;
   },
 

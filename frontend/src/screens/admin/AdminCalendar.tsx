@@ -912,28 +912,55 @@ const AdminCalendar = () => {
     return count;
   };
 
+  // Track last calendar fetch time
+  const lastCalendarFetchTime = useRef<number>(0);
+  const isFetchingCalendar = useRef<boolean>(false);
+  const CALENDAR_FETCH_COOLDOWN = 3000; // 3 seconds cooldown for calendar events (larger range)
+
   // Refresh calendar events from backend
-  const refreshCalendarEvents = useCallback(async () => {
+  const refreshCalendarEvents = useCallback(async (forceRefresh: boolean = false) => {
+    // Prevent duplicate simultaneous fetches
+    if (isFetchingCalendar.current && !forceRefresh) {
+      return;
+    }
+
+    // Cooldown check
+    const now = Date.now();
+    if (!forceRefresh && now - lastCalendarFetchTime.current < CALENDAR_FETCH_COOLDOWN) {
+      return;
+    }
+
+    isFetchingCalendar.current = true;
+    lastCalendarFetchTime.current = now;
+
     try {
       setIsLoadingEvents(true);
       // Load events for a wide range (2020-2030) to cover all possible dates
       const startDate = new Date(2020, 0, 1).toISOString(); // January 1, 2020
       const endDate = new Date(2030, 11, 31).toISOString(); // December 31, 2030
       
+      // Use caching - CalendarService now supports caching
       const events = await CalendarService.getEvents({
         startDate,
         endDate,
         limit: 2000, // Increased limit to get more events
+        forceRefresh,
       });
       
       setCalendarEvents(Array.isArray(events) ? events : []);
     } catch (error) {
-      console.error('Failed to refresh calendar events:', error);
+      if (__DEV__) console.error('Failed to refresh calendar events:', error);
       setCalendarEvents([]);
     } finally {
       setIsLoadingEvents(false);
+      isFetchingCalendar.current = false;
     }
   }, []);
+
+  // Fetch calendar events on mount only
+  useEffect(() => {
+    refreshCalendarEvents(true); // Force refresh on mount
+  }, []); // Empty deps - only run on mount
 
   // CSV upload handler
   const handleCSVUpload = useCallback(async () => {
@@ -962,8 +989,8 @@ const AdminCalendar = () => {
       // Upload successful - refresh calendar immediately
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
-      // Refresh calendar events to show new dates
-      await refreshCalendarEvents();
+      // Refresh calendar events to show new dates (force refresh after upload)
+      await refreshCalendarEvents(true);
       
       // Show success message after refresh
       const eventsAdded = uploadResult.eventsAdded || 0;
@@ -1008,7 +1035,7 @@ const AdminCalendar = () => {
       
       if (result.success) {
         // Refresh calendar events
-        await refreshCalendarEvents();
+        await refreshCalendarEvents(true); // Force refresh after delete
         
         // Close modal
         closeDeleteAllModal();

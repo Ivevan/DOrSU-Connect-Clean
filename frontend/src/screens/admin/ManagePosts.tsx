@@ -153,14 +153,35 @@ const ManagePosts: React.FC = () => {
   const [isLoadingPosts, setIsLoadingPosts] = useState(false);
   const [postsError, setPostsError] = useState<string | null>(null);
 
-  // Placeholder: load posts on mount and when filters change (later wire to API)
+  // Track last fetch time
+  const lastFetchTime = useRef<number>(0);
+  const isFetching = useRef<boolean>(false);
+  const FETCH_COOLDOWN = 1000; // 1 second cooldown
+
+  // Load posts on mount only (filtering is done client-side, no need to refetch on filter changes)
   useEffect(() => {
     let isCancelled = false;
+    
+    // Prevent duplicate simultaneous fetches
+    if (isFetching.current) {
+      return;
+    }
+
+    // Cooldown check
+    const now = Date.now();
+    if (now - lastFetchTime.current < FETCH_COOLDOWN) {
+      return;
+    }
+
+    isFetching.current = true;
+    lastFetchTime.current = now;
+
     const fetchPosts = async () => {
       try {
         setIsLoadingPosts(true);
         setPostsError(null);
-        const json = await AdminDataService.getPosts();
+        // Use cache if available (filtering is client-side)
+        const json = await AdminDataService.getPosts(false);
         if (!isCancelled) {
           // Map the API response to include isPinned and isUrgent fields
           const mappedPosts: Post[] = json.map((post: any) => ({
@@ -173,12 +194,18 @@ const ManagePosts: React.FC = () => {
       } catch (e: any) {
         if (!isCancelled) setPostsError(e?.message || 'Failed to load posts');
       } finally {
-        if (!isCancelled) setIsLoadingPosts(false);
+        if (!isCancelled) {
+          setIsLoadingPosts(false);
+          isFetching.current = false;
+        }
       }
     };
     fetchPosts();
-    return () => { isCancelled = true; };
-  }, [searchQuery, selectedCategory, filterDate, selectedSort]);
+    return () => { 
+      isCancelled = true;
+      isFetching.current = false;
+    };
+  }, []); // Empty deps - only fetch on mount, filtering is client-side
 
   const handleNewPost = useCallback(() => {
     // Prevent rapid tapping during animation

@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import React, { useRef } from 'react';
 import { Animated, Dimensions, Easing, Image, Modal, Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getGoogleSignInErrorMessage, signInWithGoogle } from '../../services/authService';
 
@@ -28,6 +29,8 @@ const GetStarted = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme: t } = useTheme();
+  const { isConnected, isInternetReachable } = useNetworkStatus();
+  const isOnline = isConnected && isInternetReachable;
 
   // Animation values
   const logoScale = useRef(new Animated.Value(1)).current;
@@ -309,6 +312,14 @@ const GetStarted = () => {
 
   // Handle Google Sign-In
   const handleGoogleSignIn = async () => {
+    // Check network status first
+    if (!isOnline) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setErrorMessage('No internet connection. Please check your network and try again.');
+      setShowErrorModal(true);
+      return;
+    }
+
     setIsGoogleLoading(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
@@ -834,11 +845,11 @@ const GetStarted = () => {
               <TouchableOpacity 
                 style={styles.googleButton} 
                 onPress={handleGoogleSignIn}
-                disabled={isGoogleLoading}
+                disabled={isGoogleLoading || !isOnline}
                 accessibilityRole="button"
-                accessibilityLabel="Sign in with Google"
+                accessibilityLabel={!isOnline ? "Sign in with Google (No internet connection)" : "Sign in with Google"}
                 accessibilityHint="Double tap to sign in with your Google account"
-                accessibilityState={{ disabled: isGoogleLoading }}
+                accessibilityState={{ disabled: isGoogleLoading || !isOnline }}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
                 <BlurView

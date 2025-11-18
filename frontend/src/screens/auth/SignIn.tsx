@@ -9,6 +9,7 @@ import React, { useRef } from 'react';
 import { Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../config/api.config';
+import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useTheme } from '../../contexts/ThemeContext';
 
 type RootStackParamList = {
@@ -27,6 +28,8 @@ const SignIn = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme: t } = useTheme();
+  const { isConnected, isInternetReachable } = useNetworkStatus();
+  const isOnline = isConnected && isInternetReachable;
 
   // Animation values
   const signInButtonScale = useRef(new Animated.Value(1)).current;
@@ -290,6 +293,19 @@ const SignIn = () => {
 
   // Function to handle sign in button press
   const handleSignIn = async () => {
+    // Check network status first
+    if (!isOnline) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      setErrors({ 
+        email: '', 
+        password: '', 
+        general: 'No internet connection. Please check your network and try again.' 
+      });
+      triggerVibrationAnimation('email');
+      setTimeout(() => triggerVibrationAnimation('password'), 200);
+      return;
+    }
+
     // Clear previous errors
     setErrors({ email: '', password: '', general: '' });
     
@@ -311,6 +327,21 @@ const SignIn = () => {
       // Check for static admin credentials FIRST (before validation)
       const normalizedEmail = email.toLowerCase().trim();
       const isAdminLogin = (normalizedEmail === 'admin' || normalizedEmail === 'admin@dorsu.edu.ph') && password === '12345';
+      
+      // Even admin login requires internet connection
+      if (isAdminLogin && !isOnline) {
+        setIsLoading(false);
+        loadingRotation.stopAnimation();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        setErrors({ 
+          email: '', 
+          password: '', 
+          general: 'No internet connection. Please check your network and try again.' 
+        });
+        triggerVibrationAnimation('email');
+        setTimeout(() => triggerVibrationAnimation('password'), 200);
+        return;
+      }
       
       if (isAdminLogin) {
         // Generate admin token (simple token for admin)
@@ -903,11 +934,11 @@ const SignIn = () => {
           <TouchableOpacity 
               style={[styles.signInButton, isLoading && styles.signInButtonDisabled]}
               onPress={() => handleButtonPress(signInButtonScale, handleSignIn)}
-              disabled={isLoading}
+              disabled={isLoading || !isOnline}
               accessibilityRole="button"
-              accessibilityLabel={isLoading ? "Signing in..." : "Sign in"}
+              accessibilityLabel={isLoading ? "Signing in..." : !isOnline ? "Sign in (No internet connection)" : "Sign in"}
               accessibilityHint="Double tap to sign in to your DOrSU Connect account"
-              accessibilityState={{ disabled: isLoading }}
+              accessibilityState={{ disabled: isLoading || !isOnline }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               activeOpacity={0.8}
             >

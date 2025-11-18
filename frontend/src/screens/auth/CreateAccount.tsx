@@ -9,6 +9,7 @@ import React, { useRef } from 'react';
 import { Animated, Dimensions, Easing, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../config/api.config';
+import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import SuccessModal from '../../modals/SuccessModal';
 
@@ -26,6 +27,8 @@ const CreateAccount = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme: t } = useTheme();
+  const { isConnected, isInternetReachable } = useNetworkStatus();
+  const isOnline = isConnected && isInternetReachable;
 
   // Animation values
   const logoScale = useRef(new Animated.Value(1)).current;
@@ -159,6 +162,12 @@ const CreateAccount = () => {
   };
 
   const handleSignUp = async () => {
+    // Check network status first
+    if (!isOnline) {
+      setValidationWarning('⚠️ No internet connection. Please check your network and try again.');
+      return;
+    }
+
     // Clear previous warnings
     setValidationWarning('');
     
@@ -733,9 +742,9 @@ const CreateAccount = () => {
           <TouchableOpacity 
               style={[styles.signUpButton, isLoading && styles.signUpButtonDisabled]}
               onPress={() => handleButtonPress(signUpButtonScale, handleSignUp)}
-              disabled={isLoading}
+              disabled={isLoading || !isOnline}
               accessibilityRole="button"
-              accessibilityLabel={isLoading ? "Creating account..." : "Sign up"}
+              accessibilityLabel={isLoading ? "Creating account..." : !isOnline ? "Sign up (No internet connection)" : "Sign up"}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               activeOpacity={0.8}
             >

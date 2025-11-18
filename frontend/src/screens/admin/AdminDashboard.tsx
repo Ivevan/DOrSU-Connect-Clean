@@ -126,13 +126,8 @@ const AdminDashboard = () => {
   const eventDrawerMonthPickerScaleAnim = useRef(new Animated.Value(0)).current;
   const eventDrawerMonthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
   
-  // Animated floating background orbs (Copilot-style)
+  // Animated floating background orb (Copilot-style)
   const floatAnim1 = useRef(new Animated.Value(0)).current;
-  const cloudAnim1 = useRef(new Animated.Value(0)).current;
-  const cloudAnim2 = useRef(new Animated.Value(0)).current;
-  const lightSpot1 = useRef(new Animated.Value(0)).current;
-  const lightSpot2 = useRef(new Animated.Value(0)).current;
-  const lightSpot3 = useRef(new Animated.Value(0)).current;
 
   // Upcoming updates (future dates)
   const upcomingUpdates = useMemo(() => {
@@ -227,97 +222,25 @@ const AdminDashboard = () => {
     return userName.substring(0, 2).toUpperCase();
   };
 
-  // Animate floating background orbs on mount
+  // Animate floating background orb on mount
   useEffect(() => {
-    const animations = [
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(floatAnim1, {
-            toValue: 1,
-            duration: 8000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(floatAnim1, {
-            toValue: 0,
-            duration: 8000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(cloudAnim1, {
-            toValue: 1,
-            duration: 15000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cloudAnim1, {
-            toValue: 0,
-            duration: 15000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(cloudAnim2, {
-            toValue: 1,
-            duration: 20000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cloudAnim2, {
-            toValue: 0,
-            duration: 20000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot1, {
-            toValue: 1,
-            duration: 12000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot1, {
-            toValue: 0,
-            duration: 12000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot2, {
-            toValue: 1,
-            duration: 18000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot2, {
-            toValue: 0,
-            duration: 18000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot3, {
-            toValue: 1,
-            duration: 14000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot3, {
-            toValue: 0,
-            duration: 14000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-    ];
-
-    animations.forEach(anim => anim.start());
-  }, []);
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim1, {
+          toValue: 1,
+          duration: 8000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim1, {
+          toValue: 0,
+          duration: 8000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [floatAnim1]);
 
   // Refresh calendar events function
   // Track last calendar fetch time
@@ -589,196 +512,8 @@ const AdminDashboard = () => {
         pointerEvents="none"
       />
 
-      {/* Animated Floating Background Orbs (Copilot-style) */}
+      {/* Animated Floating Background Orb (Copilot-style) */}
       <View style={styles.floatingBgContainer} pointerEvents="none" collapsable={false}>
-        {/* Light Spot 1 - Top right gentle glow */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '8%',
-              right: '12%',
-              transform: [
-                {
-                  translateX: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -15],
-                  }),
-                },
-                {
-                  translateY: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 12],
-                  }),
-                },
-                {
-                  scale: lightSpot1.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.08, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot1}>
-            <LinearGradient
-              colors={['rgba(255, 220, 180, 0.35)', 'rgba(255, 200, 150, 0.18)', 'rgba(255, 230, 200, 0.08)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.2, y: 0.2 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Light Spot 2 - Middle left soft circle */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '45%',
-              left: '8%',
-              transform: [
-                {
-                  translateX: lightSpot2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 18],
-                  }),
-                },
-                {
-                  translateY: lightSpot2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -10],
-                  }),
-                },
-                {
-                  scale: lightSpot2.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.06, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot2}>
-            <LinearGradient
-              colors={['rgba(255, 210, 170, 0.28)', 'rgba(255, 200, 160, 0.15)', 'rgba(255, 220, 190, 0.06)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.3, y: 0.3 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Light Spot 3 - Bottom center blurry glow */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              bottom: '12%',
-              left: '55%',
-              transform: [
-                {
-                  translateX: lightSpot3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -20],
-                  }),
-                },
-                {
-                  translateY: lightSpot3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 8],
-                  }),
-                },
-                {
-                  scale: lightSpot3.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.1, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot3}>
-            <LinearGradient
-              colors={['rgba(255, 190, 140, 0.25)', 'rgba(255, 180, 130, 0.12)', 'rgba(255, 210, 170, 0.05)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.4, y: 0.4 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Cloud variation 1 - Top left soft light patch */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '15%',
-              left: '10%',
-              transform: [
-                {
-                  translateX: cloudAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 20],
-                  }),
-                },
-                {
-                  translateY: cloudAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -15],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.cloudPatch1}>
-            <LinearGradient
-              colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.22)', 'rgba(255, 230, 200, 0.1)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Cloud variation 2 - Bottom right gentle tone */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              bottom: '20%',
-              right: '15%',
-              transform: [
-                {
-                  translateX: cloudAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -25],
-                  }),
-                },
-                {
-                  translateY: cloudAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 10],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.cloudPatch2}>
-            <LinearGradient
-              colors={['rgba(255, 190, 140, 0.32)', 'rgba(255, 200, 160, 0.18)', 'rgba(255, 220, 190, 0.08)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.3, y: 0.3 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
         {/* Orb 1 - Soft Orange Glow (Center area) */}
         <Animated.View
           style={[
@@ -1290,38 +1025,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: 1,
     overflow: 'hidden',
-  },
-  cloudWrapper: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    overflow: 'hidden',
-  },
-  lightSpot1: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-  },
-  lightSpot2: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-  },
-  lightSpot3: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-  },
-  cloudPatch1: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-  },
-  cloudPatch2: {
-    width: 130,
-    height: 130,
-    borderRadius: 65,
   },
   floatingOrbWrapper: {
     position: 'absolute',

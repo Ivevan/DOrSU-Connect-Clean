@@ -522,7 +522,8 @@ const SchoolUpdates = () => {
     try {
       setIsLoading(true);
       setError(null);
-      const posts = await AdminDataService.getPosts(forceRefresh);
+      const posts = await AdminDataService.getPosts();
+    
       
       if (__DEV__) console.log('📥 Fetched posts from AdminDataService:', posts.length);
       

@@ -1249,58 +1249,140 @@ export class ScheduleService {
     }
 
     try {
-      // Read request body using event-based approach (more reliable)
-      let body = '';
-      await new Promise((resolve, reject) => {
-        req.on('data', chunk => {
-          body += chunk.toString();
-          if (body.length > 1000000) { // 1MB limit
-            req.destroy();
-            reject(new Error('Request body too large'));
+      const contentType = req.headers['content-type'] || '';
+      let updates = {};
+      let imageFileId = null;
+
+      // Handle multipart/form-data (if image is being updated)
+      if (contentType.includes('multipart/form-data')) {
+        Logger.info('📝 Update event: Detected multipart/form-data');
+        const boundary = contentType.split('boundary=')[1];
+        if (!boundary) {
+          this.sendJson(res, 400, { error: 'Missing boundary in Content-Type' });
+          return true;
+        }
+
+        const parts = await parseMultipartFormData(req, boundary);
+        
+        // Extract form fields
+        const titlePart = parts.find(p => p.name === 'title');
+        const descriptionPart = parts.find(p => p.name === 'description');
+        const categoryPart = parts.find(p => p.name === 'category');
+        const datePart = parts.find(p => p.name === 'date');
+        const imagePart = parts.find(p => p.filename);
+
+        if (titlePart) updates.title = titlePart.data.toString('utf8').trim();
+        if (descriptionPart) updates.description = descriptionPart.data.toString('utf8').trim();
+        if (categoryPart) updates.category = categoryPart.data.toString('utf8').trim();
+        if (datePart) {
+          const dateStr = datePart.data.toString('utf8').trim();
+          const date = new Date(dateStr);
+          if (!isNaN(date.getTime())) {
+            updates.date = this.formatDate(date);
+            updates.isoDate = date.toISOString();
           }
-        });
-        req.on('end', () => {
-          resolve();
-        });
-        req.on('error', reject);
-      });
+        }
+        
+        // Set default values for required fields if not provided
+        if (!updates.time) updates.time = 'All Day';
+        if (!updates.category) updates.category = 'Event';
+        if (!updates.description) updates.description = '';
+        
+        // If isoDate is not set but we have a date, derive it
+        if (!updates.isoDate && updates.date) {
+          const date = new Date(updates.date);
+          if (!isNaN(date.getTime())) {
+            updates.isoDate = date.toISOString();
+          }
+        }
 
-      if (!body) {
-        this.sendJson(res, 400, { error: 'Request body is required' });
-        return true;
+        // Handle image upload if present
+        if (imagePart) {
+          Logger.info(`📸 Image part found for update: filename=${imagePart.filename}, size=${imagePart.data.length}`);
+          try {
+            const gridFSService = getGridFSService();
+            const imageBuffer = Buffer.from(imagePart.data);
+            const imageMimeType = imagePart.contentType || 'image/jpeg';
+            const originalFilename = imagePart.filename || `image_${Date.now()}.jpg`;
+            
+            // Upload to GridFS
+            imageFileId = await gridFSService.uploadImage(
+              imageBuffer,
+              originalFilename,
+              imageMimeType,
+              {
+                postTitle: updates.title || 'Updated Event',
+                uploadedBy: auth.userId || 'admin',
+              }
+            );
+            
+            // Determine base URL
+            const baseUrl = this.getBaseUrl(req);
+            
+            updates.imageFileId = imageFileId;
+            updates.image = `${baseUrl}/api/images/${imageFileId}`;
+            updates.images = [`${baseUrl}/api/images/${imageFileId}`];
+            
+            Logger.success(`📸 Image uploaded to GridFS for update: ${imageFileId}`);
+          } catch (error) {
+            Logger.error('❌ Failed to upload image to GridFS:', error);
+            // Continue without image update
+          }
+        }
+      } else {
+        // Handle JSON body (no image update)
+        Logger.info('📝 Update event: Detected JSON body');
+        const chunks = [];
+        for await (const chunk of req) {
+          chunks.push(chunk);
+        }
+        
+        if (chunks.length === 0) {
+          this.sendJson(res, 400, { error: 'Request body is required' });
+          return true;
+        }
+        
+        let eventData;
+        try {
+          const body = Buffer.concat(chunks).toString('utf8');
+          eventData = JSON.parse(body);
+        } catch (parseError) {
+          Logger.error('Failed to parse JSON body:', parseError);
+          this.sendJson(res, 400, { error: 'Invalid JSON in request body' });
+          return true;
+        }
+
+        // Validate required fields (isoDate can be derived from date if not provided)
+        if (!eventData || !eventData.title) {
+          Logger.warn('Update event validation failed:', { hasTitle: !!eventData?.title, hasIsoDate: !!eventData?.isoDate, hasDate: !!eventData?.date });
+          this.sendJson(res, 400, { error: 'Title is required' });
+          return true;
+        }
+        
+        // If isoDate is not provided but date is, derive isoDate from date
+        if (!eventData.isoDate && eventData.date) {
+          const date = new Date(eventData.date);
+          if (!isNaN(date.getTime())) {
+            eventData.isoDate = date.toISOString();
+          }
+        }
+
+        // Prepare update object (exclude _id and other system fields)
+        updates = {
+          title: eventData.title,
+          isoDate: eventData.isoDate,
+          time: eventData.time || 'All Day',
+          category: eventData.category || 'Event',
+          description: eventData.description || '',
+          dateType: eventData.dateType || 'date',
+          startDate: eventData.startDate || eventData.isoDate,
+          endDate: eventData.endDate || eventData.isoDate,
+          weekOfMonth: eventData.weekOfMonth || null,
+          month: eventData.month || null,
+          year: eventData.year || null,
+          semester: eventData.semester || null,
+        };
       }
-
-      let eventData;
-      try {
-        eventData = JSON.parse(body);
-      } catch (parseError) {
-        Logger.error('Failed to parse request body:', parseError);
-        this.sendJson(res, 400, { error: 'Invalid JSON in request body' });
-        return true;
-      }
-
-      // Validate required fields
-      if (!eventData || !eventData.title || !eventData.isoDate) {
-        Logger.warn('Update event validation failed:', { hasTitle: !!eventData?.title, hasIsoDate: !!eventData?.isoDate });
-        this.sendJson(res, 400, { error: 'Title and date are required' });
-        return true;
-      }
-
-      // Prepare update object (exclude _id and other system fields)
-      const updates = {
-        title: eventData.title,
-        isoDate: eventData.isoDate,
-        time: eventData.time || 'All Day',
-        category: eventData.category || 'Event',
-        description: eventData.description || '',
-        dateType: eventData.dateType || 'date',
-        startDate: eventData.startDate || eventData.isoDate,
-        endDate: eventData.endDate || eventData.isoDate,
-        weekOfMonth: eventData.weekOfMonth || null,
-        month: eventData.month || null,
-        year: eventData.year || null,
-        semester: eventData.semester || null,
-      };
 
       // Regenerate embedding if text fields changed
       const scheduleCollection = this.mongoService.getCollection('schedule');

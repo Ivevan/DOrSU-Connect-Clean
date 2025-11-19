@@ -11,12 +11,12 @@ import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from '
 import { Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import EventDetailsDrawer from '../../components/calendar/EventDetailsDrawer';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import UserSidebar from '../../components/navigation/UserSidebar';
 import { theme } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import MonthPickerModal from '../../modals/MonthPickerModal';
+import ViewEventModal from '../../modals/ViewEventModal';
 import AdminDataService from '../../services/AdminDataService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
 import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
@@ -79,20 +79,11 @@ const CalendarScreen = () => {
     }, [])
   );
   
-  // Event Details Drawer state
+  // Event Modal state (view-only)
   const [showEventDrawer, setShowEventDrawer] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [selectedDateEvents, setSelectedDateEvents] = useState<any[]>([]);
   const [selectedDateForDrawer, setSelectedDateForDrawer] = useState<Date | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editTitle, setEditTitle] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  const [editDate, setEditDate] = useState('');
-  const [editTime, setEditTime] = useState('');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [selectedDateObj, setSelectedDateObj] = useState<Date | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
   
   // Event type filter - single selection: 'institutional' or 'academic'
   const [selectedEventType, setSelectedEventType] = useState<'institutional' | 'academic'>('institutional');
@@ -446,46 +437,30 @@ const CalendarScreen = () => {
       // Set the selected event
       setSelectedEvent(eventData as CalendarEvent);
       
-      // Set date and time for display (not editing, since it's read-only)
-      if (eventData?.isoDate || eventData?.date) {
-        const eventDate = new Date((eventData as any).isoDate || (eventData as any).date);
-        setSelectedDateObj(eventDate);
-        setEditDate(formatDate(eventDate));
-      } else {
-        // If no date in event, use the clicked date
-        setSelectedDateObj(date);
-        setEditDate(formatDate(date));
-      }
-      setEditTime((eventData as any)?.time || '');
-      setIsEditing(false);
-      
-      // Also keep selectedDateEvents for backward compatibility
-      setSelectedDateEvents(events);
+      // Set selectedDateEvents for the modal
+      setSelectedDateEvents(events.map(e => ({
+        id: e.id,
+        title: e.title,
+        color: e.color,
+        type: e.type,
+        category: e.category,
+        description: e.description,
+        isoDate: e.dateKey ? new Date(e.dateKey).toISOString() : undefined,
+        date: e.dateKey,
+        time: e.time,
+        startDate: e.startDate,
+        endDate: e.endDate,
+      })));
       setSelectedDateForDrawer(date);
       setShowEventDrawer(true);
-      
-      // Animate drawer opening
-      Animated.parallel([
-        Animated.spring(drawerSlideAnim, {
-          toValue: 1,
-          useNativeDriver: true,
-          tension: 65,
-          friction: 11,
-        }),
-        Animated.timing(drawerBackdropOpacity, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
       
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } else {
       Haptics.selectionAsync();
     }
-  }, [getEventsForDate, calendarEvents, drawerSlideAnim, drawerBackdropOpacity]);
+  }, [getEventsForDate, calendarEvents]);
 
-  // Open event drawer
+  // Open event modal
   const openEventDrawer = useCallback((event: any) => {
     // Find the matching CalendarEvent from calendarEvents
     const matchingEvent = calendarEvents.find((e: CalendarEvent) => {
@@ -500,55 +475,34 @@ const CalendarScreen = () => {
       const dateKey = event.dateKey || parseAnyDateToKey(matchingEvent.isoDate || matchingEvent.date);
       const dateForDrawer = new Date(dateKey);
       const eventsForDate = getEventsForDate(dateForDrawer);
-      setSelectedDateEvents(eventsForDate);
+      setSelectedDateEvents(eventsForDate.map(e => ({
+        id: e.id,
+        title: e.title,
+        color: e.color,
+        type: e.type,
+        category: e.category,
+        description: e.description,
+        isoDate: e.dateKey ? new Date(e.dateKey).toISOString() : undefined,
+        date: e.dateKey,
+        time: e.time,
+        startDate: e.startDate,
+        endDate: e.endDate,
+      })));
       setSelectedDateForDrawer(dateForDrawer);
-      
-      // Animate drawer in
       setShowEventDrawer(true);
-      Animated.parallel([
-        Animated.spring(drawerSlideAnim, {
-          toValue: 1,
-          useNativeDriver: true,
-          tension: 65,
-          friction: 11,
-        }),
-        Animated.timing(drawerBackdropOpacity, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
       
       Haptics.selectionAsync();
     }
-  }, [calendarEvents, getEventsForDate, drawerSlideAnim, drawerBackdropOpacity]);
-
-  // Close event drawer
+  }, [calendarEvents, getEventsForDate]);
+  
+  // Close event modal
   const closeEventDrawer = useCallback(() => {
-    Animated.parallel([
-      Animated.spring(drawerSlideAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 11,
-      }),
-      Animated.timing(drawerBackdropOpacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setShowEventDrawer(false);
-      setSelectedEvent(null);
-      setIsEditing(false);
-    });
-  }, [drawerSlideAnim, drawerBackdropOpacity]);
-
-  // Refresh calendar events (no-op for user view, but required by EventDetailsDrawer)
-  const refreshCalendarEvents = useCallback(async () => {
-    // In user view, we don't refresh since we can't edit/delete
-    // This is just to satisfy the EventDetailsDrawer prop requirement
+    setShowEventDrawer(false);
+    setSelectedEvent(null);
+    setSelectedDateForDrawer(null);
+    setSelectedDateEvents([]);
   }, []);
+
 
   // Memoized Calendar Day Component
   const CalendarDay = memo(({ date, day, isCurrentDay, isSelectedDay, index, eventsForDay, theme, onPress }: { date: Date; day: number | null; isCurrentDay: boolean; isSelectedDay: boolean; index: number; eventsForDay: any[]; theme: any; onPress: (date: Date) => void }) => {
@@ -1354,45 +1308,12 @@ const CalendarScreen = () => {
         </BlurView>
       </ScrollView>
 
-      {/* Event Details Drawer - View Only */}
-      <EventDetailsDrawer
+      {/* View Event Modal - View Only */}
+      <ViewEventModal
         visible={showEventDrawer}
         onClose={closeEventDrawer}
         selectedEvent={selectedEvent}
-        isEditing={isEditing}
-        setIsEditing={setIsEditing}
-        editTitle={editTitle}
-        setEditTitle={setEditTitle}
-        editDescription={editDescription}
-        setEditDescription={setEditDescription}
-        editDate={editDate}
-        setEditDate={setEditDate}
-        editTime={editTime}
-        setEditTime={setEditTime}
-        selectedDateObj={selectedDateObj}
-        setSelectedDateObj={setSelectedDateObj}
-        showDatePicker={showDatePicker}
-        setShowDatePicker={setShowDatePicker}
-        isDeleting={isDeleting}
-        setIsDeleting={setIsDeleting}
-        isUpdating={isUpdating}
-        setIsUpdating={setIsUpdating}
         selectedDateEvents={selectedDateEvents}
-        selectedDateForDrawer={selectedDateForDrawer}
-        calendarEvents={calendarEvents}
-        refreshCalendarEvents={refreshCalendarEvents}
-        slideAnim={drawerSlideAnim}
-        backdropOpacity={drawerBackdropOpacity}
-        monthPickerScaleAnim={monthPickerScaleAnim}
-        monthPickerOpacityAnim={monthPickerOpacityAnim}
-        onSelectEvent={(event) => {
-          if (!event) {
-            setSelectedEvent(null);
-            return;
-          }
-          setSelectedEvent(event);
-        }}
-        readOnly={true}
       />
 
       <View style={[styles.bottomNavContainer, {

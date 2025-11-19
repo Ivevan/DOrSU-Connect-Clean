@@ -50,13 +50,13 @@ const Bar: React.FC<BarProps> = ({
         style={styles.blurBackground}
       >
         <View style={[styles.navContent, {
-          backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
+          backgroundColor: 'transparent',
         }]}>
           <TouchableOpacity style={styles.tab} onPress={onHomePress}>
             <Ionicons 
               name={activeTab === 'home' ? 'home' : 'home-outline'} 
               size={28} 
-              color={activeTab === 'home' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              color={activeTab === 'home' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
 
@@ -64,7 +64,7 @@ const Bar: React.FC<BarProps> = ({
             <Ionicons 
               name={activeTab === 'discovery' ? 'newspaper' : 'newspaper-outline'} 
               size={28} 
-              color={activeTab === 'discovery' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              color={activeTab === 'discovery' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
 
@@ -72,7 +72,7 @@ const Bar: React.FC<BarProps> = ({
             <Ionicons 
               name={activeTab === 'calendar' ? 'copy' : 'copy-outline'} 
               size={28} 
-              color={activeTab === 'calendar' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              color={activeTab === 'calendar' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
         </View>
@@ -118,9 +118,13 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: 'hidden',
-    borderWidth: 1,
+    borderWidth: 0,
     borderBottomWidth: 0,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
   },
   navContent: {
     flexDirection: 'row',

@@ -10,6 +10,7 @@ import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import BottomSheet from '../../components/common/BottomSheet';
 import { theme as themeConfig } from '../../config/theme';
 import { useThemeActions, useThemeValues } from '../../contexts/ThemeContext';
 import LogoutModal from '../../modals/LogoutModal';
@@ -73,6 +74,7 @@ const AdminSettings = () => {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [isKnowledgeBaseModalOpen, setIsKnowledgeBaseModalOpen] = useState(false);
 
   // Lock header height to prevent layout shifts
   const headerHeightRef = useRef<number>(64);
@@ -83,6 +85,7 @@ const AdminSettings = () => {
   const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
 
   const sheetY = useRef(new Animated.Value(300)).current;
+  const knowledgeBaseSheetY = useRef(new Animated.Value(300)).current;
 
   const openLogout = useCallback(() => {
     setIsLogoutOpen(true);
@@ -96,6 +99,19 @@ const AdminSettings = () => {
       setIsLogoutOpen(false);
     });
   }, [sheetY]);
+
+  const openKnowledgeBaseModal = useCallback(() => {
+    setIsKnowledgeBaseModalOpen(true);
+    setTimeout(() => {
+      Animated.timing(knowledgeBaseSheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    }, 0);
+  }, [knowledgeBaseSheetY]);
+
+  const closeKnowledgeBaseModal = useCallback(() => {
+    Animated.timing(knowledgeBaseSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
+      setIsKnowledgeBaseModalOpen(false);
+    });
+  }, [knowledgeBaseSheetY]);
 
   const confirmLogout = useCallback(async () => {
     try {
@@ -156,14 +172,19 @@ const AdminSettings = () => {
       Alert.alert(
         'Upload Successful',
         `File "${fileName}" uploaded successfully.\n\n${uploadResult.chunksAdded} chunks added to knowledge base.`,
-        [{ text: 'OK' }]
+        [{ 
+          text: 'OK',
+          onPress: () => {
+            closeKnowledgeBaseModal();
+          }
+        }]
       );
     } catch (error: any) {
       Alert.alert('Upload Failed', error.message || 'Failed to upload file');
     } finally {
       setIsUploadingFile(false);
     }
-  }, []);
+  }, [closeKnowledgeBaseModal]);
 
   return (
     <View style={[styles.container, {
@@ -248,31 +269,31 @@ const AdminSettings = () => {
         </Animated.View>
       </View>
 
-      {/* Header */}
+      {/* Header - Copilot Style matching AdminCalendar */}
       <View style={[styles.header, { 
-        backgroundColor: 'transparent',
-        top: insets.top,
+        marginTop: insets.top,
         marginLeft: insets.left,
         marginRight: insets.right,
-      }]}
-        collapsable={false}
-      >
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-          accessibilityLabel="Go back"
-        >
-          <Ionicons name="chevron-back" size={28} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
-        </TouchableOpacity>
+      }]}>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="chevron-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+          </TouchableOpacity>
+        </View>
         <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Settings</Text>
+        <View style={styles.headerRight} />
       </View>
 
       <ScrollView
         ref={scrollRef}
         style={styles.scrollView}
         contentContainerStyle={[styles.contentContainer, {
-          paddingTop: insets.top + 56,
-          paddingBottom: insets.bottom + 20,
+          paddingTop: 12,
+          paddingBottom: insets.bottom + 80, // Extra space for bottom navigation bar
           paddingLeft: insets.left + 16,
           paddingRight: insets.right + 16,
         }]}
@@ -368,78 +389,44 @@ const AdminSettings = () => {
             <TouchableOpacity 
               style={styles.sectionTitleButton}
               onPress={() => {
-                // TODO: Navigate to feedback screen or open feedback form
-              }}
-            >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Give Feedback</Text>
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.sectionTitleButton}
-              onPress={() => {
                 navigation.navigate('AdminAbout');
               }}
             >
               <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>About</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.sectionTitleButton, styles.sectionTitleButtonLast]}
+              onPress={openKnowledgeBaseModal}
+            >
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Update</Text>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+            </TouchableOpacity>
           </BlurView>
 
-          {/* Knowledge Base Upload Section */}
+          {/* Sign Out Section */}
           <BlurView
             intensity={Platform.OS === 'ios' ? 50 : 40}
             tint={isDarkMode ? 'dark' : 'light'}
             style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)', marginTop: themeConfig.spacing(1.5) }]}
           >
-            <View style={styles.uploadSectionHeader}>
-              <Ionicons name="document-text-outline" size={20} color={theme.colors.primary} />
-              <Text style={[styles.uploadSectionTitle, { color: theme.colors.text }]}>Knowledge Base</Text>
-            </View>
-            <Text style={[styles.uploadSectionDescription, { color: theme.colors.textMuted }]}>
-              Upload .txt, .csv, or .json files to update the knowledge base
-            </Text>
+            {/* Sign Out Button */}
             <TouchableOpacity 
               style={[
-                styles.uploadButton,
+                styles.signOutButtonInCard, 
                 { 
-                  backgroundColor: isUploadingFile ? theme.colors.textMuted : theme.colors.primary,
-                  opacity: isUploadingFile ? 0.6 : 1,
+                  backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)',
+                  borderColor: isDarkMode ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.2)',
                 }
               ]}
-              onPress={handleFileUpload}
-              disabled={isUploadingFile}
+              onPress={openLogout}
               activeOpacity={0.7}
             >
-              {isUploadingFile ? (
-                <>
-                  <Ionicons name="hourglass-outline" size={18} color="#FFFFFF" />
-                  <Text style={styles.uploadButtonText}>Uploading...</Text>
-                </>
-              ) : (
-                <>
-                  <Ionicons name="cloud-upload-outline" size={18} color="#FFFFFF" />
-                  <Text style={styles.uploadButtonText}>Upload File</Text>
-                </>
-              )}
+              <Ionicons name="log-out-outline" size={18} color="#EF4444" />
+              <Text style={[styles.signOutText, { color: '#EF4444' }]}>Sign out</Text>
             </TouchableOpacity>
           </BlurView>
-
-          {/* Sign Out Button */}
-          <TouchableOpacity 
-            style={[
-              styles.signOutButton, 
-              { 
-                backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)',
-                borderColor: isDarkMode ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.2)',
-              }
-            ]}
-            onPress={openLogout}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="log-out-outline" size={18} color="#EF4444" />
-            <Text style={[styles.signOutText, { color: '#EF4444' }]}>Sign out</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -449,6 +436,55 @@ const AdminSettings = () => {
         onConfirm={confirmLogout}
         sheetY={sheetY}
       />
+
+      {/* Knowledge Base Upload Modal */}
+      <BottomSheet
+        visible={isKnowledgeBaseModalOpen}
+        onClose={closeKnowledgeBaseModal}
+        sheetY={knowledgeBaseSheetY}
+        backgroundColor={theme.colors.surface}
+      >
+        <View style={styles.modalHeader}>
+          <View style={styles.uploadSectionHeader}>
+            <Ionicons name="document-text-outline" size={20} color={theme.colors.primary} />
+            <Text style={[styles.uploadSectionTitle, { color: theme.colors.text }]}>Knowledge Base</Text>
+          </View>
+          <TouchableOpacity
+            onPress={closeKnowledgeBaseModal}
+            style={styles.modalCloseButton}
+            accessibilityLabel="Close modal"
+          >
+            <Ionicons name="close" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+        </View>
+        <Text style={[styles.uploadSectionDescription, { color: theme.colors.textMuted }]}>
+          Upload .txt, .csv, or .json files to update the knowledge base
+        </Text>
+        <TouchableOpacity 
+          style={[
+            styles.uploadButton,
+            { 
+              backgroundColor: isUploadingFile ? theme.colors.textMuted : theme.colors.primary,
+              opacity: isUploadingFile ? 0.6 : 1,
+            }
+          ]}
+          onPress={handleFileUpload}
+          disabled={isUploadingFile}
+          activeOpacity={0.7}
+        >
+          {isUploadingFile ? (
+            <>
+              <Ionicons name="hourglass-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.uploadButtonText}>Uploading...</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="cloud-upload-outline" size={18} color="#FFFFFF" />
+              <Text style={styles.uploadButtonText}>Upload File</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </BottomSheet>
     </View>
   );
 };
@@ -459,21 +495,22 @@ const styles = StyleSheet.create({
     backgroundColor: themeConfig.colors.surfaceAlt,
   },
   header: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 999,
-    backgroundColor: 'transparent',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: 'transparent',
+    zIndex: 10,
+    // Ensure header blends with background - matches AdminCalendar
+  },
+  headerLeft: {
+    width: 44,
   },
   backButton: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -481,7 +518,14 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     letterSpacing: -0.3,
-    marginLeft: 8,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+  },
+  headerRight: {
+    width: 44,
+    alignItems: 'flex-end',
   },
   scrollView: {
     flex: 1,
@@ -666,6 +710,24 @@ const styles = StyleSheet.create({
     gap: themeConfig.spacing(1),
     borderWidth: 1,
   },
+  signOutButtonInCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: themeConfig.spacing(1.5),
+    paddingHorizontal: themeConfig.spacing(2),
+    borderRadius: themeConfig.radii.md,
+    marginTop: themeConfig.spacing(1.5),
+    marginBottom: 0,
+    gap: themeConfig.spacing(1),
+    borderWidth: 1,
+  },
+  sectionDivider: {
+    height: 1,
+    width: '100%',
+    marginTop: themeConfig.spacing(2),
+    marginBottom: 0,
+  },
   signOutText: {
     fontSize: 14,
     fontWeight: '600',
@@ -729,6 +791,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
     letterSpacing: 0.2,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

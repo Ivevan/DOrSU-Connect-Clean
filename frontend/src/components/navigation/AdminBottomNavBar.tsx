@@ -34,13 +34,13 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
         style={styles.blurBackground}
       >
         <View style={[styles.navContent, {
-          backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
+          backgroundColor: 'transparent',
         }]}>
           <TouchableOpacity style={styles.tab} onPress={onChatPress}>
             <Ionicons 
               name={activeTab === 'chat' ? 'home' : 'home-outline'} 
               size={28} 
-              color={activeTab === 'chat' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              color={activeTab === 'chat' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
 
@@ -48,7 +48,7 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
             <Ionicons 
               name={activeTab === 'dashboard' ? 'newspaper' : 'newspaper-outline'} 
               size={28} 
-              color={activeTab === 'dashboard' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              color={activeTab === 'dashboard' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
 
@@ -56,7 +56,7 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
             <Ionicons 
               name={activeTab === 'calendar' ? 'calendar' : 'calendar-outline'} 
               size={28} 
-              color={activeTab === 'calendar' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              color={activeTab === 'calendar' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
         </View>
@@ -74,9 +74,13 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: 'hidden',
-    borderWidth: 1,
+    borderWidth: 0,
     borderBottomWidth: 0,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 8,
   },
   navContent: {
     flexDirection: 'row',

@@ -689,13 +689,37 @@ const AdminDataService = {
         });
       } else {
         // Use JSON for text-only updates
+        // Remove imageFile and other non-serializable fields before stringifying
+        const jsonUpdates: any = {
+          title: updates.title,
+          description: updates.description,
+          category: updates.category,
+          date: updates.date,
+          isoDate: updates.isoDate,
+          time: updates.time,
+          images: updates.images,
+          image: updates.image,
+          isPinned: updates.isPinned,
+          isUrgent: updates.isUrgent,
+          source: updates.source,
+        };
+        
+        // Remove undefined/null values to keep JSON clean
+        Object.keys(jsonUpdates).forEach(key => {
+          if (jsonUpdates[key] === undefined || jsonUpdates[key] === null) {
+            delete jsonUpdates[key];
+          }
+        });
+        
+        console.log('📤 Sending JSON update:', jsonUpdates);
+        
         response = await fetch(`${apiConfig.baseUrl}/api/admin/schedule/events/${id}`, {
           method: 'PUT',
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(updates),
+          body: JSON.stringify(jsonUpdates),
         });
       }
 
@@ -705,15 +729,36 @@ const AdminDataService = {
       }
 
       const data = await response.json();
-      if (data.success && data.post) {
+      console.log('📥 Update post response:', data);
+      
+      // Backend returns { success: true, event: {...} } not { success: true, post: {...} }
+      // Handle both formats for backward compatibility
+      const updatedEvent = data.event || data.post;
+      
+      if (data.success && updatedEvent) {
         // Update local store
-        const updatedPost = data.post;
+        // Map backend event format to Post format
+        const updatedPost: Post = {
+          id: String(updatedEvent._id || updatedEvent.id || id),
+          title: updatedEvent.title || '',
+          description: updatedEvent.description || '',
+          category: updatedEvent.category || 'Announcement',
+          date: updatedEvent.date || updatedEvent.isoDate || new Date().toISOString(),
+          isoDate: updatedEvent.isoDate || updatedEvent.date || new Date().toISOString(),
+          images: normalizeImages(updatedEvent.images || (updatedEvent.image ? [updatedEvent.image] : [])),
+          image: updatedEvent.image || (updatedEvent.images && updatedEvent.images.length > 0 ? updatedEvent.images[0] : undefined),
+          isPinned: Boolean(updatedEvent.isPinned || updatedEvent.pinned),
+          isUrgent: Boolean(updatedEvent.isUrgent),
+          source: updatedEvent.source || 'Admin',
+        };
+        
         postsStore = postsStore.map(p => 
           p.id === String(id) ? updatedPost : p
         );
         return updatedPost;
       }
       
+      console.error('❌ Invalid response structure:', data);
       throw new Error('Invalid response from server');
     } catch (error) {
       console.error('Failed to update post:', error);

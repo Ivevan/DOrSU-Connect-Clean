@@ -309,8 +309,9 @@ const AppNavigator = () => {
           name="PostUpdate" 
           component={PostUpdate}
           options={{
-            animation: 'none' as const, // Disabled for debugging
-            animationDuration: 0,
+            presentation: 'modal' as const,
+            animation: 'slide_from_bottom' as const,
+            animationDuration: 300,
             freezeOnBlur: false,
             contentStyle: {
               backgroundColor: 'transparent',

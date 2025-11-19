@@ -1,0 +1,445 @@
+import { Ionicons } from '@expo/vector-icons';
+import React, { useCallback, useRef } from 'react';
+import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import BottomSheet from '../components/common/BottomSheet';
+import { useThemeValues } from '../contexts/ThemeContext';
+import { categoryToColors } from '../utils/calendarUtils';
+import { formatDate } from '../utils/dateUtils';
+
+interface ViewEventModalProps {
+  visible: boolean;
+  onClose: () => void;
+  selectedEvent: any | null;
+  selectedDateEvents?: any[];
+  onEdit?: () => void;
+  onDelete?: () => void;
+}
+
+const ViewEventModal: React.FC<ViewEventModalProps> = ({
+  visible,
+  onClose,
+  selectedEvent,
+  selectedDateEvents = [],
+  onEdit,
+  onDelete,
+}) => {
+  const { theme } = useThemeValues();
+  const insets = useSafeAreaInsets();
+  const sheetY = useRef(new Animated.Value(500)).current;
+
+  // Animate sheet when visible changes
+  React.useEffect(() => {
+    if (visible) {
+      Animated.spring(sheetY, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }).start();
+    } else {
+      Animated.timing(sheetY, {
+        toValue: 500,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [visible, sheetY]);
+
+  const handleClose = useCallback(() => {
+    Animated.timing(sheetY, {
+      toValue: 500,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      onClose();
+    });
+  }, [sheetY, onClose]);
+
+  // If there are multiple events, show the list; otherwise show single event
+  const allEvents = selectedDateEvents.length > 0 ? selectedDateEvents : (selectedEvent ? [selectedEvent] : []);
+  
+  // Remove duplicate events - same title, category, and time are considered duplicates
+  // IMPORTANT: This hook must be called before any early returns to follow Rules of Hooks
+  const uniqueEvents = React.useMemo(() => {
+    const seen = new Map<string, any>();
+    const unique: any[] = [];
+    
+    allEvents.forEach((event) => {
+      // Create a unique key based on title, category/type, and time
+      const key = `${event.title || ''}_${event.category || event.type || ''}_${event.time || 'All Day'}`.toLowerCase();
+      
+      if (!seen.has(key)) {
+        seen.set(key, event);
+        unique.push(event);
+      }
+    });
+    
+    return unique;
+  }, [allEvents]);
+  
+  const eventsToShow = uniqueEvents;
+  const primaryEvent = selectedEvent || eventsToShow[0];
+
+  const eventColor = primaryEvent?.color || categoryToColors(primaryEvent?.category || primaryEvent?.type || 'Event').dot;
+  const eventCategory = primaryEvent?.category || primaryEvent?.type || 'Event';
+
+  // Early return after all hooks have been called
+  if (!selectedEvent && selectedDateEvents.length === 0) {
+    return null;
+  }
+
+  return (
+    <BottomSheet
+      visible={visible}
+      onClose={handleClose}
+      sheetY={sheetY}
+      maxHeight="85%"
+      backgroundColor={theme.colors.card}
+    >
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Event Details</Text>
+          <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+            <Ionicons name="close" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView 
+          style={styles.scrollView}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.scrollContent,
+            (onEdit || onDelete) && { paddingBottom: 12 }
+          ]}
+        >
+          {/* Multiple Events List */}
+          {eventsToShow.length > 1 && (
+            <View style={styles.eventsListContainer}>
+              <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>
+                {eventsToShow.length} {eventsToShow.length === 1 ? 'Event' : 'Events'} on this date
+              </Text>
+              {eventsToShow.map((event, index) => {
+                const eventColor = event.color || categoryToColors(event.category || event.type || 'Event').dot;
+                return (
+                  <TouchableOpacity
+                    key={event.id || index}
+                    style={[styles.eventItem, { 
+                      backgroundColor: theme.colors.surface,
+                      borderColor: theme.colors.border,
+                    }]}
+                  >
+                    <View style={[styles.eventAccent, { backgroundColor: eventColor }]} />
+                    <View style={styles.eventItemContent}>
+                      <Text style={[styles.eventItemTitle, { color: theme.colors.text }]} numberOfLines={2}>
+                        {event.title}
+                      </Text>
+                      <View style={styles.eventItemMeta}>
+                        <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
+                        <Text style={[styles.eventItemTime, { color: theme.colors.textMuted }]}>
+                          {event.time || 'All Day'}
+                        </Text>
+                        <View style={[styles.eventItemCategory, { backgroundColor: eventColor + '20' }]}>
+                          <Text style={[styles.eventItemCategoryText, { color: eventColor }]}>
+                            {event.category || event.type || 'Event'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
+          {/* Single Event Details */}
+          {primaryEvent && (
+            <View style={styles.eventDetails}>
+              {/* Title */}
+              <Text style={[styles.eventTitle, { color: theme.colors.text }]}>
+                {primaryEvent.title}
+              </Text>
+
+              {/* Category Badge */}
+              <View style={[styles.categoryBadge, { backgroundColor: eventColor + '20', borderColor: eventColor + '40' }]}>
+                <Ionicons name="pricetag-outline" size={12} color={eventColor} />
+                <Text style={[styles.categoryBadgeText, { color: eventColor }]}>
+                  {eventCategory}
+                </Text>
+              </View>
+
+              {/* Date and Time */}
+              <View style={styles.detailRow}>
+                <View style={styles.detailItem}>
+                  <View style={styles.detailIconRow}>
+                    <Ionicons name="calendar-outline" size={14} color={theme.colors.textMuted} />
+                    <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Date</Text>
+                  </View>
+                  <Text style={[styles.detailValue, { color: theme.colors.text }]}>
+                    {primaryEvent.isoDate || primaryEvent.date
+                      ? formatDate(new Date(primaryEvent.isoDate || primaryEvent.date))
+                      : 'Not specified'}
+                  </Text>
+                </View>
+                <View style={styles.detailItem}>
+                  <View style={styles.detailIconRow}>
+                    <Ionicons name="time-outline" size={14} color={theme.colors.textMuted} />
+                    <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Time</Text>
+                  </View>
+                  <Text style={[styles.detailValue, { color: theme.colors.text }]}>
+                    {primaryEvent.time || 'All Day'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Date Range (if applicable) */}
+              {primaryEvent.startDate && primaryEvent.endDate && (
+                <View style={styles.detailRow}>
+                  <View style={styles.detailItem}>
+                    <View style={styles.detailIconRow}>
+                      <Ionicons name="calendar-outline" size={14} color={theme.colors.textMuted} />
+                      <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Date Range</Text>
+                    </View>
+                    <Text style={[styles.detailValue, { color: theme.colors.text }]}>
+                      {formatDate(new Date(primaryEvent.startDate))} - {formatDate(new Date(primaryEvent.endDate))}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Description */}
+              {primaryEvent.description && (
+                <View style={styles.descriptionContainer}>
+                  <Text style={[styles.descriptionLabel, { color: theme.colors.textMuted }]}>Description</Text>
+                  <Text style={[styles.descriptionText, { color: theme.colors.text }]}>
+                    {primaryEvent.description}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+        </ScrollView>
+
+        {/* Action Buttons - Outside ScrollView to prevent cutoff */}
+        {(onEdit || onDelete) && (
+          <View style={[styles.actionsContainer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+            {onEdit && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.editButton, { backgroundColor: theme.colors.primary }]}
+                onPress={onEdit}
+              >
+                <Ionicons name="create-outline" size={16} color="#fff" />
+                <Text style={styles.actionButtonText}>Edit</Text>
+              </TouchableOpacity>
+            )}
+            {onDelete && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.deleteButton, { backgroundColor: '#DC2626' }]}
+                onPress={onDelete}
+              >
+                <Ionicons name="trash-outline" size={16} color="#fff" />
+                <Text style={styles.actionButtonText}>Delete</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
+    </BottomSheet>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  eventsListContainer: {
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 10,
+    opacity: 0.7,
+  },
+  eventItem: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 8,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  eventAccent: {
+    width: 3,
+  },
+  eventItemContent: {
+    flex: 1,
+    padding: 12,
+  },
+  eventItemTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 6,
+    lineHeight: 18,
+  },
+  eventItemMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  eventItemTime: {
+    fontSize: 12,
+    flex: 1,
+    fontWeight: '500',
+  },
+  eventItemCategory: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  eventItemCategoryText: {
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  eventDetails: {
+    marginBottom: 16,
+  },
+  eventTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 10,
+    lineHeight: 24,
+    letterSpacing: -0.3,
+  },
+  categoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 14,
+    gap: 5,
+  },
+  categoryBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  detailItem: {
+    flex: 1,
+  },
+  detailIconRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 2,
+  },
+  detailLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginTop: 8,
+    marginBottom: 4,
+    opacity: 0.7,
+  },
+  detailValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 20,
+  },
+  descriptionContainer: {
+    marginTop: 6,
+  },
+  descriptionLabel: {
+    fontSize: 9,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+    marginTop: 2,
+    opacity: 0.7,
+  },
+  descriptionText: {
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '400',
+  },
+  actionsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 6,
+  },
+  editButton: {
+    // backgroundColor set inline
+  },
+  deleteButton: {
+    // backgroundColor set inline
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+});
+
+export default ViewEventModal;
+

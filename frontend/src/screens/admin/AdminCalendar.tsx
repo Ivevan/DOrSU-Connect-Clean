@@ -12,14 +12,14 @@ import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from '
 import { ActivityIndicator, Alert, Animated, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AddEventDrawer from '../../components/calendar/AddEventDrawer';
-import EventDetailsDrawer from '../../components/calendar/EventDetailsDrawer';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import AdminSidebar from '../../components/navigation/AdminSidebar';
 import { theme } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import DeleteAllModal from '../../modals/DeleteAllModal';
 import MonthPickerModal from '../../modals/MonthPickerModal';
+import ViewEventModal from '../../modals/ViewEventModal';
+import AdminDataService from '../../services/AdminDataService';
 import AdminFileService from '../../services/AdminFileService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
@@ -142,11 +142,6 @@ const AdminCalendar = () => {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
-  const [showAddEventDrawer, setShowAddEventDrawer] = useState(false);
-  const [addEventInitialDate, setAddEventInitialDate] = useState<Date | null>(null);
-  // Drawer animation values (shared between EventDetailsDrawer and AddEventDrawer)
-  const drawerSlideAnim = useRef(new Animated.Value(0)).current; // 0 = closed, 1 = open
-  const drawerBackdropOpacity = useRef(new Animated.Value(0)).current;
   
   // Delete all modal animation values
   const deleteAllModalSlideAnim = useRef(new Animated.Value(0)).current;
@@ -248,7 +243,7 @@ const AdminCalendar = () => {
   const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
   const [isUploadingCSV, setIsUploadingCSV] = useState<boolean>(false);
   
-  // Calculate min/max years from events to dynamically adjust calendar range
+  // Calculate min/max years from events and posts to dynamically adjust calendar range
   const eventYearRange = React.useMemo(() => {
     const years = new Set<number>();
     
@@ -277,6 +272,16 @@ const AdminCalendar = () => {
       }
     });
     
+    // Add years from posts/announcements
+    posts.forEach(post => {
+      if (post.isoDate || post.date) {
+        const date = new Date(post.isoDate || post.date);
+        if (!isNaN(date.getTime())) {
+          years.add(date.getFullYear());
+        }
+      }
+    });
+    
     // Add current year as fallback
     const currentYear = new Date().getFullYear();
     years.add(currentYear);
@@ -291,18 +296,26 @@ const AdminCalendar = () => {
 
   
   
-  // Set posts to empty array - only CSV calendar events will be shown
-  React.useEffect(() => {
-    setPosts([]);
-    setIsLoadingPosts(false);
+  // Load posts/announcements from AdminDataService
+  const loadPosts = useCallback(async () => {
+    try {
+      setIsLoadingPosts(true);
+      const postsData = await AdminDataService.getPosts();
+      setPosts(Array.isArray(postsData) ? postsData : []);
+    } catch (error) {
+      console.error('Failed to load posts:', error);
+      setPosts([]);
+    } finally {
+      setIsLoadingPosts(false);
+    }
   }, []);
 
-  // Load calendar events from backend - load all events (or wide range)
+  // Load calendar events and posts from backend - load all events (or wide range)
   // Refresh when screen comes into focus to show newly created posts/events
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      const loadEvents = async () => {
+      const loadData = async () => {
         try {
           setIsLoadingEvents(true);
           // Load events for a wide range (2020-2030) to cover all possible dates
@@ -310,24 +323,34 @@ const AdminCalendar = () => {
           const startDate = new Date(2020, 0, 1).toISOString(); // January 1, 2020
           const endDate = new Date(2030, 11, 31).toISOString(); // December 31, 2030
           
-          const events = await CalendarService.getEvents({
-            startDate,
-            endDate,
-            limit: 2000, // Increased limit to get more events
-          });
+          const [events, postsData] = await Promise.all([
+            CalendarService.getEvents({
+              startDate,
+              endDate,
+              limit: 2000, // Increased limit to get more events
+            }),
+            AdminDataService.getPosts(),
+          ]);
           
           if (!cancelled) {
             setCalendarEvents(Array.isArray(events) ? events : []);
+            setPosts(Array.isArray(postsData) ? postsData : []);
           }
         } catch (error) {
-          console.error('Failed to load calendar events:', error);
-          if (!cancelled) setCalendarEvents([]);
+          console.error('Failed to load calendar data:', error);
+          if (!cancelled) {
+            setCalendarEvents([]);
+            setPosts([]);
+          }
         } finally {
-          if (!cancelled) setIsLoadingEvents(false);
+          if (!cancelled) {
+            setIsLoadingEvents(false);
+            setIsLoadingPosts(false);
+          }
         }
       };
       
-      loadEvents();
+      loadData();
       return () => {
         cancelled = true;
       };
@@ -445,26 +468,30 @@ const AdminCalendar = () => {
     const key = formatDateKey(date);
     const events: any[] = [];
     
-    // DISABLED: Posts from AdminDataService - Only showing CSV calendar events
-    // if (Array.isArray(posts)) {
-    //   posts.forEach(p => {
-    //     // Only include posts that are NOT from CSV uploads (to avoid duplicates)
-    //     if (p.source !== 'CSV Upload') {
-    //       const eventDateKey = parseAnyDateToKey(p.isoDate || p.date);
-    //       if (eventDateKey === key) {
-    //         events.push({
-    //           id: p.id,
-    //           title: p.title,
-    //           dateKey: eventDateKey,
-    //           time: p.time || '',
-    //           type: p.category || 'Announcement',
-    //           color: categoryToColors(p.category).dot,
-    //           chip: categoryToColors(p.category),
-    //         });
-    //       }
-    //     }
-    //   });
-    // }
+    // Add posts/announcements from AdminDataService
+    if (Array.isArray(posts)) {
+      posts.forEach(p => {
+        // Only include posts that are NOT from CSV uploads (to avoid duplicates)
+        if (p.source !== 'CSV Upload') {
+          const eventDateKey = parseAnyDateToKey(p.isoDate || p.date);
+          if (eventDateKey === key) {
+            events.push({
+              id: p.id,
+              title: p.title,
+              dateKey: eventDateKey,
+              time: p.time || '',
+              type: p.category || 'Announcement',
+              color: categoryToColors(p.category).dot,
+              chip: categoryToColors(p.category),
+              description: p.description,
+              isPinned: p.isPinned,
+              isUrgent: p.isUrgent,
+              source: 'post', // Mark as post to distinguish from calendar events
+            });
+          }
+        }
+      });
+    }
     
     // Add events from CalendarService (backend calendar events)
     if (Array.isArray(calendarEvents)) {
@@ -539,18 +566,26 @@ const AdminCalendar = () => {
     setSelectedDate(date);
     const events = getEventsForDate(date);
     if (events && events.length > 0) {
-      // Get the first event and find its full data from calendarEvents
+      // Get the first event and find its full data from calendarEvents or posts
       const firstEvent = events[0];
-      const fullEvent = calendarEvents.find((e: any) => {
-        // Try to match by _id first
-        if (e._id === firstEvent.id) return true;
-        // Try to match by constructed ID
-        if (`calendar-${e.isoDate}-${e.title}` === firstEvent.id) return true;
-        // Try to match by date and title
-        const eventDateKey = parseAnyDateToKey(e.isoDate || e.date);
-        const checkDateKey = formatDateKey(date);
-        return eventDateKey === checkDateKey && e.title === firstEvent.title;
-      });
+      
+      // Check if it's a post (from AdminDataService)
+      let fullEvent = null;
+      if (firstEvent.source === 'post') {
+        fullEvent = posts.find((p: any) => p.id === firstEvent.id) || firstEvent;
+      } else {
+        // It's a calendar event (from CalendarService)
+        fullEvent = calendarEvents.find((e: any) => {
+          // Try to match by _id first
+          if (e._id === firstEvent.id) return true;
+          // Try to match by constructed ID
+          if (`calendar-${e.isoDate}-${e.title}` === firstEvent.id) return true;
+          // Try to match by date and title
+          const eventDateKey = parseAnyDateToKey(e.isoDate || e.date);
+          const checkDateKey = formatDateKey(date);
+          return eventDateKey === checkDateKey && e.title === firstEvent.title;
+        }) || firstEvent;
+      }
       
       const eventData = fullEvent || firstEvent;
       
@@ -577,44 +612,15 @@ const AdminCalendar = () => {
       setSelectedDateForDrawer(date);
       setShowEventDrawer(true);
       
-      // Animate drawer opening
-      Animated.parallel([
-        Animated.spring(drawerSlideAnim, {
-          toValue: 1,
-          useNativeDriver: true,
-          tension: 65,
-          friction: 11,
-        }),
-        Animated.timing(drawerBackdropOpacity, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
-      
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } else {
       Haptics.selectionAsync();
     }
-  }, [getEventsForDate, calendarEvents, drawerSlideAnim, drawerBackdropOpacity]);
+  }, [getEventsForDate, calendarEvents, posts]);
   
   const closeEventDrawer = useCallback(() => {
-    Animated.parallel([
-      Animated.spring(drawerSlideAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 11,
-      }),
-      Animated.timing(drawerBackdropOpacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setShowEventDrawer(false);
-    });
-  }, [drawerSlideAnim, drawerBackdropOpacity]);
+    setShowEventDrawer(false);
+  }, []);
 
   const openDeleteAllModal = useCallback(() => {
     if (calendarEvents.length === 0) {
@@ -661,13 +667,53 @@ const AdminCalendar = () => {
   }, [deleteAllModalSlideAnim, deleteAllModalBackdropOpacity]);
 
   const getAllEventsGrouped = React.useCallback(() => {
-    if (!Array.isArray(calendarEvents)) return [];
+    if (!Array.isArray(calendarEvents) && !Array.isArray(posts)) return [];
     
     const all: any[] = [];
     
     // Get current month and year for filtering
     const currentYear = currentMonth.getUTCFullYear();
     const currentMonthIndex = currentMonth.getUTCMonth() + 1; // 1-12
+    
+    // Add posts/announcements from AdminDataService
+    if (Array.isArray(posts)) {
+      posts.forEach((post: any) => {
+        // Only include posts that are NOT from CSV uploads (to avoid duplicates)
+        if (post.source !== 'CSV Upload') {
+          const eventType = String(post.category || 'Announcement').toLowerCase();
+          
+          // Apply filters (posts don't have institutional/academic categories typically, but check anyway)
+          if (!showInstitutional && eventType === 'institutional') return;
+          if (!showAcademic && eventType === 'academic') return;
+          
+          // Filter by current month (only if byMonth mode is selected)
+          if (eventTimeRange === 'byMonth') {
+            const postDate = new Date(post.isoDate || post.date);
+            const isInCurrentMonth = postDate.getUTCFullYear() === currentYear && 
+                                     postDate.getUTCMonth() + 1 === currentMonthIndex;
+            if (!isInCurrentMonth) return;
+          }
+          
+          const eventDateKey = parseAnyDateToKey(post.isoDate || post.date);
+          if (eventDateKey) {
+            const dateObj = new Date(post.isoDate || post.date);
+            all.push({
+              id: post.id,
+              title: post.title,
+              dateKey: eventDateKey,
+              time: post.time || 'All Day',
+              type: post.category || 'Announcement',
+              color: categoryToColors(post.category).dot,
+              chip: categoryToColors(post.category),
+              dateObj: dateObj,
+              year: dateObj.getFullYear(),
+              description: post.description,
+              source: 'post',
+            });
+          }
+        }
+      });
+    }
     
     // Add events from calendarEvents (CalendarService)
     // Use a Set to track date ranges we've already added (to avoid duplicates)
@@ -784,7 +830,7 @@ const AdminCalendar = () => {
       });
     
     return result;
-  }, [calendarEvents, showInstitutional, showAcademic, currentMonth, eventTimeRange]); // Only recompute when calendarEvents, filters, currentMonth, or eventTimeRange change
+  }, [calendarEvents, posts, showInstitutional, showAcademic, currentMonth, eventTimeRange]); // Only recompute when calendarEvents, posts, filters, currentMonth, or eventTimeRange change
   
   const groupedEvents = React.useMemo(() => getAllEventsGrouped(), [getAllEventsGrouped]);
 
@@ -794,15 +840,15 @@ const AdminCalendar = () => {
     
     let count = 0;
     
-    // DISABLED: Count events from posts (AdminDataService) - Only counting CSV calendar events
-    // count += posts
-    //   .filter(p => p.source !== 'CSV Upload')
-    //   .reduce((acc, p) => {
-    //     const key = parseAnyDateToKey(p.isoDate || p.date);
-    //     if (!key) return acc;
-    //     const [yy, mm] = key.split('-');
-    //     return acc + ((Number(yy) === y && Number(mm) === m) ? 1 : 0);
-    //   }, 0);
+    // Count events from posts (AdminDataService)
+    count += posts
+      .filter(p => p.source !== 'CSV Upload')
+      .reduce((acc, p) => {
+        const key = parseAnyDateToKey(p.isoDate || p.date);
+        if (!key) return acc;
+        const [yy, mm] = key.split('-');
+        return acc + ((Number(yy) === y && Number(mm) === m) ? 1 : 0);
+      }, 0);
     
     // Count events from calendarEvents (CalendarService)
     // For date ranges, count if any date in range falls in the month
@@ -981,49 +1027,12 @@ const AdminCalendar = () => {
     }
   }, [refreshCalendarEvents, closeDeleteAllModal, calendarEvents.length]);
 
-  // Handler for opening add event drawer
+  // Handler for opening PostUpdate screen when long pressing a date
   const handleOpenAddEvent = useCallback((date?: Date) => {
-    const targetDate = date || selectedDate || new Date();
-    setAddEventInitialDate(targetDate);
-    setShowAddEventDrawer(true);
-    
-    // Animate drawer opening - same as EventDetailsDrawer
-    Animated.parallel([
-      Animated.spring(drawerSlideAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 11,
-      }),
-      Animated.timing(drawerBackdropOpacity, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start();
-    
+    // Navigate to PostUpdate screen (it will handle date selection internally)
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  }, [selectedDate, drawerSlideAnim, drawerBackdropOpacity]);
-
-  const handleCloseAddEvent = useCallback(() => {
-    // Animate drawer closing - same as EventDetailsDrawer
-    Animated.parallel([
-      Animated.spring(drawerSlideAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 11,
-      }),
-      Animated.timing(drawerBackdropOpacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setShowAddEventDrawer(false);
-      setAddEventInitialDate(null);
-    });
-  }, [drawerSlideAnim, drawerBackdropOpacity]);
+    navigation.navigate('PostUpdate');
+  }, [navigation]);
 
   // Memoized Calendar Day Component with long press detection for unmarked cells
   const CalendarDay = memo(({ date, day, isCurrentDay, isSelectedDay, index, eventsForDay, theme, onPress, onLongPress }: { date: Date; day: number | null; isCurrentDay: boolean; isSelectedDay: boolean; index: number; eventsForDay: any[]; theme: any; onPress: (date: Date) => void; onLongPress: (date: Date) => void }) => {
@@ -1592,7 +1601,7 @@ const AdminCalendar = () => {
                     backgroundColor: t.colors.surface,
                   }
                 ]} 
-                onPress={() => handleOpenAddEvent()}
+                onPress={() => navigation.navigate('PostUpdate')}
                 activeOpacity={0.7}
               >
                 <Ionicons name="add" size={14} color={t.colors.accent} />
@@ -1611,13 +1620,18 @@ const AdminCalendar = () => {
             <View>
               {Array.isArray(groupedEvents) && groupedEvents.length > 0 && groupedEvents.flatMap((yearGroup) => 
                 Array.isArray(yearGroup.dates) ? yearGroup.dates.flatMap((dateGroup) => 
-                  Array.isArray(dateGroup.items) ? dateGroup.items.map((event: any) => (
+                  Array.isArray(dateGroup.items) ? dateGroup.items.map((event) => (
                     <TouchableOpacity
                       key={event.id}
                       style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
                       onPress={() => {
-                        // Find the full event from calendarEvents
-                        const fullEvent = calendarEvents.find((e: any) => e._id === event.id || `calendar-${e.isoDate}-${e.title}` === event.id);
+                        // Find the full event from calendarEvents or posts
+                        let fullEvent = null;
+                        if (event.source === 'post') {
+                          fullEvent = posts.find((p: any) => p.id === event.id) || event;
+                        } else {
+                          fullEvent = calendarEvents.find((e: any) => e._id === event.id || `calendar-${e.isoDate}-${e.title}` === event.id) || event;
+                        }
                         const eventData = fullEvent || event;
                         setSelectedEvent(eventData);
                         setEditTitle(eventData?.title || '');
@@ -1636,21 +1650,6 @@ const AdminCalendar = () => {
                         
                         setIsEditing(false);
                         setShowEventDrawer(true);
-                        
-                        // Animate drawer opening
-                        Animated.parallel([
-                          Animated.spring(drawerSlideAnim, {
-                            toValue: 1,
-                            useNativeDriver: true,
-                            tension: 65,
-                            friction: 11,
-                          }),
-                          Animated.timing(drawerBackdropOpacity, {
-                            toValue: 1,
-                            duration: 300,
-                            useNativeDriver: true,
-                          }),
-                        ]).start();
                         
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                       }}
@@ -1703,62 +1702,58 @@ const AdminCalendar = () => {
         </BlurView>
       </ScrollView>
 
-      {/* Event Details Drawer */}
-      <EventDetailsDrawer
+      {/* View Event Modal */}
+      <ViewEventModal
         visible={showEventDrawer}
         onClose={closeEventDrawer}
         selectedEvent={selectedEvent}
-        isEditing={isEditing}
-        setIsEditing={setIsEditing}
-        editTitle={editTitle}
-        setEditTitle={setEditTitle}
-        editDescription={editDescription}
-        setEditDescription={setEditDescription}
-        editDate={editDate}
-        setEditDate={setEditDate}
-        editTime={editTime}
-        setEditTime={setEditTime}
-        selectedDateObj={selectedDateObj}
-        setSelectedDateObj={setSelectedDateObj}
-        showDatePicker={showDatePicker}
-        setShowDatePicker={setShowDatePicker}
-        isDeleting={isDeleting}
-        setIsDeleting={setIsDeleting}
-        isUpdating={isUpdating}
-        setIsUpdating={setIsUpdating}
         selectedDateEvents={selectedDateEvents}
-        selectedDateForDrawer={selectedDateForDrawer}
-        calendarEvents={calendarEvents}
-        refreshCalendarEvents={refreshCalendarEvents}
-        slideAnim={drawerSlideAnim}
-        backdropOpacity={drawerBackdropOpacity}
-        monthPickerScaleAnim={monthPickerScaleAnim}
-        monthPickerOpacityAnim={monthPickerOpacityAnim}
-        onSelectEvent={(event) => {
-          if (!event) {
-            // Clear selected event if null is passed (e.g., after deletion)
-            setSelectedEvent(null);
-            setEditTitle('');
-            setEditDescription('');
-            setSelectedDateObj(null);
-            setEditDate('');
-            setEditTime('');
-            // Also clear selected date events to refresh the list
-            setSelectedDateEvents([]);
-            return;
+        onEdit={() => {
+          // Navigate to PostUpdate for editing if it's a post
+          if (selectedEvent?.source === 'post') {
+            navigation.navigate('PostUpdate', { postId: selectedEvent.id });
+            closeEventDrawer();
+          } else {
+            // For calendar events, you might want to implement edit functionality
+            // For now, just close the modal
+            Alert.alert('Edit Event', 'Event editing functionality coming soon');
           }
-          setSelectedEvent(event);
-          setEditTitle(event?.title || '');
-          setEditDescription(event?.description || '');
-          if (event?.isoDate || event?.date) {
-            const eventDate = new Date(event.isoDate || event.date);
-            setSelectedDateObj(eventDate);
-            setEditDate(formatDate(eventDate));
-          } else if (selectedDateForDrawer) {
-            setSelectedDateObj(selectedDateForDrawer);
-            setEditDate(formatDate(selectedDateForDrawer));
-          }
-          setEditTime(event?.time || '');
+        }}
+        onDelete={async () => {
+          if (!selectedEvent) return;
+          
+          Alert.alert(
+            'Delete Event',
+            `Are you sure you want to delete "${selectedEvent.title}"?`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    setIsDeleting(true);
+                    if (selectedEvent.source === 'post') {
+                      // Delete post using AdminDataService
+                      await AdminDataService.deletePost(selectedEvent.id);
+                    } else {
+                      // Delete calendar event
+                      await CalendarService.deleteEvent(selectedEvent._id || selectedEvent.id);
+                    }
+                    await refreshCalendarEvents(true);
+                    closeEventDrawer();
+                    setSelectedEvent(null);
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  } catch (error) {
+                    Alert.alert('Error', 'Failed to delete event');
+                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                },
+              },
+            ]
+          );
         }}
       />
 
@@ -1771,19 +1766,6 @@ const AdminCalendar = () => {
         isDeleting={isDeletingAll}
         slideAnim={deleteAllModalSlideAnim}
         backdropOpacity={deleteAllModalBackdropOpacity}
-      />
-
-      {/* Add Event Drawer */}
-      <AddEventDrawer
-        visible={showAddEventDrawer}
-        onClose={handleCloseAddEvent}
-        initialDate={addEventInitialDate}
-        refreshCalendarEvents={refreshCalendarEvents}
-        slideAnim={drawerSlideAnim}
-        backdropOpacity={drawerBackdropOpacity}
-        monthPickerScaleAnim={monthPickerScaleAnim}
-        monthPickerOpacityAnim={monthPickerOpacityAnim}
-        eventYearRange={{ minYear: eventYearRange.min, maxYear: eventYearRange.max }}
       />
 
       {/* Bottom Navigation Bar - Fixed position */}

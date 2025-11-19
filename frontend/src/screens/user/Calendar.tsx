@@ -41,13 +41,6 @@ const CalendarScreen = () => {
   const { isDarkMode, theme: t } = useThemeValues();
   const scrollRef = useRef<ScrollView>(null);
   const floatAnim1 = useRef(new Animated.Value(0)).current;
-  const floatAnim2 = useRef(new Animated.Value(0)).current;
-  const floatAnim3 = useRef(new Animated.Value(0)).current;
-  const cloudAnim1 = useRef(new Animated.Value(0)).current;
-  const cloudAnim2 = useRef(new Animated.Value(0)).current;
-  const lightSpot1 = useRef(new Animated.Value(0)).current;
-  const lightSpot2 = useRef(new Animated.Value(0)).current;
-  const lightSpot3 = useRef(new Animated.Value(0)).current;
   const initialNow = new Date();
   const [currentMonth, setCurrentMonth] = useState(new Date(Date.UTC(initialNow.getFullYear(), initialNow.getMonth(), 1)));
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date()); // Default to today
@@ -70,6 +63,22 @@ const CalendarScreen = () => {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
   
+  // Load backend user photo on screen focus
+  useFocusEffect(
+    useCallback(() => {
+      const loadBackendUserData = async () => {
+        try {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const userPhoto = await AsyncStorage.getItem('userPhoto');
+          setBackendUserPhoto(userPhoto);
+        } catch (error) {
+          console.error('Failed to load backend user data:', error);
+        }
+      };
+      loadBackendUserData();
+    }, [])
+  );
+  
   // Event Details Drawer state
   const [showEventDrawer, setShowEventDrawer] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
@@ -88,9 +97,9 @@ const CalendarScreen = () => {
   // Event type filter - single selection: 'institutional' or 'academic'
   const [selectedEventType, setSelectedEventType] = useState<'institutional' | 'academic'>('institutional');
   
-  // Segmented control animation and width tracking
-  const segmentAnim = useRef(new Animated.Value(0)).current;
-  const segmentWidth = useRef(0);
+  // Event time range filter - 'allYear' or 'byMonth'
+  const [eventTimeRange, setEventTimeRange] = useState<'allYear' | 'byMonth'>('byMonth');
+  const [showTimeRangeDropdown, setShowTimeRangeDropdown] = useState(false);
   
   // Animation values
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
@@ -101,21 +110,6 @@ const CalendarScreen = () => {
   // Drawer animation values
   const drawerSlideAnim = useRef(new Animated.Value(0)).current;
   const drawerBackdropOpacity = useRef(new Animated.Value(0)).current;
-  
-  // Update segment animation when selection changes
-  useEffect(() => {
-    if (segmentWidth.current > 0) {
-      const targetX = selectedEventType === 'academic' 
-        ? segmentWidth.current / 2 - 2 
-        : 2;
-      Animated.spring(segmentAnim, {
-        toValue: targetX,
-        useNativeDriver: true,
-        tension: 100,
-        friction: 8,
-      }).start();
-    }
-  }, [selectedEventType, segmentAnim]);
   
   // Derived filter states
   const showInstitutional = selectedEventType === 'institutional';
@@ -251,6 +245,46 @@ const CalendarScreen = () => {
 
   const getMonthName = (date: Date) => {
     return dayjs.utc(date).tz(PH_TZ).format('MMMM');
+  };
+
+  const getMonthEventCount = (dateRef: Date) => {
+    const y = dateRef.getFullYear();
+    const m = dateRef.getMonth() + 1;
+    
+    let count = 0;
+    
+    // Count events from calendarEvents (CalendarService)
+    // For date ranges, count if any date in range falls in the month
+    // For week/month-only events, count if the month matches
+    count += calendarEvents.reduce((acc, event) => {
+      // Skip week/month-only events for calendar grid count
+      if (event.dateType === 'week' || event.dateType === 'month') {
+        // Only count if month matches
+        if (event.month === m && event.year === y) {
+          return acc + 1;
+        }
+        return acc;
+      }
+      
+      if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+        const startDate = new Date(event.startDate);
+        const endDate = new Date(event.endDate);
+        // Check if range overlaps with the month
+        const monthStart = new Date(y, m - 1, 1);
+        const monthEnd = new Date(y, m, 0);
+        if (startDate <= monthEnd && endDate >= monthStart) {
+          return acc + 1;
+        }
+        return acc;
+      }
+      
+      const key = parseAnyDateToKey(event.isoDate || event.date);
+      if (!key) return acc;
+      const [yy, mm] = key.split('-');
+      return acc + ((Number(yy) === y && Number(mm) === m) ? 1 : 0);
+    }, 0);
+    
+    return count;
   };
 
   const transformPostToEvent = (p: any) => ({
@@ -678,6 +712,10 @@ const CalendarScreen = () => {
     
     const all: any[] = [];
     
+    // Get current month and year for filtering
+    const currentYear = currentMonth.getUTCFullYear();
+    const currentMonthIndex = currentMonth.getUTCMonth() + 1; // 1-12
+    
     // Add events from calendarEvents (CalendarService)
     // Use a Set to track date ranges we've already added (to avoid duplicates)
     const dateRangeKeys = new Set<string>();
@@ -689,6 +727,33 @@ const CalendarScreen = () => {
         // Apply filters
         if (!showInstitutional && eventType === 'institutional') return;
         if (!showAcademic && eventType === 'academic') return;
+        
+        // Filter by current month (only if byMonth mode is selected)
+        if (eventTimeRange === 'byMonth') {
+          let isInCurrentMonth = false;
+          
+          if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+            // Check if date range overlaps with current month
+            const startDate = new Date(event.startDate);
+            const endDate = new Date(event.endDate);
+            const monthStart = new Date(Date.UTC(currentYear, currentMonthIndex - 1, 1));
+            const monthEnd = new Date(Date.UTC(currentYear, currentMonthIndex, 0, 23, 59, 59));
+            
+            // Check if range overlaps with current month (compare UTC timestamps)
+            isInCurrentMonth = (startDate.getTime() <= monthEnd.getTime() && endDate.getTime() >= monthStart.getTime());
+          } else if (event.dateType === 'week' || event.dateType === 'month') {
+            // For week/month events, check if month and year match
+            isInCurrentMonth = event.month === currentMonthIndex && event.year === currentYear;
+          } else {
+            // Single date events - check if date is in current month
+            const eventDate = new Date(event.isoDate || event.date);
+            isInCurrentMonth = eventDate.getUTCFullYear() === currentYear && 
+                              eventDate.getUTCMonth() + 1 === currentMonthIndex;
+          }
+          
+          // Skip events not in current month
+          if (!isInCurrentMonth) return;
+        }
         
         // For date ranges, use start date as the key and avoid duplicates
         let eventDateKey: string | null = null;
@@ -766,7 +831,7 @@ const CalendarScreen = () => {
       });
     
     return result;
-  }, [calendarEvents, showInstitutional, showAcademic]);
+  }, [calendarEvents, showInstitutional, showAcademic, currentMonth, eventTimeRange]);
   
   const groupedEvents = React.useMemo(() => getAllEventsGrouped(), [getAllEventsGrouped]);
 
@@ -816,95 +881,23 @@ const CalendarScreen = () => {
 
 
   React.useEffect(() => {
-    const animations = [
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(floatAnim1, {
-            toValue: 1,
-            duration: 8000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(floatAnim1, {
-            toValue: 0,
-            duration: 8000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(cloudAnim1, {
-            toValue: 1,
-            duration: 15000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cloudAnim1, {
-            toValue: 0,
-            duration: 15000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(cloudAnim2, {
-            toValue: 1,
-            duration: 20000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cloudAnim2, {
-            toValue: 0,
-            duration: 20000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot1, {
-            toValue: 1,
-            duration: 12000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot1, {
-            toValue: 0,
-            duration: 12000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot2, {
-            toValue: 1,
-            duration: 18000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot2, {
-            toValue: 0,
-            duration: 18000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot3, {
-            toValue: 1,
-            duration: 14000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot3, {
-            toValue: 0,
-            duration: 14000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-    ];
-    animations.forEach(anim => anim.start());
-    return () => animations.forEach(anim => anim.stop());
-  }, []);
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim1, {
+          toValue: 1,
+          duration: 8000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim1, {
+          toValue: 0,
+          duration: 8000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [floatAnim1]);
 
   React.useEffect(() => {
     listAnim.setValue(1);
@@ -936,189 +929,6 @@ const CalendarScreen = () => {
       />
 
       <View style={styles.floatingBgContainer} pointerEvents="none">
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '8%',
-              right: '12%',
-              transform: [
-                {
-                  translateX: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -15],
-                  }),
-                },
-                {
-                  translateY: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 12],
-                  }),
-                },
-                {
-                  scale: lightSpot1.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.08, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot1}>
-            <LinearGradient
-              colors={['rgba(255, 220, 180, 0.35)', 'rgba(255, 200, 150, 0.18)', 'rgba(255, 230, 200, 0.08)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.2, y: 0.2 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '45%',
-              left: '8%',
-              transform: [
-                {
-                  translateX: lightSpot2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 18],
-                  }),
-                },
-                {
-                  translateY: lightSpot2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -10],
-                  }),
-                },
-                {
-                  scale: lightSpot2.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.06, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot2}>
-            <LinearGradient
-              colors={['rgba(255, 210, 170, 0.28)', 'rgba(255, 200, 160, 0.15)', 'rgba(255, 220, 190, 0.06)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.3, y: 0.3 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              bottom: '12%',
-              left: '55%',
-              transform: [
-                {
-                  translateX: lightSpot3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -20],
-                  }),
-                },
-                {
-                  translateY: lightSpot3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 8],
-                  }),
-                },
-                {
-                  scale: lightSpot3.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.1, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot3}>
-            <LinearGradient
-              colors={['rgba(255, 190, 140, 0.25)', 'rgba(255, 180, 130, 0.12)', 'rgba(255, 210, 170, 0.05)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.4, y: 0.4 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '15%',
-              left: '10%',
-              transform: [
-                {
-                  translateX: cloudAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 20],
-                  }),
-                },
-                {
-                  translateY: cloudAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -15],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.cloudPatch1}>
-            <LinearGradient
-              colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.22)', 'rgba(255, 230, 200, 0.1)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              bottom: '20%',
-              right: '15%',
-              transform: [
-                {
-                  translateX: cloudAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -25],
-                  }),
-                },
-                {
-                  translateY: cloudAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 10],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.cloudPatch2}>
-            <LinearGradient
-              colors={['rgba(255, 190, 140, 0.32)', 'rgba(255, 200, 160, 0.18)', 'rgba(255, 220, 190, 0.08)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.3, y: 0.3 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
         <Animated.View
           style={[
             styles.floatingOrbWrapper,
@@ -1196,8 +1006,8 @@ const CalendarScreen = () => {
                 style={styles.profileImage}
               />
             ) : (
-              <View style={[styles.profileIconCircle, { backgroundColor: t.colors.accent }]}>
-                <Text style={[styles.profileInitials, { color: t.colors.card }]}>{getUserInitials()}</Text>
+              <View style={[styles.profileIconCircle, { backgroundColor: '#FF9500' }]}>
+                <Text style={styles.profileInitials}>{getUserInitials()}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -1312,82 +1122,161 @@ const CalendarScreen = () => {
           ]}
         >
           <View style={styles.eventsHeader}>
-            <View style={styles.eventsHeaderLeft}>
-              <View style={[styles.eventsIconWrap, { borderColor: t.colors.border }]}>
-                <Ionicons name="calendar-outline" size={14} color={t.colors.accent} />
-        </View>
-              <Text style={[styles.eventsTitle, { color: t.colors.text }]}>Events</Text>
+            {/* Top Row: Events title */}
+            <View style={styles.eventsHeaderTopRow}>
+              <View style={styles.eventsTitleRow}>
+                <View style={[styles.eventsIconWrap, { borderColor: t.colors.border }]}>
+                  <Ionicons name="calendar-outline" size={14} color={t.colors.accent} />
+                </View>
+                <Text style={[styles.eventsTitle, { color: t.colors.text }]}>Events</Text>
+              </View>
             </View>
-          </View>
-          
-          {/* Event Type Segmented Control */}
-          <View style={styles.segmentedControlContainer}>
-            <View 
-              style={[styles.segmentedControl, { backgroundColor: selectedEventType === 'institutional' ? '#2563EB' : '#10B981' }]}
-              onLayout={(e) => {
-                segmentWidth.current = e.nativeEvent.layout.width;
-                // Initialize animation position
-                const targetX = selectedEventType === 'academic' 
-                  ? segmentWidth.current / 2 - 2 
-                  : 2;
-                segmentAnim.setValue(targetX);
-              }}
-            >
-              <Animated.View
-                style={[
-                  styles.segmentedSelector,
-                  {
-                    transform: [
+            {/* Bottom Row: Yearly/Monthly Dropdown | Institutional | Academic */}
+            <View style={styles.eventsHeaderBottomRow}>
+              <View style={styles.eventFilterContainer}>
+                <View style={styles.timeRangeDropdownWrapper}>
+                  <TouchableOpacity
+                    style={[
+                      styles.timeRangeDropdownButton,
                       {
-                        translateX: segmentAnim,
-                      },
-                    ],
-                  }
-                ]}
-              />
-              <View style={styles.segmentedOptionsContainer}>
-                <TouchableOpacity
-                  style={styles.segmentedOption}
-                  onPress={() => {
-                    setSelectedEventType('institutional');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[
-                    styles.segmentedOptionText,
-                    { color: selectedEventType === 'institutional' ? '#2563EB' : '#FFFFFF' }
-                  ]}>
-                    Institutional
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.segmentedOption}
-                  onPress={() => {
-                    setSelectedEventType('academic');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[
-                    styles.segmentedOptionText,
-                    { color: selectedEventType === 'academic' ? '#10B981' : '#FFFFFF' }
-                  ]}>
-                    Academic
-                  </Text>
-                </TouchableOpacity>
+                        backgroundColor: t.colors.surface,
+                        borderColor: t.colors.border,
+                      }
+                    ]}
+                    onPress={() => {
+                      setShowTimeRangeDropdown(!showTimeRangeDropdown);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.timeRangeDropdownText,
+                      { color: t.colors.text }
+                    ]}>
+                      {eventTimeRange === 'allYear' ? 'Yearly' : 'Monthly'}
+                    </Text>
+                    <Ionicons 
+                      name={showTimeRangeDropdown ? 'chevron-up' : 'chevron-down'} 
+                      size={16} 
+                      color={t.colors.textMuted} 
+                    />
+                  </TouchableOpacity>
+                  
+                  {/* Dropdown Options */}
+                  {showTimeRangeDropdown && (
+                    <View style={[styles.timeRangeDropdownOptions, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
+                      <TouchableOpacity
+                        style={[
+                          styles.timeRangeDropdownOption,
+                          { borderBottomColor: t.colors.border },
+                          eventTimeRange === 'allYear' && { backgroundColor: t.colors.surfaceAlt }
+                        ]}
+                        onPress={() => {
+                          setEventTimeRange('allYear');
+                          setShowTimeRangeDropdown(false);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.timeRangeDropdownOptionText, { color: t.colors.text }]}>Yearly</Text>
+                        {eventTimeRange === 'allYear' && (
+                          <Ionicons name="checkmark" size={16} color="#8B5CF6" />
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.timeRangeDropdownOption,
+                          eventTimeRange === 'byMonth' && { backgroundColor: t.colors.surfaceAlt }
+                        ]}
+                        onPress={() => {
+                          setEventTimeRange('byMonth');
+                          setShowTimeRangeDropdown(false);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.timeRangeDropdownOptionText, { color: t.colors.text }]}>Monthly</Text>
+                        {eventTimeRange === 'byMonth' && (
+                          <Ionicons name="checkmark" size={16} color="#8B5CF6" />
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+                <View style={styles.eventTypeToggleContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.eventTypeToggleButton,
+                      {
+                        backgroundColor: selectedEventType === 'institutional' ? '#2563EB' : 'transparent',
+                        borderColor: selectedEventType === 'institutional' ? '#2563EB' : t.colors.border,
+                      }
+                    ]}
+                    onPress={() => {
+                      setSelectedEventType('institutional');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.eventTypeToggleText,
+                      { 
+                        color: selectedEventType === 'institutional' ? '#FFFFFF' : t.colors.textMuted 
+                      }
+                    ]}>
+                      Institutional
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.eventTypeToggleButton,
+                      {
+                        backgroundColor: selectedEventType === 'academic' ? '#10B981' : 'transparent',
+                        borderColor: selectedEventType === 'academic' ? '#10B981' : t.colors.border,
+                      }
+                    ]}
+                    onPress={() => {
+                      setSelectedEventType('academic');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.eventTypeToggleText,
+                      { 
+                        color: selectedEventType === 'academic' ? '#FFFFFF' : t.colors.textMuted 
+                      }
+                    ]}>
+                      Academic
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           </View>
           
           <View style={styles.eventsSubtitleRowEnhanced}>
             <Text style={[styles.eventsSubtitle, { color: t.colors.textMuted }]} numberOfLines={1}>
-              All events — {filteredEvents.length} {filteredEvents.length === 1 ? 'event' : 'events'}
+              {(() => {
+                const eventCount = groupedEvents.reduce((sum, yearGroup) => 
+                  sum + yearGroup.dates.reduce((dateSum, dateGroup) => dateSum + dateGroup.items.length, 0), 0
+                );
+                if (eventTimeRange === 'byMonth') {
+                  return `${getMonthName(currentMonth)} ${currentMonth.getFullYear()} — ${eventCount} ${eventCount === 1 ? 'event' : 'events'}`;
+                } else {
+                  return `Year ${currentMonth.getFullYear()} — ${eventCount} ${eventCount === 1 ? 'event' : 'events'}`;
+                }
+              })()}
             </Text>
           </View>
           <LinearGradient colors={[t.colors.border, 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ height: 1, marginBottom: 10 }} />
 
-          {filteredEvents.length === 0 && !isLoadingEvents && (
+          {(() => {
+            const eventCount = groupedEvents.reduce((sum, yearGroup) => 
+              sum + yearGroup.dates.reduce((dateSum, dateGroup) => dateSum + dateGroup.items.length, 0), 0
+            );
+            return eventCount === 0 && !isLoadingEvents;
+          })() && (
             <View style={[styles.emptyStateCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
               <View style={[styles.emptyStateIconWrap, { backgroundColor: t.colors.surfaceAlt }]}>
                 <Ionicons name="calendar-outline" size={20} color={t.colors.accent} />
@@ -1410,14 +1299,9 @@ const CalendarScreen = () => {
 
           {/* All Events List - Flat list with dates inside cards */}
           <View>
-            {Array.isArray(groupedEvents) && groupedEvents.map((yearGroup) => (
-              <View key={yearGroup.year} style={styles.yearGroupContainer}>
-                <Text style={[styles.yearHeaderText, { color: t.colors.text }]}>
-                  {yearGroup.year}
-                </Text>
-                {Array.isArray(yearGroup.dates) && yearGroup.dates.map((dateGroup) => (
-                  <View key={dateGroup.key}>
-                    {Array.isArray(dateGroup.items) && dateGroup.items.map((event: any) => (
+            {Array.isArray(groupedEvents) && groupedEvents.flatMap((yearGroup) =>
+              Array.isArray(yearGroup.dates) ? yearGroup.dates.flatMap((dateGroup) =>
+                Array.isArray(dateGroup.items) ? dateGroup.items.map((event: any) => (
                       <TouchableOpacity
                         key={event.id}
                         style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
@@ -1463,11 +1347,9 @@ const CalendarScreen = () => {
                           </View>
                         </View>
                       </TouchableOpacity>
-                    ))}
-                  </View>
-                ))}
-              </View>
-            ))}
+                )) : []
+              ) : []
+            )}
           </View>
         </BlurView>
       </ScrollView>
@@ -1553,44 +1435,6 @@ const styles = StyleSheet.create({
     opacity: 0.5,
     overflow: 'hidden',
   },
-  cloudWrapper: {
-    position: 'absolute',
-  },
-  cloudPatch1: {
-    width: 350,
-    height: 350,
-    borderRadius: 175,
-    opacity: 0.25,
-    overflow: 'hidden',
-  },
-  cloudPatch2: {
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    opacity: 0.22,
-    overflow: 'hidden',
-  },
-  lightSpot1: {
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    opacity: 0.2,
-    overflow: 'hidden',
-  },
-  lightSpot2: {
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    opacity: 0.18,
-    overflow: 'hidden',
-  },
-  lightSpot3: {
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    opacity: 0.16,
-    overflow: 'hidden',
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1646,7 +1490,7 @@ const styles = StyleSheet.create({
   profileInitials: {
     fontSize: 13,
     fontWeight: '700',
-    // color set dynamically via theme
+    color: '#FFF',
     letterSpacing: -0.3,
   },
   scrollView: {
@@ -1830,10 +1674,102 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   eventsHeader: {
+    flexDirection: 'column',
+    gap: 8,
+    marginBottom: 16,
+  },
+  eventsHeaderTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
+  },
+  eventsHeaderTopRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 1,
+  },
+  eventsHeaderBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  eventFilterContainer: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    flexShrink: 1,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  eventsTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  eventTypeToggleContainer: {
+    flexDirection: 'row',
+    gap: 4,
+    alignItems: 'center',
+  },
+  eventTypeToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexShrink: 1,
+    minWidth: 80,
+  },
+  eventTypeToggleText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  timeRangeDropdownWrapper: {
+    position: 'relative',
+    zIndex: 10,
+  },
+  timeRangeDropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    minWidth: 100,
+  },
+  timeRangeDropdownText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  timeRangeDropdownOptions: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    marginTop: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    overflow: 'hidden',
+    zIndex: 1000,
+  },
+  timeRangeDropdownOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  timeRangeDropdownOptionText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   segmentedToggle: {
     flexDirection: 'row',

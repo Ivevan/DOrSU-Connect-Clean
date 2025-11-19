@@ -4,10 +4,10 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Easing, Image, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Dimensions, Easing, Image, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import EventDetailsDrawer from '../../components/calendar/EventDetailsDrawer';
-import PostDetailsDrawer from '../../components/dashboard/PostDetailsDrawer';
+import PreviewModal from '../../modals/PreviewModal';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import UserSidebar from '../../components/navigation/UserSidebar';
 import { theme as themeStyle } from '../../config/theme';
@@ -17,6 +17,7 @@ import CalendarService, { CalendarEvent } from '../../services/CalendarService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import { categoryToColors } from '../../utils/calendarUtils';
 import { formatDate } from '../../utils/dateUtils';
+import { getMockCalendarEvents } from '../../utils/mockCalendarData';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -86,6 +87,159 @@ const NoEventsAnimation = memo(({ theme }: { theme: any }) => {
   );
 });
 
+// Loading Skeleton Component for Calendar Events
+const CalendarEventSkeleton = memo(({ theme }: { theme: any }) => {
+  const shimmerAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, {
+          toValue: 1,
+          duration: 1500,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmerAnim, {
+          toValue: 0,
+          duration: 1500,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [shimmerAnim]);
+
+  const opacity = shimmerAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.3, 0.6],
+  });
+
+  return (
+    <View style={[styles.calendarEventCard, { 
+      backgroundColor: theme.colors.surface, 
+      borderColor: theme.colors.border,
+      width: 280,
+    }]}>
+      <View style={[styles.calendarEventAccent, { backgroundColor: theme.colors.border }]} />
+      <View style={styles.calendarEventContent}>
+        <View style={styles.calendarEventHeader}>
+          <Animated.View style={[
+            styles.calendarEventIconWrapper, 
+            { backgroundColor: theme.colors.border, opacity }
+          ]} />
+          <Animated.View style={[
+            { width: 80, height: 12, borderRadius: 6, backgroundColor: theme.colors.border, opacity }
+          ]} />
+        </View>
+        <Animated.View style={[
+          { width: '100%', height: 16, borderRadius: 4, backgroundColor: theme.colors.border, marginBottom: 8, opacity }
+        ]} />
+        <Animated.View style={[
+          { width: '70%', height: 12, borderRadius: 4, backgroundColor: theme.colors.border, marginBottom: 6, opacity }
+        ]} />
+        <Animated.View style={[
+          { width: '100%', height: 12, borderRadius: 4, backgroundColor: theme.colors.border, marginBottom: 4, opacity }
+        ]} />
+        <Animated.View style={[
+          { width: '85%', height: 12, borderRadius: 4, backgroundColor: theme.colors.border, opacity }
+        ]} />
+      </View>
+    </View>
+  );
+});
+
+// Memoized Calendar Event Card Component
+interface CalendarEventCardProps {
+  event: any;
+  onPress: (event: CalendarEvent, date?: Date) => void;
+  theme: any;
+  accentColor: string;
+  fullEvent: CalendarEvent | null;
+}
+
+const CalendarEventCard = memo<CalendarEventCardProps>(({ event, onPress, theme, accentColor, fullEvent }) => {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.96,
+      useNativeDriver: true,
+      tension: 300,
+      friction: 20,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 300,
+      friction: 20,
+    }).start();
+  };
+
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <TouchableOpacity
+        style={[styles.calendarEventCard, { 
+          backgroundColor: theme.colors.surface, 
+          borderColor: theme.colors.border,
+          width: 280,
+        }]}
+        activeOpacity={0.7}
+        delayPressIn={0}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        onPress={() => {
+          if (fullEvent) {
+            const eventDate = fullEvent.isoDate || fullEvent.date 
+              ? new Date(fullEvent.isoDate || fullEvent.date)
+              : new Date();
+            onPress(fullEvent, eventDate);
+          }
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={`Event: ${event.title}, Date: ${event.date}, Category: ${event.tag}`}
+        accessibilityHint="Double tap to view event details"
+      >
+        <View style={[styles.calendarEventAccent, { backgroundColor: accentColor }]} collapsable={false} />
+        <View style={styles.calendarEventContent} collapsable={false}>
+          <View style={styles.calendarEventHeader}>
+            <View style={[styles.calendarEventIconWrapper, { backgroundColor: accentColor + '20' }]}>
+              <Ionicons name="calendar" size={18} color={accentColor} />
+            </View>
+            <Text style={[styles.calendarEventTag, { color: accentColor }]}>{event.tag}</Text>
+          </View>
+          <Text style={[styles.calendarEventTitle, { color: theme.colors.text }]} numberOfLines={2}>
+            {event.title}
+          </Text>
+          <View style={styles.calendarEventDateRow}>
+            <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
+            <Text style={[styles.calendarEventDate, { color: theme.colors.textMuted }]}>
+              {event.date}
+            </Text>
+          </View>
+          {event.description && (
+            <Text style={[styles.calendarEventDescription, { color: theme.colors.textMuted }]} numberOfLines={2}>
+              {event.description}
+            </Text>
+          )}
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}, (prevProps, nextProps) => {
+  return prevProps.event.id === nextProps.event.id &&
+         prevProps.theme === nextProps.theme &&
+         prevProps.accentColor === nextProps.accentColor;
+});
+
+CalendarEventCard.displayName = 'CalendarEventCard';
+CalendarEventSkeleton.displayName = 'CalendarEventSkeleton';
+
 // Helper function to get Philippines timezone date key (moved outside component for performance)
 const getPHDateKey = (d: Date | string) => {
   try {
@@ -149,7 +303,7 @@ const EventCard = memo(({ update, onPress, theme }: { update: any; onPress: () =
   const imageUrl = update.images?.[0] || update.image;
   
   return (
-    <Pressable style={[styles.eventCardHorizontal, styles.cardShadow, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
+    <Pressable style={[styles.eventCardHorizontal, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
       {imageUrl ? (
         <Image 
           source={{ uri: imageUrl }} 
@@ -200,8 +354,12 @@ const SchoolUpdates = () => {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [isLoadingCalendarEvents, setIsLoadingCalendarEvents] = useState(false);
+  const [calendarEventsError, setCalendarEventsError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const searchRef = useRef<TextInput>(null);
+  const calendarEventsScrollRef = useRef<ScrollView>(null);
   
   // Event Details Drawer state (view-only)
   const [showEventDrawer, setShowEventDrawer] = useState(false);
@@ -222,13 +380,9 @@ const SchoolUpdates = () => {
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
   const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
 
-  // Post Details Drawer state (view-only)
-  const [showPostDrawer, setShowPostDrawer] = useState(false);
-  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
-  const postDrawerSlideAnim = useRef(new Animated.Value(0)).current;
-  const postDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
-  const postMonthPickerScaleAnim = useRef(new Animated.Value(0)).current;
-  const postMonthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
+  // Post Preview Modal state (view-only)
+  const [showPostModal, setShowPostModal] = useState(false);
+  const [selectedUpdate, setSelectedUpdate] = useState<any | null>(null);
 
   // Memoize safe area insets to prevent recalculation during navigation
   const safeInsets = useMemo(() => ({
@@ -246,13 +400,8 @@ const SchoolUpdates = () => {
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
   const userName = useMemo(() => currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User', [currentUser]);
 
-  // Animated floating background orbs (Copilot-style)
+  // Animated floating background orb (Copilot-style)
   const floatAnim1 = useRef(new Animated.Value(0)).current;
-  const cloudAnim1 = useRef(new Animated.Value(0)).current;
-  const cloudAnim2 = useRef(new Animated.Value(0)).current;
-  const lightSpot1 = useRef(new Animated.Value(0)).current;
-  const lightSpot2 = useRef(new Animated.Value(0)).current;
-  const lightSpot3 = useRef(new Animated.Value(0)).current;
 
   // Animation values for smooth entrance - DISABLED FOR DEBUGGING
   const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
@@ -312,97 +461,23 @@ const SchoolUpdates = () => {
     return userName.substring(0, 2).toUpperCase();
   };
 
-  // Animate floating background orbs on mount
+  // Animate floating background orb on mount
   useEffect(() => {
-    const animations = [
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(floatAnim1, {
-            toValue: 1,
-            duration: 8000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(floatAnim1, {
-            toValue: 0,
-            duration: 8000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(cloudAnim1, {
-            toValue: 1,
-            duration: 15000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cloudAnim1, {
-            toValue: 0,
-            duration: 15000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(cloudAnim2, {
-            toValue: 1,
-            duration: 20000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cloudAnim2, {
-            toValue: 0,
-            duration: 20000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot1, {
-            toValue: 1,
-            duration: 12000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot1, {
-            toValue: 0,
-            duration: 12000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot2, {
-            toValue: 1,
-            duration: 18000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot2, {
-            toValue: 0,
-            duration: 18000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot3, {
-            toValue: 1,
-            duration: 14000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot3, {
-            toValue: 0,
-            duration: 14000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-    ];
-
-    animations.forEach(anim => anim.start());
-  }, []);
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim1, {
+          toValue: 1,
+          duration: 8000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim1, {
+          toValue: 0,
+          duration: 8000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, [floatAnim1]);
 
   const handleSearchPress = useCallback(() => {
     setIsSearchVisible(prev => {
@@ -418,50 +493,53 @@ const SchoolUpdates = () => {
   }, []);
 
   const handleUpdatePress = useCallback((update: { id?: string; title: string; date: string; tag: string; time?: string; image?: string; images?: string[]; description?: string; source?: string; pinned?: boolean; isoDate?: string; category?: string }) => {
-    // Convert update to Post format and open PostDetailsDrawer
-    const post: Post = {
-      id: update.id || `post-${Date.now()}`,
-      title: update.title,
-      description: update.description,
-      category: update.category || update.tag,
-      date: update.date,
-      isoDate: update.isoDate || update.date,
-      time: update.time,
-      images: update.images || (update.image ? [update.image] : undefined),
-      image: update.image,
-      isPinned: update.pinned,
-      source: update.source,
-    };
-    
-    setSelectedPost(post);
-    setShowPostDrawer(true);
-    
-    // Animate drawer in
-    Animated.parallel([
-      Animated.spring(postDrawerSlideAnim, {
-        toValue: 1,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 11,
-      }),
-      Animated.timing(postDrawerBackdropOpacity, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [postDrawerSlideAnim, postDrawerBackdropOpacity]);
+    // Set update and open PreviewModal
+    setSelectedUpdate(update);
+    setShowPostModal(true);
+  }, []);
+
+  // Track last fetch time to prevent unnecessary refetches
+  const lastFetchTime = useRef<number>(0);
+  const isFetching = useRef<boolean>(false);
+  const FETCH_COOLDOWN = 1000; // 1 second cooldown between fetches
 
   // Fetch data from AdminDataService
-  useEffect(() => {
-    const fetchUpdates = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const posts = await AdminDataService.getPosts();
+  const fetchUpdates = useCallback(async (forceRefresh: boolean = false) => {
+    // Prevent duplicate simultaneous fetches
+    if (isFetching.current && !forceRefresh) {
+      return;
+    }
+
+    // Cooldown check - prevent too frequent fetches
+    const now = Date.now();
+    if (!forceRefresh && now - lastFetchTime.current < FETCH_COOLDOWN) {
+      return;
+    }
+
+    isFetching.current = true;
+    lastFetchTime.current = now;
+
+    try {
+      setIsLoading(true);
+      setError(null);
+      const posts = await AdminDataService.getPosts(forceRefresh);
+      
+      if (__DEV__) console.log('📥 Fetched posts from AdminDataService:', posts.length);
+      
+      // Map AdminDataService posts to our component format (matching AdminDashboard pattern)
+      const postsData = posts.map(post => {
+        // Ensure images array is properly set
+        let images = post.images;
+        if (!images || !Array.isArray(images) || images.length === 0) {
+          // If images array is empty but image field exists, create array from it
+          if (post.image) {
+            images = [post.image];
+          } else {
+            images = [];
+          }
+        }
         
-        // Map AdminDataService posts to our component format
-        const mappedUpdates = posts.map(post => ({
+        return {
           id: post.id,
           title: post.title,
           body: post.description,
@@ -473,27 +551,79 @@ const SchoolUpdates = () => {
           description: post.description,
           source: post.source,
           image: post.image,
-          images: post.images,
-        }));
-        
-        setUpdates(mappedUpdates);
-      } catch (err: any) {
-        setError(err?.message || 'Failed to load updates');
-      } finally {
-        setIsLoading(false);
+          images: images,
+        };
+      });
+      
+      // Remove duplicates (matching AdminDashboard pattern)
+      const uniqueUpdates = postsData.filter((update, index, self) =>
+        index === self.findIndex(u => u.id === update.id)
+      );
+      
+      // Sort by date (newest first) - matching AdminDashboard pattern
+      uniqueUpdates.sort((a, b) => {
+        const dateA = new Date(a.isoDate || a.date).getTime();
+        const dateB = new Date(b.isoDate || b.date).getTime();
+        return dateB - dateA; // Newest first
+      });
+      
+      if (__DEV__) {
+        console.log('✅ Mapped updates:', uniqueUpdates.length, '(removed', posts.length - uniqueUpdates.length, 'duplicates)');
       }
-    };
-
-    fetchUpdates();
+      setUpdates(uniqueUpdates);
+    } catch (err: any) {
+      if (__DEV__) console.error('❌ Error fetching updates:', err);
+      setError(err?.message || 'Failed to load updates');
+    } finally {
+      setIsLoading(false);
+      isFetching.current = false;
+    }
   }, []);
 
+  // Fetch updates on mount only
+  useEffect(() => {
+    fetchUpdates(true); // Force refresh on mount
+  }, []); // Empty deps - only run on mount
+
+  // Refresh updates when screen comes into focus (with smart refresh)
+  useFocusEffect(
+    useCallback(() => {
+      // Only refresh if data is older than 30 seconds
+      const timeSinceLastFetch = Date.now() - lastFetchTime.current;
+      const shouldRefresh = timeSinceLastFetch > 30 * 1000; // 30 seconds
+      
+      if (shouldRefresh) {
+        fetchUpdates(false); // Use cache if available
+      }
+    }, [fetchUpdates])
+  );
+
+  // Debounce search query
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 300); // 300ms debounce
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
   const filtered = useMemo(() => {
-    return updates.filter(u => {
-      const q = query.trim().toLowerCase();
-      const byQuery = q.length === 0 || u.title.toLowerCase().includes(q) || u.body.toLowerCase().includes(q);
+    const result = updates.filter(u => {
+      const q = debouncedQuery.trim().toLowerCase();
+      const byQuery = q.length === 0 || u.title.toLowerCase().includes(q) || (u.body && u.body.toLowerCase().includes(q));
       return byQuery;
     });
-  }, [updates, query]);
+    if (__DEV__) {
+      console.log('🔍 Filtered updates:', { 
+        total: updates.length, 
+        query: debouncedQuery.trim(), 
+        filtered: result.length 
+      });
+    }
+    return result;
+  }, [updates, debouncedQuery]);
 
   // Today's events (category Event occurring today) - using timezone-aware comparison
   const todaysEvents = useMemo(() => {
@@ -528,18 +658,59 @@ const SchoolUpdates = () => {
 
   // Filtered by time (all, upcoming, or recent)
   const displayedUpdates = useMemo(() => {
-    if (timeFilter === 'upcoming') return upcomingUpdates;
-    if (timeFilter === 'recent') return recentUpdates;
-    return filtered; // 'all'
-  }, [timeFilter, upcomingUpdates, recentUpdates, filtered]);
+    console.log('🔍 Computing displayedUpdates:', {
+      timeFilter,
+      updatesCount: updates.length,
+      filteredCount: filtered.length,
+      upcomingCount: upcomingUpdates.length,
+      recentCount: recentUpdates.length,
+    });
+    
+    let result;
+    if (timeFilter === 'upcoming') {
+      result = [...upcomingUpdates];
+    } else if (timeFilter === 'recent') {
+      result = [...recentUpdates];
+    } else {
+      // 'all' - show all posts, including those without dates
+      result = [...filtered];
+    }
+    
+    console.log('📋 Result before sorting:', result.length, 'items');
+    
+    // Sort by date (newest first) - posts without dates go to the end
+    result.sort((a, b) => {
+      if (!a.isoDate && !b.isoDate) return 0;
+      if (!a.isoDate) return 1; // Posts without dates go to end
+      if (!b.isoDate) return -1; // Posts without dates go to end
+      
+      try {
+        const dateA = new Date(a.isoDate).getTime();
+        const dateB = new Date(b.isoDate).getTime();
+        if (isNaN(dateA) || isNaN(dateB)) return 0;
+        return dateB - dateA; // Newest first
+      } catch {
+        return 0;
+      }
+    });
+    
+    console.log(`📊 Displayed updates (${timeFilter}):`, result.length, 'out of', updates.length, 'total');
+    if (result.length > 0) {
+      console.log('📝 First update:', { id: result[0].id, title: result[0].title, isoDate: result[0].isoDate });
+    }
+    return result;
+  }, [timeFilter, upcomingUpdates, recentUpdates, filtered, updates.length]);
 
   // Current month calendar events (separate from posts/announcements)
   const currentMonthEvents = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
+    const todayKey = getPHDateKey(now);
+    const nowTime = now.getTime();
     
-    return calendarEvents
+    // Filter and map events for current month
+    const monthEvents = calendarEvents
       .filter(event => {
         const eventDate = event.isoDate || event.date;
         if (!eventDate) return false;
@@ -550,19 +721,181 @@ const SchoolUpdates = () => {
       .map(event => ({
         id: event._id || `calendar-${event.isoDate}-${event.title}`,
         title: event.title,
-        date: new Date(event.isoDate || event.date).toLocaleDateString(),
+        date: formatDate(event.isoDate || event.date),
         tag: event.category || 'Event',
         description: event.description || '',
         image: undefined,
         images: undefined,
         pinned: false,
         isoDate: event.isoDate || event.date,
-      }))
-      .sort((a, b) => {
-        const dateA = new Date(a.isoDate || a.date).getTime();
-        const dateB = new Date(b.isoDate || b.date).getTime();
-        return dateA - dateB; // Sort ascending (earliest first)
-      });
+        time: event.time, // Preserve time for sorting
+      }));
+    
+    // Separate events into today, past, and future
+    const todaysCalendarEvents = monthEvents.filter(event => {
+      if (!event.isoDate) return false;
+      try {
+        const eventKey = getPHDateKey(event.isoDate);
+        const isToday = eventKey === todayKey;
+        if (__DEV__ && isToday) {
+          console.log('📅 Today\'s event found:', {
+            title: event.title,
+            isoDate: event.isoDate,
+            eventKey,
+            todayKey,
+            match: isToday
+          });
+        }
+        return isToday;
+      } catch (error) {
+        console.error('Error comparing date for event:', event.title, error);
+        return false;
+      }
+    });
+    
+    const futureEvents = monthEvents.filter(event => {
+      if (!event.isoDate) return false;
+      const eventKey = getPHDateKey(event.isoDate);
+      if (eventKey === todayKey) return false; // Exclude today's events
+      const eventTime = new Date(event.isoDate).getTime();
+      return eventTime >= nowTime;
+    });
+    
+    const pastEvents = monthEvents.filter(event => {
+      if (!event.isoDate) return false;
+      const eventKey = getPHDateKey(event.isoDate);
+      if (eventKey === todayKey) return false; // Exclude today's events
+      const eventTime = new Date(event.isoDate).getTime();
+      return eventTime < nowTime;
+    });
+    
+    // Sort today's events by time first (if available), then by date
+    // This ensures events are in ascending order (earliest time first)
+    todaysCalendarEvents.sort((a, b) => {
+      const dateA = new Date(a.isoDate || a.date).getTime();
+      const dateB = new Date(b.isoDate || b.date).getTime();
+      
+      // If dates are the same (both today), sort by time if available
+      if (dateA === dateB) {
+        // Parse time strings (e.g., "8:00 AM" or "14:30")
+        const parseTime = (timeStr: string | undefined): number => {
+          if (!timeStr) return 9999; // Events without time go to the end
+          
+          const lower = timeStr.toLowerCase();
+          if (lower.includes('all day') || lower.includes('all-day')) return 0;
+          
+          // Try to parse "HH:MM AM/PM" format
+          const amPmMatch = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+          if (amPmMatch) {
+            let hours = parseInt(amPmMatch[1], 10);
+            const minutes = parseInt(amPmMatch[2], 10);
+            const isPM = amPmMatch[3].toUpperCase() === 'PM';
+            if (isPM && hours !== 12) hours += 12;
+            if (!isPM && hours === 12) hours = 0;
+            return hours * 60 + minutes;
+          }
+          
+          // Try to parse "HH:MM" format (24-hour)
+          const timeMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
+          if (timeMatch) {
+            const hours = parseInt(timeMatch[1], 10);
+            const minutes = parseInt(timeMatch[2], 10);
+            return hours * 60 + minutes;
+          }
+          
+          return 9999; // Unparseable time goes to the end
+        };
+        
+        const timeA = parseTime(a.time);
+        const timeB = parseTime(b.time);
+        return timeA - timeB; // Ascending (earliest time first)
+      }
+      
+      return dateA - dateB; // Ascending (earliest first)
+    });
+    
+    // Sort future events chronologically (earliest first) - will appear on the RIGHT
+    // Sort by date first, then by time if dates are the same
+    futureEvents.sort((a, b) => {
+      const dateA = new Date(a.isoDate || a.date).getTime();
+      const dateB = new Date(b.isoDate || b.date).getTime();
+      
+      if (dateA === dateB && a.time && b.time) {
+        // Parse time for sorting
+        const parseTime = (timeStr: string): number => {
+          const lower = timeStr.toLowerCase();
+          if (lower.includes('all day') || lower.includes('all-day')) return 0;
+          
+          const amPmMatch = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+          if (amPmMatch) {
+            let hours = parseInt(amPmMatch[1], 10);
+            const minutes = parseInt(amPmMatch[2], 10);
+            const isPM = amPmMatch[3].toUpperCase() === 'PM';
+            if (isPM && hours !== 12) hours += 12;
+            if (!isPM && hours === 12) hours = 0;
+            return hours * 60 + minutes;
+          }
+          
+          const timeMatch = timeStr.match(/(\d{1,2}):(\d{2})/);
+          if (timeMatch) {
+            const hours = parseInt(timeMatch[1], 10);
+            const minutes = parseInt(timeMatch[2], 10);
+            return hours * 60 + minutes;
+          }
+          
+          return 0;
+        };
+        
+        return parseTime(a.time) - parseTime(b.time);
+      }
+      
+      return dateA - dateB; // Ascending (earliest first)
+    });
+    
+    // Sort past events chronologically (most recent first, then older) - will appear on the LEFT
+    // When scrolling left from today's events, users see older past events
+    pastEvents.sort((a, b) => {
+      const dateA = new Date(a.isoDate || a.date).getTime();
+      const dateB = new Date(b.isoDate || b.date).getTime();
+      return dateB - dateA; // Descending (most recent first)
+    });
+    
+    // Final order: Past events (LEFT) -> Today's events (CENTER) -> Future events (RIGHT)
+    // Layout visualization:
+    // [Past Events] ← [Today's Events] → [Future Events]
+    //   (older)      (current)          (upcoming)
+    if (todaysCalendarEvents.length > 0) {
+      const finalOrder = [...pastEvents, ...todaysCalendarEvents, ...futureEvents];
+      if (__DEV__) {
+        console.log('📅 Final Event Order:', {
+          pastCount: pastEvents.length,
+          todayCount: todaysCalendarEvents.length,
+          futureCount: futureEvents.length,
+          totalCount: finalOrder.length,
+          todayEvents: todaysCalendarEvents.map(e => ({ title: e.title, isoDate: e.isoDate })),
+          firstFewEvents: finalOrder.slice(0, 5).map((e, idx) => ({
+            index: idx,
+            title: e.title,
+            isoDate: e.isoDate,
+            isToday: e.isoDate ? getPHDateKey(e.isoDate) === todayKey : false
+          }))
+        });
+      }
+      return finalOrder;
+    }
+    
+    // If no events today, find the closest upcoming event
+    if (futureEvents.length > 0) {
+      // Show past events first, then future events
+      return [...pastEvents, ...futureEvents];
+    }
+    
+    // If no future events, show past events (most recent first)
+    if (pastEvents.length > 0) {
+      return pastEvents;
+    }
+    
+    return monthEvents;
   }, [calendarEvents]);
 
   // Calculate available height for scrollable cards section (after currentMonthEvents is defined)
@@ -572,13 +905,38 @@ const SchoolUpdates = () => {
     const calendarSectionHeight = currentMonthEvents.length > 0 ? 200 : 0; // Calendar events section approximate height (if visible)
     const updatesHeaderHeight = 120; // Updates header + filters approximate height
     const bottomNavHeight = safeInsets.bottom + 80; // Bottom nav + safe area
-    return screenHeight - headerHeight - welcomeSectionHeight - calendarSectionHeight - updatesHeaderHeight - bottomNavHeight - 50; // 50 for padding/margins
+    const calculatedHeight = screenHeight - headerHeight - welcomeSectionHeight - calendarSectionHeight - updatesHeaderHeight - bottomNavHeight - 50; // 50 for padding/margins
+    const finalHeight = Math.max(calculatedHeight, 300); // Ensure minimum 300px height
+    console.log('📏 ScrollView height calculation:', {
+      screenHeight,
+      calculatedHeight,
+      finalHeight,
+      calendarSectionHeight,
+    });
+    return finalHeight;
   }, [screenHeight, safeInsets.top, safeInsets.bottom, currentMonthEvents.length]);
 
-  // Refresh calendar events function
-  const refreshCalendarEvents = useCallback(async () => {
+  // Toggle this flag to use mock data (set to true for mock data, false for real API)
+  const USE_MOCK_CALENDAR_DATA = true;
+
+  // Refresh calendar events function with error handling and retry
+  const refreshCalendarEvents = useCallback(async (isRetry: boolean = false) => {
     try {
       setIsLoadingCalendarEvents(true);
+      setCalendarEventsError(null);
+      
+      // Use mock data if flag is enabled
+      if (USE_MOCK_CALENDAR_DATA) {
+        // Simulate network delay for better UX
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const mockEvents = getMockCalendarEvents(true);
+        setCalendarEvents(mockEvents);
+        setRetryCount(0);
+        setIsLoadingCalendarEvents(false);
+        return;
+      }
+      
+      // Otherwise, fetch from API
       const now = new Date();
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth();
@@ -594,18 +952,172 @@ const SchoolUpdates = () => {
       });
       
       setCalendarEvents(Array.isArray(events) ? events : []);
-    } catch (error) {
+      setRetryCount(0);
+    } catch (error: any) {
       console.error('Failed to load calendar events:', error);
+      const errorMessage = error?.message || 'Failed to load calendar events. Please try again.';
+      setCalendarEventsError(errorMessage);
       setCalendarEvents([]);
+      
+      // Auto-retry with exponential backoff (max 3 retries)
+      if (!isRetry && retryCount < 3) {
+        const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+        setTimeout(() => {
+          setRetryCount(prev => prev + 1);
+          refreshCalendarEvents(true);
+        }, delay);
+      }
     } finally {
       setIsLoadingCalendarEvents(false);
     }
-  }, []);
+  }, [retryCount]);
 
   // Fetch calendar events for current month
   useEffect(() => {
     refreshCalendarEvents();
   }, [refreshCalendarEvents]);
+
+  // Auto-scroll to center today's events when events load
+  // Layout: Past events (left) -> Today's events (center) -> Future events (right)
+  useEffect(() => {
+    if (currentMonthEvents.length > 0 && calendarEventsScrollRef.current) {
+      // Function to perform the scroll
+      const performScroll = () => {
+        if (!calendarEventsScrollRef.current) return;
+        
+        const now = new Date();
+        const todayKey = getPHDateKey(now);
+        const screenWidth = Dimensions.get('window').width;
+        
+        // Debug: Log all events and their dates
+        if (__DEV__) {
+          console.log('📅 Calendar Events Debug:', {
+            totalEvents: currentMonthEvents.length,
+            todayKey,
+            currentDate: now.toISOString(),
+            events: currentMonthEvents.map((e, idx) => ({
+              index: idx,
+              title: e.title,
+              isoDate: e.isoDate,
+              eventKey: e.isoDate ? getPHDateKey(e.isoDate) : null,
+              isToday: e.isoDate ? getPHDateKey(e.isoDate) === todayKey : false
+            }))
+          });
+        }
+        
+        // Find the index of the first today's event
+        const todayEventIndex = currentMonthEvents.findIndex(event => {
+          if (!event.isoDate) return false;
+          try {
+            const eventKey = getPHDateKey(event.isoDate);
+            const isToday = eventKey === todayKey;
+            if (__DEV__ && isToday) {
+              console.log('✅ Found today\'s event:', {
+                title: event.title,
+                isoDate: event.isoDate,
+                eventKey,
+                todayKey,
+                match: isToday
+              });
+            }
+            return isToday;
+          } catch (error) {
+            console.error('Error in findIndex for today:', error);
+            return false;
+          }
+        });
+        
+        // Calculate card dimensions
+        const cardWidth = 280; // Card width
+        const cardGap = 14; // Gap between cards
+        const cardWithGap = cardWidth + cardGap; // Total width per card including gap
+        const leftPadding = 4;
+        
+        if (todayEventIndex >= 0) {
+          // Calculate the position of the first today's event
+          const firstTodayEventPosition = todayEventIndex * cardWithGap + leftPadding;
+          
+          // Calculate center position: event position - (screen width / 2) + (card width / 2)
+          // This centers the first today's event in the viewport
+          const centerPosition = firstTodayEventPosition - (screenWidth / 2) + (cardWidth / 2);
+          
+          // Ensure we don't scroll to negative position
+          const scrollPosition = Math.max(0, centerPosition);
+          
+          if (__DEV__) {
+            console.log('📅 Auto-scrolling to today\'s event:', {
+              todayEventIndex,
+              firstTodayEventPosition,
+              screenWidth,
+              centerPosition,
+              scrollPosition,
+              eventTitle: currentMonthEvents[todayEventIndex]?.title
+            });
+          }
+          
+          // Scroll with animation
+          calendarEventsScrollRef.current.scrollTo({ x: scrollPosition, animated: true });
+          
+          // Also try a second scroll after a short delay to ensure it locks
+          setTimeout(() => {
+            if (calendarEventsScrollRef.current) {
+              calendarEventsScrollRef.current.scrollTo({ x: scrollPosition, animated: false });
+            }
+          }, 600);
+        } else {
+          if (__DEV__) {
+            console.log('⚠️ No today\'s events found. Total events:', currentMonthEvents.length);
+            console.log('📅 Today key:', todayKey, 'Current date:', now.toISOString());
+          }
+          // If no today's events, check if we have future events
+          // If future events exist, scroll to show the transition from past to future
+          // Otherwise, just show past events from the start
+          const hasFutureEvents = currentMonthEvents.some(event => {
+            if (!event.isoDate) return false;
+            const eventKey = getPHDateKey(event.isoDate);
+            if (eventKey === todayKey) return false;
+            const eventTime = new Date(event.isoDate).getTime();
+            return eventTime >= now.getTime();
+          });
+          
+          if (hasFutureEvents) {
+            // Find the first future event index
+            const firstFutureIndex = currentMonthEvents.findIndex(event => {
+              if (!event.isoDate) return false;
+              const eventKey = getPHDateKey(event.isoDate);
+              if (eventKey === todayKey) return false;
+              const eventTime = new Date(event.isoDate).getTime();
+              return eventTime >= now.getTime();
+            });
+            
+            if (firstFutureIndex >= 0) {
+              // Scroll to show the transition point (end of past events, start of future events)
+              const transitionPosition = firstFutureIndex * cardWithGap + leftPadding - (screenWidth / 2) + (cardWidth / 2);
+              const scrollPosition = Math.max(0, transitionPosition);
+              calendarEventsScrollRef.current.scrollTo({ x: scrollPosition, animated: true });
+            } else {
+              // Fallback: scroll to start
+              calendarEventsScrollRef.current.scrollTo({ x: leftPadding, animated: true });
+            }
+          } else {
+            // Only past events, scroll to start
+            calendarEventsScrollRef.current.scrollTo({ x: leftPadding, animated: true });
+          }
+        }
+      };
+      
+      // Try scrolling multiple times with increasing delays to ensure it works
+      const timeout1 = setTimeout(performScroll, 300);
+      const timeout2 = setTimeout(performScroll, 600);
+      const timeout3 = setTimeout(performScroll, 1000);
+      
+      return () => {
+        clearTimeout(timeout1);
+        clearTimeout(timeout2);
+        clearTimeout(timeout3);
+      };
+    }
+  }, [currentMonthEvents.length]); // Use length to avoid unnecessary re-renders
 
   // Open event drawer (view-only)
   const openEventDrawer = useCallback((event: CalendarEvent, date?: Date) => {
@@ -679,25 +1191,11 @@ const SchoolUpdates = () => {
     });
   }, [drawerSlideAnim, drawerBackdropOpacity]);
 
-  // Close post drawer
-  const closePostDrawer = useCallback(() => {
-    Animated.parallel([
-      Animated.spring(postDrawerSlideAnim, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 11,
-      }),
-      Animated.timing(postDrawerBackdropOpacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setShowPostDrawer(false);
-      setSelectedPost(null);
-    });
-  }, [postDrawerSlideAnim, postDrawerBackdropOpacity]);
+  // Close post modal
+  const closePostModal = useCallback(() => {
+    setShowPostModal(false);
+    setSelectedUpdate(null);
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -734,196 +1232,8 @@ const SchoolUpdates = () => {
         pointerEvents="none"
       />
   
-      {/* Animated Floating Background Orbs (Copilot-style) */}
+      {/* Animated Floating Background Orb (Copilot-style) */}
       <View style={styles.floatingBgContainer} pointerEvents="none" collapsable={false}>
-        {/* Light Spot 1 - Top right gentle glow */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '8%',
-              right: '12%',
-              transform: [
-                {
-                  translateX: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -15],
-                  }),
-                },
-                {
-                  translateY: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 12],
-                  }),
-                },
-                {
-                  scale: lightSpot1.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.08, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot1}>
-            <LinearGradient
-              colors={['rgba(255, 220, 180, 0.35)', 'rgba(255, 200, 150, 0.18)', 'rgba(255, 230, 200, 0.08)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.2, y: 0.2 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-  
-        {/* Light Spot 2 - Middle left soft circle */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '45%',
-              left: '8%',
-              transform: [
-                {
-                  translateX: lightSpot2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 18],
-                  }),
-                },
-                {
-                  translateY: lightSpot2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -10],
-                  }),
-                },
-                {
-                  scale: lightSpot2.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.06, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot2}>
-            <LinearGradient
-              colors={['rgba(255, 210, 170, 0.28)', 'rgba(255, 200, 160, 0.15)', 'rgba(255, 220, 190, 0.06)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.3, y: 0.3 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-  
-        {/* Light Spot 3 - Bottom center blurry glow */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              bottom: '12%',
-              left: '55%',
-              transform: [
-                {
-                  translateX: lightSpot3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -20],
-                  }),
-                },
-                {
-                  translateY: lightSpot3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 8],
-                  }),
-                },
-                {
-                  scale: lightSpot3.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.1, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot3}>
-            <LinearGradient
-              colors={['rgba(255, 190, 140, 0.25)', 'rgba(255, 180, 130, 0.12)', 'rgba(255, 210, 170, 0.05)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.4, y: 0.4 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-  
-        {/* Cloud variation 1 - Top left soft light patch */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '15%',
-              left: '10%',
-              transform: [
-                {
-                  translateX: cloudAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 20],
-                  }),
-                },
-                {
-                  translateY: cloudAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -15],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.cloudPatch1}>
-            <LinearGradient
-              colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.22)', 'rgba(255, 230, 200, 0.1)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-  
-        {/* Cloud variation 2 - Bottom right gentle tone */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              bottom: '20%',
-              right: '15%',
-              transform: [
-                {
-                  translateX: cloudAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -25],
-                  }),
-                },
-                {
-                  translateY: cloudAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 10],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.cloudPatch2}>
-            <LinearGradient
-              colors={['rgba(255, 190, 140, 0.32)', 'rgba(255, 200, 160, 0.18)', 'rgba(255, 220, 190, 0.08)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.3, y: 0.3 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-  
         {/* Orb 1 - Soft Orange Glow (Center area) */}
         <Animated.View
           style={[
@@ -1018,8 +1328,38 @@ const SchoolUpdates = () => {
       />
 
 
-      {/* Main Content - Fixed Header Section */}
-      <View style={styles.content}>
+      {/* Main Content - Scrollable */}
+      <ScrollView
+        ref={scrollRef}
+        style={styles.content}
+        contentContainerStyle={{ 
+          paddingHorizontal: 16,
+          paddingTop: 12,
+          paddingBottom: safeInsets.bottom + 100 
+        }}
+        showsVerticalScrollIndicator={true}
+        bounces={true}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={async () => {
+              setIsRefreshing(true);
+              try {
+                await Promise.all([
+                  refreshCalendarEvents(),
+                  fetchUpdates(true),
+                ]);
+              } finally {
+                setIsRefreshing(false);
+              }
+            }}
+            tintColor={theme.colors.accent}
+            colors={[theme.colors.accent]}
+          />
+        }
+      >
         <View style={styles.welcomeSection}>
           <View style={styles.welcomeText}>
             <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>Hello {userName},</Text>
@@ -1028,37 +1368,109 @@ const SchoolUpdates = () => {
         </View>
 
         {/* Current Month Calendar Events Section */}
-        {currentMonthEvents.length > 0 && (
-          <View style={[styles.calendarEventsSection, { borderColor: theme.colors.border, marginBottom: 12 }]} collapsable={false}>
-            <BlurView
-              intensity={Platform.OS === 'ios' ? 20 : 15}
-              tint={isDarkMode ? 'dark' : 'light'}
-              style={styles.calendarEventsBlur}
-            >
-              <View style={[styles.calendarEventsContent, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]} collapsable={false}>
-                <View style={styles.sectionHeaderEnhanced}>
-                  <View style={[styles.sectionIconWrapper, { backgroundColor: '#FF9500' + '15' }]}>
-                    <Ionicons 
-                      name="calendar-outline" 
-                      size={20} 
-                      color="#FF9500" 
-                    />
-                  </View>
-                  <View style={styles.sectionTitleWrapper}>
-                    <Text style={[styles.sectionTitleEnhanced, { color: theme.colors.text }]}>
-                      DOrSU Calendar - {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                    </Text>
-                    <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
-                      {currentMonthEvents.length} event{currentMonthEvents.length !== 1 ? 's' : ''} this month
-                    </Text>
-                  </View>
+        <View style={[styles.calendarEventsSection, { borderColor: theme.colors.border, marginHorizontal: 0 }]} collapsable={false}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 20 : 15}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={styles.calendarEventsBlur}
+          >
+            <View style={[styles.calendarEventsContent, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]} collapsable={false}>
+              <View 
+                style={styles.sectionHeaderEnhanced}
+                accessibilityRole="header"
+                accessibilityLabel={`DOrSU Calendar for ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`}
+              >
+                <View style={[styles.sectionIconWrapper, { backgroundColor: '#FF9500' + '15' }]}>
+                  <Ionicons 
+                    name="calendar-outline" 
+                    size={20} 
+                    color="#FF9500" 
+                    accessibilityElementsHidden={true}
+                  />
                 </View>
+                <View style={styles.sectionTitleWrapper}>
+                  <Text style={[styles.sectionTitleEnhanced, { color: theme.colors.text }]}>
+                    DOrSU Calendar - {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                  </Text>
+                  <Text 
+                    style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}
+                    accessibilityLiveRegion="polite"
+                  >
+                    {isLoadingCalendarEvents 
+                      ? 'Loading events...' 
+                      : calendarEventsError 
+                      ? 'Error loading events'
+                      : currentMonthEvents.length > 0
+                      ? `${currentMonthEvents.length} event${currentMonthEvents.length !== 1 ? 's' : ''} this month`
+                      : 'No events this month'}
+                  </Text>
+                </View>
+              </View>
 
+              {/* Loading State */}
+              {isLoadingCalendarEvents && (
                 <ScrollView
                   horizontal
-                  showsHorizontalScrollIndicator={true}
-                  contentContainerStyle={{ paddingRight: 12, gap: 12 }}
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingLeft: 4, paddingRight: 16, gap: 14 }}
                   style={{ flexShrink: 0 }}
+                >
+                  {[1, 2, 3].map((i) => (
+                    <CalendarEventSkeleton key={i} theme={theme} />
+                  ))}
+                </ScrollView>
+              )}
+
+              {/* Error State */}
+              {calendarEventsError && !isLoadingCalendarEvents && (
+                <View style={styles.calendarErrorContainer}>
+                  <Ionicons name="alert-circle-outline" size={40} color="#DC2626" />
+                  <Text style={[styles.calendarErrorText, { color: '#DC2626' }]}>
+                    {calendarEventsError}
+                  </Text>
+                  {retryCount < 3 && (
+                    <Text style={[styles.calendarErrorSubtext, { color: theme.colors.textMuted }]}>
+                      Retrying... ({retryCount}/3)
+                    </Text>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.calendarRetryButton, { backgroundColor: theme.colors.accent }]}
+                    onPress={() => {
+                      setRetryCount(0);
+                      refreshCalendarEvents();
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Retry loading calendar events"
+                  >
+                    <Ionicons name="refresh" size={16} color="#FFFFFF" />
+                    <Text style={[styles.calendarRetryButtonText, { color: '#FFFFFF' }]}>Retry</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* Empty State */}
+              {!isLoadingCalendarEvents && !calendarEventsError && currentMonthEvents.length === 0 && (
+                <View style={styles.calendarEmptyContainer}>
+                  <NoEventsAnimation theme={theme} />
+                  <Text style={[styles.calendarEmptyText, { color: theme.colors.textMuted }]}>
+                    No events scheduled for this month
+                  </Text>
+                </View>
+              )}
+
+              {/* Events List */}
+              {!isLoadingCalendarEvents && !calendarEventsError && currentMonthEvents.length > 0 && (
+                <ScrollView
+                  ref={calendarEventsScrollRef}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingLeft: 4, paddingRight: 16, gap: 14 }}
+                  style={{ flexShrink: 0 }}
+                  snapToInterval={294} // Card width (280) + gap (14)
+                  snapToAlignment="start"
+                  decelerationRate="fast"
+                  pagingEnabled={false}
+                  accessibilityLabel="Calendar events scrollable list"
                 >
                   {currentMonthEvents.map((event) => {
                     const tagLower = event.tag?.toLowerCase() || '';
@@ -1080,55 +1492,21 @@ const SchoolUpdates = () => {
                     ) || null;
                     
                     return (
-                      <TouchableOpacity
+                      <CalendarEventCard
                         key={event.id}
-                        style={[styles.calendarEventCard, { 
-                          backgroundColor: theme.colors.surface, 
-                          borderColor: theme.colors.border,
-                          minWidth: 280,
-                        }]}
-                        activeOpacity={0.7}
-                        delayPressIn={0}
-                        onPress={() => {
-                          if (fullEvent) {
-                            const eventDate = fullEvent.isoDate || fullEvent.date 
-                              ? new Date(fullEvent.isoDate || fullEvent.date)
-                              : new Date();
-                            openEventDrawer(fullEvent, eventDate);
-                          }
-                        }}
-                      >
-                        <View style={[styles.calendarEventAccent, { backgroundColor: accentColor }]} collapsable={false} />
-                        <View style={styles.calendarEventContent} collapsable={false}>
-                          <View style={styles.calendarEventHeader}>
-                            <View style={[styles.calendarEventIconWrapper, { backgroundColor: accentColor + '20' }]}>
-                              <Ionicons name="calendar" size={16} color={accentColor} />
-                            </View>
-                            <Text style={[styles.calendarEventTag, { color: accentColor }]}>{event.tag}</Text>
-                          </View>
-                          <Text style={[styles.calendarEventTitle, { color: theme.colors.text }]} numberOfLines={2}>
-                            {event.title}
-                          </Text>
-                          <View style={styles.calendarEventDateRow}>
-                            <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-                            <Text style={[styles.calendarEventDate, { color: theme.colors.textMuted }]}>
-                              {event.date}
-                            </Text>
-                          </View>
-                          {event.description && (
-                            <Text style={[styles.calendarEventDescription, { color: theme.colors.textMuted }]} numberOfLines={2}>
-                              {event.description}
-                            </Text>
-                          )}
-                        </View>
-                      </TouchableOpacity>
+                        event={event}
+                        onPress={openEventDrawer}
+                        theme={theme}
+                        accentColor={accentColor}
+                        fullEvent={fullEvent}
+                      />
                     );
                   })}
                 </ScrollView>
-              </View>
-            </BlurView>
-          </View>
-        )}
+              )}
+            </View>
+          </BlurView>
+        </View>
 
         {/* Recent Updates Section - Fixed Header */}
         <View style={[styles.recentUpdatesSection, { borderColor: theme.colors.border }]} collapsable={false}>
@@ -1150,7 +1528,13 @@ const SchoolUpdates = () => {
                 <View style={styles.sectionTitleWrapper}>
                   <Text style={[styles.sectionTitleEnhanced, { color: theme.colors.text }]}>Updates</Text>
                   <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
-                    {timeFilter === 'upcoming' ? 'Coming soon' : timeFilter === 'recent' ? 'Past events' : 'All events'}
+                    {!isLoading && !error && displayedUpdates.length > 0 
+                      ? timeFilter === 'upcoming' 
+                        ? `Upcoming · ${displayedUpdates.length}`
+                        : timeFilter === 'recent'
+                        ? `Recent · ${displayedUpdates.length}`
+                        : `All · ${displayedUpdates.length}`
+                      : timeFilter === 'upcoming' ? 'Upcoming' : timeFilter === 'recent' ? 'Recent' : 'All'}
                   </Text>
                 </View>
               </View>
@@ -1177,19 +1561,8 @@ const SchoolUpdates = () => {
                 </Pressable>
               </View>
               
-              {/* Scrollable Cards Section */}
-              <ScrollView
-                style={[styles.cardsScrollView, { maxHeight: cardsScrollViewHeight }]}
-                contentContainerStyle={{ paddingBottom: safeInsets.bottom + 60 }}
-                showsVerticalScrollIndicator={true}
-                showsHorizontalScrollIndicator={false}
-                nestedScrollEnabled={true}
-                keyboardShouldPersistTaps="handled"
-                bounces={true}
-                scrollEventThrottle={16}
-                removeClippedSubviews={true}
-                horizontal={false}
-              >
+              {/* Updates Cards Section - No nested scroll, part of main scroll */}
+              <View style={styles.updatesCardsContainer}>
                 {error && (
                   <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                     <Ionicons name="alert-circle-outline" size={40} color="#DC2626" />
@@ -1204,6 +1577,17 @@ const SchoolUpdates = () => {
                   </View>
                 )}
 
+                {(() => {
+                  console.log('🎨 Render check:', {
+                    isLoading,
+                    error,
+                    displayedUpdatesLength: displayedUpdates.length,
+                    willShowEmpty: !isLoading && !error && displayedUpdates.length === 0,
+                    willShowPosts: !isLoading && !error && displayedUpdates.length > 0,
+                  });
+                  return null;
+                })()}
+
                 {!isLoading && !error && displayedUpdates.length === 0 && (
                   <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                     <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
@@ -1213,19 +1597,27 @@ const SchoolUpdates = () => {
                   </View>
                 )}
 
-                {!isLoading && !error && displayedUpdates.map((update) => {
-                  // Get color for accent bar based on category (institutional/academic)
+                {!isLoading && !error && displayedUpdates.length > 0 && displayedUpdates.map((update) => {
+                  console.log('🎨 Rendering update:', update.id, update.title);
+                  // Get color for category tag based on category
                   const tagLower = update.tag?.toLowerCase() || '';
-                  let accentColor = '#93C5FD'; // Default blue
+                  let tagColor = '#E8F0FF'; // Default light blue
+                  let tagTextColor = '#1A3E7A'; // Default dark blue
                   
-                  if (tagLower === 'institutional') {
-                    accentColor = '#2563EB'; // Blue for Institutional
+                  if (tagLower === 'event') {
+                    tagColor = '#FEF3C7'; // Yellow
+                    tagTextColor = '#D97706';
                   } else if (tagLower === 'academic') {
-                    accentColor = '#10B981'; // Green for Academic
+                    tagColor = '#F0F9FF'; // Light blue
+                    tagTextColor = '#0369A1';
+                  } else if (tagLower === 'announcement') {
+                    tagColor = '#E8F0FF'; // Light purple/blue
+                    tagTextColor = '#1A3E7A';
                   } else {
-                    // For other categories (event, announcement, etc.), use categoryToColors
+                    // For other categories, use categoryToColors
                     const colors = categoryToColors(update.tag);
-                    accentColor = colors.dot || '#93C5FD';
+                    tagColor = colors.chipBg || '#E8F0FF';
+                    tagTextColor = colors.chipText || '#1A3E7A';
                   }
                   
                   return (
@@ -1236,57 +1628,65 @@ const SchoolUpdates = () => {
                       delayPressIn={0}
                       onPress={() => handleUpdatePress(update)}
                     >
-                      <View style={[styles.updateAccent, { backgroundColor: accentColor }]} collapsable={false} />
-                      <View style={styles.updateContent} collapsable={false}>
-                        {(update.images?.[0] || update.image) && (
-                          <Image 
-                            source={{ uri: update.images?.[0] || update.image || '' }} 
-                            style={styles.updateImage}
-                            resizeMode="cover"
-                            onError={(error) => {
-                              console.error('Image load error:', error.nativeEvent.error);
-                              console.log('Failed image URL:', update.images?.[0] || update.image);
-                            }}
-                          />
-                        )}
-                        <View style={styles.updateTextContent}>
-                          <Text style={[styles.updateTitle, { color: theme.colors.text }]} numberOfLines={2}>{update.title}</Text>
-                          <View style={styles.updateDateRow}>
-                            <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-                            <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
-                          </View>
-                          {update.description && (
-                            <Text style={[styles.updateDescription, { color: theme.colors.textMuted }]} numberOfLines={2}>
-                              {update.description}
+                      {(update.images?.[0] || update.image) ? (
+                        <Image 
+                          source={{ uri: update.images?.[0] || update.image || '' }} 
+                          style={styles.updateImage}
+                          resizeMode="cover"
+                          onError={(error) => {
+                            console.error('Image load error:', error.nativeEvent.error);
+                            console.log('Failed image URL:', update.images?.[0] || update.image);
+                          }}
+                        />
+                      ) : (
+                        <View style={[styles.updateImagePlaceholder, { backgroundColor: theme.colors.surface }]}>
+                          <Ionicons name="image-outline" size={24} color={theme.colors.textMuted} />
+                        </View>
+                      )}
+                      <View style={styles.updateCardContent}>
+                        <View style={styles.updateCardHeader}>
+                          <View style={styles.updateCardHeaderLeft}>
+                            <Text style={[styles.updateTitle, { color: theme.colors.text }]} numberOfLines={2}>
+                              {update.title}
                             </Text>
-                          )}
-                          <View style={styles.updateTagRow}>
-                            <View style={styles.statusItem}>
-                              <Ionicons name="pricetag-outline" size={12} color={accentColor} />
-                              <Text style={[styles.updateTagText, { color: accentColor }]}>{update.tag}</Text>
+                            <View style={styles.updateDateRow}>
+                              <Ionicons name="time-outline" size={14} color={theme.colors.textMuted} />
+                              <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>
+                                {update.date}
+                              </Text>
                             </View>
+                          </View>
+                          <View style={[styles.updateTagBadge, { backgroundColor: tagColor }]}>
+                            <Text style={[styles.updateTagBadgeText, { color: tagTextColor }]}>
+                              {update.tag}
+                            </Text>
                           </View>
                         </View>
                       </View>
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
+              </View>
             </View>
           </BlurView>
         </View>
-      </View>
+      </ScrollView>
       
-      {/* Post Details Drawer - View Only */}
-      <PostDetailsDrawer
-        visible={showPostDrawer}
-        onClose={closePostDrawer}
-        selectedPost={selectedPost}
-        slideAnim={postDrawerSlideAnim}
-        backdropOpacity={postDrawerBackdropOpacity}
-        monthPickerScaleAnim={postMonthPickerScaleAnim}
-        monthPickerOpacityAnim={postMonthPickerOpacityAnim}
-        readOnly={true}
+      {/* Post Preview Modal - View Only */}
+      <PreviewModal
+        visible={showPostModal}
+        update={selectedUpdate ? {
+          title: selectedUpdate.title,
+          date: selectedUpdate.isoDate || selectedUpdate.date,
+          tag: selectedUpdate.tag || selectedUpdate.category,
+          time: selectedUpdate.time,
+          image: selectedUpdate.image,
+          images: selectedUpdate.images,
+          description: selectedUpdate.description,
+          source: selectedUpdate.source,
+          pinned: selectedUpdate.pinned,
+        } : null}
+        onClose={closePostModal}
       />
 
       {/* Event Details Drawer - View Only */}
@@ -1359,44 +1759,6 @@ const styles = StyleSheet.create({
   },
   floatingOrbWrapper: {
     position: 'absolute',
-  },
-  cloudWrapper: {
-    position: 'absolute',
-  },
-  cloudPatch1: {
-    width: 350,
-    height: 350,
-    borderRadius: 175,
-    opacity: 0.25,
-    overflow: 'hidden',
-  },
-  cloudPatch2: {
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    opacity: 0.22,
-    overflow: 'hidden',
-  },
-  lightSpot1: {
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    opacity: 0.2,
-    overflow: 'hidden',
-  },
-  lightSpot2: {
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    opacity: 0.18,
-    overflow: 'hidden',
-  },
-  lightSpot3: {
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    opacity: 0.16,
-    overflow: 'hidden',
   },
   floatingOrb1: {
     width: 500,
@@ -1479,12 +1841,10 @@ const styles = StyleSheet.create({
     flex: 1,
     zIndex: 1,
     width: '100%',
-    paddingHorizontal: 16,
-    paddingTop: 12,
   },
-  cardsScrollView: {
-    flex: 1,
-    flexShrink: 1,
+  updatesCardsContainer: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
   },
   bottomNavContainer: {
     position: 'absolute',
@@ -1571,53 +1931,56 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     marginBottom: 12,
+    marginHorizontal: 0,
     overflow: 'hidden',
-    flex: 1,
   },
   calendarEventsSection: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 16,
     overflow: 'hidden',
     flexShrink: 0,
+    marginBottom: 16,
   },
   calendarEventsBlur: {
-    borderRadius: 12,
+    borderRadius: 16,
     overflow: 'hidden',
   },
   calendarEventsContent: {
-    padding: 12,
-    borderRadius: 12,
+    padding: 16,
+    paddingBottom: 14,
+    borderRadius: 16,
   },
   calendarEventCard: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 14,
+    borderWidth: 1.5,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
   calendarEventAccent: {
-    width: 3,
+    width: 4,
     borderRadius: 0,
   },
   calendarEventContent: {
     flex: 1,
-    padding: 12,
+    padding: 14,
+    paddingLeft: 16,
   },
   calendarEventHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
+    gap: 10,
+    marginBottom: 10,
   },
   calendarEventIconWrapper: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1625,31 +1988,79 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   calendarEventTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
-    marginBottom: 8,
-    lineHeight: 20,
+    marginBottom: 10,
+    lineHeight: 22,
+    letterSpacing: -0.1,
   },
   calendarEventDateRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 6,
+    marginBottom: 8,
   },
   calendarEventDate: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
   },
   calendarEventDescription: {
+    fontSize: 13,
+    lineHeight: 18,
+    letterSpacing: 0.1,
+  },
+  calendarErrorContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 16,
+    minHeight: 120,
+  },
+  calendarErrorText: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  calendarErrorSubtext: {
     fontSize: 12,
-    lineHeight: 16,
+    marginTop: 6,
+    textAlign: 'center',
+  },
+  calendarRetryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 16,
+  },
+  calendarRetryButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  calendarEmptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 16,
+    minHeight: 150,
+  },
+  calendarEmptyText: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginTop: 16,
+    textAlign: 'center',
   },
   updatesSectionBlur: {
     borderRadius: 12,
     overflow: 'hidden',
+    flex: 1,
   },
   updatesSectionContent: {
     padding: 12,
@@ -1662,20 +2073,22 @@ const styles = StyleSheet.create({
   },
   sectionHeaderEnhanced: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    gap: 12,
+    alignItems: 'flex-start',
+    marginBottom: 18,
+    gap: 14,
     flexShrink: 0,
   },
   sectionIconWrapper: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   sectionTitleWrapper: {
     flex: 1,
+    paddingTop: 2,
   },
   sectionTitle: {
     fontSize: 16,
@@ -1683,52 +2096,54 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   sectionTitleEnhanced: {
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: '800',
-    letterSpacing: 0.3,
-    marginBottom: 2,
+    letterSpacing: -0.2,
+    marginBottom: 4,
+    lineHeight: 24,
   },
   sectionSubtitle: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+    opacity: 0.75,
   },
   updateCard: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    borderRadius: 12,
-    marginBottom: 8,
+    flexDirection: 'column',
+    borderRadius: 14,
+    marginBottom: 12,
     borderWidth: 1,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  updateAccent: {
-    width: 3,
-    borderRadius: 0,
-  },
-  updateContent: {
-    flex: 1,
-    flexDirection: 'column',
-    padding: 0,
-  },
-  updateTextContent: {
-    flex: 1,
-    padding: 10,
-  },
-  cardShadow: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   updateImage: {
     width: '100%',
-    height: 120,
+    height: 140,
     resizeMode: 'cover',
+  },
+  updateImagePlaceholder: {
+    width: '100%',
+    height: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6',
+  },
+  updateCardContent: {
+    padding: 12,
+  },
+  updateCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  updateCardHeaderLeft: {
+    flex: 1,
+    flexShrink: 1,
   },
   updateTitle: {
     fontSize: 15,
@@ -1740,30 +2155,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 6,
   },
   updateDate: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
   },
-  updateDescription: {
-    fontSize: 12,
-    marginBottom: 6,
-    lineHeight: 16,
+  updateTagBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    flexShrink: 0,
   },
-  updateTagRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  statusItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  updateTagText: {
+  updateTagBadgeText: {
     fontSize: 12,
     fontWeight: '700',
+    textTransform: 'capitalize',
   },
   searchContainer: {
     paddingHorizontal: 16,

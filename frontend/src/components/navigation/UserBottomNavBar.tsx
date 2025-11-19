@@ -62,7 +62,7 @@ const Bar: React.FC<BarProps> = ({
 
           <TouchableOpacity style={styles.tab} onPress={onDiscoveryPress}>
             <Ionicons 
-              name={activeTab === 'discovery' ? 'compass' : 'compass-outline'} 
+              name={activeTab === 'discovery' ? 'newspaper' : 'newspaper-outline'} 
               size={28} 
               color={activeTab === 'discovery' ? (isDarkMode ? '#FFFFFF' : '#1F2937') : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />

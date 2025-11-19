@@ -5,11 +5,11 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Dimensions, Image, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Image, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import EventDetailsDrawer from '../../components/calendar/EventDetailsDrawer';
-import AddPostDrawer from '../../components/dashboard/AddPostDrawer';
-import PostDetailsDrawer from '../../components/dashboard/PostDetailsDrawer';
+// import AddPostDrawer from '../../components/dashboard/AddPostDrawer'; // Replaced with PostUpdate screen navigation
+import PreviewEditDeleteModal from '../../modals/PreviewEditDeleteModal';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import AdminSidebar from '../../components/navigation/AdminSidebar';
 import { useThemeValues } from '../../contexts/ThemeContext';
@@ -31,7 +31,7 @@ type RootStackParamList = {
   AdminAIChat: undefined;
   AdminCalendar: undefined;
   AdminSettings: undefined;
-  PostUpdate: undefined;
+  PostUpdate: { postId?: string } | undefined;
   ManagePosts: undefined;
 };
 
@@ -85,15 +85,6 @@ const AdminDashboard = () => {
     right: insets.right,
   }), [insets.top, insets.bottom, insets.left, insets.right]);
 
-  // Calculate available height for scrollable cards section
-  const screenHeight = Dimensions.get('window').height;
-  const cardsScrollViewHeight = useMemo(() => {
-    const headerHeight = safeInsets.top + 60; // Header height
-    const welcomeSectionHeight = 60; // Welcome section approximate height
-    const updatesHeaderHeight = 120; // Updates header + filters approximate height
-    const bottomNavHeight = safeInsets.bottom + 80; // Bottom nav + safe area
-    return screenHeight - headerHeight - welcomeSectionHeight - updatesHeaderHeight - bottomNavHeight - 50; // 50 for padding/margins
-  }, [screenHeight, safeInsets.top, safeInsets.bottom]);
   
   // Auth state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -112,18 +103,9 @@ const AdminDashboard = () => {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [isLoadingCalendarEvents, setIsLoadingCalendarEvents] = useState(false);
   
-  // Drawer state
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [isPostDrawerOpen, setIsPostDrawerOpen] = useState(false);
+  // Modal state (using PreviewEditDeleteModal instead of PostDetailsDrawer)
+  const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   const [selectedPost, setSelectedPost] = useState<any | null>(null);
-  const slideAnim = useRef(new Animated.Value(0)).current; // 0 = closed, 1 = open
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
-  const postDrawerSlideAnim = useRef(new Animated.Value(0)).current;
-  const postDrawerBackdropOpacity = useRef(new Animated.Value(0)).current;
-  const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
-  const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
-  const postDrawerMonthPickerScaleAnim = useRef(new Animated.Value(0)).current;
-  const postDrawerMonthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
   
   // Event drawer state
   const [showEventDrawer, setShowEventDrawer] = useState(false);
@@ -144,13 +126,8 @@ const AdminDashboard = () => {
   const eventDrawerMonthPickerScaleAnim = useRef(new Animated.Value(0)).current;
   const eventDrawerMonthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
   
-  // Animated floating background orbs (Copilot-style)
+  // Animated floating background orb (Copilot-style)
   const floatAnim1 = useRef(new Animated.Value(0)).current;
-  const cloudAnim1 = useRef(new Animated.Value(0)).current;
-  const cloudAnim2 = useRef(new Animated.Value(0)).current;
-  const lightSpot1 = useRef(new Animated.Value(0)).current;
-  const lightSpot2 = useRef(new Animated.Value(0)).current;
-  const lightSpot3 = useRef(new Animated.Value(0)).current;
 
   // Upcoming updates (future dates)
   const upcomingUpdates = useMemo(() => {
@@ -219,7 +196,7 @@ const AdminDashboard = () => {
     return () => unsubscribe();
   }, []);
 
-  // Load backend user photo on screen focus
+  // Load backend user photo on screen focus (separate from data fetching)
   useFocusEffect(
     useCallback(() => {
       const loadBackendUserData = async () => {
@@ -228,9 +205,10 @@ const AdminDashboard = () => {
           const userPhoto = await AsyncStorage.getItem('userPhoto');
           setBackendUserPhoto(userPhoto);
         } catch (error) {
-          console.error('Failed to load backend user data:', error);
+          if (__DEV__) console.error('Failed to load backend user data:', error);
         }
       };
+      
       loadBackendUserData();
     }, [])
   );
@@ -244,100 +222,47 @@ const AdminDashboard = () => {
     return userName.substring(0, 2).toUpperCase();
   };
 
-  // Animate floating background orbs on mount
+  // Animate floating background orb on mount
   useEffect(() => {
-    const animations = [
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(floatAnim1, {
-            toValue: 1,
-            duration: 8000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(floatAnim1, {
-            toValue: 0,
-            duration: 8000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(cloudAnim1, {
-            toValue: 1,
-            duration: 15000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cloudAnim1, {
-            toValue: 0,
-            duration: 15000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(cloudAnim2, {
-            toValue: 1,
-            duration: 20000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cloudAnim2, {
-            toValue: 0,
-            duration: 20000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot1, {
-            toValue: 1,
-            duration: 12000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot1, {
-            toValue: 0,
-            duration: 12000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot2, {
-            toValue: 1,
-            duration: 18000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot2, {
-            toValue: 0,
-            duration: 18000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot3, {
-            toValue: 1,
-            duration: 14000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot3, {
-            toValue: 0,
-            duration: 14000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-    ];
-
-    animations.forEach(anim => anim.start());
-  }, []);
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim1, {
+          toValue: 1,
+          duration: 8000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim1, {
+          toValue: 0,
+          duration: 8000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [floatAnim1]);
 
   // Refresh calendar events function
-  const refreshCalendarEvents = useCallback(async () => {
+  // Track last calendar fetch time
+  const lastCalendarFetchTime = useRef<number>(0);
+  const isFetchingCalendar = useRef<boolean>(false);
+  const CALENDAR_FETCH_COOLDOWN = 2000; // 2 seconds cooldown for calendar events
+
+  const refreshCalendarEvents = useCallback(async (forceRefresh: boolean = false) => {
+    // Prevent duplicate simultaneous fetches
+    if (isFetchingCalendar.current && !forceRefresh) {
+      return;
+    }
+
+    // Cooldown check
+    const now = Date.now();
+    if (!forceRefresh && now - lastCalendarFetchTime.current < CALENDAR_FETCH_COOLDOWN) {
+      return;
+    }
+
+    isFetchingCalendar.current = true;
+    lastCalendarFetchTime.current = now;
+
     try {
       setIsLoadingCalendarEvents(true);
       const now = new Date();
@@ -348,25 +273,29 @@ const AdminDashboard = () => {
       const startDate = new Date(currentYear, currentMonth, 1);
       const endDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
       
+      // Use caching - CalendarService now supports caching
       const events = await CalendarService.getEvents({
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
         limit: 1000,
+        forceRefresh,
       });
       
       setCalendarEvents(Array.isArray(events) ? events : []);
     } catch (error) {
-      console.error('Failed to load calendar events:', error);
+      if (__DEV__) console.error('Failed to load calendar events:', error);
       setCalendarEvents([]);
     } finally {
       setIsLoadingCalendarEvents(false);
+      isFetchingCalendar.current = false;
     }
   }, []);
 
   // Fetch calendar events for current month
+  // Fetch calendar events on mount only
   useEffect(() => {
-    refreshCalendarEvents();
-  }, [refreshCalendarEvents]);
+    refreshCalendarEvents(true); // Force refresh on mount
+  }, []); // Empty deps - only run on mount
   
   // Initialize edit fields when event is selected
   useEffect(() => {
@@ -449,34 +378,37 @@ const AdminDashboard = () => {
     });
   }, [eventDrawerSlideAnim, eventDrawerBackdropOpacity]);
 
+  // Track last fetch time to prevent unnecessary refetches
+  const lastFetchTime = useRef<number>(0);
+  const isFetching = useRef<boolean>(false);
+  const FETCH_COOLDOWN = 1000; // 1 second cooldown between fetches
+
   // Fetch dashboard data (posts/announcements) - combines with calendar events
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setIsLoadingDashboard(true);
-        setDashboardError(null);
-        
-        // Fetch dashboard statistics
-        const dashboardStats = await AdminDataService.getDashboard();
-        
-        // Fetch recent updates (posts/announcements/news/events)
-        // Backend already filters for Announcement/News/Event (excludes Institutional/Academic)
-        const posts = await AdminDataService.getPosts();
-        
-        // Additional frontend filtering to ensure only Announcement/News/Event categories
-        // Exclude Institutional/Academic (those go to calendar)
-        const filteredPosts = posts.filter(post => {
-          const category = (post.category || '').toLowerCase();
-          // Include: Announcement, News, Event (general events)
-          // Exclude: Institutional, Academic (these are calendar-only)
-          return category === 'announcement' || 
-                 category === 'news' || 
-                 category === 'event' ||
-                 !category || // Include items with no category as fallback
-                 (category !== 'institutional' && category !== 'academic');
-        });
-        
-        const postsData = filteredPosts.map(post => {
+  const fetchDashboardData = useCallback(async (forceRefresh: boolean = false) => {
+    // Prevent duplicate simultaneous fetches
+    if (isFetching.current && !forceRefresh) {
+      return;
+    }
+
+    // Cooldown check - prevent too frequent fetches
+    const now = Date.now();
+    if (!forceRefresh && now - lastFetchTime.current < FETCH_COOLDOWN) {
+      return;
+    }
+
+    isFetching.current = true;
+    lastFetchTime.current = now;
+
+    try {
+      setIsLoadingDashboard(true);
+      setDashboardError(null);
+      
+      // Fetch dashboard statistics
+      const dashboardStats = await AdminDataService.getDashboard();
+      
+      // Fetch recent updates (posts/announcements) - use cache if available
+      const posts = await AdminDataService.getPosts(forceRefresh);
+        const postsData = posts.map(post => {
           // Ensure images array is properly set
           let images = post.images;
           if (!images || !Array.isArray(images) || images.length === 0) {
@@ -520,14 +452,30 @@ const AdminDashboard = () => {
         });
       } catch (err: any) {
         setDashboardError(err?.message || 'Failed to load dashboard data');
-        console.error('Dashboard data fetch error:', err);
+        if (__DEV__) console.error('Dashboard data fetch error:', err);
       } finally {
         setIsLoadingDashboard(false);
+        isFetching.current = false;
       }
-    };
+  }, []);
 
-    fetchDashboardData();
-  }, [calendarEvents]);
+  // Fetch dashboard data on mount only
+  useEffect(() => {
+    fetchDashboardData(true); // Force refresh on mount
+  }, []); // Empty deps - only run on mount
+
+  // Refresh dashboard data when screen comes into focus (with smart refresh)
+  useFocusEffect(
+    useCallback(() => {
+      // Only refresh if data is older than 30 seconds
+      const timeSinceLastFetch = Date.now() - lastFetchTime.current;
+      const shouldRefresh = timeSinceLastFetch > 30 * 1000; // 30 seconds
+      
+      if (shouldRefresh) {
+        fetchDashboardData(false); // Use cache if available
+      }
+    }, [fetchDashboardData])
+  );
 
   return (
     <View style={styles.container} collapsable={false}>
@@ -564,196 +512,8 @@ const AdminDashboard = () => {
         pointerEvents="none"
       />
 
-      {/* Animated Floating Background Orbs (Copilot-style) */}
+      {/* Animated Floating Background Orb (Copilot-style) */}
       <View style={styles.floatingBgContainer} pointerEvents="none" collapsable={false}>
-        {/* Light Spot 1 - Top right gentle glow */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '8%',
-              right: '12%',
-              transform: [
-                {
-                  translateX: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -15],
-                  }),
-                },
-                {
-                  translateY: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 12],
-                  }),
-                },
-                {
-                  scale: lightSpot1.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.08, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot1}>
-            <LinearGradient
-              colors={['rgba(255, 220, 180, 0.35)', 'rgba(255, 200, 150, 0.18)', 'rgba(255, 230, 200, 0.08)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.2, y: 0.2 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Light Spot 2 - Middle left soft circle */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '45%',
-              left: '8%',
-              transform: [
-                {
-                  translateX: lightSpot2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 18],
-                  }),
-                },
-                {
-                  translateY: lightSpot2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -10],
-                  }),
-                },
-                {
-                  scale: lightSpot2.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.06, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot2}>
-            <LinearGradient
-              colors={['rgba(255, 210, 170, 0.28)', 'rgba(255, 200, 160, 0.15)', 'rgba(255, 220, 190, 0.06)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.3, y: 0.3 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Light Spot 3 - Bottom center blurry glow */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              bottom: '12%',
-              left: '55%',
-              transform: [
-                {
-                  translateX: lightSpot3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -20],
-                  }),
-                },
-                {
-                  translateY: lightSpot3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 8],
-                  }),
-                },
-                {
-                  scale: lightSpot3.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.1, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot3}>
-            <LinearGradient
-              colors={['rgba(255, 190, 140, 0.25)', 'rgba(255, 180, 130, 0.12)', 'rgba(255, 210, 170, 0.05)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.4, y: 0.4 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Cloud variation 1 - Top left soft light patch */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '15%',
-              left: '10%',
-              transform: [
-                {
-                  translateX: cloudAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 20],
-                  }),
-                },
-                {
-                  translateY: cloudAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -15],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.cloudPatch1}>
-            <LinearGradient
-              colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.22)', 'rgba(255, 230, 200, 0.1)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Cloud variation 2 - Bottom right gentle tone */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              bottom: '20%',
-              right: '15%',
-              transform: [
-                {
-                  translateX: cloudAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -25],
-                  }),
-                },
-                {
-                  translateY: cloudAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 10],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.cloudPatch2}>
-            <LinearGradient
-              colors={['rgba(255, 190, 140, 0.32)', 'rgba(255, 200, 160, 0.18)', 'rgba(255, 220, 190, 0.08)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.3, y: 0.3 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
         {/* Orb 1 - Soft Orange Glow (Center area) */}
         <Animated.View
           style={[
@@ -847,8 +607,20 @@ const AdminDashboard = () => {
         onClose={() => setIsHistoryOpen(false)}
       />
 
-      {/* Main Content - Fixed Header Section */}
-      <View style={styles.content}>
+      {/* Main Content - Scrollable */}
+      <ScrollView
+        ref={scrollRef}
+        style={styles.content}
+        contentContainerStyle={{ 
+          paddingHorizontal: 16,
+          paddingTop: 12,
+          paddingBottom: safeInsets.bottom + 100 
+        }}
+        showsVerticalScrollIndicator={true}
+        bounces={true}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.welcomeSection}>
           <View style={styles.welcomeText}>
             <Text style={[styles.welcomeTitle, { color: theme.colors.text }]}>Hello {userName},</Text>
@@ -858,7 +630,7 @@ const AdminDashboard = () => {
 
         {/* Current Month Calendar Events Section */}
         {currentMonthEvents.length > 0 && (
-          <View style={[styles.calendarEventsSection, { borderColor: theme.colors.border, marginBottom: 12 }]} collapsable={false}>
+          <View style={[styles.calendarEventsSection, { borderColor: theme.colors.border, marginBottom: 12, marginHorizontal: 0 }]} collapsable={false}>
             <BlurView
               intensity={Platform.OS === 'ios' ? 20 : 15}
               tint={isDarkMode ? 'dark' : 'light'}
@@ -960,7 +732,7 @@ const AdminDashboard = () => {
         )}
 
         {/* Recent Updates Section - Fixed Header */}
-        <View style={[styles.recentUpdatesSection, { borderColor: theme.colors.border }]} collapsable={false}>
+        <View style={[styles.recentUpdatesSection, { borderColor: theme.colors.border, marginHorizontal: 0 }]} collapsable={false}>
           <BlurView
             intensity={Platform.OS === 'ios' ? 20 : 15}
             tint={isDarkMode ? 'dark' : 'light'}
@@ -979,7 +751,13 @@ const AdminDashboard = () => {
                 <View style={styles.sectionTitleWrapper}>
                   <Text style={[styles.sectionTitleEnhanced, { color: theme.colors.text }]}>Updates</Text>
                   <Text style={[styles.sectionSubtitle, { color: theme.colors.textMuted }]}>
-                    {timeFilter === 'upcoming' ? 'Coming soon' : timeFilter === 'recent' ? 'Past events' : 'All events'}
+                    {!isLoadingDashboard && !dashboardError && displayedUpdates.length > 0 
+                      ? timeFilter === 'upcoming' 
+                        ? `Upcoming · ${displayedUpdates.length}`
+                        : timeFilter === 'recent'
+                        ? `Recent · ${displayedUpdates.length}`
+                        : `All · ${displayedUpdates.length}`
+                      : timeFilter === 'upcoming' ? 'Upcoming' : timeFilter === 'recent' ? 'Recent' : 'All'}
                   </Text>
                 </View>
               </View>
@@ -1006,19 +784,8 @@ const AdminDashboard = () => {
                 </Pressable>
               </View>
               
-              {/* Scrollable Cards Section */}
-              <ScrollView
-                style={[styles.cardsScrollView, { maxHeight: cardsScrollViewHeight }]}
-                contentContainerStyle={{ paddingBottom: safeInsets.bottom + 60 }}
-                showsVerticalScrollIndicator={true}
-                showsHorizontalScrollIndicator={false}
-                nestedScrollEnabled={true}
-                keyboardShouldPersistTaps="handled"
-                bounces={true}
-                scrollEventThrottle={16}
-                removeClippedSubviews={true}
-                horizontal={false}
-              >
+              {/* Updates Cards Section - No nested scroll, part of main scroll */}
+              <View style={styles.updatesCardsContainer}>
                 {dashboardError && (
                   <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                     <Ionicons name="alert-circle-outline" size={40} color="#DC2626" />
@@ -1076,20 +843,7 @@ const AdminDashboard = () => {
                           images: update.images,
                         };
                         setSelectedPost(post);
-                        setIsPostDrawerOpen(true);
-                        Animated.parallel([
-                          Animated.spring(postDrawerSlideAnim, {
-                            toValue: 1,
-                            useNativeDriver: true,
-                            tension: 65,
-                            friction: 11,
-                          }),
-                          Animated.timing(postDrawerBackdropOpacity, {
-                            toValue: 1,
-                            duration: 300,
-                            useNativeDriver: true,
-                          }),
-                        ]).start();
+                        setIsPostModalOpen(true);
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       }}
                     >
@@ -1128,11 +882,11 @@ const AdminDashboard = () => {
                     </TouchableOpacity>
                   );
                 })}
-              </ScrollView>
+              </View>
             </View>
           </BlurView>
         </View>
-      </View>
+      </ScrollView>
 
       {/* Floating Plus Icon Button - Bottom Right */}
       <TouchableOpacity
@@ -1140,20 +894,8 @@ const AdminDashboard = () => {
           bottom: safeInsets.bottom + 80, // Above nav bar
         }]}
         onPress={() => {
-          setIsDrawerOpen(true);
-          Animated.parallel([
-            Animated.spring(slideAnim, {
-              toValue: 1,
-              useNativeDriver: true,
-              tension: 65,
-              friction: 11,
-            }),
-            Animated.timing(backdropOpacity, {
-              toValue: 1,
-              duration: 300,
-              useNativeDriver: true,
-            }),
-          ]).start();
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          navigation.navigate('PostUpdate');
         }}
         activeOpacity={0.8}
       >
@@ -1175,217 +917,42 @@ const AdminDashboard = () => {
         />
       </View>
 
-      {/* Add Event/Announcement Drawer */}
-      <AddPostDrawer
-        visible={isDrawerOpen}
-        onClose={() => {
-          Animated.parallel([
-            Animated.spring(slideAnim, {
-              toValue: 0,
-              useNativeDriver: true,
-              tension: 65,
-              friction: 11,
-            }),
-            Animated.timing(backdropOpacity, {
-              toValue: 0,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-          ]).start(() => {
-            setIsDrawerOpen(false);
-          });
-        }}
-        type={null}
-        onSuccess={async () => {
-          // Refresh dashboard data
-          try {
-            setIsLoadingDashboard(true);
-            setDashboardError(null);
-            
-            // Fetch posts and calendar events in parallel for faster loading
-            const [events, posts] = await Promise.all([
-              // Refresh calendar events for current month only (reduced limit for speed)
-              (async () => {
-                const now = new Date();
-                const currentYear = now.getFullYear();
-                const currentMonth = now.getMonth();
-                const startDate = new Date(currentYear, currentMonth, 1);
-                const endDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
-                
-                return CalendarService.getEvents({
-                  startDate: startDate.toISOString(),
-                  endDate: endDate.toISOString(),
-                  limit: 100, // Reduced from 1000 for faster loading
-                });
-              })(),
-              // Fetch posts
-              AdminDataService.getPosts(),
-            ]);
-            
-            setCalendarEvents(Array.isArray(events) ? events : []);
-            
-            // Additional frontend filtering to ensure only Announcement/News/Event categories
-            // Exclude Institutional/Academic (those go to calendar)
-            const filteredPosts = posts.filter(post => {
-              const category = (post.category || '').toLowerCase();
-              // Include: Announcement, News, Event (general events)
-              // Exclude: Institutional, Academic (these are calendar-only)
-              return category === 'announcement' || 
-                     category === 'news' || 
-                     category === 'event' ||
-                     !category || // Include items with no category as fallback
-                     (category !== 'institutional' && category !== 'academic');
-            });
-            
-            const postsData = filteredPosts.map(post => {
-              // Ensure images array is properly set
-              let images = post.images;
-              if (!images || !Array.isArray(images) || images.length === 0) {
-                // If images array is empty but image field exists, create array from it
-                if (post.image) {
-                  images = [post.image];
-                } else {
-                  images = [];
-                }
-              }
-              
-              return {
-                id: post.id,
-                title: post.title,
-                date: new Date(post.date).toLocaleDateString(),
-                tag: post.category,
-                description: post.description,
-                image: post.image,
-                images: images,
-                pinned: (post as any).pinned || false,
-                isoDate: post.date,
-              };
-            });
-            
-            // Only use posts data - calendar events are shown in separate section
-            // Remove duplicates from posts only
-            const uniqueUpdates = postsData.filter((update, index, self) =>
-              index === self.findIndex(u => u.id === update.id)
-            );
-            
-            // Sort by date (newest first)
-            uniqueUpdates.sort((a, b) => {
-              const dateA = new Date(a.isoDate || a.date).getTime();
-              const dateB = new Date(b.isoDate || b.date).getTime();
-              return dateB - dateA;
-            });
-            
-            setAllUpdates(uniqueUpdates);
-            setDashboardData({
-              recentUpdates: uniqueUpdates.slice(0, 5),
-            });
-          } catch (err: any) {
-            setDashboardError(err?.message || 'Failed to load dashboard data');
-          } finally {
-            setIsLoadingDashboard(false);
-          }
-        }}
-        slideAnim={slideAnim}
-        backdropOpacity={backdropOpacity}
-        monthPickerScaleAnim={monthPickerScaleAnim}
-        monthPickerOpacityAnim={monthPickerOpacityAnim}
-      />
+      {/* AddPostDrawer removed - using PostUpdate screen navigation instead */}
 
-      {/* Post Details Drawer */}
-      <PostDetailsDrawer
-        visible={isPostDrawerOpen}
+      {/* Post Preview Edit Delete Modal */}
+      <PreviewEditDeleteModal
+        visible={isPostModalOpen}
+        update={selectedPost ? {
+          id: selectedPost.id,
+          title: selectedPost.title,
+          date: selectedPost.isoDate || selectedPost.date,
+          tag: selectedPost.category,
+          time: selectedPost.time,
+          image: selectedPost.image,
+          images: selectedPost.images,
+          description: selectedPost.description,
+          source: selectedPost.source,
+          pinned: selectedPost.isPinned,
+          isoDate: selectedPost.isoDate || selectedPost.date,
+        } : null}
         onClose={() => {
-          Animated.parallel([
-            Animated.spring(postDrawerSlideAnim, {
-              toValue: 0,
-              useNativeDriver: true,
-              tension: 65,
-              friction: 11,
-            }),
-            Animated.timing(postDrawerBackdropOpacity, {
-              toValue: 0,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-          ]).start(() => {
-            setIsPostDrawerOpen(false);
-            setSelectedPost(null);
-          });
+          setIsPostModalOpen(false);
+          setSelectedPost(null);
         }}
-        selectedPost={selectedPost}
+        onEdit={() => {
+          // Navigate to PostUpdate screen for editing
+          setIsPostModalOpen(false);
+          navigation.navigate('PostUpdate', { postId: selectedPost?.id });
+        }}
         onPostUpdated={(updatedPost) => {
           // Update selectedPost with the updated data immediately
           console.log('🔄 Updating selectedPost in AdminDashboard', { updatedPost });
           setSelectedPost(updatedPost);
         }}
         onRefresh={async () => {
-          // Refresh dashboard data
-          try {
-            setIsLoadingDashboard(true);
-            setDashboardError(null);
-            
-            const posts = await AdminDataService.getPosts();
-            
-            // Additional frontend filtering to ensure only Announcement/News/Event categories
-            // Exclude Institutional/Academic (those go to calendar)
-            const filteredPosts = posts.filter(post => {
-              const category = (post.category || '').toLowerCase();
-              // Include: Announcement, News, Event (general events)
-              // Exclude: Institutional, Academic (these are calendar-only)
-              return category === 'announcement' || 
-                     category === 'news' || 
-                     category === 'event' ||
-                     !category || // Include items with no category as fallback
-                     (category !== 'institutional' && category !== 'academic');
-            });
-            
-            const postsData = filteredPosts.map(post => {
-              let images = post.images;
-              if (!images || !Array.isArray(images) || images.length === 0) {
-                if (post.image) {
-                  images = [post.image];
-                } else {
-                  images = [];
-                }
-              }
-              
-              return {
-                id: post.id,
-                title: post.title,
-                date: new Date(post.date).toLocaleDateString(),
-                tag: post.category,
-                description: post.description,
-                image: post.image,
-                images: images,
-                pinned: (post as any).pinned || false,
-                isoDate: post.date,
-              };
-            });
-            
-            const uniqueUpdates = postsData.filter((update, index, self) =>
-              index === self.findIndex(u => u.id === update.id)
-            );
-            
-            uniqueUpdates.sort((a, b) => {
-              const dateA = new Date(a.isoDate || a.date).getTime();
-              const dateB = new Date(b.isoDate || b.date).getTime();
-              return dateB - dateA;
-            });
-            
-            setAllUpdates(uniqueUpdates);
-            setDashboardData({
-              recentUpdates: uniqueUpdates.slice(0, 5),
-            });
-          } catch (err: any) {
-            setDashboardError(err?.message || 'Failed to load dashboard data');
-          } finally {
-            setIsLoadingDashboard(false);
-          }
+          // Refresh dashboard data (force refresh on pull-to-refresh)
+          await fetchDashboardData(true);
         }}
-        slideAnim={postDrawerSlideAnim}
-        backdropOpacity={postDrawerBackdropOpacity}
-        monthPickerScaleAnim={postDrawerMonthPickerScaleAnim}
-        monthPickerOpacityAnim={postDrawerMonthPickerOpacityAnim}
       />
 
       {/* Event Details Drawer */}
@@ -1458,38 +1025,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: 1,
     overflow: 'hidden',
-  },
-  cloudWrapper: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    overflow: 'hidden',
-  },
-  lightSpot1: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-  },
-  lightSpot2: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-  },
-  lightSpot3: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-  },
-  cloudPatch1: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-  },
-  cloudPatch2: {
-    width: 130,
-    height: 130,
-    borderRadius: 65,
   },
   floatingOrbWrapper: {
     position: 'absolute',
@@ -1578,12 +1113,10 @@ const styles = StyleSheet.create({
     flex: 1,
     zIndex: 1,
     width: '100%',
-    paddingHorizontal: 16,
-    paddingTop: 12,
   },
-  cardsScrollView: {
-    flex: 1,
-    flexShrink: 1,
+  updatesCardsContainer: {
+    paddingHorizontal: 0,
+    paddingTop: 0,
   },
   bottomNavContainer: {
     position: 'absolute',

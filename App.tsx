@@ -3,7 +3,10 @@ import React from 'react';
 import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import ConnectionRestoredNotification from './frontend/src/components/common/ConnectionRestoredNotification';
+import NetworkStatusIndicator from './frontend/src/components/common/NetworkStatusIndicator';
 import { AuthProvider } from './frontend/src/contexts/AuthContext';
+import { NetworkStatusProvider } from './frontend/src/contexts/NetworkStatusContext';
 import { ThemeProvider } from './frontend/src/contexts/ThemeContext';
 import AppNavigator from './frontend/src/navigation/AppNavigator';
 
@@ -12,6 +15,8 @@ const Root = () => {
   return (
     <>
       <AppNavigator />
+      <NetworkStatusIndicator />
+      <ConnectionRestoredNotification />
       <StatusBar style="auto" />
     </>
   );
@@ -21,11 +26,13 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <AuthProvider>
-          <ThemeProvider>
-            <Root />
-          </ThemeProvider>
-        </AuthProvider>
+        <NetworkStatusProvider>
+          <AuthProvider>
+            <ThemeProvider>
+              <Root />
+            </ThemeProvider>
+          </AuthProvider>
+        </NetworkStatusProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

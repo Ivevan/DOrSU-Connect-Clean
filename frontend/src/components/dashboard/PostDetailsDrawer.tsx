@@ -230,27 +230,32 @@ const PostDetailsDrawer: React.FC<PostDetailsDrawerProps> = ({
     setIsUpdating(true);
     
     try {
+      // Use ISO date string for backend consistency (matching PostUpdate.tsx pattern)
       const isoDate = selectedDateObj ? selectedDateObj.toISOString() : (selectedPost.isoDate || selectedPost.date);
       console.log('📝 Preparing update data', { isoDate, hasPickedFile: !!pickedFile });
       
-      // Prepare update data
+      // Prepare update data with proper date format (matching PostUpdate.tsx pattern)
       const updateData: any = {
         title: editTitle.trim(),
         description: editDescription.trim(),
         category: editCategory.trim(),
         date: isoDate, // Use ISO date string for backend
-        isoDate: isoDate,
+        isoDate: isoDate, // Include isoDate for consistency
       };
 
-      // If new image is picked, include it
+      // If new image is picked, include imageFile object for proper backend handling (matching PostUpdate.tsx pattern)
       if (pickedFile) {
         updateData.image = pickedFile.uri;
         updateData.images = [pickedFile.uri];
-        updateData.imageFile = pickedFile;
-        console.log('📸 Including image in update', { uri: pickedFile.uri.substring(0, 50) + '...' });
+        updateData.imageFile = pickedFile; // Pass full file object for backend multipart upload
+        console.log('📸 Including imageFile in update', { uri: pickedFile.uri.substring(0, 50) + '...', hasImageFile: !!pickedFile });
       }
 
-      console.log('📤 Calling AdminDataService.updatePost', { postId: selectedPost.id, updateData: { ...updateData, imageFile: updateData.imageFile ? 'present' : 'none' } });
+      console.log('📤 Calling AdminDataService.updatePost', { 
+        postId: selectedPost.id, 
+        updateData: { ...updateData, imageFile: updateData.imageFile ? 'present' : 'none' } 
+      });
+      
       const updated = await AdminDataService.updatePost(selectedPost.id, updateData);
       console.log('📥 AdminDataService.updatePost response', { updated: !!updated });
       
@@ -276,9 +281,9 @@ const PostDetailsDrawer: React.FC<PostDetailsDrawerProps> = ({
         Alert.alert('Error', 'Failed to update post');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to update post:', error);
-      Alert.alert('Error', 'Failed to update post');
+      Alert.alert('Error', error.message || 'Failed to update post');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {
       console.log('🔄 Setting isUpdating to false');
@@ -481,10 +486,14 @@ const PostDetailsDrawer: React.FC<PostDetailsDrawerProps> = ({
                   }),
                 },
               ],
+              height: '85%',
+              maxHeight: '85%',
+              paddingBottom: insets.bottom,
             }
           ]}
         >
-          <View style={{ flex: 1 }}>
+          {/* Fixed Header Section */}
+          <View style={styles.drawerHeaderFixed}>
             <View style={styles.drawerHandle}>
               <View style={[styles.drawerHandleBar, { backgroundColor: t.colors.textMuted }]} />
             </View>
@@ -501,13 +510,20 @@ const PostDetailsDrawer: React.FC<PostDetailsDrawerProps> = ({
                 <Ionicons name="close" size={22} color={t.colors.text} />
               </TouchableOpacity>
             </View>
-            
-            <ScrollView
-              style={styles.drawerScrollView}
-              contentContainerStyle={[styles.drawerScrollContent, { paddingBottom: 20 }]}
-              showsVerticalScrollIndicator={true}
-              bounces={true}
-            >
+          </View>
+          
+          {/* Scrollable Content Area */}
+          <ScrollView
+            style={styles.drawerScrollView}
+            contentContainerStyle={[styles.drawerScrollContent, { paddingBottom: 20 }]}
+            showsVerticalScrollIndicator={true}
+            bounces={true}
+            nestedScrollEnabled={true}
+            keyboardShouldPersistTaps="handled"
+            scrollEventThrottle={16}
+            alwaysBounceVertical={false}
+            removeClippedSubviews={false}
+          >
               {selectedPost ? (
                 <View>
                   {/* Image */}
@@ -701,21 +717,20 @@ const PostDetailsDrawer: React.FC<PostDetailsDrawerProps> = ({
                   </Text>
                 </View>
               )}
-            </ScrollView>
+          </ScrollView>
 
-            {/* Action Buttons - Only show if not read-only */}
-            {selectedPost && !readOnly && (
-              <View 
-                style={[
-                  styles.drawerActions, 
-                  { 
-                    backgroundColor: t.colors.card, 
-                    borderTopColor: t.colors.border, 
-                    paddingBottom: insets.bottom + 20,
-                  }
-                ]}
-                pointerEvents="box-none"
-              >
+          {/* Action Buttons - Only show if not read-only */}
+          {selectedPost && !readOnly && (
+            <View 
+              style={[
+                styles.drawerActions, 
+                { 
+                  backgroundColor: t.colors.card, 
+                  borderTopColor: t.colors.border,
+                }
+              ]}
+              pointerEvents="box-none"
+            >
                 {isEditing ? (
                   <>
                     <TouchableOpacity
@@ -782,9 +797,8 @@ const PostDetailsDrawer: React.FC<PostDetailsDrawerProps> = ({
                     </TouchableOpacity>
                   </>
                 )}
-              </View>
-            )}
-          </View>
+            </View>
+          )}
         </Animated.View>
       </Modal>
 
@@ -845,12 +859,17 @@ const styles = StyleSheet.create({
     right: 0,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '85%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 20,
+    flexDirection: 'column',
+  },
+  drawerHeaderFixed: {
+    flexShrink: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0, 0, 0, 0.08)',
   },
   drawerHandle: {
     alignItems: 'center',
@@ -870,8 +889,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 16,
     paddingTop: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0, 0, 0, 0.08)',
   },
   drawerTitle: {
     fontSize: 20,
@@ -888,6 +905,7 @@ const styles = StyleSheet.create({
   },
   drawerScrollView: {
     flex: 1,
+    overflow: 'hidden',
   },
   drawerScrollContent: {
     padding: 20,

@@ -211,7 +211,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             }}
           >
             <Ionicons 
-              name={currentScreen === 'AdminDashboard' ? 'compass' : 'compass-outline'} 
+              name={currentScreen === 'AdminDashboard' ? 'newspaper' : 'newspaper-outline'} 
               size={24} 
               color={currentScreen === 'AdminDashboard' ? '#FF9500' : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />

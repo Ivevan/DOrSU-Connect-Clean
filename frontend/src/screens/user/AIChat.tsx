@@ -5,15 +5,18 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Image, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Image, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import UserSidebar from '../../components/navigation/UserSidebar';
 import { theme } from '../../config/theme';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import AIService, { ChatHistoryItem, Message } from '../../services/AIService';
+import AIService, { ChatHistoryItem, Message, NetworkError, isNetworkError } from '../../services/AIService';
+import ReconnectionService from '../../services/ReconnectionService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import { formatAIResponse, getMarkdownStyles } from '../../utils/markdownFormatter';
 
@@ -33,6 +36,8 @@ const AIChat = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme: t } = useTheme();
   const { getUserToken, userEmail: authUserEmail, checkAuthStatus } = useAuth();
+  const { isConnected, isInternetReachable } = useNetworkStatus();
+  const isOnline = isConnected && isInternetReachable;
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width } = useWindowDimensions();
   const isWide = width > 600;
@@ -46,6 +51,8 @@ const AIChat = () => {
   const [isLoadingTopQueries, setIsLoadingTopQueries] = useState(false);
   const [selectedUserType, setSelectedUserType] = useState<'student' | 'faculty'>('student');
   const [isFaqsExpanded, setIsFaqsExpanded] = useState(true);
+  const [actionMenuVisible, setActionMenuVisible] = useState(false);
+  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const sessionId = useRef<string>('');
 
@@ -53,15 +60,8 @@ const AIChat = () => {
   const segmentAnim = useRef(new Animated.Value(0)).current;
   const segmentWidth = useRef(0);
 
-  // Animated floating background orbs (Copilot-style)
+  // Animated floating background orb (Copilot-style)
   const floatAnim1 = useRef(new Animated.Value(0)).current;
-  const floatAnim2 = useRef(new Animated.Value(0)).current;
-  const floatAnim3 = useRef(new Animated.Value(0)).current;
-  const cloudAnim1 = useRef(new Animated.Value(0)).current;
-  const cloudAnim2 = useRef(new Animated.Value(0)).current;
-  const lightSpot1 = useRef(new Animated.Value(0)).current;
-  const lightSpot2 = useRef(new Animated.Value(0)).current;
-  const lightSpot3 = useRef(new Animated.Value(0)).current;
 
   // Typing indicator animations
   const typingDot1 = useRef(new Animated.Value(0)).current;
@@ -228,97 +228,23 @@ const AIChat = () => {
     loadTopQueries();
   }, [selectedUserType]);
 
-  // Animate floating background orbs on mount
+  // Animate floating background orb on mount
   useEffect(() => {
-    const animations = [
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(floatAnim1, {
-            toValue: 1,
-            duration: 8000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(floatAnim1, {
-            toValue: 0,
-            duration: 8000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(cloudAnim1, {
-            toValue: 1,
-            duration: 15000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cloudAnim1, {
-            toValue: 0,
-            duration: 15000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(cloudAnim2, {
-            toValue: 1,
-            duration: 20000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cloudAnim2, {
-            toValue: 0,
-            duration: 20000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot1, {
-            toValue: 1,
-            duration: 12000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot1, {
-            toValue: 0,
-            duration: 12000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot2, {
-            toValue: 1,
-            duration: 18000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot2, {
-            toValue: 0,
-            duration: 18000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot3, {
-            toValue: 1,
-            duration: 14000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot3, {
-            toValue: 0,
-            duration: 14000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-    ];
-
-    animations.forEach(anim => anim.start());
-  }, []);
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim1, {
+          toValue: 1,
+          duration: 8000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim1, {
+          toValue: 0,
+          duration: 8000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, [floatAnim1]);
 
   // Animate typing indicator dots when loading
   useEffect(() => {
@@ -501,6 +427,19 @@ const AIChat = () => {
     const textToSend = messageText || inputText.trim();
     if (!textToSend || isLoading) return;
 
+    // Check network status before sending
+    if (!isOnline) {
+      const errorMessage: Message = {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: '⚠️ No internet connection. Please check your network and try again.',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+
     // Generate a new session ID if this is the first message
     if (!sessionId.current) {
       sessionId.current = Date.now().toString();
@@ -537,15 +476,62 @@ const AIChat = () => {
 
       // Add assistant message to chat
       setMessages(prev => [...prev, assistantMessage]);
-    } catch (error) {
-      // Show error message
+    } catch (error: any) {
+      // Show appropriate error message based on error type
+      let errorContent = 'Sorry, I encountered an error. Please try again.';
+      
+      if (isNetworkError(error) || error instanceof NetworkError) {
+        errorContent = '⚠️ No internet connection. This message will be sent automatically when connection is restored.';
+        
+        // Queue the message for retry when connection is restored
+        const queuedMessage = textToSend;
+        const queuedUserType = selectedUserType;
+        const queuedUserMessage = userMessage;
+        
+        ReconnectionService.queueRequest({
+          execute: async () => {
+            const token = await getUserToken();
+            const response = await AIService.sendMessage(queuedMessage, token || undefined, queuedUserType);
+            
+            // Format the AI response
+            const formattedContent = formatAIResponse(response.reply);
+            
+            // Create assistant message
+            const assistantMessage: Message = {
+              id: (Date.now() + 1).toString(),
+              role: 'assistant',
+              content: formattedContent,
+              timestamp: new Date(),
+            };
+            
+            // Add assistant message to chat
+            setMessages(prev => {
+              // Check if user message is already in the list
+              const hasUserMessage = prev.some(msg => msg.id === queuedUserMessage.id);
+              if (!hasUserMessage) {
+                return [...prev, queuedUserMessage, assistantMessage];
+              }
+              // If user message exists, just add assistant response
+              return [...prev, assistantMessage];
+            });
+          },
+          retryCount: 0,
+          maxRetries: 3,
+        });
+        
+        console.log('📦 Message queued for retry when connection is restored');
+      } else if (error?.message) {
+        errorContent = `⚠️ ${error.message}`;
+      }
+      
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Sorry, I encountered an error. Please make sure the AI backend is running and try again.',
+        content: errorContent,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       console.error('Failed to send message:', error);
     } finally {
       setIsLoading(false);
@@ -554,6 +540,73 @@ const AIChat = () => {
 
   const handleSuggestionPress = (suggestion: string) => {
     handleSendMessage(suggestion);
+  };
+
+  // Strip markdown formatting for cleaner clipboard text
+  const stripMarkdown = (text: string): string => {
+    return text
+      .replace(/#{1,6}\s+/g, '') // Remove headers
+      .replace(/\*\*(.+?)\*\*/g, '$1') // Remove bold
+      .replace(/\*(.+?)\*/g, '$1') // Remove italic
+      .replace(/`(.+?)`/g, '$1') // Remove inline code
+      .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+      .replace(/\[(.+?)\]\(.+?\)/g, '$1') // Convert links to text
+      .replace(/^\s*[-*+]\s+/gm, '') // Remove list markers
+      .replace(/^\s*\d+\.\s+/gm, '') // Remove numbered list markers
+      .trim();
+  };
+
+  // Copy message to clipboard
+  const handleCopyMessage = async (content: string, isMarkdown: boolean = false) => {
+    const textToCopy = isMarkdown ? stripMarkdown(content) : content;
+    await Clipboard.setStringAsync(textToCopy);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  // Edit user message
+  const handleEditMessage = (messageId: string, content: string) => {
+    // Remove the message and its response from the messages list
+    const messageIndex = messages.findIndex(msg => msg.id === messageId);
+    if (messageIndex !== -1) {
+      // Remove the user message and any assistant response that follows it
+      const newMessages = messages.slice(0, messageIndex);
+      setMessages(newMessages);
+      
+      // Put the content in the input field
+      setInputText(content);
+      
+      // Focus the input (if possible)
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
+  // Show action menu for messages
+  const handleMessageLongPress = (message: Message) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectedMessage(message);
+    setActionMenuVisible(true);
+  };
+
+  // Close action menu
+  const closeActionMenu = () => {
+    setActionMenuVisible(false);
+    setSelectedMessage(null);
+  };
+
+  // Handle copy from action menu
+  const handleCopyFromMenu = async () => {
+    if (selectedMessage) {
+      await handleCopyMessage(selectedMessage.content, selectedMessage.role === 'assistant');
+      closeActionMenu();
+    }
+  };
+
+  // Handle edit from action menu
+  const handleEditFromMenu = () => {
+    if (selectedMessage && selectedMessage.role === 'user') {
+      handleEditMessage(selectedMessage.id, selectedMessage.content);
+      closeActionMenu();
+    }
   };
 
   const formatTime = (date: Date) => {
@@ -605,196 +658,8 @@ const AIChat = () => {
         style={styles.backgroundGradient}
       />
 
-      {/* Animated Floating Background Orbs (Copilot-style) */}
+      {/* Animated Floating Background Orb (Copilot-style) */}
       <View style={styles.floatingBgContainer} pointerEvents="none">
-        {/* Light Spot 1 - Top right gentle glow */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '8%',
-              right: '12%',
-              transform: [
-                {
-                  translateX: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -15],
-                  }),
-                },
-                {
-                  translateY: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 12],
-                  }),
-                },
-                {
-                  scale: lightSpot1.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.08, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot1}>
-            <LinearGradient
-              colors={['rgba(255, 220, 180, 0.35)', 'rgba(255, 200, 150, 0.18)', 'rgba(255, 230, 200, 0.08)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.2, y: 0.2 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Light Spot 2 - Middle left soft circle */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '45%',
-              left: '8%',
-              transform: [
-                {
-                  translateX: lightSpot2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 18],
-                  }),
-                },
-                {
-                  translateY: lightSpot2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -10],
-                  }),
-                },
-                {
-                  scale: lightSpot2.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.06, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot2}>
-            <LinearGradient
-              colors={['rgba(255, 210, 170, 0.28)', 'rgba(255, 200, 160, 0.15)', 'rgba(255, 220, 190, 0.06)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.3, y: 0.3 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Light Spot 3 - Bottom center blurry glow */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              bottom: '12%',
-              left: '55%',
-              transform: [
-                {
-                  translateX: lightSpot3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -20],
-                  }),
-                },
-                {
-                  translateY: lightSpot3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 8],
-                  }),
-                },
-                {
-                  scale: lightSpot3.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.1, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot3}>
-            <LinearGradient
-              colors={['rgba(255, 190, 140, 0.25)', 'rgba(255, 180, 130, 0.12)', 'rgba(255, 210, 170, 0.05)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.4, y: 0.4 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Cloud variation 1 - Top left soft light patch */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '15%',
-              left: '10%',
-              transform: [
-                {
-                  translateX: cloudAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 20],
-                  }),
-                },
-                {
-                  translateY: cloudAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -15],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.cloudPatch1}>
-            <LinearGradient
-              colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.22)', 'rgba(255, 230, 200, 0.1)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Cloud variation 2 - Bottom right gentle tone */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              bottom: '20%',
-              right: '15%',
-              transform: [
-                {
-                  translateX: cloudAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -25],
-                  }),
-                },
-                {
-                  translateY: cloudAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 10],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.cloudPatch2}>
-            <LinearGradient
-              colors={['rgba(255, 190, 140, 0.32)', 'rgba(255, 200, 160, 0.18)', 'rgba(255, 220, 190, 0.08)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.3, y: 0.3 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
         {/* Orb 1 - Soft Orange Glow (Center area) */}
         <Animated.View
           style={[
@@ -865,13 +730,11 @@ const AIChat = () => {
           <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>
             {messages.length > 0 ? 'Conversation' : 'New Conversation'}
           </Text>
-          {messages.length > 0 && (
-            <View style={[styles.userTypeLabel, { backgroundColor: '#FF9500' }]}>
-              <Text style={styles.userTypeLabelText}>
-                {selectedUserType === 'faculty' ? 'Faculty' : 'Student'}
-              </Text>
-            </View>
-          )}
+          <View style={[styles.userTypeLabel, { backgroundColor: selectedUserType === 'student' ? '#10B981' : '#2563EB' }]}>
+            <Text style={styles.userTypeLabelText}>
+              {selectedUserType === 'faculty' ? 'Faculty' : 'Student'}
+            </Text>
+          </View>
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity 
@@ -1017,7 +880,8 @@ const AIChat = () => {
                   </View>
                 )}
                 {message.role === 'user' ? (
-                  <View
+                  <Pressable
+                    onLongPress={() => handleMessageLongPress(message)}
                     style={[
                       styles.messageBubble,
                       { backgroundColor: isDarkMode ? '#2563EB' : '#2563EB' }
@@ -1026,9 +890,12 @@ const AIChat = () => {
                     <Text style={[styles.messageText, { color: '#FFFFFF' }]}>
                       {message.content}
                     </Text>
-                  </View>
+                  </Pressable>
                 ) : (
-                  <View style={[styles.messageBubble, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}>
+                  <Pressable
+                    onLongPress={() => handleMessageLongPress(message)}
+                    style={[styles.messageBubble, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}
+                  >
                     <View>
                       <Markdown
                         style={getMarkdownStyles(t)}
@@ -1040,7 +907,7 @@ const AIChat = () => {
                         {message.content}
                       </Markdown>
                     </View>
-                  </View>
+                  </Pressable>
                 )}
               </View>
             ))}
@@ -1280,8 +1147,8 @@ const AIChat = () => {
                   isLoading && styles.sendBtnDisabled
                 ]}
                 onPress={() => handleSendMessage()}
-                disabled={isLoading}
-                accessibilityLabel="Send message"
+                disabled={isLoading || !isOnline}
+                accessibilityLabel={!isOnline ? "Send message (No internet connection)" : "Send message"}
               >
                 {isLoading ? (
                   <ActivityIndicator size="small" color="#fff" />
@@ -1294,6 +1161,93 @@ const AIChat = () => {
         </View>
       </View>
       <UserBottomNavBar />
+
+      {/* Action Menu Modal */}
+      <Modal
+        visible={actionMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeActionMenu}
+      >
+        <Pressable 
+          style={styles.actionMenuOverlay} 
+          onPress={closeActionMenu}
+        >
+          <View 
+            style={[
+              styles.actionMenuContainer,
+              { 
+                backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF',
+                paddingBottom: insets.bottom + 20,
+              }
+            ]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={styles.actionMenuHeader}>
+              <Text style={[
+                styles.actionMenuTitle,
+                { color: isDarkMode ? '#F9FAFB' : '#1F2937' }
+              ]}>
+                {selectedMessage?.role === 'user' ? 'Message Options' : 'AI Response Options'}
+              </Text>
+            </View>
+            
+            <View style={styles.actionMenuButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.actionMenuButton,
+                  { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' }
+                ]}
+                onPress={handleCopyFromMenu}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="copy-outline" size={20} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+                <Text style={[
+                  styles.actionMenuButtonText,
+                  { color: isDarkMode ? '#F9FAFB' : '#1F2937' }
+                ]}>
+                  Copy
+                </Text>
+              </TouchableOpacity>
+
+              {selectedMessage?.role === 'user' && (
+                <TouchableOpacity
+                  style={[
+                    styles.actionMenuButton,
+                    { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' }
+                  ]}
+                  onPress={handleEditFromMenu}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="create-outline" size={20} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+                  <Text style={[
+                    styles.actionMenuButtonText,
+                    { color: isDarkMode ? '#F9FAFB' : '#1F2937' }
+                  ]}>
+                    Edit
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.actionMenuCancelButton,
+                { backgroundColor: isDarkMode ? '#374151' : '#F3F4F6' }
+              ]}
+              onPress={closeActionMenu}
+              activeOpacity={0.7}
+            >
+              <Text style={[
+                styles.actionMenuCancelText,
+                { color: isDarkMode ? '#F9FAFB' : '#1F2937' }
+              ]}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -1323,62 +1277,12 @@ const styles = StyleSheet.create({
   floatingOrbWrapper: {
     position: 'absolute',
   },
-  cloudWrapper: {
-    position: 'absolute',
-  },
-  cloudPatch1: {
-    width: 350,
-    height: 350,
-    borderRadius: 175,
-    opacity: 0.25,
-    overflow: 'hidden',
-  },
-  cloudPatch2: {
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    opacity: 0.22,
-    overflow: 'hidden',
-  },
-  lightSpot1: {
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    opacity: 0.2,
-    overflow: 'hidden',
-  },
-  lightSpot2: {
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    opacity: 0.18,
-    overflow: 'hidden',
-  },
-  lightSpot3: {
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    opacity: 0.16,
-    overflow: 'hidden',
-  },
   floatingOrb1: {
     width: 500,
     height: 500,
     borderRadius: 250,
     opacity: 0.5,
     overflow: 'hidden',
-  },
-  floatingOrb2: {
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    opacity: 0.35,
-  },
-  floatingOrb3: {
-    width: 250,
-    height: 250,
-    borderRadius: 125,
-    opacity: 0.3,
   },
   blurOverlay: {
     flex: 1,
@@ -1424,8 +1328,8 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 8,
+    flexDirection: 'column',
+    gap: 2,
   },
   headerTitle: {
     fontSize: 17,
@@ -1433,16 +1337,17 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
   },
   userTypeLabel: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginTop: 1,
   },
   userTypeLabelText: {
     color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 9,
+    fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   headerRight: {
     width: 40,
@@ -1848,6 +1753,54 @@ const styles = StyleSheet.create({
   infoNoteText: {
     fontSize: 12,
     color: '#334155',
+    fontWeight: '600',
+  },
+  actionMenuOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  actionMenuContainer: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 20,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    maxHeight: '50%',
+  },
+  actionMenuHeader: {
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  actionMenuTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  actionMenuButtons: {
+    gap: 12,
+    marginBottom: 12,
+  },
+  actionMenuButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 12,
+  },
+  actionMenuButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  actionMenuCancelButton: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  actionMenuCancelText: {
+    fontSize: 16,
     fontWeight: '600',
   },
 });

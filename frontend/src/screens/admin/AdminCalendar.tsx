@@ -9,7 +9,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AddEventDrawer from '../../components/calendar/AddEventDrawer';
@@ -18,7 +18,6 @@ import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import AdminSidebar from '../../components/navigation/AdminSidebar';
 import { theme } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
-import CalendarHelpModal from '../../modals/CalendarHelpModal';
 import DeleteAllModal from '../../modals/DeleteAllModal';
 import MonthPickerModal from '../../modals/MonthPickerModal';
 import AdminFileService from '../../services/AdminFileService';
@@ -39,6 +38,7 @@ type RootStackParamList = {
   AdminAIChat: undefined;
   AdminSettings: undefined;
   AdminCalendar: undefined;
+  CalendarHelp: undefined;
   PostUpdate: { postId?: string } | undefined;
   ManagePosts: undefined;
 };
@@ -108,13 +108,8 @@ const AdminCalendar = () => {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
   
-  // Background animation values (Copilot-style animated orbs)
+  // Background animation value (Copilot-style animated orb)
   const floatAnim1 = useRef(new Animated.Value(0)).current;
-  const cloudAnim1 = useRef(new Animated.Value(0)).current;
-  const cloudAnim2 = useRef(new Animated.Value(0)).current;
-  const lightSpot1 = useRef(new Animated.Value(0)).current;
-  const lightSpot2 = useRef(new Animated.Value(0)).current;
-  const lightSpot3 = useRef(new Animated.Value(0)).current;
   
   // Memoize safe area insets to prevent recalculation during navigation
   const safeInsets = useMemo(() => ({
@@ -149,15 +144,9 @@ const AdminCalendar = () => {
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
   const [showAddEventDrawer, setShowAddEventDrawer] = useState(false);
   const [addEventInitialDate, setAddEventInitialDate] = useState<Date | null>(null);
-  const [showHelpModal, setShowHelpModal] = useState(false);
-  
   // Drawer animation values (shared between EventDetailsDrawer and AddEventDrawer)
   const drawerSlideAnim = useRef(new Animated.Value(0)).current; // 0 = closed, 1 = open
   const drawerBackdropOpacity = useRef(new Animated.Value(0)).current;
-  
-  // Help modal animation values (same as EventDetailsDrawer)
-  const helpModalSlideAnim = useRef(new Animated.Value(0)).current; // 0 = closed, 1 = open
-  const helpModalBackdropOpacity = useRef(new Animated.Value(0)).current;
   
   // Delete all modal animation values
   const deleteAllModalSlideAnim = useRef(new Animated.Value(0)).current;
@@ -166,30 +155,15 @@ const AdminCalendar = () => {
   // Event type filter - single selection: 'institutional' or 'academic'
   const [selectedEventType, setSelectedEventType] = useState<'institutional' | 'academic'>('institutional');
   
-  // Segmented control animation and width tracking
-  const segmentAnim = useRef(new Animated.Value(0)).current; // 0 = institutional, 1 = academic
-  const segmentWidth = useRef(0);
+  // Event time range filter - 'allYear' or 'byMonth'
+  const [eventTimeRange, setEventTimeRange] = useState<'allYear' | 'byMonth'>('byMonth');
+  const [showTimeRangeDropdown, setShowTimeRangeDropdown] = useState(false);
   
   // Animation values
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
   const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
   const listAnim = useRef(new Animated.Value(0)).current;
   const dotScale = useRef(new Animated.Value(0.8)).current;
-  
-  // Update segment animation when selection changes
-  useEffect(() => {
-    if (segmentWidth.current > 0) {
-      const targetX = selectedEventType === 'academic' 
-        ? segmentWidth.current / 2 - 2 
-        : 2;
-      Animated.spring(segmentAnim, {
-        toValue: targetX,
-        useNativeDriver: true,
-        tension: 100,
-        friction: 8,
-      }).start();
-    }
-  }, [selectedEventType, segmentAnim]);
   
   // Derived filter states for compatibility with existing code
   const showInstitutional = selectedEventType === 'institutional';
@@ -246,97 +220,25 @@ const AdminCalendar = () => {
     }, [])
   );
 
-  // Animate floating background orbs (Copilot-style)
+  // Animate floating background orb (Copilot-style)
   useEffect(() => {
-    const animations = [
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(floatAnim1, {
-            toValue: 1,
-            duration: 8000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(floatAnim1, {
-            toValue: 0,
-            duration: 8000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(cloudAnim1, {
-            toValue: 1,
-            duration: 15000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cloudAnim1, {
-            toValue: 0,
-            duration: 15000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(cloudAnim2, {
-            toValue: 1,
-            duration: 20000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cloudAnim2, {
-            toValue: 0,
-            duration: 20000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot1, {
-            toValue: 1,
-            duration: 12000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot1, {
-            toValue: 0,
-            duration: 12000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot2, {
-            toValue: 1,
-            duration: 18000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot2, {
-            toValue: 0,
-            duration: 18000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot3, {
-            toValue: 1,
-            duration: 14000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot3, {
-            toValue: 0,
-            duration: 14000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-    ];
-    animations.forEach(anim => anim.start());
-    return () => animations.forEach(anim => anim.stop());
-  }, []);
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim1, {
+          toValue: 1,
+          duration: 8000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim1, {
+          toValue: 0,
+          duration: 8000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [floatAnim1]);
 
 
   // Data from AdminDataService
@@ -758,78 +660,14 @@ const AdminCalendar = () => {
     });
   }, [deleteAllModalSlideAnim, deleteAllModalBackdropOpacity]);
 
-  const filteredEvents = React.useMemo(() => {
-    if (!Array.isArray(calendarEvents)) return [];
-    
-    // Combine all events from calendarEvents (backend) - include ALL events including week/month-only
-    // Use a Set to track date ranges we've already added (to avoid duplicates)
-    const dateRangeKeys = new Set<string>();
-    const allEvents: any[] = [];
-    
-    if (Array.isArray(calendarEvents)) {
-      calendarEvents.forEach(event => {
-        const eventType = String(event.category || 'Announcement').toLowerCase();
-        
-        // Apply filters
-        if (!showInstitutional && eventType === 'institutional') return;
-        if (!showAcademic && eventType === 'academic') return;
-        
-        // For date ranges, create a single entry with range info (avoid duplicates)
-        if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-          const rangeKey = `${event.title}-${event.startDate}-${event.endDate}`;
-          if (!dateRangeKeys.has(rangeKey)) {
-            dateRangeKeys.add(rangeKey);
-            allEvents.push({
-              id: event._id || `calendar-${event.startDate}-${event.title}`,
-              title: event.title,
-              dateKey: parseAnyDateToKey(event.startDate),
-              time: event.time || 'All Day',
-              type: event.category || 'Announcement',
-              color: categoryToColors(event.category).dot,
-              chip: categoryToColors(event.category),
-              dateType: event.dateType,
-              startDate: event.startDate,
-              endDate: event.endDate,
-            });
-          }
-        } else if (event.dateType === 'week' || event.dateType === 'month') {
-          // Week/month-only events
-          allEvents.push({
-            id: event._id || `calendar-${event.isoDate}-${event.title}`,
-            title: event.title,
-            dateKey: parseAnyDateToKey(event.isoDate || event.date),
-            time: event.time || 'All Day',
-            type: event.category || 'Announcement',
-            color: categoryToColors(event.category).dot,
-            chip: categoryToColors(event.category),
-            dateType: event.dateType,
-            weekOfMonth: event.weekOfMonth,
-            month: event.month,
-            year: event.year,
-          });
-        } else {
-          // Single date events
-          allEvents.push({
-            id: event._id || `calendar-${event.isoDate}-${event.title}`,
-            title: event.title,
-            dateKey: parseAnyDateToKey(event.isoDate || event.date),
-            time: event.time || 'All Day',
-            type: event.category || 'Announcement',
-            color: categoryToColors(event.category).dot,
-            chip: categoryToColors(event.category),
-            dateType: event.dateType,
-          });
-        }
-      });
-    }
-    
-    return allEvents;
-  }, [calendarEvents, showInstitutional, showAcademic]);
-
   const getAllEventsGrouped = React.useCallback(() => {
     if (!Array.isArray(calendarEvents)) return [];
     
     const all: any[] = [];
+    
+    // Get current month and year for filtering
+    const currentYear = currentMonth.getUTCFullYear();
+    const currentMonthIndex = currentMonth.getUTCMonth() + 1; // 1-12
     
     // Add events from calendarEvents (CalendarService)
     // Use a Set to track date ranges we've already added (to avoid duplicates)
@@ -842,6 +680,33 @@ const AdminCalendar = () => {
         // Apply filters
         if (!showInstitutional && eventType === 'institutional') return;
         if (!showAcademic && eventType === 'academic') return;
+        
+        // Filter by current month (only if byMonth mode is selected)
+        if (eventTimeRange === 'byMonth') {
+          let isInCurrentMonth = false;
+          
+          if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+            // Check if date range overlaps with current month
+            const startDate = new Date(event.startDate);
+            const endDate = new Date(event.endDate);
+            const monthStart = new Date(Date.UTC(currentYear, currentMonthIndex - 1, 1));
+            const monthEnd = new Date(Date.UTC(currentYear, currentMonthIndex, 0, 23, 59, 59));
+            
+            // Check if range overlaps with current month (compare UTC timestamps)
+            isInCurrentMonth = (startDate.getTime() <= monthEnd.getTime() && endDate.getTime() >= monthStart.getTime());
+          } else if (event.dateType === 'week' || event.dateType === 'month') {
+            // For week/month events, check if month and year match
+            isInCurrentMonth = event.month === currentMonthIndex && event.year === currentYear;
+          } else {
+            // Single date events - check if date is in current month
+            const eventDate = new Date(event.isoDate || event.date);
+            isInCurrentMonth = eventDate.getUTCFullYear() === currentYear && 
+                              eventDate.getUTCMonth() + 1 === currentMonthIndex;
+          }
+          
+          // Skip events not in current month
+          if (!isInCurrentMonth) return;
+        }
         
         // For date ranges, use start date as the key and avoid duplicates
         let eventDateKey: string | null = null;
@@ -919,7 +784,7 @@ const AdminCalendar = () => {
       });
     
     return result;
-  }, [calendarEvents, showInstitutional, showAcademic]); // Only recompute when calendarEvents or filters change
+  }, [calendarEvents, showInstitutional, showAcademic, currentMonth, eventTimeRange]); // Only recompute when calendarEvents, filters, currentMonth, or eventTimeRange change
   
   const groupedEvents = React.useMemo(() => getAllEventsGrouped(), [getAllEventsGrouped]);
 
@@ -973,28 +838,55 @@ const AdminCalendar = () => {
     return count;
   };
 
+  // Track last calendar fetch time
+  const lastCalendarFetchTime = useRef<number>(0);
+  const isFetchingCalendar = useRef<boolean>(false);
+  const CALENDAR_FETCH_COOLDOWN = 3000; // 3 seconds cooldown for calendar events (larger range)
+
   // Refresh calendar events from backend
-  const refreshCalendarEvents = useCallback(async () => {
+  const refreshCalendarEvents = useCallback(async (forceRefresh: boolean = false) => {
+    // Prevent duplicate simultaneous fetches
+    if (isFetchingCalendar.current && !forceRefresh) {
+      return;
+    }
+
+    // Cooldown check
+    const now = Date.now();
+    if (!forceRefresh && now - lastCalendarFetchTime.current < CALENDAR_FETCH_COOLDOWN) {
+      return;
+    }
+
+    isFetchingCalendar.current = true;
+    lastCalendarFetchTime.current = now;
+
     try {
       setIsLoadingEvents(true);
       // Load events for a wide range (2020-2030) to cover all possible dates
       const startDate = new Date(2020, 0, 1).toISOString(); // January 1, 2020
       const endDate = new Date(2030, 11, 31).toISOString(); // December 31, 2030
       
+      // Use caching - CalendarService now supports caching
       const events = await CalendarService.getEvents({
         startDate,
         endDate,
         limit: 2000, // Increased limit to get more events
+        forceRefresh,
       });
       
       setCalendarEvents(Array.isArray(events) ? events : []);
     } catch (error) {
-      console.error('Failed to refresh calendar events:', error);
+      if (__DEV__) console.error('Failed to refresh calendar events:', error);
       setCalendarEvents([]);
     } finally {
       setIsLoadingEvents(false);
+      isFetchingCalendar.current = false;
     }
   }, []);
+
+  // Fetch calendar events on mount only
+  useEffect(() => {
+    refreshCalendarEvents(true); // Force refresh on mount
+  }, []); // Empty deps - only run on mount
 
   // CSV upload handler
   const handleCSVUpload = useCallback(async () => {
@@ -1023,8 +915,8 @@ const AdminCalendar = () => {
       // Upload successful - refresh calendar immediately
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
-      // Refresh calendar events to show new dates
-      await refreshCalendarEvents();
+      // Refresh calendar events to show new dates (force refresh after upload)
+      await refreshCalendarEvents(true);
       
       // Show success message after refresh
       const eventsAdded = uploadResult.eventsAdded || 0;
@@ -1069,7 +961,7 @@ const AdminCalendar = () => {
       
       if (result.success) {
         // Refresh calendar events
-        await refreshCalendarEvents();
+        await refreshCalendarEvents(true); // Force refresh after delete
         
         // Close modal
         closeDeleteAllModal();
@@ -1271,196 +1163,8 @@ const AdminCalendar = () => {
         style={styles.backgroundGradient}
       />
 
-      {/* Animated Floating Background Orbs (Copilot-style) */}
+      {/* Animated Floating Background Orb (Copilot-style) */}
       <View style={styles.floatingBgContainer} pointerEvents="none">
-        {/* Light Spot 1 - Top right gentle glow */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '8%',
-              right: '12%',
-              transform: [
-                {
-                  translateX: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -15],
-                  }),
-                },
-                {
-                  translateY: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 12],
-                  }),
-                },
-                {
-                  scale: lightSpot1.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.08, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot1}>
-            <LinearGradient
-              colors={['rgba(255, 220, 180, 0.35)', 'rgba(255, 200, 150, 0.18)', 'rgba(255, 230, 200, 0.08)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.2, y: 0.2 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Light Spot 2 - Middle left soft circle */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '45%',
-              left: '8%',
-              transform: [
-                {
-                  translateX: lightSpot2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 18],
-                  }),
-                },
-                {
-                  translateY: lightSpot2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -10],
-                  }),
-                },
-                {
-                  scale: lightSpot2.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.06, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot2}>
-            <LinearGradient
-              colors={['rgba(255, 210, 170, 0.28)', 'rgba(255, 200, 160, 0.15)', 'rgba(255, 220, 190, 0.06)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.3, y: 0.3 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Light Spot 3 - Bottom center blurry glow */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              bottom: '12%',
-              left: '55%',
-              transform: [
-                {
-                  translateX: lightSpot3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -20],
-                  }),
-                },
-                {
-                  translateY: lightSpot3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 8],
-                  }),
-                },
-                {
-                  scale: lightSpot3.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.1, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot3}>
-            <LinearGradient
-              colors={['rgba(255, 190, 140, 0.25)', 'rgba(255, 180, 130, 0.12)', 'rgba(255, 210, 170, 0.05)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.4, y: 0.4 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Cloud variation 1 - Top left soft light patch */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '15%',
-              left: '10%',
-              transform: [
-                {
-                  translateX: cloudAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 20],
-                  }),
-                },
-                {
-                  translateY: cloudAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -15],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.cloudPatch1}>
-            <LinearGradient
-              colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.22)', 'rgba(255, 230, 200, 0.1)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Cloud variation 2 - Bottom right gentle tone */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              bottom: '20%',
-              right: '15%',
-              transform: [
-                {
-                  translateX: cloudAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -25],
-                  }),
-                },
-                {
-                  translateY: cloudAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 10],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.cloudPatch2}>
-            <LinearGradient
-              colors={['rgba(255, 190, 140, 0.32)', 'rgba(255, 200, 160, 0.18)', 'rgba(255, 220, 190, 0.08)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.3, y: 0.3 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
         {/* Orb 1 - Soft Orange Glow (Center area) */}
         <Animated.View
           style={[
@@ -1531,31 +1235,16 @@ const AdminCalendar = () => {
         <View style={styles.headerRight}>
           <TouchableOpacity 
             style={styles.profileButton} 
-            onPress={() => {
-              setShowHelpModal(true);
-              Animated.parallel([
-                Animated.spring(helpModalSlideAnim, {
-                  toValue: 1,
-                  useNativeDriver: true,
-                  tension: 65,
-                  friction: 11,
-                }),
-                Animated.timing(helpModalBackdropOpacity, {
-                  toValue: 1,
-                  duration: 300,
-                  useNativeDriver: true,
-                }),
-              ]).start();
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }}
-            accessibilityLabel="Calendar help and instructions"
+            onPress={() => navigation.navigate('AdminSettings')} 
+            accessibilityLabel="Admin profile - Go to settings"
           >
-            <View style={[styles.profileIconCircle, { backgroundColor: '#FF9500' }]}>
-              <Text style={styles.profileInitials}>?</Text>
+            <View style={[styles.profileIconCircle, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
+              <Text style={styles.profileInitials}>AD</Text>
             </View>
           </TouchableOpacity>
         </View>
       </View>
+
 
       <ScrollView
         ref={scrollRef}
@@ -1679,122 +1368,213 @@ const AdminCalendar = () => {
           ]}
         >
           <View style={styles.eventsHeader}>
-            <View style={styles.eventsHeaderLeft}>
-              <View style={[styles.eventsIconWrap, { borderColor: t.colors.border }]}>
-                <Ionicons name="calendar-outline" size={14} color={t.colors.accent} />
-        </View>
-              <Text style={[styles.eventsTitle, { color: t.colors.text }]}>Events</Text>
+            {/* Top Row: Events title with help icon | Upload CSV | Delete All */}
+            <View style={styles.eventsHeaderTopRow}>
+              <View style={styles.eventsTitleRow}>
+                <View style={[styles.eventsIconWrap, { borderColor: t.colors.border }]}>
+                  <Ionicons name="calendar-outline" size={14} color={t.colors.accent} />
+                </View>
+                <Text style={[styles.eventsTitle, { color: t.colors.text }]}>Events</Text>
+                <TouchableOpacity 
+                  style={styles.infoIconButton}
+                  onPress={() => {
+                    navigation.navigate('CalendarHelp');
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  accessibilityLabel="Calendar help and information"
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="information-circle-outline" size={18} color={t.colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.eventsHeaderTopRight}>
+                <TouchableOpacity
+                  style={[styles.csvUploadButton, { 
+                    backgroundColor: t.colors.surface,
+                    borderColor: t.colors.border,
+                    opacity: isUploadingCSV ? 0.6 : 1
+                  }]}
+                  onPress={handleCSVUpload}
+                  disabled={isUploadingCSV}
+                  activeOpacity={0.7}
+                >
+                  {isUploadingCSV ? (
+                    <ActivityIndicator size="small" color={t.colors.accent} />
+                  ) : (
+                    <>
+                      <Ionicons name="cloud-upload-outline" size={14} color={t.colors.accent} />
+                      <Text style={[styles.csvUploadText, { color: t.colors.accent }]}>Upload CSV</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.deleteAllButton, { 
+                    backgroundColor: t.colors.surface,
+                    borderColor: '#DC2626',
+                    opacity: isDeletingAll ? 0.6 : 1
+                  }]}
+                  onPress={openDeleteAllModal}
+                  disabled={isDeletingAll || calendarEvents.length === 0}
+                  activeOpacity={0.7}
+                >
+                  {isDeletingAll ? (
+                    <ActivityIndicator size="small" color="#DC2626" />
+                  ) : (
+                    <>
+                      <Ionicons name="trash-outline" size={14} color="#DC2626" />
+                      <Text style={[styles.deleteAllText, { color: '#DC2626' }]}>Delete All</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
-            <View style={styles.eventsHeaderRight}>
-              <TouchableOpacity
-                style={[styles.csvUploadButton, { 
-                  backgroundColor: t.colors.surface,
-                  borderColor: t.colors.border,
-                  opacity: isUploadingCSV ? 0.6 : 1
-                }]}
-                onPress={handleCSVUpload}
-                disabled={isUploadingCSV}
-                activeOpacity={0.7}
-              >
-                {isUploadingCSV ? (
-                  <ActivityIndicator size="small" color={t.colors.accent} />
-                ) : (
-                  <>
-                    <Ionicons name="cloud-upload-outline" size={14} color={t.colors.accent} />
-                    <Text style={[styles.csvUploadText, { color: t.colors.accent }]}>Upload CSV</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.deleteAllButton, { 
-                  backgroundColor: t.colors.surface,
-                  borderColor: '#DC2626',
-                  opacity: isDeletingAll ? 0.6 : 1
-                }]}
-                onPress={openDeleteAllModal}
-                disabled={isDeletingAll || calendarEvents.length === 0}
-                activeOpacity={0.7}
-              >
-                {isDeletingAll ? (
-                  <ActivityIndicator size="small" color="#DC2626" />
-                ) : (
-                  <>
-                    <Ionicons name="trash-outline" size={14} color="#DC2626" />
-                    <Text style={[styles.deleteAllText, { color: '#DC2626' }]}>Delete All</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-          
-          {/* Event Type Segmented Control */}
-          <View style={styles.segmentedControlContainer}>
-            <View 
-              style={[styles.segmentedControl, { backgroundColor: selectedEventType === 'institutional' ? '#2563EB' : '#10B981' }]}
-              onLayout={(e) => {
-                segmentWidth.current = e.nativeEvent.layout.width;
-                // Initialize animation position
-                const targetX = selectedEventType === 'academic' 
-                  ? segmentWidth.current / 2 - 2 
-                  : 2;
-                segmentAnim.setValue(targetX);
-              }}
-            >
-              <Animated.View
-                style={[
-                  styles.segmentedSelector,
-                  {
-                    transform: [
+            {/* Bottom Row: Yearly/Monthly Dropdown | Institutional | Academic */}
+            <View style={styles.eventsHeaderBottomRow}>
+              <View style={styles.eventFilterContainer}>
+                <View style={styles.timeRangeDropdownWrapper}>
+                  <TouchableOpacity
+                    style={[
+                      styles.timeRangeDropdownButton,
                       {
-                        translateX: segmentAnim,
-                      },
-                    ],
-                  }
-                ]}
-              />
-              <View style={styles.segmentedOptionsContainer}>
-                <TouchableOpacity
-                  style={styles.segmentedOption}
-                  onPress={() => {
-                    setSelectedEventType('institutional');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[
-                    styles.segmentedOptionText,
-                    { color: selectedEventType === 'institutional' ? '#2563EB' : '#FFFFFF' }
-                  ]}>
-                    Institutional
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.segmentedOption}
-                  onPress={() => {
-                    setSelectedEventType('academic');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[
-                    styles.segmentedOptionText,
-                    { color: selectedEventType === 'academic' ? '#10B981' : '#FFFFFF' }
-                  ]}>
-                    Academic
-                  </Text>
-                </TouchableOpacity>
+                        backgroundColor: t.colors.surface,
+                        borderColor: t.colors.border,
+                      }
+                    ]}
+                    onPress={() => {
+                      setShowTimeRangeDropdown(!showTimeRangeDropdown);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.timeRangeDropdownText,
+                      { color: t.colors.text }
+                    ]}>
+                      {eventTimeRange === 'allYear' ? 'Yearly' : 'Monthly'}
+                    </Text>
+                    <Ionicons 
+                      name={showTimeRangeDropdown ? 'chevron-up' : 'chevron-down'} 
+                      size={16} 
+                      color={t.colors.textMuted} 
+                    />
+                  </TouchableOpacity>
+                  
+                  {/* Dropdown Options */}
+                  {showTimeRangeDropdown && (
+                    <View style={[styles.timeRangeDropdownOptions, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
+                        <TouchableOpacity
+                          style={[
+                            styles.timeRangeDropdownOption,
+                            { borderBottomColor: t.colors.border },
+                            eventTimeRange === 'allYear' && { backgroundColor: t.colors.surfaceAlt }
+                          ]}
+                          onPress={() => {
+                            setEventTimeRange('allYear');
+                            setShowTimeRangeDropdown(false);
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.timeRangeDropdownOptionText, { color: t.colors.text }]}>Yearly</Text>
+                          {eventTimeRange === 'allYear' && (
+                            <Ionicons name="checkmark" size={16} color="#8B5CF6" />
+                          )}
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[
+                            styles.timeRangeDropdownOption,
+                            eventTimeRange === 'byMonth' && { backgroundColor: t.colors.surfaceAlt }
+                          ]}
+                          onPress={() => {
+                            setEventTimeRange('byMonth');
+                            setShowTimeRangeDropdown(false);
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.timeRangeDropdownOptionText, { color: t.colors.text }]}>Monthly</Text>
+                          {eventTimeRange === 'byMonth' && (
+                            <Ionicons name="checkmark" size={16} color="#8B5CF6" />
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                  )}
+                </View>
+                <View style={styles.eventTypeToggleContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.eventTypeToggleButton,
+                      {
+                        backgroundColor: selectedEventType === 'institutional' ? '#2563EB' : 'transparent',
+                        borderColor: selectedEventType === 'institutional' ? '#2563EB' : t.colors.border,
+                      }
+                    ]}
+                    onPress={() => {
+                      setSelectedEventType('institutional');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.eventTypeToggleText,
+                      { 
+                        color: selectedEventType === 'institutional' ? '#FFFFFF' : t.colors.textMuted 
+                      }
+                    ]}>
+                      Institutional
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.eventTypeToggleButton,
+                      {
+                        backgroundColor: selectedEventType === 'academic' ? '#10B981' : 'transparent',
+                        borderColor: selectedEventType === 'academic' ? '#10B981' : t.colors.border,
+                      }
+                    ]}
+                    onPress={() => {
+                      setSelectedEventType('academic');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.eventTypeToggleText,
+                      { 
+                        color: selectedEventType === 'academic' ? '#FFFFFF' : t.colors.textMuted 
+                      }
+                    ]}>
+                      Academic
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           </View>
           
           <View style={styles.eventsSubtitleRowEnhanced}>
             <Text style={[styles.eventsSubtitle, { color: t.colors.textMuted }]} numberOfLines={1}>
-              All events — {filteredEvents.length} {filteredEvents.length === 1 ? 'event' : 'events'}
+              {(() => {
+                const eventCount = groupedEvents.reduce((sum, yearGroup) => 
+                  sum + yearGroup.dates.reduce((dateSum, dateGroup) => dateSum + dateGroup.items.length, 0), 0
+                );
+                if (eventTimeRange === 'byMonth') {
+                  return `${getMonthName(currentMonth)} ${currentMonth.getFullYear()} — ${eventCount} ${eventCount === 1 ? 'event' : 'events'}`;
+                } else {
+                  return `Year ${currentMonth.getFullYear()} — ${eventCount} ${eventCount === 1 ? 'event' : 'events'}`;
+                }
+              })()}
             </Text>
           </View>
           <LinearGradient colors={[t.colors.border, 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ height: 1, marginBottom: 10 }} />
 
-          {filteredEvents.length === 0 && !isLoadingEvents && (
+          {(() => {
+            const monthEventCount = groupedEvents.reduce((sum, yearGroup) => 
+              sum + yearGroup.dates.reduce((dateSum, dateGroup) => dateSum + dateGroup.items.length, 0), 0
+            );
+            return monthEventCount === 0 && !isLoadingEvents;
+          })() && (
             <View style={[styles.emptyStateCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
               <View style={[styles.emptyStateIconWrap, { backgroundColor: t.colors.surfaceAlt }]}>
                 <Ionicons name="calendar-outline" size={20} color={t.colors.accent} />
@@ -1822,112 +1602,105 @@ const AdminCalendar = () => {
             </View>
           )}
 
-          {isLoadingEvents && (
+          {isLoadingEvents ? (
             <View style={[styles.emptyStateCard, { paddingVertical: 16, overflow: 'hidden', backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
               <LinearGradient colors={[t.colors.surfaceAlt, t.colors.surface]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ ...StyleSheet.absoluteFillObject, opacity: 0.6 }} />
               <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>Loading…</Text>
             </View>
-          )}
-
-          {/* All Events List - Flat list with dates inside cards */}
-          <View>
-            {Array.isArray(groupedEvents) && groupedEvents.map((yearGroup) => (
-              <View key={yearGroup.year} style={styles.yearGroupContainer}>
-                <Text style={[styles.yearHeaderText, { color: t.colors.text }]}>
-                  {yearGroup.year}
-                </Text>
-                {Array.isArray(yearGroup.dates) && yearGroup.dates.map((dateGroup) => (
-                  <View key={dateGroup.key}>
-                    {Array.isArray(dateGroup.items) && dateGroup.items.map((event: any) => (
-                      <TouchableOpacity
-                        key={event.id}
-                        style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
-                        onPress={() => {
-                          // Find the full event from calendarEvents
-                          const fullEvent = calendarEvents.find((e: any) => e._id === event.id || `calendar-${e.isoDate}-${e.title}` === event.id);
-                          const eventData = fullEvent || event;
-                          setSelectedEvent(eventData);
-                          setEditTitle(eventData?.title || '');
-                          setEditDescription(eventData?.description || '');
-                          
-                          // Set date and time for editing
-                          if (eventData?.isoDate || eventData?.date) {
-                            const eventDate = new Date(eventData.isoDate || eventData.date);
-                            setSelectedDateObj(eventDate);
-                            setEditDate(formatDate(eventDate));
-                          } else {
-                            setSelectedDateObj(null);
-                            setEditDate('');
-                          }
-                          setEditTime(eventData?.time || '');
-                          
-                          setIsEditing(false);
-                          setShowEventDrawer(true);
-                          
-                          // Animate drawer opening
-                          Animated.parallel([
-                            Animated.spring(drawerSlideAnim, {
-                              toValue: 1,
-                              useNativeDriver: true,
-                              tension: 65,
-                              friction: 11,
-                            }),
-                            Animated.timing(drawerBackdropOpacity, {
-                              toValue: 1,
-                              duration: 300,
-                              useNativeDriver: true,
-                            }),
-                          ]).start();
-                          
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Open event ${event.title}`}
-                        accessibilityHint="Opens the event to view or edit"
-                        activeOpacity={0.7}
-                      >
-                        <View style={[styles.eventAccent, { backgroundColor: event.color }]} />
-                        <View style={styles.eventContent}>
-                          {/* Date inside the card */}
-                          <View style={styles.eventDateRow}>
-                            <Text style={[styles.eventDateText, { color: t.colors.textMuted }]}>
-                              {formatCalendarDate(new Date(dateGroup.key))}
-                            </Text>
-                          </View>
-                          <Text style={[styles.eventTitle, { color: t.colors.text }]} numberOfLines={2}>
-                            {event.title}
+          ) : (
+            /* All Events List - Flat list with dates inside cards */
+            <View>
+              {Array.isArray(groupedEvents) && groupedEvents.length > 0 && groupedEvents.flatMap((yearGroup) => 
+                Array.isArray(yearGroup.dates) ? yearGroup.dates.flatMap((dateGroup) => 
+                  Array.isArray(dateGroup.items) ? dateGroup.items.map((event: any) => (
+                    <TouchableOpacity
+                      key={event.id}
+                      style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
+                      onPress={() => {
+                        // Find the full event from calendarEvents
+                        const fullEvent = calendarEvents.find((e: any) => e._id === event.id || `calendar-${e.isoDate}-${e.title}` === event.id);
+                        const eventData = fullEvent || event;
+                        setSelectedEvent(eventData);
+                        setEditTitle(eventData?.title || '');
+                        setEditDescription(eventData?.description || '');
+                        
+                        // Set date and time for editing
+                        if (eventData?.isoDate || eventData?.date) {
+                          const eventDate = new Date(eventData.isoDate || eventData.date);
+                          setSelectedDateObj(eventDate);
+                          setEditDate(formatDate(eventDate));
+                        } else {
+                          setSelectedDateObj(null);
+                          setEditDate('');
+                        }
+                        setEditTime(eventData?.time || '');
+                        
+                        setIsEditing(false);
+                        setShowEventDrawer(true);
+                        
+                        // Animate drawer opening
+                        Animated.parallel([
+                          Animated.spring(drawerSlideAnim, {
+                            toValue: 1,
+                            useNativeDriver: true,
+                            tension: 65,
+                            friction: 11,
+                          }),
+                          Animated.timing(drawerBackdropOpacity, {
+                            toValue: 1,
+                            duration: 300,
+                            useNativeDriver: true,
+                          }),
+                        ]).start();
+                        
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open event ${event.title}`}
+                      accessibilityHint="Opens the event to view or edit"
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.eventAccent, { backgroundColor: event.color }]} />
+                      <View style={styles.eventContent}>
+                        {/* Date inside the card */}
+                        <View style={styles.eventDateRow}>
+                          <Text style={[styles.eventDateText, { color: t.colors.textMuted }]}>
+                            {formatCalendarDate(new Date(dateGroup.key))}
                           </Text>
-                          <View style={styles.eventInnerDivider} />
-                          <View style={styles.eventTimeRow}>
-                            <Ionicons name="time-outline" size={12} color={t.colors.textMuted} />
-                            <Text style={[styles.eventTimeText, { color: t.colors.textMuted }]}>
-                              {event.dateType === 'date_range' && event.startDate && event.endDate
-                                ? `${formatDate(new Date(event.startDate))} - ${formatDate(new Date(event.endDate))}`
-                                : event.dateType === 'week' && event.weekOfMonth && event.month
-                                ? `Week ${event.weekOfMonth} of ${new Date(2000, event.month - 1, 1).toLocaleString('default', { month: 'long' })}`
-                                : event.dateType === 'month' && event.month
-                                ? new Date(2000, event.month - 1, 1).toLocaleString('default', { month: 'long' })
-                                : event.time || 'All Day'}
-                            </Text>
-                          </View>
-                          <View style={styles.statusInline}>
-                            {!!event.type && (
-                              <View style={styles.statusItem}>
-                                <Ionicons name="pricetag-outline" size={12} color={event.color} />
-                                <Text style={[styles.statusText, { color: event.color }]}>
-                                  {String(event.type || '').charAt(0).toUpperCase() + String(event.type || '').slice(1)}
-                                </Text>
-                              </View>
-                            )}
-                          </View>
                         </View>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ))}
-              </View>
-            ))}
-          </View>
+                        <Text style={[styles.eventTitle, { color: t.colors.text }]} numberOfLines={2}>
+                          {event.title}
+                        </Text>
+                        <View style={styles.eventInnerDivider} />
+                        <View style={styles.eventTimeRow}>
+                          <Ionicons name="time-outline" size={12} color={t.colors.textMuted} />
+                          <Text style={[styles.eventTimeText, { color: t.colors.textMuted }]}>
+                            {event.dateType === 'date_range' && event.startDate && event.endDate
+                              ? `${formatDate(new Date(event.startDate))} - ${formatDate(new Date(event.endDate))}`
+                              : event.dateType === 'week' && event.weekOfMonth && event.month
+                              ? `Week ${event.weekOfMonth} of ${new Date(2000, event.month - 1, 1).toLocaleString('default', { month: 'long' })}`
+                              : event.dateType === 'month' && event.month
+                              ? new Date(2000, event.month - 1, 1).toLocaleString('default', { month: 'long' })
+                              : event.time || 'All Day'}
+                          </Text>
+                        </View>
+                        <View style={styles.statusInline}>
+                          {!!event.type && (
+                            <View style={styles.statusItem}>
+                              <Ionicons name="pricetag-outline" size={12} color={event.color} />
+                              <Text style={[styles.statusText, { color: event.color }]}>
+                                {String(event.type || '').charAt(0).toUpperCase() + String(event.type || '').slice(1)}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  )) : []
+                ) : []
+              )}
+            </View>
+          )}
         </BlurView>
       </ScrollView>
 
@@ -2014,32 +1787,6 @@ const AdminCalendar = () => {
         eventYearRange={{ minYear: eventYearRange.min, maxYear: eventYearRange.max }}
       />
 
-      {/* Help Modal */}
-      {showHelpModal && (
-        <CalendarHelpModal
-          visible={showHelpModal}
-          onClose={() => {
-            Animated.parallel([
-              Animated.spring(helpModalSlideAnim, {
-                toValue: 0,
-                useNativeDriver: true,
-                tension: 65,
-                friction: 11,
-              }),
-              Animated.timing(helpModalBackdropOpacity, {
-                toValue: 0,
-                duration: 200,
-                useNativeDriver: true,
-              }),
-            ]).start(() => {
-              setShowHelpModal(false);
-            });
-          }}
-          slideAnim={helpModalSlideAnim}
-          backdropOpacity={helpModalBackdropOpacity}
-        />
-      )}
-
       {/* Bottom Navigation Bar - Fixed position */}
       <View style={[styles.bottomNavContainer, {
         bottom: 0,
@@ -2085,44 +1832,6 @@ const styles = StyleSheet.create({
     height: 500,
     borderRadius: 250,
     opacity: 0.5,
-    overflow: 'hidden',
-  },
-  cloudWrapper: {
-    position: 'absolute',
-  },
-  cloudPatch1: {
-    width: 350,
-    height: 350,
-    borderRadius: 175,
-    opacity: 0.25,
-    overflow: 'hidden',
-  },
-  cloudPatch2: {
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    opacity: 0.22,
-    overflow: 'hidden',
-  },
-  lightSpot1: {
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    opacity: 0.2,
-    overflow: 'hidden',
-  },
-  lightSpot2: {
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    opacity: 0.18,
-    overflow: 'hidden',
-  },
-  lightSpot3: {
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    opacity: 0.16,
     overflow: 'hidden',
   },
   header: {
@@ -2334,11 +2043,6 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     borderWidth: 1,
     borderRadius: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
   emptyStateIconWrap: {
     width: 40,
@@ -2371,10 +2075,106 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   eventsHeader: {
+    flexDirection: 'column',
+    gap: 8,
+    marginBottom: 16,
+  },
+  eventsHeaderTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
+  },
+  eventsHeaderTopRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 1,
+  },
+  eventsHeaderBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  eventsTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  filterEventsLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  eventFilterContainer: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+    flexShrink: 1,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  timeRangeToggleContainer: {
+    flexDirection: 'row',
+    gap: 4,
+    alignItems: 'center',
+  },
+  timeRangeDropdownWrapper: {
+    position: 'relative',
+    zIndex: 10,
+  },
+  timeRangeDropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    minWidth: 100,
+  },
+  timeRangeDropdownText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  timeRangeDropdownOptions: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    marginTop: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    overflow: 'hidden',
+    zIndex: 1000,
+  },
+  timeRangeDropdownOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  timeRangeDropdownOptionText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  eventTypeToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexShrink: 1,
+    minWidth: 80,
+  },
+  eventTypeToggleText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   segmentedToggle: {
     flexDirection: 'row',
@@ -2397,15 +2197,14 @@ const styles = StyleSheet.create({
   segmentTextActive: {
     color: theme.colors.accent,
   },
-  eventsHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  infoIconButton: {
+    padding: 2,
+    marginLeft: -6,
   },
-  eventsHeaderRight: {
+  eventTypeToggleContainer: {
     flexDirection: 'row',
+    gap: 4,
     alignItems: 'center',
-    gap: 8,
   },
   eventsIconWrap: {
     width: 22,
@@ -2528,11 +2327,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginBottom: 10,
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
   },
   eventAccent: {
     width: 2,
@@ -2668,27 +2462,29 @@ const styles = StyleSheet.create({
   csvUploadButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
+    flexShrink: 1,
   },
   csvUploadText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   deleteAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
+    flexShrink: 1,
   },
   deleteAllText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   segmentedControlContainer: {

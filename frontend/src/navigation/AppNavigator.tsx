@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 
 import UserHelpCenterScreen from '../screens/about/HelpCenterScreen';
@@ -11,6 +12,7 @@ import PrivacyPolicyScreen from '../screens/about/PrivacyPolicyScreen';
 import TermsOfUseScreen from '../screens/about/TermsOfUseScreen';
 import AdminAIChat from '../screens/admin/AdminAIChat';
 import AdminCalendar from '../screens/admin/AdminCalendar';
+import CalendarHelpScreen from '../screens/admin/CalendarHelpScreen';
 import AdminDashboard from '../screens/admin/AdminDashboard';
 import AdminSettings from '../screens/admin/AdminSettings';
 import AdminAccountSettings from '../screens/admin/AdminAccountSettings';
@@ -56,6 +58,8 @@ const AppNavigator = () => {
   const screenOptions = useScreenOptions();
   const [isLoading, setIsLoading] = useState(true);
   const [initialRoute, setInitialRoute] = useState<string>('SplashScreen');
+  const navigationRef = useNavigationContainerRef();
+  const { resetInactivityTimer } = useAuth();
   
   // Check authentication status on app load
   useEffect(() => {
@@ -67,8 +71,8 @@ const AppNavigator = () => {
         const adminEmail = await AsyncStorage.getItem('userEmail');
         
         if (isAdmin === 'true' && adminToken && adminEmail) {
-          // Admin is logged in - route to admin dashboard
-          setInitialRoute('AdminDashboard');
+          // Admin is logged in - route to admin AI chat
+          setInitialRoute('AdminAIChat');
           setIsLoading(false);
           return;
         }
@@ -112,6 +116,7 @@ const AppNavigator = () => {
     
     checkAuthStatus();
   }, []);
+
   
   // Show loading indicator while checking auth status
   if (isLoading) {
@@ -121,9 +126,21 @@ const AppNavigator = () => {
       </View>
     );
   }
-  
+
   return (
-    <NavigationContainer>
+    <NavigationContainer 
+      ref={navigationRef}
+      onReady={() => {
+        // Reset timer when navigation is ready (user is active)
+        console.log('🧭 Navigation ready - Resetting inactivity timer');
+        resetInactivityTimer();
+      }}
+      onStateChange={() => {
+        // Reset timer on any navigation state change (user is active)
+        console.log('🧭 Navigation state changed - Resetting inactivity timer');
+        resetInactivityTimer();
+      }}
+    >
       <Stack.Navigator 
         initialRouteName={initialRoute}
         screenOptions={screenOptions}
@@ -279,6 +296,14 @@ const AppNavigator = () => {
         <Stack.Screen 
           name="AdminCalendar" 
           component={AdminCalendar}
+        />
+        <Stack.Screen 
+          name="CalendarHelp" 
+          component={CalendarHelpScreen}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
         />
         <Stack.Screen 
           name="PostUpdate" 

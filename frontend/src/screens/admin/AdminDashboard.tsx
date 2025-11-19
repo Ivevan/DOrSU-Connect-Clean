@@ -9,10 +9,10 @@ import { Animated, Image, Platform, Pressable, ScrollView, StatusBar, StyleSheet
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import EventDetailsDrawer from '../../components/calendar/EventDetailsDrawer';
 // import AddPostDrawer from '../../components/dashboard/AddPostDrawer'; // Replaced with PostUpdate screen navigation
-import PreviewEditDeleteModal from '../../modals/PreviewEditDeleteModal';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import AdminSidebar from '../../components/navigation/AdminSidebar';
 import { useThemeValues } from '../../contexts/ThemeContext';
+import PreviewEditDeleteModal from '../../modals/PreviewEditDeleteModal';
 import AdminDataService from '../../services/AdminDataService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
@@ -278,7 +278,6 @@ const AdminDashboard = () => {
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
         limit: 1000,
-        forceRefresh,
       });
       
       setCalendarEvents(Array.isArray(events) ? events : []);
@@ -407,7 +406,7 @@ const AdminDashboard = () => {
       const dashboardStats = await AdminDataService.getDashboard();
       
       // Fetch recent updates (posts/announcements) - use cache if available
-      const posts = await AdminDataService.getPosts(forceRefresh);
+      const posts = await AdminDataService.getPosts();
         const postsData = posts.map(post => {
           // Ensure images array is properly set
           let images = post.images;

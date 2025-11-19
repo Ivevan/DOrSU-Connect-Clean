@@ -102,6 +102,10 @@ export class VectorSearchService {
         searchResults = await this.searchSchedule(query, { maxResults, maxSections });
         break;
       
+      case 'scholarship':
+        searchResults = await this.searchScholarship(query, { maxResults, maxSections });
+        break;
+      
       case 'comprehensive':
         searchResults = await this.searchComprehensive(query, { maxResults, maxSections });
         break;
@@ -2995,6 +2999,349 @@ export class VectorSearchService {
   }
 
   /**
+   * Search for scholarship queries (scholarship recipients, statistics, counts by year)
+   */
+  async searchScholarship(query, options = {}) {
+    const { maxResults = 30, maxSections = 30 } = options;
+    
+    Logger.debug(`🎓 Scholarship search: "${query.substring(0, 40)}..."`);
+    
+    // Log data fetch operation
+    Logger.logDataFetch('searchScholarship', query, {
+      method: 'searchScholarship',
+      maxResults,
+      maxSections
+    });
+    
+    // Detect year from query (2024, 2025, or both)
+    const queryLower = query.toLowerCase();
+    const has2024 = /\b(2024|year\s+2024)\b/i.test(query);
+    const has2025 = /\b(2025|year\s+2025)\b/i.test(query);
+    const requestedYears = [];
+    if (has2024) requestedYears.push(2024);
+    if (has2025) requestedYears.push(2025);
+    // If no specific year mentioned, include both 2024 and 2025
+    if (requestedYears.length === 0) {
+      requestedYears.push(2024, 2025);
+    }
+    
+    // Detect if query asks for total/count/number
+    const isCountQuery = /\b(total|count|number|how\s+many|statistics?|sum|aggregate)\b/i.test(query);
+    
+    Logger.debug(`🎓 Scholarship query detection: years=${requestedYears.join(',')}, isCountQuery=${isCountQuery}`);
+    
+    let results = [];
+    
+    // PRIMARY: MongoDB aggregation pipeline for scholarship data
+    if (this.mongoService) {
+      try {
+        const collection = this.mongoService.getCollection('knowledge_chunks');
+        
+        // Build match conditions for scholarship-related chunks
+        const matchConditions = {
+          $or: [
+            // Section-based matching
+            { section: { $regex: /scholarship|students/i } },
+            // Content-based matching
+            { content: { $regex: /scholarship|scholar|recipients?|beneficiaries?|students?\s+with\s+scholarship|total\s+(number|count).*students?.*scholarship/i } },
+            { text: { $regex: /scholarship|scholar|recipients?|beneficiaries?|students?\s+with\s+scholarship|total\s+(number|count).*students?.*scholarship/i } },
+            // Metadata-based matching
+            { 'metadata.field': { $regex: /scholarship|students.*scholarship/i } },
+            { 'metadata.category': { $regex: /scholarship|financial\s+aid/i } },
+            { type: { $regex: /scholarship|financial_aid/i } },
+            { category: { $regex: /scholarship|financial\s+aid/i } },
+            // Keywords matching
+            { keywords: { $in: ['scholarship', 'scholarships', 'scholar', 'recipients', 'financial aid', 'beneficiaries', 'students'] } }
+          ]
+        };
+        
+        // Add year filter if specific years are requested
+        if (requestedYears.length > 0) {
+          const yearRegex = requestedYears.map(year => `\\b${year}\\b`).join('|');
+          matchConditions.$or.push(
+            { content: { $regex: new RegExp(yearRegex, 'i') } },
+            { text: { $regex: new RegExp(yearRegex, 'i') } },
+            { 'metadata.year': { $in: requestedYears } },
+            { 'metadata.academicYear': { $regex: new RegExp(yearRegex, 'i') } }
+          );
+        }
+        
+        // Build year match conditions for relevance scoring
+        const yearMatchConditions = requestedYears.map(year => ({
+          $regexMatch: {
+            input: { $toString: { $ifNull: ['$content', ''] } },
+            regex: `\\b${year}\\b`,
+            options: 'i'
+          }
+        }));
+        
+        const yearMetadataConditions = [
+          { $in: [{ $ifNull: ['$metadata.year', null] }, requestedYears] }
+        ];
+        
+        // Add academicYear regex matches for each requested year
+        requestedYears.forEach(year => {
+          yearMetadataConditions.push({
+            $regexMatch: {
+              input: { $toString: { $ifNull: ['$metadata.academicYear', ''] } },
+              regex: `\\b${year}\\b`,
+              options: 'i'
+            }
+          });
+        });
+        
+        const pipeline = [
+          { $match: matchConditions },
+          {
+            $addFields: {
+              relevanceScore: {
+                $add: [
+                  // High priority for chunks with year match in content
+                  {
+                    $cond: [
+                      { $or: yearMatchConditions },
+                      300,
+                      0
+                    ]
+                  },
+                  // High priority for scholarship section
+                  { $cond: [{ $eq: [{ $toLower: { $ifNull: ['$section', ''] } }, 'scholarship'] }, 250, 0] },
+                  // High priority for total/count queries
+                  { $cond: [{ $regexMatch: { input: { $toString: { $ifNull: ['$content', ''] } }, regex: 'total\\s+(number|count).*students?.*scholarship|students?\\s+with\\s+scholarship.*\\d+', options: 'i' } }, 200, 0] },
+                  // Year in metadata
+                  {
+                    $cond: [
+                      { $or: yearMetadataConditions },
+                      180,
+                      0
+                    ]
+                  },
+                  // Scholarship type
+                  { $cond: [{ $regexMatch: { input: { $toString: { $ifNull: ['$type', ''] } }, regex: 'scholarship|financial_aid', options: 'i' } }, 150, 0] },
+                  // Scholarship keywords
+                  { $cond: [{ $in: ['scholarship', { $ifNull: ['$keywords', []] }] }, 120, 0] },
+                  // Students keyword
+                  { $cond: [{ $in: ['students', { $ifNull: ['$keywords', []] }] }, 100, 0] },
+                  // Updated timestamp
+                  { $cond: [{ $gt: ['$metadata.updated_at', null] }, 10, 0] }
+                ]
+              }
+            }
+          },
+          { $sort: { relevanceScore: -1, 'metadata.year': -1, 'metadata.updated_at': -1 } },
+          { $limit: maxResults }
+        ];
+        
+        const mongoResults = await collection.aggregate(pipeline).toArray();
+        if (mongoResults && mongoResults.length > 0) {
+          results = this._convertMongoChunksToRAG(mongoResults, 100, 'mongodb_scholarship_aggregation');
+          Logger.debug(`✅ Scholarship aggregation: Found ${results.length} chunks`);
+          
+          // Log retrieved chunks from aggregation
+          Logger.logRetrievedChunks(query, results, {
+            source: 'mongodb_scholarship_aggregation',
+            maxChunks: 30,
+            showFullContent: true
+          });
+        }
+      } catch (error) {
+        Logger.debug(`Scholarship aggregation failed: ${error.message}`);
+        Logger.error(`Scholarship aggregation error:`, error);
+      }
+    }
+    
+    // SUPPLEMENT: Vector search to get all scholarship-related chunks
+    if (this.mongoService) {
+      try {
+        const embeddingService = getEmbeddingService();
+        // Enhance query for better vector search results
+        const enhancedQuery = `${query} scholarship recipients students total number count statistics ${requestedYears.join(' ')}`;
+        const queryEmbedding = await embeddingService.embedText(enhancedQuery);
+        const vectorResults = await this.mongoService.vectorSearch(queryEmbedding, maxResults * 2);
+        
+        // Filter to scholarship chunks with year matching
+        const scholarshipVectorResults = vectorResults
+          .filter(chunk => {
+            const section = (chunk.section || '').toLowerCase();
+            const content = (chunk.content || chunk.text || '').toLowerCase();
+            const type = (chunk.type || '').toLowerCase();
+            const category = (chunk.category || '').toLowerCase();
+            const metadataField = (chunk.metadata?.field || '').toLowerCase();
+            const metadataYear = chunk.metadata?.year;
+            const metadataAcademicYear = (chunk.metadata?.academicYear || '').toLowerCase();
+            
+            // Check if chunk is scholarship-related
+            const isScholarshipChunk = section.includes('scholarship') ||
+                                     type.includes('scholarship') ||
+                                     type.includes('financial_aid') ||
+                                     category.includes('scholarship') ||
+                                     category.includes('financial aid') ||
+                                     content.includes('scholarship') ||
+                                     content.includes('recipient') ||
+                                     content.includes('beneficiaries') ||
+                                     metadataField.includes('scholarship');
+            
+            if (!isScholarshipChunk) return false;
+            
+            // Check year match if specific years are requested
+            if (requestedYears.length > 0 && requestedYears.length < 2) {
+              const hasYear = requestedYears.some(year => {
+                const yearStr = year.toString();
+                return content.includes(yearStr) ||
+                       metadataYear === year ||
+                       metadataAcademicYear.includes(yearStr);
+              });
+              if (!hasYear) return false;
+            }
+            
+            return true;
+          })
+          .map(chunk => {
+            let score = chunk.score || 50;
+            const content = (chunk.content || chunk.text || '').toLowerCase();
+            const section = (chunk.section || '').toLowerCase();
+            const type = (chunk.type || '').toLowerCase();
+            const metadataField = (chunk.metadata?.field || '').toLowerCase();
+            const metadataYear = chunk.metadata?.year;
+            
+            // Boost scores for better matches
+            if (section.includes('scholarship')) score += 100;
+            if (type.includes('scholarship')) score += 80;
+            if (isCountQuery && (content.includes('total') || content.includes('count') || content.includes('number'))) score += 70;
+            if (requestedYears.includes(metadataYear)) score += 90;
+            if (requestedYears.some(year => content.includes(year.toString()))) score += 80;
+            if (content.includes('students') && content.includes('scholarship')) score += 60;
+            if (metadataField.includes('scholarship')) score += 50;
+            
+            return {
+              ...chunk,
+              score: score
+            };
+          });
+        
+        // Merge with aggregation results
+        scholarshipVectorResults.forEach(chunk => {
+          if (!results.find(r => r.id === chunk.id)) {
+            results.push({
+              id: chunk.id,
+              section: chunk.section,
+              type: chunk.type,
+              text: chunk.text || chunk.content || '',
+              score: chunk.score || 0,
+              metadata: chunk.metadata || {},
+              keywords: chunk.keywords || [],
+              category: chunk.category,
+              source: 'mongodb_vector_search_scholarship'
+            });
+          }
+        });
+        
+        Logger.debug(`✅ Scholarship vector search: Added ${scholarshipVectorResults.length} chunks`);
+      } catch (error) {
+        Logger.debug(`Scholarship vector search failed: ${error.message}`);
+        Logger.error(`Scholarship vector search error:`, error);
+      }
+    }
+    
+    // Ensure we have scholarship data for requested years
+    if (this.mongoService && results.length < 10) {
+      try {
+        Logger.logDataFetch('searchScholarship_fallback', query, {
+          method: 'mongodb_direct_search',
+          filters: {
+            currentResults: results.length,
+            targetCount: 10,
+            requestedYears
+          }
+        });
+        
+        const collection = this.mongoService.getCollection('knowledge_chunks');
+        
+        // Direct search for scholarship chunks with year filter
+        const directQuery = {
+          $and: [
+            {
+              $or: [
+                { section: { $regex: /scholarship/i } },
+                { type: { $regex: /scholarship|financial_aid/i } },
+                { category: { $regex: /scholarship|financial\s+aid/i } },
+                { content: { $regex: /scholarship/i } },
+                { text: { $regex: /scholarship/i } },
+                { keywords: { $in: ['scholarship', 'scholarships', 'recipients', 'financial aid'] } }
+              ]
+            },
+            {
+              $or: [
+                ...requestedYears.map(year => ({
+                  content: { $regex: new RegExp(`\\b${year}\\b`, 'i') }
+                })),
+                ...requestedYears.map(year => ({
+                  text: { $regex: new RegExp(`\\b${year}\\b`, 'i') }
+                })),
+                ...(requestedYears.length === 2 ? [] : [
+                  { 'metadata.year': { $in: requestedYears } },
+                  { 'metadata.academicYear': { $regex: new RegExp(requestedYears.map(y => `\\b${y}\\b`).join('|'), 'i') } }
+                ])
+              ]
+            }
+          ]
+        };
+        
+        const directResults = await collection.find(directQuery)
+          .sort({ 'metadata.year': -1, 'metadata.updated_at': -1 })
+          .limit(maxSections)
+          .toArray();
+        
+        Logger.logRetrievedChunks(query, directResults, {
+          source: 'mongodb_direct_scholarship_search',
+          maxChunks: 30,
+          showFullContent: true
+        });
+        
+        directResults.forEach(chunk => {
+          if (!results.find(r => r.id === chunk.id)) {
+            // Check if chunk contains year information
+            const chunkYear = chunk.metadata?.year;
+            const content = (chunk.content || chunk.text || '').toLowerCase();
+            const hasYear = requestedYears.some(year => 
+              content.includes(year.toString()) || chunkYear === year
+            );
+            
+            results.push({
+              id: chunk.id,
+              section: chunk.section,
+              type: chunk.type,
+              text: chunk.content || chunk.text || '',
+              score: hasYear ? 250 : 200, // Higher score if year matches
+              metadata: chunk.metadata || {},
+              keywords: chunk.keywords || [],
+              category: chunk.category,
+              source: 'mongodb_direct_scholarship_search'
+            });
+          }
+        });
+        
+        Logger.debug(`✅ Direct scholarship search: Added ${directResults.length} chunks`);
+      } catch (error) {
+        Logger.debug(`Direct scholarship search failed: ${error.message}`);
+        Logger.error(`Direct scholarship search error:`, error);
+      }
+    }
+    
+    // Sort by year (descending, so 2025 first, then 2024), then by score
+    results.sort((a, b) => {
+      const aYear = a.metadata?.year || 0;
+      const bYear = b.metadata?.year || 0;
+      if (bYear !== aYear) return bYear - aYear; // Descending year order
+      
+      // Then by score
+      return (b.score || 0) - (a.score || 0);
+    });
+    
+    return results.slice(0, maxSections);
+  }
+
+  /**
    * Search for schedule/calendar queries (events, announcements, dates)
    */
   async searchSchedule(query, options = {}) {
@@ -3527,6 +3874,12 @@ export class VectorSearchService {
     if (/\b(date|dates|event|events|announcement|announcements|schedule|schedules|calendar|when|upcoming|coming|next|this\s+(week|month|year)|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule|timeline|time\s+table|graduation|seminar|workshop|conference|meeting|activity|activities)\b/i.test(query) ||
         /\b(when\s+(is|are|will|does)|what\s+(date|dates|time|schedule)|tell\s+me\s+(about\s+)?(the\s+)?(schedule|dates?|events?))\b/i.test(query)) {
       return 'schedule';
+    }
+    
+    // Scholarship queries (must be checked before comprehensive/general)
+    // Detects queries about scholarships, scholarship recipients, scholarship statistics, etc.
+    if (/\b(scholarship|scholarships|scholar|scholars|recipients?|beneficiaries?|total\s+(number|count|students?|recipients?)|how\s+many\s+students?\s+.*scholarship|students?\s+with\s+scholarship|scholarship\s+(statistics?|data|information|numbers?|counts?))\b/i.test(query)) {
+      return 'scholarship';
     }
     
     if (/\b(list|all|every|show\s+all|what\s+are\s+the|enumerate|faculties|programs|campuses|missions|objectives)\b/i.test(query)) {

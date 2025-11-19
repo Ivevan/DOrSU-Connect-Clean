@@ -5,10 +5,10 @@ import { Logger } from '../utils/logger.js';
  * Groq AI Service
  * - Production: Uses Groq Cloud API (ultra-fast, cloud-based)
  * - Multi-key support: Rotates between multiple API keys for increased capacity
- * - FIXED MODEL: Always uses llama-3.3-70b-versatile for consistent intelligent responses
+ * - Multi-model support: Switches between configured models when one runs out of tokens
  * 
  * Requires GROQ_API_KEY or GROQ_API_KEYS environment variable
- * Model is hardcoded to llama-3.3-70b-versatile and cannot be changed
+ * Optional: GROQ_MODEL_1 and GROQ_MODEL_2 for model switching (defaults to llama-3.3-70b-versatile)
  */
 export class LlamaService {
   constructor() {
@@ -32,10 +32,33 @@ export class LlamaService {
     
     this.provider = 'groq';
     
-    // FIXED MODEL: Always use llama-3.3-70b-versatile for consistent intelligent responses
-    // Model switching is disabled to maintain response quality and consistency
-    this.groqModel = 'llama-3.3-70b-versatile'; // Fixed model - never changes
-    this.modelLocked = true; // Permanently locked to prevent switching
+    // Multi-model support: Parse models from environment variables
+    // Default to llama-3.3-70b-versatile if not specified
+    const model1 = process.env.GROQ_MODEL_1 || 'llama-3.3-70b-versatile';
+    const model2 = process.env.GROQ_MODEL_2 || null;
+    
+    this.groqModels = [model1];
+    if (model2) {
+      this.groqModels.push(model2);
+    }
+    
+    this.currentModelIndex = 0; // Current model index
+    this.groqModel = this.groqModels[this.currentModelIndex]; // Current model
+    this.modelLocked = false; // Allow model switching when tokens exhausted
+    this.modelSwitchCount = 0; // Track model switches
+    
+    // Track token usage per model (shared across all keys for same model)
+    this.modelUsageStats = {}; // { modelName: { tokensUsed: 0, tokensRemaining: 100000, exhausted: false, exhaustedUntil: null } }
+    this.groqModels.forEach(model => {
+      this.modelUsageStats[model] = {
+        tokensUsed: 0,
+        tokensRemaining: this.dailyTokenLimit,
+        effectiveRemaining: this.effectiveTokenLimit,
+        exhausted: false,
+        exhaustedUntil: null,
+        lastResetDate: new Date().toDateString()
+      };
+    });
     
     // Multi-key management
     this.currentKeyIndex = 0; // Current API key index (round-robin)
@@ -67,8 +90,12 @@ export class LlamaService {
     // Set groqClient to first client
     this.groqClient = this.groqClients[0];
     
-    Logger.success(`🚀 AI Provider: Groq Cloud (${this.groqModel}) - ${this.groqApiKeys.length} API key(s) configured`);
-    Logger.info(`   🔒 Model locked to: ${this.groqModel} (fixed for consistent intelligent responses)`);
+    Logger.success(`🚀 AI Provider: Groq Cloud - ${this.groqApiKeys.length} API key(s), ${this.groqModels.length} model(s) configured`);
+    Logger.info(`   📊 Current model: ${this.groqModel}`);
+    if (this.groqModels.length > 1) {
+      Logger.info(`   ✅ Multi-model support enabled: ${this.groqModels.join(', ')}`);
+      Logger.info(`   🔄 Models will switch automatically when one runs out of tokens`);
+    }
     if (this.groqApiKeys.length > 1) {
       Logger.info(`   ✅ Multi-key support enabled: ${this.groqApiKeys.length} keys configured`);
       Logger.info(`   ⚠️  NOTE: If all keys are from the same Groq account, they share the same token limit (100k/day)`);
@@ -105,24 +132,30 @@ export class LlamaService {
   }
 
   /**
-   * Chat with automatic key rotation on rate limit
-   * Model is FIXED to llama-3.3-70b-versatile - only keys rotate for capacity
+   * Chat with automatic key and model rotation on rate limit/token exhaustion
+   * Supports both key switching and model switching for increased capacity
    */
   async chatWithGroqFallback(messages, options = {}) {
     let lastError = null;
-    const maxKeyAttempts = this.groqClients.length; // Only try different keys, not models
-    const maxServerErrorRetries = 3; // Max retries per key for server errors
+    const maxKeyAttempts = this.groqClients.length;
+    const maxModelAttempts = this.groqModels.length;
+    const maxServerErrorRetries = 3; // Max retries per key/model for server errors
     
-    // Model is fixed - always use llama-3.3-70b-versatile
     const startingKeyIndex = this.currentKeyIndex;
+    const startingModelIndex = this.currentModelIndex;
     let keyAttempts = 0;
+    let modelAttempts = 0;
     const serverErrorRetries = {}; // Track retries per key: { keyIndex: retryCount }
     
-    for (let totalAttempt = 0; totalAttempt < maxKeyAttempts * (maxServerErrorRetries + 1); totalAttempt++) {
+    const maxTotalAttempts = Math.max(maxKeyAttempts, maxModelAttempts) * (maxServerErrorRetries + 1);
+    for (let totalAttempt = 0; totalAttempt < maxTotalAttempts; totalAttempt++) {
       try {
-        // Log key usage for debugging (model is always the same)
+        // Log key/model usage for debugging
         if (this.groqApiKeys.length > 1 && this.currentKeyIndex !== startingKeyIndex) {
-          Logger.info(`🔄 Using key: ${this.currentKeyIndex + 1}/${this.groqApiKeys.length} (attempt ${totalAttempt + 1}/${maxKeyAttempts})`);
+          Logger.info(`🔄 Using key: ${this.currentKeyIndex + 1}/${this.groqApiKeys.length} (attempt ${totalAttempt + 1})`);
+        }
+        if (this.groqModels.length > 1 && this.currentModelIndex !== startingModelIndex) {
+          Logger.info(`🔄 Using model: ${this.groqModel} (${this.currentModelIndex + 1}/${this.groqModels.length}, attempt ${totalAttempt + 1})`);
         }
         
         const groqResponse = await this.chatWithGroq(messages, options);
@@ -327,22 +360,68 @@ export class LlamaService {
             }
           }
           
-          // Model is fixed - cannot switch. If all keys exhausted, wait and retry
-          if (keyAttempts >= maxKeyAttempts - 1) {
-            Logger.warn(`🔒 All keys exhausted. Model fixed to ${this.groqModel}. Waiting before retry...`);
+          // If all keys exhausted, try switching models (if multiple models configured)
+          if (keyAttempts >= maxKeyAttempts - 1 && this.groqModels.length > 1 && modelAttempts < maxModelAttempts - 1) {
+            const currentModel = this.groqModels[this.currentModelIndex];
+            const nextAvailableModel = this.findNextAvailableModel();
+            if (nextAvailableModel !== this.currentModelIndex) {
+              this.currentModelIndex = nextAvailableModel;
+              this.groqModel = this.groqModels[this.currentModelIndex];
+              this.modelSwitchCount++;
+              modelAttempts++;
+              // Reset key attempts to try all keys with new model
+              keyAttempts = 0;
+              Logger.warn(`🔄 All keys exhausted for model ${currentModel}. Switching to model: ${this.groqModel}`);
+              continue;
+            }
+          }
+          
+          // If all keys and models exhausted, wait and retry
+          if (keyAttempts >= maxKeyAttempts - 1 && (this.groqModels.length === 1 || modelAttempts >= maxModelAttempts - 1)) {
+            if (this.groqApiKeys.length === 1 && this.groqModels.length === 1) {
+              Logger.warn(`🔒 Single API key and model exhausted. Waiting before retry...`);
+            } else if (this.groqApiKeys.length === 1) {
+              Logger.warn(`🔒 Single API key exhausted. All models tried. Waiting before retry...`);
+            } else if (this.groqModels.length === 1) {
+              Logger.warn(`🔒 All keys exhausted. Model fixed to ${this.groqModel}. Waiting before retry...`);
+            } else {
+              Logger.warn(`🔒 All keys and models exhausted. Waiting before retry...`);
+            }
             await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds before retry
-            // Reset key attempts to try all keys again
+            // Reset attempts to try all keys/models again
             keyAttempts = 0;
+            modelAttempts = 0;
             continue;
           }
         }
         
-        // If not a rate limit error, or we've exhausted all options, throw
+        // Check if it's a token limit error (model exhausted)
+        const isTokenLimitError = errorMessage.includes('token limit reached') || 
+                                 errorMessage.includes('All models exhausted') ||
+                                 errorMessage.includes('Model') && errorMessage.includes('token limit');
+        
+        // If token limit error and multiple models, try switching models
+        if (isTokenLimitError && this.groqModels.length > 1 && modelAttempts < maxModelAttempts - 1) {
+          const currentModel = this.groqModels[this.currentModelIndex];
+          const nextAvailableModel = this.findNextAvailableModel();
+          if (nextAvailableModel !== this.currentModelIndex) {
+            this.currentModelIndex = nextAvailableModel;
+            this.groqModel = this.groqModels[this.currentModelIndex];
+            this.modelSwitchCount++;
+            modelAttempts++;
+            // Reset key attempts to try all keys with new model
+            keyAttempts = 0;
+            Logger.warn(`🔄 Model ${currentModel} token limit reached. Switching to model: ${this.groqModel}`);
+            continue;
+          }
+        }
+        
+        // If not a rate limit or token limit error, or we've exhausted all options, throw
         break;
       }
     }
     
-    // All keys failed (model is fixed, so we only try keys)
+    // All keys/models failed
     // Clean up error message if it contains HTML
     let finalErrorMessage = lastError?.message || 'Unknown error';
     if (finalErrorMessage.includes('<!DOCTYPE html>') || finalErrorMessage.includes('<html')) {
@@ -351,7 +430,11 @@ export class LlamaService {
       finalErrorMessage = `Groq API server error (${statusCode}): The service is temporarily unavailable. Please try again in a few moments.`;
     }
     
-    Logger.error(`❌ All ${maxKeyAttempts} keys exhausted. Model fixed to ${this.groqModel}. Last error: ${finalErrorMessage}`);
+    if (this.groqModels.length > 1) {
+      Logger.error(`❌ All ${maxKeyAttempts} keys and ${maxModelAttempts} models exhausted. Last error: ${finalErrorMessage}`);
+    } else {
+      Logger.error(`❌ All ${maxKeyAttempts} keys exhausted. Model: ${this.groqModel}. Last error: ${finalErrorMessage}`);
+    }
     
     // Create a new error with cleaned message
     const cleanedError = new Error(finalErrorMessage);
@@ -458,6 +541,56 @@ export class LlamaService {
   }
   
   /**
+   * Find next available model (not exhausted)
+   * @returns {number} Index of available model
+   */
+  findNextAvailableModel() {
+    const now = Date.now();
+    let attempts = 0;
+    let modelIndex = this.currentModelIndex;
+    
+    // Try to find a non-exhausted model
+    while (attempts < this.groqModels.length) {
+      const modelName = this.groqModels[modelIndex];
+      const stats = this.modelUsageStats[modelName];
+      
+      // Check if model is exhausted and still in cooldown
+      if (!stats?.exhausted || (stats.exhaustedUntil && now >= stats.exhaustedUntil)) {
+        // Model is available (not exhausted or cooldown expired)
+        if (stats?.exhausted && stats.exhaustedUntil && now >= stats.exhaustedUntil) {
+          // Reset exhausted status
+          stats.exhausted = false;
+          stats.exhaustedUntil = null;
+          Logger.info(`🔄 Model ${modelName} cooldown expired, re-enabling`);
+        }
+        return modelIndex;
+      }
+      
+      // Try next model
+      modelIndex = (modelIndex + 1) % this.groqModels.length;
+      attempts++;
+    }
+    
+    // All models exhausted, return current model anyway (will retry)
+    Logger.warn(`⚠️ All models appear exhausted, using model ${this.groqModels[this.currentModelIndex]}`);
+    return this.currentModelIndex;
+  }
+  
+  /**
+   * Mark model as exhausted (out of tokens)
+   * @param {string} modelName - Name of the exhausted model
+   * @param {number} cooldownMs - Cooldown period in milliseconds (default: 24 hours)
+   */
+  markModelExhausted(modelName, cooldownMs = 24 * 60 * 60 * 1000) {
+    const stats = this.modelUsageStats[modelName];
+    if (stats) {
+      stats.exhausted = true;
+      stats.exhaustedUntil = Date.now() + cooldownMs;
+      Logger.warn(`⚠️ Model ${modelName} marked as exhausted (cooldown: ${Math.round(cooldownMs / 60000)} minutes)`);
+    }
+  }
+  
+  /**
    * Format token count for display (e.g., 90000 -> "90k", 100000 -> "100k")
    * Uses Logger's formatTokens for consistency
    * @param {number} tokens - Token count
@@ -509,7 +642,7 @@ export class LlamaService {
 
   /**
    * Chat using Groq Cloud (Production - Ultra Fast)
-   * IMPROVED: Multi-key support with round-robin rotation
+   * IMPROVED: Multi-key and multi-model support with automatic switching
    */
   async chatWithGroq(messages, options = {}) {
     // Get next available key (round-robin)
@@ -517,35 +650,59 @@ export class LlamaService {
     this.currentKeyIndex = keyIndex;
     this.groqClient = this.groqClients[keyIndex];
     
-    // Update usage stats
+    // Get current model and check if it has tokens available
+    const currentModel = this.groqModels[this.currentModelIndex];
+    const modelStats = this.modelUsageStats[currentModel];
+    
+    // Reset daily token count for model if it's a new day
+    if (modelStats) {
+      const today = new Date().toDateString();
+      if (modelStats.lastResetDate !== today) {
+        const previousUsed = modelStats.tokensUsed;
+        modelStats.tokensUsed = 0;
+        modelStats.tokensRemaining = this.dailyTokenLimit;
+        modelStats.effectiveRemaining = this.effectiveTokenLimit;
+        modelStats.exhausted = false;
+        modelStats.exhaustedUntil = null;
+        modelStats.lastResetDate = today;
+        Logger.info(`🔄 Token counter reset for model ${currentModel} (new day) - Previous: ${this.formatTokens(previousUsed)}`);
+      }
+      
+      // Check if current model has enough tokens remaining (with safety margin)
+      if (modelStats.tokensUsed >= this.effectiveTokenLimit || modelStats.exhausted) {
+        // Try to switch to next available model
+        if (this.groqModels.length > 1) {
+          const nextModelIndex = this.findNextAvailableModel();
+          if (nextModelIndex !== this.currentModelIndex) {
+            this.currentModelIndex = nextModelIndex;
+            this.groqModel = this.groqModels[this.currentModelIndex];
+            this.modelSwitchCount++;
+            Logger.warn(`🔄 Model ${currentModel} exhausted. Switching to model: ${this.groqModel}`);
+          } else {
+            // All models exhausted, mark current model and throw error
+            this.markModelExhausted(currentModel, 24 * 60 * 60 * 1000);
+            throw new Error(`All models exhausted. Model ${currentModel} token limit reached (safety margin: ${this.formatTokens(this.tokenSafetyMargin)})`);
+          }
+        } else {
+          // Single model, mark as exhausted and throw error
+          this.markModelExhausted(currentModel, 24 * 60 * 60 * 1000);
+          throw new Error(`Model ${currentModel} token limit reached (safety margin: ${this.formatTokens(this.tokenSafetyMargin)})`);
+        }
+      }
+    }
+    
+    // Update key usage stats
     const stats = this.keyUsageStats[keyIndex];
     if (stats) {
-      // Reset daily token count if it's a new day
-      const today = new Date().toDateString();
-      if (stats.lastResetDate !== today) {
-        const previousUsed = stats.tokensUsed;
-        stats.tokensUsed = 0;
-        stats.tokensRemaining = this.dailyTokenLimit;
-        stats.effectiveRemaining = this.effectiveTokenLimit;
-        stats.lastResetDate = today;
-        Logger.info(`🔄 Token counter reset for key ${keyIndex + 1} (new day) - Previous: ${this.formatTokens(previousUsed)}`);
-      }
-      
-      // Check if key has enough tokens remaining (with safety margin)
-      if (stats.tokensUsed >= this.effectiveTokenLimit) {
-        Logger.warn(`⚠️  Key ${keyIndex + 1} has reached safety limit (${this.formatTokens(stats.tokensUsed)}/${this.formatTokens(this.dailyTokenLimit)}). Switching to next key...`);
-        // Mark as exhausted and find next available key
-        this.markKeyExhausted(keyIndex, 24 * 60 * 60 * 1000); // 24 hour cooldown
-        throw new Error(`Key ${keyIndex + 1} token limit reached (safety margin: ${this.formatTokens(this.tokenSafetyMargin)})`);
-      }
-      
       stats.requests++;
       stats.lastUsed = Date.now();
     }
     
-    // Only log key if using non-primary key (model is always fixed)
+    // Log key and model usage
     if (this.groqApiKeys.length > 1 && keyIndex !== 0) {
       Logger.debug(`Using API key: ${keyIndex + 1}/${this.groqApiKeys.length} (model: ${this.groqModel})`);
+    } else if (this.groqModels.length > 1) {
+      Logger.debug(`Using model: ${this.groqModel} (${this.currentModelIndex + 1}/${this.groqModels.length})`);
     }
     
     // CONSISTENCY: Use very low temperature for ALL queries to ensure consistent responses
@@ -560,10 +717,11 @@ export class LlamaService {
     const adjustedTemperature = isDateScheduleQuery ? 0.05 : baseTemperature; // Even lower for dates
     
     // TOKEN USAGE CONTROL: Dynamically adjust max_tokens based on remaining budget
-    // Reduce max_tokens if key is running low on tokens to prevent hitting limit
+    // Use model stats instead of key stats for token limits
     let maxTokens = options.maxTokens ?? 500; // Reduced default from 600 to 500
-    if (stats) {
-      const remainingPercent = (stats.tokensRemaining / this.dailyTokenLimit) * 100;
+    const currentModelStats = this.modelUsageStats[this.groqModel];
+    if (currentModelStats) {
+      const remainingPercent = (currentModelStats.tokensRemaining / this.dailyTokenLimit) * 100;
       
       // If less than 20% remaining, reduce max_tokens significantly
       if (remainingPercent < 20) {
@@ -574,16 +732,8 @@ export class LlamaService {
         maxTokens = Math.min(maxTokens, 450); // Cap at 450 tokens
       }
       
-      // Never exceed effective remaining tokens
-      maxTokens = Math.min(maxTokens, Math.max(100, stats.effectiveRemaining - 100)); // Keep 100 token buffer
-    }
-    
-    // FIXED MODEL: Always use llama-3.3-70b-versatile for all API keys
-    // This ensures consistent intelligent responses across all requests
-    // Verify model is correct before API call
-    if (this.groqModel !== 'llama-3.3-70b-versatile') {
-      Logger.error(`⚠️  MODEL MISMATCH: Expected llama-3.3-70b-versatile but got ${this.groqModel}. Fixing...`);
-      this.groqModel = 'llama-3.3-70b-versatile';
+      // Never exceed effective remaining tokens for the model
+      maxTokens = Math.min(maxTokens, Math.max(100, currentModelStats.effectiveRemaining - 100)); // Keep 100 token buffer
     }
     
     Logger.debug(`🤖 API Call: model=${this.groqModel}, temperature=${adjustedTemperature}, max_tokens=${maxTokens}, key=${keyIndex + 1}`);
@@ -601,8 +751,9 @@ export class LlamaService {
       stop: null
     });
     
-    // Track token usage from response
-    if (response?.usage && stats) {
+    // Track token usage from response (per model, not per key)
+    const currentModelStatsForTracking = this.modelUsageStats[this.groqModel];
+    if (response?.usage && currentModelStatsForTracking) {
       const usage = response.usage;
       
       // Token breakdown from Groq API response
@@ -610,25 +761,25 @@ export class LlamaService {
       const completionTokens = usage.completion_tokens || 0; // Output tokens (AI response)
       const tokensUsed = usage.total_tokens || 0;         // Total = promptTokens + completionTokens
       
-      // Update cumulative stats
-      stats.tokensUsed = (stats.tokensUsed || 0) + tokensUsed;
-      stats.tokensRemaining = Math.max(0, this.dailyTokenLimit - stats.tokensUsed);
-      stats.effectiveRemaining = Math.max(0, this.effectiveTokenLimit - stats.tokensUsed);
+      // Update cumulative stats for the model
+      currentModelStatsForTracking.tokensUsed = (currentModelStatsForTracking.tokensUsed || 0) + tokensUsed;
+      currentModelStatsForTracking.tokensRemaining = Math.max(0, this.dailyTokenLimit - currentModelStatsForTracking.tokensUsed);
+      currentModelStatsForTracking.effectiveRemaining = Math.max(0, this.effectiveTokenLimit - currentModelStatsForTracking.tokensUsed);
       
       // Format tokens for display using Logger's formatting methods
-      const tokenUsageStr = Logger.formatTokenUsage(stats.tokensUsed, this.dailyTokenLimit);
-      const remainingFormatted = Logger.formatTokens(stats.tokensRemaining);
-      const effectiveFormatted = Logger.formatTokens(stats.effectiveRemaining);
+      const tokenUsageStr = Logger.formatTokenUsage(currentModelStatsForTracking.tokensUsed, this.dailyTokenLimit);
+      const remainingFormatted = Logger.formatTokens(currentModelStatsForTracking.tokensRemaining);
+      const effectiveFormatted = Logger.formatTokens(currentModelStatsForTracking.effectiveRemaining);
       
       // Use Logger's tokenUsage method for consistent formatting
-      Logger.tokenUsage(`Token usage (Key ${keyIndex + 1}): ${tokensUsed} total (${promptTokens} input + ${completionTokens} output)`, {
-        used: stats.tokensUsed,
+      Logger.tokenUsage(`Token usage (Model ${this.groqModel}): ${tokensUsed} total (${promptTokens} input + ${completionTokens} output)`, {
+        used: currentModelStatsForTracking.tokensUsed,
         limit: this.dailyTokenLimit,
-        remaining: stats.tokensRemaining,
+        remaining: currentModelStatsForTracking.tokensRemaining,
         input: promptTokens,
         output: completionTokens,
         total: tokensUsed,
-        keyLabel: `Key ${keyIndex + 1}`
+        keyLabel: `Model ${this.groqModel}`
       });
       
       // Warn if input tokens are too high (main cost driver)
@@ -643,16 +794,19 @@ export class LlamaService {
       Logger.debug(`   📤 Output tokens: ${completionTokens} (max allowed: ${maxTokens})`);
       Logger.debug(`   📊 Daily usage: ${tokenUsageStr} (${effectiveFormatted} effective remaining)`);
       
-      // Warn if approaching limit
-      const usagePercent = (stats.tokensUsed / this.dailyTokenLimit) * 100;
+      // Warn if approaching limit (use model stats)
+      const usagePercent = (currentModelStatsForTracking.tokensUsed / this.dailyTokenLimit) * 100;
+      const usedFormatted = Logger.formatTokens(currentModelStatsForTracking.tokensUsed);
+      const limitFormatted = Logger.formatTokens(this.dailyTokenLimit);
+      
       if (usagePercent >= 95) {
-        Logger.warn(`🚨 Key ${keyIndex + 1} token usage at ${usagePercent.toFixed(1)}% (${remainingFormatted} remaining) - Near limit!`);
+        Logger.warn(`🚨 Model ${this.groqModel} token usage at ${usagePercent.toFixed(1)}% (${remainingFormatted} remaining) - Near limit!`);
       } else if (usagePercent >= 90) {
-        Logger.warn(`⚠️  Key ${keyIndex + 1} token usage at ${usagePercent.toFixed(1)}% (${remainingFormatted} remaining) - Approaching limit`);
+        Logger.warn(`⚠️  Model ${this.groqModel} token usage at ${usagePercent.toFixed(1)}% (${remainingFormatted} remaining) - Approaching limit`);
       } else if (usagePercent >= 75) {
-        Logger.warn(`⚠️  Key ${keyIndex + 1} token usage at ${usagePercent.toFixed(1)}% (${remainingFormatted} remaining)`);
+        Logger.warn(`⚠️  Model ${this.groqModel} token usage at ${usagePercent.toFixed(1)}% (${remainingFormatted} remaining)`);
       } else if (usagePercent >= 50) {
-        Logger.info(`📊 Key ${keyIndex + 1} token usage: ${usedFormatted}/${limitFormatted} (${remainingFormatted} remaining)`);
+        Logger.info(`📊 Model ${this.groqModel} token usage: ${usedFormatted}/${limitFormatted} (${remainingFormatted} remaining)`);
       }
     }
     
@@ -670,6 +824,7 @@ export class LlamaService {
     
     // Return response with token usage metadata
     const content = response.choices[0]?.message?.content || '';
+    const currentModelStatsForResponse = this.modelUsageStats[this.groqModel];
     
     // Store token usage in response object (not on string)
     const responseWithUsage = {
@@ -678,9 +833,11 @@ export class LlamaService {
         promptTokens: response.usage.prompt_tokens || 0,
         completionTokens: response.usage.completion_tokens || 0,
         totalTokens: response.usage.total_tokens || 0,
-        tokensRemaining: stats?.tokensRemaining || 0,
-        tokensUsed: stats?.tokensUsed || 0,
+        tokensRemaining: currentModelStatsForResponse?.tokensRemaining || 0,
+        tokensUsed: currentModelStatsForResponse?.tokensUsed || 0,
         dailyLimit: this.dailyTokenLimit,
+        model: this.groqModel,
+        modelIndex: this.currentModelIndex + 1,
         keyIndex: keyIndex + 1
       } : null
     };
@@ -709,40 +866,58 @@ export class LlamaService {
   getProviderInfo() {
     return {
       provider: this.provider,
-      model: this.groqModel, // Fixed model: llama-3.3-70b-versatile
+      model: this.groqModel,
+      models: this.groqModels,
+      currentModelIndex: this.currentModelIndex,
       isCloud: true,
       isLocal: false,
-      modelLocked: true, // Model is permanently locked
+      modelLocked: this.modelLocked,
+      modelSwitchCount: this.modelSwitchCount,
       multiKey: {
         totalKeys: this.groqApiKeys.length,
         currentKeyIndex: this.currentKeyIndex,
         keySwitchCount: this.keySwitchCount,
         keyStats: this.getKeyStats()
+      },
+      multiModel: {
+        totalModels: this.groqModels.length,
+        currentModelIndex: this.currentModelIndex,
+        modelSwitchCount: this.modelSwitchCount,
+        modelStats: Object.entries(this.modelUsageStats).map(([modelName, stats]) => ({
+          model: modelName,
+          tokensUsed: stats.tokensUsed || 0,
+          tokensRemaining: stats.tokensRemaining || this.dailyTokenLimit,
+          effectiveRemaining: stats.effectiveRemaining || this.effectiveTokenLimit,
+          exhausted: stats.exhausted,
+          exhaustedUntil: stats.exhaustedUntil,
+          isActive: modelName === this.groqModel
+        }))
       }
     };
   }
   
   /**
-   * Model is permanently locked to llama-3.3-70b-versatile
-   * These methods are kept for API compatibility but do nothing
+   * Lock model switching (disable automatic model switching)
    */
   lockModel() {
-    // Model is already permanently locked
-    Logger.info(`🔒 Model is permanently locked to: ${this.groqModel}`);
+    this.modelLocked = true;
+    Logger.info(`🔒 Model switching locked. Current model: ${this.groqModel}`);
   }
   
   /**
-   * Cannot unlock model - it's permanently fixed
+   * Unlock model switching (enable automatic model switching)
    */
   unlockModel() {
-    Logger.warn(`⚠️ Model cannot be unlocked - permanently fixed to ${this.groqModel} for consistent responses`);
+    this.modelLocked = false;
+    Logger.info(`🔓 Model switching unlocked. Models will switch automatically when tokens exhausted.`);
   }
   
   /**
-   * Model is already set to llama-3.3-70b-versatile
+   * Reset to primary model (first model in the list)
    */
   resetToPrimaryModel() {
-    // Model is already set correctly
-    Logger.info(`Model is already set to: ${this.groqModel}`);
+    this.currentModelIndex = 0;
+    this.groqModel = this.groqModels[0];
+    Logger.info(`🔄 Reset to primary model: ${this.groqModel}`);
   }
 }

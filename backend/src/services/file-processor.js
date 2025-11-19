@@ -85,29 +85,82 @@ class FileProcessorService {
 
   /**
    * Convert JSON to readable text format
+   * Enhanced to handle structured data better for knowledge base
    */
-  jsonToText(jsonData, prefix = '') {
+  jsonToText(jsonData, prefix = '', options = {}) {
+    const { maxDepth = 5, currentDepth = 0 } = options;
+    
+    // Prevent infinite recursion
+    if (currentDepth >= maxDepth) {
+      return `${prefix}: [Max depth reached]\n`;
+    }
+    
     let text = '';
     
     if (Array.isArray(jsonData)) {
+      // Handle arrays - each item gets its own context
       jsonData.forEach((item, index) => {
         if (typeof item === 'object' && item !== null) {
-          text += this.jsonToText(item, `${prefix}[${index}]`);
+          const itemPrefix = prefix ? `${prefix}[${index}]` : `Item ${index + 1}`;
+          text += this.jsonToText(item, itemPrefix, { ...options, currentDepth: currentDepth + 1 });
         } else {
-          text += `${prefix}[${index}]: ${String(item)}\n`;
+          const key = prefix || 'Value';
+          text += `${key}: ${String(item)}\n`;
         }
       });
     } else if (typeof jsonData === 'object' && jsonData !== null) {
-      for (const [key, value] of Object.entries(jsonData)) {
-        const fullKey = prefix ? `${prefix}.${key}` : key;
-        if (typeof value === 'object' && value !== null) {
-          text += this.jsonToText(value, fullKey);
+      // Handle objects - create natural language descriptions
+      const entries = Object.entries(jsonData);
+      
+      // For structured data, try to create coherent sentences
+      if (entries.length > 0) {
+        // Check if this looks like a structured entity (e.g., person, event, document)
+        const hasNameField = jsonData.name || jsonData.title || jsonData.fullName || jsonData.name;
+        const hasDescriptionField = jsonData.description || jsonData.content || jsonData.text || jsonData.details;
+        
+        if (hasNameField || hasDescriptionField) {
+          // Create a natural language entry for structured entities
+          let entityText = '';
+          if (hasNameField) {
+            entityText += `${jsonData.name || jsonData.title || jsonData.fullName || jsonData.name}`;
+          }
+          
+          // Add key attributes
+          entries.forEach(([key, value]) => {
+            if (key === 'name' || key === 'title' || key === 'fullName' || key === 'name') return;
+            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+              // Nested object - recurse
+              entityText += `\n${key}:\n`;
+              entityText += this.jsonToText(value, `  `, { ...options, currentDepth: currentDepth + 1 });
+            } else if (Array.isArray(value)) {
+              // Array - list items
+              if (value.length > 0) {
+                entityText += `\n${key}: ${value.map(v => String(v)).join(', ')}`;
+              }
+            } else if (value !== null && value !== undefined) {
+              entityText += `. ${key}: ${String(value)}`;
+            }
+          });
+          
+          text += entityText + '\n\n';
         } else {
-          text += `${fullKey}: ${String(value)}\n`;
+          // Regular object - use key-value format
+          for (const [key, value] of entries) {
+            const fullKey = prefix ? `${prefix}.${key}` : key;
+            if (typeof value === 'object' && value !== null) {
+              text += this.jsonToText(value, fullKey, { ...options, currentDepth: currentDepth + 1 });
+            } else if (Array.isArray(value)) {
+              text += `${fullKey}: ${value.map(v => String(v)).join(', ')}\n`;
+            } else {
+              text += `${fullKey}: ${String(value)}\n`;
+            }
+          }
         }
       }
     } else {
-      text += `${prefix}: ${String(jsonData)}\n`;
+      // Primitive value
+      const key = prefix || 'Value';
+      text += `${key}: ${String(jsonData)}\n`;
     }
     
     return text;
@@ -115,49 +168,120 @@ class FileProcessorService {
 
   /**
    * Convert CSV to readable text format
+   * Enhanced to handle various CSV formats and create structured knowledge chunks
    */
   csvToText(csvContent) {
-    const lines = csvContent.split('\n').filter(line => line.trim().length > 0);
+    const lines = csvContent.split(/\r?\n/).filter(line => line.trim().length > 0);
     if (lines.length === 0) return '';
     
-    // Parse CSV (simple implementation - assumes comma-separated)
-    const rows = lines.map(line => {
-      // Handle quoted fields
+    // Enhanced CSV parser - handles quoted fields, commas in quotes, etc.
+    const parseCSVLine = (line) => {
       const fields = [];
       let currentField = '';
       let inQuotes = false;
+      let i = 0;
       
-      for (let i = 0; i < line.length; i++) {
+      while (i < line.length) {
         const char = line[i];
+        const nextChar = line[i + 1];
+        
         if (char === '"') {
-          inQuotes = !inQuotes;
+          if (inQuotes && nextChar === '"') {
+            // Escaped quote
+            currentField += '"';
+            i += 2;
+          } else {
+            // Toggle quote state
+            inQuotes = !inQuotes;
+            i++;
+          }
         } else if (char === ',' && !inQuotes) {
+          // Field separator
           fields.push(currentField.trim());
           currentField = '';
+          i++;
         } else {
           currentField += char;
+          i++;
         }
       }
+      
+      // Add last field
       fields.push(currentField.trim());
       return fields;
-    });
+    };
+    
+    const rows = lines.map(line => parseCSVLine(line));
     
     if (rows.length === 0) return '';
     
-    // Convert to text format
+    // Normalize header row - trim and clean headers
+    const headers = rows[0].map(h => h.trim().toLowerCase().replace(/[^\w\s]/g, ''));
+    
+    if (rows.length === 1) {
+      // Only headers, no data
+      return `CSV File with columns: ${headers.join(', ')}\n`;
+    }
+    
+    // Convert to structured text format
     let text = '';
-    const headers = rows[0];
     
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      if (row.length === headers.length) {
-        text += `Row ${i}:\n`;
-        headers.forEach((header, index) => {
-          if (row[index]) {
-            text += `  ${header}: ${row[index]}\n`;
+      
+      // Skip empty rows
+      if (row.every(cell => !cell || cell.trim().length === 0)) {
+        continue;
+      }
+      
+      // Create a structured entry for each row
+      // Try to identify if this looks like structured data (e.g., title, name, description)
+      const rowObj = {};
+      headers.forEach((header, index) => {
+        if (row[index] && row[index].trim()) {
+          rowObj[header] = row[index].trim();
+        }
+      });
+      
+      // Create natural language description
+      const entryParts = [];
+      
+      // Priority fields for natural language
+      const priorityFields = ['name', 'title', 'subject', 'topic', 'event', 'program', 'faculty'];
+      let hasPriorityField = false;
+      
+      priorityFields.forEach(priorityField => {
+        const fieldValue = rowObj[priorityField];
+        if (fieldValue) {
+          entryParts.push(`${fieldValue}`);
+          hasPriorityField = true;
+        }
+      });
+      
+      // Add other fields
+      Object.entries(rowObj).forEach(([key, value]) => {
+        if (!priorityFields.includes(key) && value) {
+          // Format based on field name
+          if (key.includes('date') || key.includes('time')) {
+            entryParts.push(`${key}: ${value}`);
+          } else if (key.includes('description') || key.includes('details') || key.includes('content')) {
+            entryParts.push(`${value}`);
+          } else {
+            entryParts.push(`${key}: ${value}`);
           }
-        });
-        text += '\n';
+        }
+      });
+      
+      if (entryParts.length > 0) {
+        text += entryParts.join('. ') + '.\n\n';
+      } else {
+        // Fallback: use all fields
+        const allFields = Object.entries(rowObj)
+          .map(([key, value]) => `${key}: ${value}`)
+          .join('. ');
+        if (allFields) {
+          text += allFields + '.\n\n';
+        }
       }
     }
     

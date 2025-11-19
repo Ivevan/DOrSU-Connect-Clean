@@ -480,13 +480,52 @@ const AdminSettings = () => {
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={styles.sectionTitleButtonLast}
+              style={styles.sectionTitleButton}
               onPress={() => {
                 navigation.navigate('AdminAbout');
               }}
             >
               <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>About</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+          </BlurView>
+
+          {/* Knowledge Base Upload Section */}
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)', marginTop: themeConfig.spacing(1.5) }]}
+          >
+            <View style={styles.uploadSectionHeader}>
+              <Ionicons name="document-text-outline" size={20} color={theme.colors.primary} />
+              <Text style={[styles.uploadSectionTitle, { color: theme.colors.text }]}>Knowledge Base</Text>
+            </View>
+            <Text style={[styles.uploadSectionDescription, { color: theme.colors.textMuted }]}>
+              Upload .txt, .csv, or .json files to update the knowledge base
+            </Text>
+            <TouchableOpacity 
+              style={[
+                styles.uploadButton,
+                { 
+                  backgroundColor: isUploadingFile ? theme.colors.textMuted : theme.colors.primary,
+                  opacity: isUploadingFile ? 0.6 : 1,
+                }
+              ]}
+              onPress={handleFileUpload}
+              disabled={isUploadingFile}
+              activeOpacity={0.7}
+            >
+              {isUploadingFile ? (
+                <>
+                  <Ionicons name="hourglass-outline" size={18} color="#FFFFFF" />
+                  <Text style={styles.uploadButtonText}>Uploading...</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="cloud-upload-outline" size={18} color="#FFFFFF" />
+                  <Text style={styles.uploadButtonText}>Upload File</Text>
+                </>
+              )}
             </TouchableOpacity>
           </BlurView>
 
@@ -773,6 +812,38 @@ const styles = StyleSheet.create({
     borderRadius: 140,
     opacity: 0.2,
     overflow: 'hidden',
+  },
+  uploadSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: themeConfig.spacing(1),
+    marginBottom: themeConfig.spacing(1),
+  },
+  uploadSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: themeConfig.colors.text,
+  },
+  uploadSectionDescription: {
+    fontSize: 13,
+    color: themeConfig.colors.textMuted,
+    marginBottom: themeConfig.spacing(2),
+    lineHeight: 18,
+  },
+  uploadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: themeConfig.spacing(1.5),
+    paddingHorizontal: themeConfig.spacing(2),
+    borderRadius: themeConfig.radii.md,
+    gap: themeConfig.spacing(1),
+  },
+  uploadButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
   },
 });
 

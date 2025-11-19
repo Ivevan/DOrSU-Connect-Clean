@@ -92,34 +92,80 @@ class AdminFileService {
         throw new Error('No authentication token found');
       }
 
-      // Read file as base64
-      const fileBase64 = await FileSystem.readAsStringAsync(fileUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      // Convert base64 to blob for multipart/form-data
-      // For React Native, we'll use FormData
-      const formData = new FormData();
+      // Handle web vs native platforms differently
+      let fileContent: Blob | File | { uri: string; type: string; name: string };
       
-      // Create a file object for FormData
-      // @ts-ignore - React Native FormData accepts objects with these properties
-      formData.append('file', {
-        uri: fileUri,
-        type: mimeType,
-        name: fileName,
-      } as any);
+      if (Platform.OS === 'web') {
+        // For web, use fetch to get the file blob
+        // On web, expo-document-picker returns a blob URL or file:// URL
+        try {
+          // Try to fetch the file as blob
+          const response = await fetch(fileUri);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch file: ${response.statusText}`);
+          }
+          const blob = await response.blob();
+          fileContent = new File([blob], fileName, { 
+            type: mimeType,
+            lastModified: Date.now()
+          });
+        } catch (fetchError) {
+          // If fetch fails, it might be a file:// URL which won't work on web
+          // In that case, we need to handle it differently
+          console.warn('Failed to fetch file, trying alternative method:', fetchError);
+          
+          // Try to read file using FileSystem if available (for Expo Go web)
+          try {
+            // This might work in some Expo web environments
+            const textContent = await FileSystem.readAsStringAsync(fileUri, {
+              encoding: FileSystem.EncodingType.UTF8,
+            });
+            const blob = new Blob([textContent], { type: mimeType });
+            fileContent = new File([blob], fileName, { 
+              type: mimeType,
+              lastModified: Date.now()
+            });
+          } catch (fileSystemError) {
+            // If both methods fail, throw a helpful error
+            throw new Error(`Unable to read file on web platform. Please try selecting the file again or use a different browser.`);
+          }
+        }
+      } else {
+        // For native React Native, use uri format
+        fileContent = {
+          uri: fileUri,
+          type: mimeType,
+          name: fileName,
+        };
+      }
 
+      const formData = new FormData();
+      // For web, File object should include filename automatically
+      // For native, the object with uri/type/name should work
+      formData.append('file', fileContent as any, Platform.OS === 'web' ? fileName : undefined);
+
+      console.log(`📤 Uploading file to knowledge base: ${fileName}, Platform: ${Platform.OS}`);
+      
       const response = await fetch(`${apiConfig.baseUrl}/api/admin/upload-file`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
-          // Don't set Content-Type - let fetch set it with boundary
+          // Don't set Content-Type - let fetch set it automatically with boundary for FormData
         },
         body: formData,
       });
 
+      console.log(`📥 File upload response status: ${response.status}`);
+      
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
+        const errorText = await response.text();
+        console.error(`❌ File upload error response: ${errorText}`);
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText || 'Upload failed' };
+        }
         throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
       }
 

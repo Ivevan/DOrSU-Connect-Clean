@@ -267,13 +267,18 @@ const AdminSettings = () => {
         <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Settings</Text>
       </View>
 
-      <View
-        style={[styles.contentContainer, {
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scrollView}
+        contentContainerStyle={[styles.contentContainer, {
           paddingTop: insets.top + 56,
           paddingBottom: insets.bottom + 20,
           paddingLeft: insets.left + 16,
           paddingRight: insets.right + 16,
         }]}
+        showsVerticalScrollIndicator={true}
+        bounces={true}
+        keyboardShouldPersistTaps="handled"
       >
         {/* User Profile Section */}
         <BlurView
@@ -436,7 +441,7 @@ const AdminSettings = () => {
             <Text style={[styles.signOutText, { color: '#EF4444' }]}>Sign out</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </ScrollView>
 
       <LogoutModal
         visible={isLogoutOpen}
@@ -478,8 +483,11 @@ const styles = StyleSheet.create({
     letterSpacing: -0.3,
     marginLeft: 8,
   },
-  contentContainer: {
+  scrollView: {
     flex: 1,
+  },
+  contentContainer: {
+    flexGrow: 1,
     justifyContent: 'flex-start',
   },
   profileSection: {

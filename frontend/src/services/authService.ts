@@ -21,14 +21,21 @@ const ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '4
 // Initialize Google Sign-In (native only; web module is a stub)
 if (Platform.OS !== 'web') {
   const googleConfig: any = {
-    webClientId: WEB_CLIENT_ID,
+    webClientId: WEB_CLIENT_ID, // Required for server-side authentication
     offlineAccess: true,
     forceCodeForRefreshToken: true,
+    // Use native sign-in only - don't fall back to web view
+    scopes: ['profile', 'email'],
   };
   if (ANDROID_CLIENT_ID) {
     googleConfig.androidClientId = ANDROID_CLIENT_ID;
   }
-  GoogleSignin.configure(googleConfig);
+  try {
+    GoogleSignin.configure(googleConfig);
+    console.log('✅ Google Sign-In configured successfully');
+  } catch (configError) {
+    console.error('❌ Google Sign-In configuration error:', configError);
+  }
 }
 
 // Auth state change listener type
@@ -47,22 +54,29 @@ export const signInWithGoogleAndroid = async (): Promise<User> => {
     // Check if your device supports Google Play
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
-    // Sign out from Google Sign-In to force account selection
-    // This ensures the user can choose a different account each time
+    // Ensure Google Sign-In is properly configured before attempting sign-in
+    // This helps prevent web view fallback
     try {
-      await GoogleSignin.signOut();
+      const isSignedIn = await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      if (isSignedIn) {
+        // Sign out from Google Sign-In to force account selection
+        await GoogleSignin.signOut();
+      }
     } catch (signOutError) {
       // Ignore sign out errors (user might not be signed in)
       console.log('Sign out before sign in (expected):', signOutError);
     }
 
     // Get the user's ID token from Google Sign-In
-    // This will now always show the account picker
-    const { idToken } = await GoogleSignin.signIn();
-
-    if (!idToken) {
-      throw new Error('No ID token received from Google Sign-In');
+    // This uses native sign-in - should not open web view
+    // If native sign-in fails, it will throw an error instead of falling back to web view
+    const signInResult = await GoogleSignin.signIn();
+    
+    if (!signInResult || !signInResult.idToken) {
+      throw new Error('No ID token received from Google Sign-In. Native sign-in failed. Please check Google Play Services and try again.');
     }
+
+    const { idToken } = signInResult;
 
     // Create a Google credential with the token
     // Using React Native Firebase's credential method
@@ -79,14 +93,22 @@ export const signInWithGoogleAndroid = async (): Promise<User> => {
       code: error.code,
       message: error.message,
       webClientId: WEB_CLIENT_ID,
+      androidClientId: ANDROID_CLIENT_ID,
     });
+
+    // Handle connection errors specifically
+    if (error.message?.includes('ERR_CONNECTION_CLOSED') || 
+        error.message?.includes('connection') || 
+        error.message?.includes('network')) {
+      throw new Error('Network connection failed. Please check your internet connection and try again. If the problem persists, verify SHA-1 fingerprint in Firebase Console.');
+    }
 
     if (error.code === statusCodes.SIGN_IN_CANCELLED) {
       throw new Error('Sign-in was cancelled');
     } else if (error.code === statusCodes.IN_PROGRESS) {
       throw new Error('Sign-in is already in progress');
     } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-      throw new Error('Google Play Services not available');
+      throw new Error('Google Play Services not available. Please update Google Play Services from the Play Store.');
     } else if (error.code === statusCodes.SIGN_IN_REQUIRED) {
       throw new Error('Sign-in required. Please try again.');
     } else if (error.code === '10' || error.message?.includes('DEVELOPER_ERROR')) {

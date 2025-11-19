@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import React from 'react';
-import { ActivityIndicator, Alert, Animated, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { ActivityIndicator, Alert, Animated, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import DeleteEventModal from '../../modals/DeleteEventModal';
@@ -9,6 +9,35 @@ import MonthPickerModal from '../../modals/MonthPickerModal';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
 import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
 import { formatDate } from '../../utils/dateUtils';
+
+// Helper function for compact date formatting (prevents wrapping)
+const formatCompactDate = (dateStr: string | Date | undefined): string => {
+  if (!dateStr) return '';
+  const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+  if (isNaN(date.getTime())) return '';
+  
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[date.getMonth()];
+  const day = date.getDate();
+  const year = date.getFullYear();
+  
+  // Use shorter format: "Nov 19, 2025" -> "Nov 19" or "Nov 19 '25" for very small screens
+  return `${month} ${day}`;
+};
+
+// Helper function for compact date range
+const formatCompactDateRange = (startDate: Date, endDate: Date): string => {
+  const start = formatCompactDate(startDate);
+  const end = formatCompactDate(endDate);
+  const startYear = startDate.getFullYear();
+  const endYear = endDate.getFullYear();
+  
+  if (startYear === endYear) {
+    return `${start} - ${end}, ${startYear}`;
+  }
+  return `${start}, ${startYear} - ${end}, ${endYear}`;
+};
 
 interface EventDetailsDrawerProps {
   visible: boolean;
@@ -79,6 +108,31 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
 }) => {
   const { theme: t } = useThemeValues();
   const insets = useSafeAreaInsets();
+  
+  // Responsive design: detect screen width
+  const [screenWidth, setScreenWidth] = React.useState(Dimensions.get('window').width);
+  const isSmallScreen = screenWidth < 360;
+  const isMediumScreen = screenWidth >= 360 && screenWidth < 400;
+  
+  React.useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setScreenWidth(window.width);
+    });
+    return () => subscription?.remove();
+  }, []);
+  
+  // Memoize formatted date for performance
+  const formattedDate = useMemo(() => {
+    if (!selectedEvent) return '';
+    if (selectedEvent.dateType === 'date_range' && selectedEvent.startDate && selectedEvent.endDate) {
+      return formatCompactDateRange(new Date(selectedEvent.startDate), new Date(selectedEvent.endDate));
+    }
+    if (selectedEvent.isoDate || selectedEvent.date) {
+      const date = new Date(selectedEvent.isoDate || selectedEvent.date);
+      return formatCompactDate(date);
+    }
+    return 'No date';
+  }, [selectedEvent?.isoDate, selectedEvent?.date, selectedEvent?.dateType, selectedEvent?.startDate, selectedEvent?.endDate]);
   
   // Delete modal state and animations
   const [showDeleteModal, setShowDeleteModal] = React.useState(false);
@@ -329,37 +383,40 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
             }
           ]}
         >
-          <View style={{ flex: 1 }}>
-            <View style={styles.drawerHandle}>
-              <View style={[styles.drawerHandleBar, { backgroundColor: t.colors.textMuted }]} />
-            </View>
-            
-            <View style={styles.drawerHeader}>
-              <Text style={[styles.drawerTitle, { color: t.colors.text }]}>
-                {isEditing && !readOnly ? 'Edit Event' : 'Event Details'}
-              </Text>
-              <TouchableOpacity
-                onPress={onClose}
-                style={styles.drawerCloseButton}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons name="close" size={22} color={t.colors.text} />
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView
-              style={styles.drawerScrollView}
-              contentContainerStyle={[styles.drawerScrollContent, { paddingBottom: 20 }]}
-              showsVerticalScrollIndicator={true}
-              bounces={true}
+          {/* Fixed Header Section */}
+          <View style={styles.drawerHandle}>
+            <View style={[styles.drawerHandleBar, { backgroundColor: t.colors.textMuted }]} />
+          </View>
+          
+          <View style={styles.drawerHeader}>
+            <Text style={[styles.drawerTitle, { color: t.colors.text }]}>
+              {isEditing && !readOnly ? 'Edit Event' : 'Event Details'}
+            </Text>
+            <TouchableOpacity
+              onPress={onClose}
+              style={styles.drawerCloseButton}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
+              <Ionicons name="close" size={22} color={t.colors.text} />
+            </TouchableOpacity>
+          </View>
+          
+          {/* Scrollable Content Section */}
+          <ScrollView
+            style={styles.drawerScrollView}
+            contentContainerStyle={[styles.drawerScrollContent, { paddingBottom: insets.bottom + 24 }]}
+            showsVerticalScrollIndicator={true}
+            bounces={true}
+            keyboardShouldPersistTaps="handled"
+          >
               {/* Show event selector if multiple events on this date */}
               {selectedDateEvents && selectedDateEvents.length > 1 && !isEditing ? (
-                <View style={styles.drawerSection}>
-                  <Text style={[styles.drawerFieldLabel, { color: t.colors.textMuted }]}>
-                    Multiple events on {selectedDateForDrawer ? formatDate(selectedDateForDrawer) : 'this date'}
+                <View style={styles.drawerEventSelectorSection}>
+                  <Text style={[styles.drawerEventSelectorLabel, { color: t.colors.textMuted }]}>
+                    MULTIPLE EVENTS ON {selectedDateForDrawer ? formatDate(selectedDateForDrawer).toUpperCase() : 'THIS DATE'}
                   </Text>
-                  {selectedDateEvents.map((event: any, index: number) => {
+                  <View style={styles.drawerEventSelectorContainer}>
+                    {selectedDateEvents.map((event: any, index: number) => {
                     const fullEvent = calendarEvents.find((e: any) => 
                       e._id === event.id || 
                       `calendar-${e.isoDate}-${e.title}` === event.id ||
@@ -394,171 +451,189 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
                         )}
                       </TouchableOpacity>
                     );
-                  })}
+                    })}
+                  </View>
                 </View>
               ) : null}
               
               {selectedEvent ? (
-                <View>
-                  {/* Title */}
-                  {isEditing && !readOnly ? (
-                    <View style={styles.drawerEditField}>
-                      <Text style={[styles.drawerFieldLabel, { color: t.colors.text }]}>Title *</Text>
-                      <View style={[styles.drawerInputContainer, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
-                        <TextInput
-                          style={[styles.drawerInput, { color: t.colors.text }]}
-                          value={editTitle}
-                          onChangeText={setEditTitle}
-                          placeholder="Enter event title"
-                          placeholderTextColor={t.colors.textMuted}
-                          maxLength={100}
-                        />
-                        <Text style={[styles.drawerCharCount, { color: t.colors.textMuted }]}>
-                          {editTitle.length}/100
-                        </Text>
-                      </View>
-                    </View>
-                  ) : (
-                    <View style={styles.drawerSection}>
-                      <Text style={[styles.drawerFieldLabel, { color: t.colors.textMuted }]}>Title</Text>
-                      <Text style={[styles.drawerEventTitle, { color: t.colors.text }]}>
-                        {selectedEvent.title}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Date */}
-                  {isEditing && !readOnly ? (
-                    <View style={styles.drawerEditField}>
-                      <Text style={[styles.drawerFieldLabel, { color: t.colors.text }]}>Date *</Text>
-                      <TouchableOpacity
-                        style={[styles.drawerInputContainer, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
-                        onPress={() => {
-                          // Ensure selectedDateObj is set before opening picker
-                          if (!selectedDateObj) {
-                            // Try to parse from editDate, or use selectedEvent date, or default to today
-                            let initialDate: Date;
-                            if (editDate) {
-                              const parsed = new Date(editDate);
-                              if (!isNaN(parsed.getTime())) {
-                                initialDate = parsed;
-                              } else {
-                                initialDate = selectedEvent?.isoDate || selectedEvent?.date 
-                                  ? new Date(selectedEvent.isoDate || selectedEvent.date)
-                                  : new Date();
-                              }
-                            } else {
-                              initialDate = selectedEvent?.isoDate || selectedEvent?.date 
-                                ? new Date(selectedEvent.isoDate || selectedEvent.date)
-                                : new Date();
-                            }
-                            setSelectedDateObj(initialDate);
-                            if (!editDate) {
-                              setEditDate(formatDate(initialDate));
-                            }
-                          }
-                          // Use setTimeout to ensure state updates are processed before opening
-                          setTimeout(() => {
-                            setShowDatePicker(true);
-                          }, 0);
-                        }}
-                      >
-                        <Text style={[styles.drawerInput, { color: editDate ? t.colors.text : t.colors.textMuted }]}>
-                          {editDate || 'Select date'}
-                        </Text>
-                        <Ionicons name="calendar-outline" size={20} color={t.colors.textMuted} />
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <View style={styles.drawerSection}>
-                      <Text style={[styles.drawerFieldLabel, { color: t.colors.textMuted }]}>Date</Text>
-                      <View style={styles.drawerEventRow}>
-                        <Ionicons name="calendar-outline" size={18} color={t.colors.textMuted} />
-                        <Text style={[styles.drawerEventText, { color: t.colors.text }]}>
-                          {selectedEvent.dateType === 'date_range' && selectedEvent.startDate && selectedEvent.endDate
-                            ? `${formatDate(new Date(selectedEvent.startDate))} - ${formatDate(new Date(selectedEvent.endDate))}`
-                            : selectedEvent.isoDate || selectedEvent.date
-                            ? formatDate(new Date(selectedEvent.isoDate || selectedEvent.date))
-                            : 'No date specified'}
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-
-                  {/* Time */}
-                  {isEditing && !readOnly ? (
-                    <View style={styles.drawerEditField}>
-                      <Text style={[styles.drawerFieldLabel, { color: t.colors.text }]}>Time</Text>
-                      <View style={[styles.drawerInputContainer, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
-                        <TextInput
-                          style={[styles.drawerInput, { color: t.colors.text }]}
-                          value={editTime}
-                          onChangeText={setEditTime}
-                          placeholder="e.g., 9:00 AM - 5:00 PM or All Day"
-                          placeholderTextColor={t.colors.textMuted}
-                        />
-                        <Ionicons name="time-outline" size={20} color={t.colors.textMuted} />
-                      </View>
-                    </View>
-                  ) : (
-                    (selectedEvent.time || selectedEvent.dateType === 'date') && (
-                      <View style={styles.drawerSection}>
-                        <Text style={[styles.drawerFieldLabel, { color: t.colors.textMuted }]}>Time</Text>
-                        <View style={styles.drawerEventRow}>
-                          <Ionicons name="time-outline" size={18} color={t.colors.textMuted} />
-                          <Text style={[styles.drawerEventText, { color: t.colors.text }]}>
-                            {selectedEvent.time || 'All Day'}
+                <View style={styles.drawerContentWrapper}>
+                  {/* Event Details Section - All details in one grouped section */}
+                  <View style={[styles.drawerDetailsSection, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
+                    {/* Title Section */}
+                    <View style={styles.drawerTitleSection}>
+                      {/* Title */}
+                      {isEditing && !readOnly ? (
+                        <View style={styles.drawerTitleContainer}>
+                          <View style={[styles.drawerInputContainer, { backgroundColor: t.colors.card, borderColor: t.colors.border }]}>
+                            <TextInput
+                              style={[styles.drawerInput, { color: t.colors.text }]}
+                              value={editTitle}
+                              onChangeText={setEditTitle}
+                              placeholder="Enter event title"
+                              placeholderTextColor={t.colors.textMuted}
+                              maxLength={100}
+                              accessibilityLabel="Event title input"
+                              accessibilityHint="Enter or edit the event title"
+                            />
+                            <Text style={[styles.drawerCharCount, { color: t.colors.textMuted }]}>
+                              {editTitle.length}/100
+                            </Text>
+                          </View>
+                        </View>
+                      ) : (
+                        <View style={styles.drawerTitleContainer}>
+                          <Text 
+                            style={[styles.drawerEventTitle, { color: t.colors.text }, isSmallScreen && styles.drawerEventTitleSmall]} 
+                            numberOfLines={isSmallScreen ? 2 : 3}
+                            ellipsizeMode="tail"
+                            accessibilityLabel={`Event title: ${selectedEvent.title}`}
+                          >
+                            {selectedEvent.title}
                           </Text>
                         </View>
-                      </View>
-                    )
-                  )}
+                      )}
 
-                  {/* Category */}
-                  <View style={styles.drawerSection}>
-                    <Text style={[styles.drawerFieldLabel, { color: t.colors.textMuted }]}>Category</Text>
-                    <View style={styles.drawerEventRow}>
-                      <Ionicons name="pricetag-outline" size={18} color={(selectedEvent as any).color || categoryToColors(selectedEvent.category || (selectedEvent as any).type).dot} />
-                      <Text style={[styles.drawerEventText, { color: (selectedEvent as any).color || categoryToColors(selectedEvent.category || (selectedEvent as any).type).dot }]}>
-                        {String(selectedEvent.category || (selectedEvent as any).type || 'Event').charAt(0).toUpperCase() + String(selectedEvent.category || (selectedEvent as any).type || 'Event').slice(1)}
-                      </Text>
+                      {/* Date, Time, and Category - Subtle text below title */}
+                      {isEditing && !readOnly ? (
+                        <View style={styles.drawerDateTimeSubtleContainer}>
+                          <TouchableOpacity
+                            style={styles.drawerDateTimeSubtle}
+                            onPress={() => {
+                              // Ensure selectedDateObj is set before opening picker
+                              if (!selectedDateObj) {
+                                let initialDate: Date;
+                                if (editDate) {
+                                  const parsed = new Date(editDate);
+                                  if (!isNaN(parsed.getTime())) {
+                                    initialDate = parsed;
+                                  } else {
+                                    initialDate = selectedEvent?.isoDate || selectedEvent?.date 
+                                      ? new Date(selectedEvent.isoDate || selectedEvent.date)
+                                      : new Date();
+                                  }
+                                } else {
+                                  initialDate = selectedEvent?.isoDate || selectedEvent?.date 
+                                    ? new Date(selectedEvent.isoDate || selectedEvent.date)
+                                    : new Date();
+                                }
+                                setSelectedDateObj(initialDate);
+                                if (!editDate) {
+                                  setEditDate(formatDate(initialDate));
+                                }
+                              }
+                              setTimeout(() => {
+                                setShowDatePicker(true);
+                              }, 0);
+                            }}
+                            accessibilityLabel="Select event date"
+                            accessibilityHint="Opens date picker to change the event date"
+                          >
+                            <Ionicons name="calendar-outline" size={13} color={t.colors.textMuted} />
+                            <Text style={[styles.drawerDateTimeSubtleText, { color: editDate ? t.colors.textMuted : t.colors.textMuted }]} numberOfLines={1}>
+                              {editDate || 'Select date'}
+                            </Text>
+                          </TouchableOpacity>
+                          <View style={styles.drawerDateTimeSubtle}>
+                            <Ionicons name="time-outline" size={13} color={t.colors.textMuted} />
+                            <TextInput
+                              style={[styles.drawerDateTimeSubtleText, styles.drawerDateTimeSubtleInput, { color: t.colors.textMuted }]}
+                              value={editTime}
+                              onChangeText={setEditTime}
+                              placeholder="Time"
+                              placeholderTextColor={t.colors.textMuted}
+                              accessibilityLabel="Event time input"
+                              accessibilityHint="Enter the event time or 'All Day'"
+                            />
+                          </View>
+                        </View>
+                      ) : (
+                        <View 
+                          style={styles.drawerDateTimeSubtle}
+                          accessibilityLabel={`Event category, time, and date: ${selectedEvent.category || (selectedEvent as any).type || 'Event'}, ${selectedEvent.time ? ` at ${selectedEvent.time}` : ''}, ${formattedDate}`}
+                        >
+                          <Ionicons 
+                            name="pricetag-outline" 
+                            size={13} 
+                            color={(selectedEvent as any).color || categoryToColors(selectedEvent.category || (selectedEvent as any).type).dot} 
+                          />
+                          <Text 
+                            style={[
+                              styles.drawerDateTimeSubtleText, 
+                              { 
+                                color: (selectedEvent as any).color || categoryToColors(selectedEvent.category || (selectedEvent as any).type).dot,
+                                opacity: 0.8
+                              }
+                            ]} 
+                            numberOfLines={1}
+                          >
+                            {String(selectedEvent.category || (selectedEvent as any).type || 'Event').charAt(0).toUpperCase() + String(selectedEvent.category || (selectedEvent as any).type || 'Event').slice(1)}
+                          </Text>
+                          {(selectedEvent.time || selectedEvent.dateType === 'date') && (
+                            <>
+                              <Text style={[styles.drawerDateTimeSubtleSeparator, { color: t.colors.textMuted }]}>·</Text>
+                              <Ionicons name="time-outline" size={13} color={t.colors.textMuted} />
+                              <Text 
+                                style={[styles.drawerDateTimeSubtleText, { color: t.colors.textMuted }]} 
+                                numberOfLines={1}
+                              >
+                                {selectedEvent.time || 'All Day'}
+                              </Text>
+                            </>
+                          )}
+                          <Text style={[styles.drawerDateTimeSubtleSeparator, { color: t.colors.textMuted }]}>·</Text>
+                          <Ionicons name="calendar-outline" size={13} color={t.colors.textMuted} />
+                          <Text 
+                            style={[styles.drawerDateTimeSubtleText, { color: t.colors.textMuted }]} 
+                            numberOfLines={1}
+                          >
+                            {formattedDate}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Description - Below Date/Time/Category */}
+                      {isEditing && !readOnly ? (
+                        <View style={styles.drawerDescriptionInHeader}>
+                          <View style={[styles.drawerTextAreaContainer, { backgroundColor: t.colors.card, borderColor: t.colors.border }]}>
+                            <TextInput
+                              style={[styles.drawerTextArea, { color: t.colors.text }]}
+                              value={editDescription}
+                              onChangeText={setEditDescription}
+                              placeholder="Enter event description"
+                              placeholderTextColor={t.colors.textMuted}
+                              multiline
+                              numberOfLines={6}
+                              textAlignVertical="top"
+                              maxLength={500}
+                              accessibilityLabel="Event description input"
+                              accessibilityHint="Enter or edit the event description"
+                            />
+                            <Text style={[styles.drawerCharCount, { color: t.colors.textMuted }]}>
+                              {editDescription.length}/500
+                            </Text>
+                          </View>
+                        </View>
+                      ) : (
+                        <View style={styles.drawerDescriptionInHeader}>
+                          <View 
+                            style={[styles.drawerDescriptionContainer, { backgroundColor: t.colors.card }]}
+                            accessibilityLabel={`Event description: ${selectedEvent.description || 'No description provided'}`}
+                          >
+                            <Text style={[styles.drawerEventDescription, { color: t.colors.text }]}>
+                              {selectedEvent.description || 'No description provided'}
+                            </Text>
+                          </View>
+                        </View>
+                      )}
                     </View>
+
                   </View>
-
-                  {/* Description */}
-                  {isEditing && !readOnly ? (
-                    <View style={styles.drawerEditField}>
-                      <Text style={[styles.drawerFieldLabel, { color: t.colors.text }]}>Description</Text>
-                      <View style={[styles.drawerTextAreaContainer, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
-                        <TextInput
-                          style={[styles.drawerTextArea, { color: t.colors.text }]}
-                          value={editDescription}
-                          onChangeText={setEditDescription}
-                          placeholder="Enter event description"
-                          placeholderTextColor={t.colors.textMuted}
-                          multiline
-                          numberOfLines={6}
-                          textAlignVertical="top"
-                          maxLength={500}
-                        />
-                        <Text style={[styles.drawerCharCount, { color: t.colors.textMuted }]}>
-                          {editDescription.length}/500
-                        </Text>
-                      </View>
-                    </View>
-                  ) : (
-                    <View style={styles.drawerSection}>
-                      <Text style={[styles.drawerFieldLabel, { color: t.colors.textMuted }]}>Description</Text>
-                      <Text style={[styles.drawerEventDescription, { color: t.colors.text }]}>
-                        {selectedEvent.description || 'No description provided'}
-                      </Text>
-                    </View>
-                  )}
 
                   {/* Attachments/Images */}
                   {(selectedEvent as any).attachments && Array.isArray((selectedEvent as any).attachments) && (selectedEvent as any).attachments.length > 0 && (
                     <View style={styles.drawerSection}>
-                      <Text style={[styles.drawerFieldLabel, { color: t.colors.textMuted }]}>Attachments</Text>
+                      <Text style={[styles.drawerFieldLabel, { color: t.colors.textMuted }]}>ATTACHMENTS</Text>
                       <View style={styles.drawerAttachmentsContainer}>
                         {(selectedEvent as any).attachments.map((attachment: any, index: number) => (
                           <View key={index} style={[styles.drawerAttachmentItem, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
@@ -586,21 +661,21 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
                   </Text>
                 </View>
               )}
-            </ScrollView>
+          </ScrollView>
 
-            {/* Action Buttons - Hidden in read-only mode */}
-            {selectedEvent && !readOnly && (
-              <View 
-                style={[
-                  styles.drawerActions, 
-                  { 
-                    backgroundColor: t.colors.card, 
-                    borderTopColor: t.colors.border, 
-                    paddingBottom: insets.bottom + 20,
-                  }
-                ]}
-                pointerEvents="box-none"
-              >
+          {/* Fixed Action Buttons - Hidden in read-only mode */}
+          {selectedEvent && !readOnly && (
+            <View 
+              style={[
+                styles.drawerActions, 
+                { 
+                  backgroundColor: t.colors.card, 
+                  borderTopColor: t.colors.border, 
+                  paddingBottom: insets.bottom + 20,
+                }
+              ]}
+              pointerEvents="box-none"
+            >
                 {isEditing ? (
                   <>
                     <TouchableOpacity
@@ -658,9 +733,8 @@ const EventDetailsDrawer: React.FC<EventDetailsDrawerProps> = ({
                     </TouchableOpacity>
                   </>
                 )}
-              </View>
-            )}
-          </View>
+            </View>
+          )}
         </Animated.View>
       </Modal>
 
@@ -769,120 +843,315 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '85%',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    maxHeight: '90%',
+    height: '90%',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 20,
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 24,
+    flexDirection: 'column',
+    overflow: 'hidden',
   },
   drawerHandle: {
     alignItems: 'center',
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingTop: 16,
+    paddingBottom: 12,
   },
   drawerHandleBar: {
-    width: 36,
+    width: 40,
     height: 4,
     borderRadius: 2,
-    opacity: 0.3,
+    opacity: 0.25,
   },
   drawerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    paddingTop: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0, 0, 0, 0.08)',
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    paddingTop: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.06)',
   },
   drawerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    letterSpacing: -0.3,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.4,
   },
   drawerCloseButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    backgroundColor: 'rgba(0, 0, 0, 0.04)',
   },
   drawerScrollView: {
     flex: 1,
+    flexShrink: 1,
   },
   drawerScrollContent: {
-    padding: 20,
-    paddingTop: 16,
+    padding: 24,
+    paddingTop: 20,
+    flexGrow: 1,
+  },
+  drawerContentWrapper: {
+    paddingTop: 4,
+  },
+  drawerDetailsSection: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 20,
+  },
+  drawerTitleSection: {
+    marginBottom: 12,
+  },
+  drawerTitleContainer: {
+    marginBottom: 4,
+  },
+  drawerDescriptionInHeader: {
+    marginTop: 10,
+    alignSelf: 'stretch',
+  },
+  drawerDateTimeSubtleContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  drawerDateTimeSubtle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  drawerDateTimeSubtleText: {
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+    opacity: 0.75,
+    letterSpacing: 0.1,
+  },
+  drawerDateTimeSubtleInput: {
+    minWidth: 60,
+    maxWidth: 100,
+    padding: 0,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  drawerDateTimeSubtleSeparator: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginHorizontal: 4,
+    opacity: 0.4,
+  },
+  drawerTopRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+    alignItems: 'flex-start',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  drawerTopRowItem: {
+    flex: 1,
+    minWidth: 100,
+    justifyContent: 'flex-start',
+  },
+  drawerTopRowItemTitle: {
+    flex: 2,
+    minWidth: 120,
+    justifyContent: 'flex-start',
+    paddingRight: 8,
+  },
+  drawerTopRowItemCompact: {
+    flex: 1,
+    minWidth: 80,
+    maxWidth: 120,
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+  },
+  drawerTopRowItemPill: {
+    flex: 1,
+    minWidth: 140,
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+  },
+  drawerDateTimePillContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  drawerDateTimePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  drawerDateTimePillView: {
+    borderWidth: 0,
+  },
+  drawerPillText: {
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+  drawerPillTextSmall: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  drawerPillInput: {
+    minWidth: 60,
+    maxWidth: 100,
+    padding: 0,
+  },
+  drawerPillSeparator: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginHorizontal: 4,
+    opacity: 0.5,
+  },
+  drawerCategoryContainer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'flex-end',
+    marginTop: 16,
+    width: '100%',
+  },
+  drawerCategoryContent: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
   },
   drawerSection: {
-    marginBottom: 20,
+    marginBottom: 28,
+  },
+  drawerDetailField: {
+    marginBottom: 24,
+  },
+  drawerDetailFieldLast: {
+    marginBottom: 0,
   },
   drawerEditField: {
-    marginBottom: 20,
+    marginBottom: 28,
   },
   drawerFieldLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 12,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
+    opacity: 0.7,
   },
   drawerInputContainer: {
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginTop: 4,
   },
   drawerInput: {
     flex: 1,
     fontSize: 16,
     padding: 0,
+    lineHeight: 22,
   },
   drawerTextAreaContainer: {
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minHeight: 120,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    minHeight: 140,
+    marginTop: 4,
   },
   drawerTextArea: {
     flex: 1,
     fontSize: 16,
     padding: 0,
-    minHeight: 100,
+    minHeight: 120,
+    lineHeight: 22,
   },
   drawerCharCount: {
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: 11,
+    marginTop: 8,
     alignSelf: 'flex-end',
+    opacity: 0.6,
   },
   drawerEventTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 8,
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 26,
+    letterSpacing: -0.3,
+  },
+  drawerEventTitleSmall: {
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '800',
   },
   drawerEventRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+  },
+  drawerEventRowCompact: {
     gap: 8,
-    marginBottom: 6,
+  },
+  drawerEventRowContent: {
+    paddingVertical: 4,
+  },
+  drawerEventIconWrapper: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  drawerEventIconWrapperCompact: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
   },
   drawerEventText: {
-    fontSize: 14,
+    fontSize: 15,
     flex: 1,
+    lineHeight: 22,
+    fontWeight: '500',
+  },
+  drawerEventTextSmall: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  drawerCategoryRow: {
+    justifyContent: 'flex-end',
+  },
+  drawerCategoryIconWrapper: {
+    width: 32,
+    height: 32,
+  },
+  drawerCategoryText: {
+    flex: 0,
+    flexShrink: 1,
+  },
+  drawerDescriptionContainer: {
+    borderRadius: 14,
+    paddingTop: 14,
+    paddingRight: 14,
+    paddingBottom: 14,
+    paddingLeft: 0,
   },
   drawerEventDescription: {
-    fontSize: 13,
-    lineHeight: 20,
-    marginTop: 4,
+    fontSize: 15,
+    lineHeight: 24,
+    fontWeight: '400',
+    letterSpacing: 0.1,
   },
   drawerAttachmentsContainer: {
     flexDirection: 'row',
@@ -919,10 +1188,11 @@ const styles = StyleSheet.create({
   },
   drawerActions: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 24,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0, 0, 0, 0.06)',
     gap: 12,
     zIndex: 10,
   },
@@ -931,10 +1201,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 16,
+    borderRadius: 14,
     gap: 8,
-    minHeight: 48,
+    minHeight: 52,
     zIndex: 11,
   },
   drawerDeleteButton: {
@@ -952,26 +1222,42 @@ const styles = StyleSheet.create({
   },
   drawerActionButtonText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  drawerEventSelectorSection: {
+    marginBottom: 32,
+  },
+  drawerEventSelectorLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    opacity: 0.7,
+  },
+  drawerEventSelectorContainer: {
+    gap: 10,
   },
   drawerEventSelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    gap: 12,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1.5,
+    gap: 14,
+    minHeight: 56,
   },
   drawerEventSelectorAccent: {
-    width: 3,
-    height: 24,
+    width: 4,
+    height: 32,
     borderRadius: 2,
   },
   drawerEventSelectorText: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
+    lineHeight: 22,
   },
 });
 

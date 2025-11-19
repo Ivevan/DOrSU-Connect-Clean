@@ -2,6 +2,8 @@
  * Embedding Service
  * Handles text-to-vector embeddings using transformer models
  * Optimized for semantic search and RAG applications
+ * 
+ * Uses: Xenova/all-MiniLM-L6-v2 (384 dimensions)
  */
 
 import { pipeline } from '@xenova/transformers';
@@ -34,6 +36,7 @@ class EmbeddingService {
       
       this.isLoaded = true;
       Logger.success('✅ Embedding model loaded successfully');
+      Logger.info(`   Model: ${this.modelName}`);
       Logger.info(`   Dimension: ${this.dimension}`);
       
     } catch (error) {
@@ -83,6 +86,7 @@ class EmbeddingService {
 
   /**
    * Generate embeddings for multiple texts (batch)
+   * Processes texts sequentially using the local Xenova model
    * @param {string[]} texts - Array of input texts
    * @returns {Promise<number[][]>} - Array of embedding vectors
    */

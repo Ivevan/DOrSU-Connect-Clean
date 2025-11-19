@@ -75,14 +75,20 @@ export class ConversationService {
       topics: [],
       programs: [],
       faculties: [],
-      campuses: []
+      campuses: [],
+      offices: [],      // FIX: Add offices (OSPAT, OSA, etc.)
+      years: [],        // FIX: Add years (2023, 2024, 2025)
+      exams: [],        // FIX: Add exams (SUAST, etc.)
+      statistics: []    // FIX: Add statistics context
     };
     
     // Extract people mentioned (president, deans, etc.)
     const peoplePatterns = [
       /Dr\.\s+([A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+)/gi, // Dr. Roy G. Ponce
       /President\s+([A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+)/gi,
-      /Dean\s+([A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+)/gi
+      /Dean\s+([A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+)/gi,
+      /Ms\.\s+([A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+)/gi,
+      /Mr\.\s+([A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+)/gi
     ];
     
     peoplePatterns.forEach(pattern => {
@@ -92,8 +98,37 @@ export class ConversationService {
       }
     });
     
+    // FIX: Extract office acronyms (OSPAT, OSA, OSCD, etc.)
+    const officePattern = /\b(OSPAT|OSA|OSCD|FASG|PESO|IRO|HSU|CGAD|IP-TBM|GCTC|OHWS)\b/gi;
+    const officeMatches = [...query.matchAll(officePattern), ...response.matchAll(officePattern)];
+    for (const match of officeMatches) {
+      entities.offices.push(match[1].toUpperCase());
+    }
+    
+    // FIX: Extract years (2020-2030)
+    const yearPattern = /\b(20[2-3][0-9])\b/g;
+    const yearMatches = [...query.matchAll(yearPattern), ...response.matchAll(yearPattern)];
+    for (const match of yearMatches) {
+      entities.years.push(match[1]);
+    }
+    
+    // FIX: Extract exam names (SUAST, etc.)
+    const examPattern = /\b(SUAST|State University Aptitude and Scholarship Test|entrance exam|admission test)\b/gi;
+    const examMatches = [...query.matchAll(examPattern), ...response.matchAll(examPattern)];
+    for (const match of examMatches) {
+      const examName = match[1].toLowerCase().includes('suast') ? 'SUAST' : match[1];
+      entities.exams.push(examName);
+    }
+    
+    // FIX: Extract statistics context
+    if (query.toLowerCase().includes('statistics') || query.toLowerCase().includes('stats') ||
+        response.toLowerCase().includes('statistics') || response.toLowerCase().includes('passing rate') ||
+        response.toLowerCase().includes('applicants') || response.toLowerCase().includes('enrolled')) {
+      entities.statistics.push('statistics');
+    }
+    
     // Extract faculties (FACET, FTED, etc.)
-    const facultyPattern = /\b(FACET|FTED|FALS|FHUSOCOM|Faculty of [A-Z][a-z,\s]+)\b/gi;
+    const facultyPattern = /\b(FACET|FTED|FALS|FHUSOCOM|FBM|FCJE|FNAHS|Faculty of [A-Z][a-z,\s]+)\b/gi;
     const facultyMatches = response.matchAll(facultyPattern);
     for (const match of facultyMatches) {
       entities.faculties.push(match[1]);
@@ -153,7 +188,11 @@ export class ConversationService {
       topics: [],
       programs: [],
       faculties: [],
-      campuses: []
+      campuses: [],
+      offices: [],      // FIX: Add offices
+      years: [],        // FIX: Add years
+      exams: [],        // FIX: Add exams
+      statistics: []    // FIX: Add statistics context
     };
     
     // Collect entities from recent turns (most recent first)
@@ -187,7 +226,53 @@ export class ConversationService {
     let resolvedQuery = query;
     const entities = context.recentEntities;
     
-    // Pronoun patterns
+    // FIX: Handle follow-up patterns like "how about in 2023 and 2025?" or "what about the other years?"
+    const followUpPatterns = [
+      // Year follow-ups
+      { pattern: /\b(how|what)\s+about\s+(in\s+)?(\d{4}(\s+(and|or)\s+\d{4})?)/gi, type: 'year_followup' },
+      { pattern: /\b(in|for)\s+(\d{4}(\s+(and|or)\s+\d{4})?)/gi, type: 'year_query' },
+      
+      // Generic follow-ups
+      { pattern: /\b(how|what)\s+about\s+(the\s+)?(other|others)\b/gi, type: 'generic_followup' },
+      { pattern: /\b(and|or)\s+the\s+(other|others)\b/gi, type: 'list_extension' }
+    ];
+    
+    // Check if this is a follow-up query
+    let isFollowUp = followUpPatterns.some(({pattern}) => pattern.test(query));
+    
+    // FIX: Resolve year follow-ups with SUAST/statistics context
+    if (isFollowUp && entities.exams.length > 0 && entities.statistics.length > 0) {
+      const exam = entities.exams[0]; // Most recent exam (e.g., SUAST)
+      
+      // "how about in 2023 and 2025?" → "SUAST statistics for 2023 and 2025"
+      if (/\b(how|what)\s+about\s+(in\s+)?(\d{4})/i.test(resolvedQuery)) {
+        resolvedQuery = resolvedQuery.replace(
+          /\b(how|what)\s+about\s+(in\s+)?(\d{4}(\s+(and|or)\s+\d{4})?)/gi,
+          (match, howWhat, inWord, years) => {
+            return `${exam} statistics for ${years}`;
+          }
+        );
+      }
+      // "in 2023 and 2025" → "SUAST statistics in 2023 and 2025"
+      else if (/\b(in|for)\s+(\d{4})/i.test(resolvedQuery) && resolvedQuery.length < 30) {
+        resolvedQuery = `${exam} statistics ${resolvedQuery}`;
+      }
+    }
+    
+    // FIX: Resolve office follow-ups
+    if (isFollowUp && entities.offices.length > 0) {
+      const office = entities.offices[0];
+      
+      // "what about the head?" → "what about the OSPAT head?"
+      if (/\b(what|how)\s+about\s+(the\s+)?(head|director|services)\b/i.test(resolvedQuery)) {
+        resolvedQuery = resolvedQuery.replace(
+          /\b(what|how)\s+about\s+(the\s+)?/gi,
+          `what about the ${office} `
+        );
+      }
+    }
+    
+    // Original pronoun resolution for people
     const pronounPatterns = [
       // English pronouns
       { pattern: /\b(his|her|their|its)\s+(achievements?|programs?|courses?|background|details?|info)\b/gi, type: 'possessive' },

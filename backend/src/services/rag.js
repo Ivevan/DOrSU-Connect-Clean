@@ -1,9 +1,10 @@
 import { pipeline } from '@xenova/transformers';
 import faiss from 'faiss-node';
-import NodeCache from 'node-cache';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Logger } from '../utils/logger.js';
+import { TypoCorrector } from '../utils/query-analyzer.js';
+import { VectorSearchService } from './vector-search.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,24 +15,9 @@ export class OptimizedRAGService {
     this.mongoService = mongoService; // MongoDB service for dynamic data
     this.lastMongoSync = null; // Track last sync time
     
-    // Initialize caching system with NO automatic expiration
-    // Cache will only be cleared at scheduled times (not by TTL)
-    this.cache = new NodeCache({ 
-      stdTTL: 0,          // 0 = no automatic expiration (cache persists until manually cleared)
-      checkperiod: 0,    // Disable automatic expiration checking
-      useClones: false,   // Better performance
-      maxKeys: 5000       // Increased capacity for persistent cache
-    });
+    // CACHING REMOVED - Always fetch fresh data for accuracy
     
-    // Cache statistics
-    this.cacheStats = {
-      hits: 0,
-      misses: 0,
-      sets: 0,
-      deletes: 0
-    };
-    
-    // FAISS vector search
+    // FAISS vector search (kept for backward compatibility and fallback)
     this.faissIndex = null;
     this.embeddings = [];
     this.textChunks = [];
@@ -41,11 +27,15 @@ export class OptimizedRAGService {
     this.embeddingModel = null;
     this.modelLoaded = false;
     
+    // VectorSearchService - handles ALL retrieval/search logic
+    this.vectorSearchService = null;
+    
     this.loadOptimizedData();
-    this.setupCacheMonitoring();
     this.initializeEmbeddingModel();
     
     // Sync with MongoDB every 30 seconds if available
+    // NOTE: Initial sync is handled by server.js with a 2-second delay (line 110)
+    // to ensure MongoDB is connected before first sync
     if (this.mongoService) {
       setInterval(() => this.syncWithMongoDB(), 30000);
     }
@@ -59,70 +49,6 @@ export class OptimizedRAGService {
     Logger.info('RAG service will load data from MongoDB');
   }
 
-  // Setup cache monitoring and scheduled clearing
-  setupCacheMonitoring() {
-    // Log cache statistics every 5 minutes
-    setInterval(() => {
-      const stats = this.getCacheStats();
-      if (stats.total > 0) {
-        Logger.debug(`RAG Cache: ${stats.hitRate}% hit rate (${stats.hits}/${stats.total}), ${stats.keys} entries`);
-      }
-    }, 300000); // 5 minutes
-    
-    // Schedule cache clearing at specific times
-    this.scheduleCacheClearing();
-  }
-  
-  // Schedule cache clearing at specific times (configurable)
-  scheduleCacheClearing() {
-    // Get scheduled times from environment variable or use defaults
-    // Format: "HH:MM,HH:MM" (24-hour format, comma-separated)
-    // Example: "00:00,12:00" = clear at midnight and noon
-    const scheduledTimes = process.env.CACHE_CLEAR_TIMES || '00:00,06:00,12:00,18:00';
-    const times = scheduledTimes.split(',').map(t => t.trim());
-    
-    // Remove duplicates (case-insensitive)
-    const uniqueTimes = [...new Set(times)];
-    if (times.length !== uniqueTimes.length) {
-      Logger.warn(`Removed ${times.length - uniqueTimes.length} duplicate cache clear time(s)`);
-    }
-    
-    Logger.info(`Cache scheduled to clear at: ${uniqueTimes.join(', ')}`);
-    
-    // Calculate next clear time for each scheduled time
-    const scheduleNextClear = (hour, minute) => {
-      const now = new Date();
-      const clearTime = new Date();
-      clearTime.setHours(hour, minute, 0, 0);
-      
-      // If the time has passed today, schedule for tomorrow
-      if (clearTime <= now) {
-        clearTime.setDate(clearTime.getDate() + 1);
-      }
-      
-      const msUntilClear = clearTime.getTime() - now.getTime();
-      
-      setTimeout(() => {
-        const keysBeforeClear = this.cache.keys().length;
-        this.cache.flushAll();
-        this.cacheStats = { hits: 0, misses: 0, sets: 0, deletes: 0 };
-        Logger.info(`Scheduled cache clear: Cleared ${keysBeforeClear} entries at ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`);
-        
-        // Schedule next clear (24 hours later)
-        scheduleNextClear(hour, minute);
-      }, msUntilClear);
-    };
-    
-    // Schedule each unique time
-    uniqueTimes.forEach(timeStr => {
-      const [hour, minute] = timeStr.split(':').map(Number);
-      if (!isNaN(hour) && !isNaN(minute) && hour >= 0 && hour < 24 && minute >= 0 && minute < 60) {
-        scheduleNextClear(hour, minute);
-      } else {
-        Logger.warn(`Invalid cache clear time format: ${timeStr}. Use HH:MM format.`);
-      }
-    });
-  }
 
   // Initialize transformer embedding model
   async initializeEmbeddingModel() {
@@ -141,6 +67,16 @@ export class OptimizedRAGService {
       // Now initialize FAISS with the transformer model
       await this.initializeFAISS();
       
+      // Initialize VectorSearchService after FAISS is ready
+      this.vectorSearchService = new VectorSearchService(
+        this.mongoService,
+        this.faissOptimizedData,
+        this.faissIndex,
+        this.textChunks,
+        this.embeddingModel,
+        this.modelLoaded
+      );
+      
     } catch (error) {
       Logger.error('Failed to load transformer model', error);
       Logger.warn('Falling back to simple embeddings');
@@ -148,67 +84,19 @@ export class OptimizedRAGService {
       
       // Fallback to simple embeddings
       await this.initializeFAISS();
+      
+      // Initialize VectorSearchService even if model failed
+      this.vectorSearchService = new VectorSearchService(
+        this.mongoService,
+        this.faissOptimizedData,
+        this.faissIndex,
+        this.textChunks,
+        this.embeddingModel,
+        this.modelLoaded
+      );
     }
   }
 
-  // Generate cache key from query (optimized for better hit rates)
-  generateCacheKey(query, maxResults) {
-    // IMPROVED: Better normalization that handles date/schedule queries consistently
-    let normalizedQuery = query.toLowerCase()
-      .trim();
-    
-    // Normalize date-related terms for better cache hits
-    // "when is", "what is the date", "schedule" all map to similar intent
-    const dateSynonyms = {
-      'when is': 'date',
-      'when are': 'dates',
-      'what is the date': 'date',
-      'what are the dates': 'dates',
-      'what date': 'date',
-      'what dates': 'dates',
-      'tell me about': 'info',
-      'what is': 'info',
-      'what are': 'info'
-    };
-    
-    // Replace synonyms to normalize similar queries
-    Object.entries(dateSynonyms).forEach(([synonym, replacement]) => {
-      if (normalizedQuery.startsWith(synonym)) {
-        normalizedQuery = normalizedQuery.replace(synonym, replacement);
-      }
-    });
-    
-    // Remove punctuation and normalize whitespace
-    normalizedQuery = normalizedQuery
-      .replace(/[^\w\s]/g, '') // Remove punctuation
-      .replace(/\s+/g, '_')    // Replace spaces with underscores
-      .substring(0, 60);       // Increased length for better matching
-    
-    return `opt_rag_${normalizedQuery}_${maxResults}`;
-  }
-
-  // Get cache statistics
-  getCacheStats() {
-    const keys = this.cache.keys();
-    const total = this.cacheStats.hits + this.cacheStats.misses;
-    const hitRate = total > 0 ? Math.round((this.cacheStats.hits / total) * 100) : 0;
-    
-    return {
-      hits: this.cacheStats.hits,
-      misses: this.cacheStats.misses,
-      total: total,
-      hitRate: hitRate,
-      keys: keys.length,
-      memory: this.cache.getStats()
-    };
-  }
-
-  // Clear cache (useful for testing or memory management)
-  clearCache() {
-    this.cache.flushAll();
-    this.cacheStats = { hits: 0, misses: 0, sets: 0, deletes: 0 };
-    Logger.info('RAG Cache cleared');
-  }
 
   // Initialize FAISS index and create embeddings
   async initializeFAISS() {
@@ -245,14 +133,16 @@ export class OptimizedRAGService {
     this.textChunks = [];
     
     // Process each optimized chunk
+    // CRITICAL: data-refresh.js creates both content and text fields - use both
     this.faissOptimizedData.chunks.forEach(chunk => {
       this.textChunks.push({
         id: chunk.id,
-        text: chunk.text,
+        text: chunk.text || chunk.content || '', // Use both content and text for compatibility
         section: chunk.section,
         type: chunk.type,
+        category: chunk.category, // CRITICAL: Include category field
         keywords: chunk.keywords || [],
-        metadata: chunk.entities || {},
+        metadata: chunk.entities || chunk.metadata || {},
         originalChunk: chunk
       });
     });
@@ -393,227 +283,107 @@ export class OptimizedRAGService {
     return Math.abs(hash);
   }
 
-  // FAISS-based vector similarity search (OPTIMIZED)
+  // DEPRECATED: These methods are now handled by VectorSearchService
+  // Keeping as thin wrappers for backward compatibility
   async findRelevantDataFAISS(query, maxResults = 5) {
-    if (!this.faissIndex || this.textChunks.length === 0) {
-      Logger.debug('FAISS not available, falling back to keyword search');
-      return this.findRelevantDataKeyword(query, maxResults);
+    if (!this.vectorSearchService) {
+      this.vectorSearchService = new VectorSearchService(
+        this.mongoService,
+        this.faissOptimizedData,
+        this.faissIndex,
+        this.textChunks,
+        this.embeddingModel,
+        this.modelLoaded
+      );
     }
-
-    // Cap maxResults to available chunks to prevent FAISS error
-    const actualMaxResults = Math.min(maxResults, this.textChunks.length);
-
-    // Check cache for FAISS search results
-    const faissCacheKey = this.generateCacheKey(query, actualMaxResults);
-    const cachedResults = this.cache.get(faissCacheKey);
-    if (cachedResults) {
-      this.cacheStats.hits++;
-      Logger.debug(`FAISS Cache HIT: "${query.substring(0, 30)}..."`);
-      return cachedResults;
-    }
-
-    try {
-      // IMPROVED: Enhance query for date/schedule queries
-      let enhancedQuery = query;
-      const isCalendarQuery = /\b(date|dates|schedule|schedules|calendar|event|when|deadline)\b/i.test(query);
-      
-      if (isCalendarQuery) {
-        // Add synonyms and related terms to improve semantic matching
-        const dateSynonyms = ' date dates schedule schedules calendar event events timeline deadline deadlines';
-        enhancedQuery = `${query}${dateSynonyms}`;
-      }
-      
-      // Create query embedding using transformer or fallback
-      const queryEmbedding = await this.createTransformerEmbedding({
-        text: enhancedQuery,
-        keywords: [],
-        metadata: {}
-      });
-      
-      // Search FAISS index (capped to available chunks)
-      // IMPROVED: Get more results initially, then filter/rerank
-      const searchResult = this.faissIndex.search(queryEmbedding, Math.min(actualMaxResults * 2, this.textChunks.length));
-      
-      const results = [];
-      
-      // Handle FAISS search result format (uses 'labels' instead of 'indices')
-      const labels = searchResult.labels || [];
-      const distances = searchResult.distances || [];
-      
-      for (let i = 0; i < labels.length; i++) {
-        const index = labels[i];
-        const distance = distances[i];
-        const chunk = this.textChunks[index];
-        
-        if (chunk) {
-          // Convert distance to similarity score (lower distance = higher similarity)
-          let similarity = 1 / (1 + distance);
-          
-          // IMPROVED: Boost score for calendar events in calendar queries
-          if (isCalendarQuery && (chunk.section === 'calendar_events' || chunk.type === 'calendar_event')) {
-            similarity *= 1.2; // 20% boost
-          }
-          
-          results.push({
-            id: chunk.id,
-            section: chunk.section,
-            type: chunk.type,
-            text: chunk.text,
-            score: similarity * 100, // Scale to 0-100
-            metadata: chunk.metadata,
-            keywords: chunk.keywords,
-            distance: distance
-          });
-        }
-      }
-      
-      // Sort by score and take top results
-      const sortedResults = results
-        .sort((a, b) => b.score - a.score)
-        .slice(0, actualMaxResults);
-      
-      // Cache the results (no TTL - persists until scheduled clear)
-      this.cache.set(faissCacheKey, sortedResults);
-      this.cacheStats.sets++;
-      
-      Logger.debug(`FAISS search: ${sortedResults.length} results for "${query.substring(0, 30)}..."`);
-      
-      return sortedResults;
-      
-    } catch (error) {
-      Logger.error('FAISS search failed', error);
-      return this.findRelevantDataKeyword(query, maxResults); // Fallback to keyword search
-    }
+    return await this.vectorSearchService.searchFAISS(query, maxResults);
   }
 
-  // Enhanced keyword-based search as fallback
-  findRelevantDataKeyword(query, maxResults = 5) {
-    if (!this.faissOptimizedData || !this.faissOptimizedData.chunks) {
-      return [];
+  async findRelevantDataMongoDB(query, maxResults = 5) {
+    if (!this.vectorSearchService) {
+      this.vectorSearchService = new VectorSearchService(
+        this.mongoService,
+        this.faissOptimizedData,
+        this.faissIndex,
+        this.textChunks,
+        this.embeddingModel,
+        this.modelLoaded
+      );
     }
+    return await this.vectorSearchService.searchMongoDB(query, maxResults);
+  }
 
-    // Check cache for keyword search results
-    const keywordCacheKey = `keyword_${this.generateCacheKey(query, maxResults)}`;
-    const cachedResults = this.cache.get(keywordCacheKey);
-    if (cachedResults) {
-      this.cacheStats.hits++;
-      return cachedResults;
+  async findRelevantDataKeyword(query, maxResults = 5) {
+    if (!this.vectorSearchService) {
+      this.vectorSearchService = new VectorSearchService(
+        this.mongoService,
+        this.faissOptimizedData,
+        this.faissIndex,
+        this.textChunks,
+        this.embeddingModel,
+        this.modelLoaded
+      );
     }
-
-    const queryLower = query.toLowerCase();
-    const queryWords = queryLower.split(/\s+/).filter(word => word.length > 2);
-    
-    // IMPROVED: Better calendar query detection - understands intent, not just keywords
-    const calendarPattern = /\b(date|dates|event|events|announcement|announcements|schedule|schedules|calendar|when|upcoming|coming|next|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule|timeline|time\s+table)\b/i;
-    const calendarIntentPattern = /\b(when\s+(is|are|will|does)|what\s+(date|dates|time|schedule)|tell\s+me\s+(about\s+)?(the\s+)?(schedule|dates?|events?))\b/i;
-    const isCalendarQuery = calendarPattern.test(query) || calendarIntentPattern.test(query);
-    
-    const results = [];
-    
-    // Score each chunk based on keyword matches
-    this.faissOptimizedData.chunks.forEach(chunk => {
-      let score = 0;
-      
-      // Boost score for calendar events if query is calendar-related
-      if (isCalendarQuery && (chunk.section === 'calendar_events' || chunk.type === 'calendar_event')) {
-        score += 50; // High base score for calendar events in calendar queries
-      }
-      
-      // Score based on text content
-      const textLower = chunk.text.toLowerCase();
-      queryWords.forEach(word => {
-        const occurrences = (textLower.match(new RegExp(word, 'g')) || []).length;
-        score += occurrences * 2; // Base weight for text matches
-      });
-      
-      // Score based on keywords (higher weight)
-      if (chunk.keywords) {
-        chunk.keywords.forEach(keyword => {
-          const keywordLower = keyword.toLowerCase();
-          if (queryWords.some(qw => keywordLower.includes(qw) || qw.includes(keywordLower))) {
-            score += 5; // Higher weight for keyword matches
-          }
-        });
-      }
-      
-      // Score based on metadata/entities
-      if (chunk.entities) {
-        const entitiesStr = JSON.stringify(chunk.entities).toLowerCase();
-        queryWords.forEach(word => {
-          if (entitiesStr.includes(word)) {
-            score += 3; // Medium weight for entity matches
-          }
-        });
-      }
-      
-      // Additional scoring for calendar events: match date-related terms
-      if (chunk.section === 'calendar_events' || chunk.type === 'calendar_event') {
-        const dateTerms = ['january', 'february', 'march', 'april', 'may', 'june', 
-                          'july', 'august', 'september', 'october', 'november', 'december',
-                          'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday',
-                          'week', 'month', 'year', 'today', 'tomorrow', 'next', 'upcoming'];
-        const hasDateTerm = dateTerms.some(term => queryLower.includes(term));
-        if (hasDateTerm) {
-          score += 20; // Boost for date-related queries
-        }
-      }
-      
-      if (score > 0) {
-        results.push({
-          id: chunk.id,
-          section: chunk.section,
-          type: chunk.type,
-          text: chunk.text,
-          score: score,
-          metadata: chunk.entities,
-          keywords: chunk.keywords,
-          source: 'keyword_search'
-        });
-      }
-    });
-
-    const sortedResults = results
-      .sort((a, b) => b.score - a.score)
-      .slice(0, maxResults);
-    
-    // Cache the search results (no TTL - persists until scheduled clear)
-    this.cache.set(keywordCacheKey, sortedResults);
-    this.cacheStats.sets++;
-    
-    return sortedResults;
+    return await this.vectorSearchService.searchKeyword(query, maxResults);
   }
 
   // Get context for specific topics using optimized chunking
-  async getContextForTopic(query, maxTokens = 500, maxSections = 10, suggestMore = false, calendarService = null) {
+  // SIMPLIFIED: Now uses VectorSearchService for all retrieval
+  async getContextForTopic(query, maxTokens = 500, maxSections = 10, suggestMore = false, scheduleService = null) {
     // Debug: Verify we have optimized data
     if (!this.faissOptimizedData || !this.faissOptimizedData.chunks) {
-      Logger.warn('RAG: No optimized data available, using fallback');
-      return this.getBasicInfo();
+      Logger.warn('RAG: No optimized data available');
+      return '[NO KNOWLEDGE BASE DATA AVAILABLE]';
     }
     
-    // Generate cache key
-    const cacheKey = this.generateCacheKey(query, maxSections);
-    
-    // Check cache first
-    const cached = this.cache.get(cacheKey);
-    if (cached) {
-      this.cacheStats.hits++;
-      Logger.debug(`RAG Cache HIT: "${query.substring(0, 30)}..."`);
-      return cached;
+    // Ensure VectorSearchService is initialized
+    if (!this.vectorSearchService) {
+      this.vectorSearchService = new VectorSearchService(
+        this.mongoService,
+        this.faissOptimizedData,
+        this.faissIndex,
+        this.textChunks,
+        this.embeddingModel,
+        this.modelLoaded
+      );
     }
     
-    this.cacheStats.misses++;
-    Logger.debug(`RAG Cache MISS: "${query.substring(0, 30)}..." (${this.faissOptimizedData.chunks.length} chunks available)`);
+    // Update VectorSearchService with latest data (in case of sync)
+    this.vectorSearchService.faissOptimizedData = this.faissOptimizedData;
+    this.vectorSearchService.faissIndex = this.faissIndex;
+    this.vectorSearchService.textChunks = this.textChunks;
     
-    // IMPROVED: Better calendar query detection - understands intent, not just keywords
-    const calendarPattern = /\b(date|dates|event|events|announcement|announcements|schedule|schedules|calendar|when|upcoming|coming|next|this\s+(week|month|year)|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule|timeline|time\s+table)\b/i;
-    const calendarIntentPattern = /\b(when\s+(is|are|will|does)|what\s+(date|dates|time|schedule)|tell\s+me\s+(about\s+)?(the\s+)?(schedule|dates?|events?))\b/i;
-    const isCalendarQuery = calendarPattern.test(query) || calendarIntentPattern.test(query);
+    // Correct typos in query before processing
+    let correctedQuery = query;
+    try {
+      const typoCorrection = TypoCorrector.correctTypos(query, {
+        maxDistance: 2,
+        minSimilarity: 0.6,
+        correctPhrases: true
+      });
+      
+      if (typoCorrection.hasCorrections) {
+        Logger.debug(`🔤 RAG Context Typo correction: "${typoCorrection.original}" → "${typoCorrection.corrected}"`);
+        correctedQuery = typoCorrection.corrected;
+      }
+    } catch (error) {
+      Logger.debug(`Typo correction failed in getContextForTopic: ${error.message}`);
+    }
+    
+    // NO CACHING - Always fetch fresh data for accuracy
+    
+    // Use corrected query for all subsequent processing
+    query = correctedQuery;
+    
+    // Query type detection (consolidated)
+    // Unified schedule queries - all calendar, events, announcements use schedule collection
+    const isScheduleQuery = this._detectCalendarQuery(query);
     
     // Check if this is a comprehensive query that needs ALL related chunks
     const comprehensiveKeywords = [
       'core values', 'mission', 'missions', 'mandate', 'objectives',
-      'graduate outcomes', 'quality commitments', 'president', 'leadership',
+      'graduate outcomes', 'quality commitments', 'president', 'vice president', 'vice presidents',
+      'leadership', 'chancellor', 'board', 'governance', 'administration',
       'history', 'faculties', 'faculty', 'programs', 'programme', 'enrollment', 
       'campuses', 'campus', 'deans', 'dean', 'directors', 'director',
       'events', 'schedules', 'calendar', 'announcements', 'dates', 'deadlines'
@@ -623,7 +393,8 @@ export class OptimizedRAGService {
     const pluralKeywords = [
       'faculties', 'programs', 'courses', 'deans', 'directors', 'campuses',
       'values', 'missions', 'objectives', 'commitments', 'outcomes',
-      'events', 'schedules', 'announcements', 'dates', 'deadlines'
+      'events', 'schedules', 'announcements', 'dates', 'deadlines',
+      'presidents', 'vice presidents', 'chancellors', 'executives'
     ];
     
     const hasPluralKeyword = pluralKeywords.some(keyword => 
@@ -644,111 +415,383 @@ export class OptimizedRAGService {
     // Check for vision/mission queries - these need EXACT data retrieval
     const isVisionMissionQuery = /\b(vision|mission|mandate|core values|graduate outcomes|quality policy)\b/i.test(query);
     
-    // For vision/mission queries, prioritize exact section retrieval
-    if (isVisionMissionQuery) {
-      Logger.debug(`VISION/MISSION QUERY: Prioritizing exact section retrieval for "${query.substring(0, 40)}..."`);
+    // ===== COMPREHENSIVE QUERY TYPE DETECTION =====
+    // Based on ALL data structures in dorsu_data.json
+    
+    // Use consolidated query type detection helper
+    const queryTypes = this._detectAllQueryTypes(query);
+    const {
+      isHistoryQuery,
+      isLeadershipQuery,
+      isSUASTQuery,
+      isAdmissionRequirementsQuery,
+      isEnrollmentQuery,
+      isFacultyQuery,
+      isProgramQuery,
+      isCampusQuery,
+      isOfficeQuery,
+      isStudentOrgQuery,
+      isValuesQuery,
+      isLibraryQuery
+    } = queryTypes;
+    
+    // SUAST/Statistics queries
+    
+    // Enrollment queries
+    
+    // Faculty queries
+    
+    // Program queries
+    
+    // Campus queries
+    
+    // Office queries (general)
+    /\b(usc|university student council|ang sidlakan|catalyst|student organization|student organizations|student publication|yearbook)\b/i.test(query);
+    
+    // Values/Outcomes queries
+    
+    // Library queries
+    
+    // Debug logging for leadership query detection
+    if (isLeadershipQuery) {
+      Logger.debug(`🔍 Leadership pattern detected in query: "${query.substring(0, 50)}..."`);
+    }
+    
+    // Check for office head queries (who is the head of [office/acronym])
+    const officeHeadPattern = /\b(who\s+(is|are)\s+(the\s+)?(head|director|chief|manager|officer)\s+(of|in)?|head\s+of|director\s+of|chief\s+of|manager\s+of)\b/i;
+    const officeAcronymPattern = /\b(OSPAT|OSA|OSCD|FASG|PESO|IRO|HSU|CGAD|IP-TBM|GCTC)\b/i;
+    const officeNamePattern = /\b(office|offices|unit|units)\s+(of|for|in)?\s+[a-z\s]+(office|unit|services|affairs|program|programs)\b/i;
+    const hasOfficeHeadPattern = officeHeadPattern.test(query);
+    const hasOfficeAcronym = officeAcronymPattern.test(query);
+    const hasOfficeName = officeNamePattern.test(query);
+    const hasOfficeWord = /\boffice\b/i.test(query);
+    const isOfficeHeadQuery = hasOfficeHeadPattern && (hasOfficeAcronym || hasOfficeName || hasOfficeWord);
+    
+    // Debug logging for office head query detection
+    if (hasOfficeHeadPattern) {
+      Logger.debug(`🔍 Office head pattern detected in query: "${query.substring(0, 50)}..."`);
+      Logger.debug(`   hasOfficeAcronym: ${hasOfficeAcronym}, hasOfficeName: ${hasOfficeName}, hasOfficeWord: ${hasOfficeWord}`);
+      Logger.debug(`   isOfficeHeadQuery: ${isOfficeHeadQuery}`);
+    }
+    
+    // SIMPLIFIED: Use VectorSearchService for ALL retrieval
+    // Determine query type for VectorSearchService
+    let queryType = null;
+    if (isHistoryQuery) queryType = 'history';
+    // CRITICAL: Dean queries MUST be checked BEFORE leadership to avoid misrouting
+    // "dean|deans" is included in isLeadershipQuery pattern, so this must come first
+    else if (/\b(dean|deans|who\s+(is|are)\s+the\s+dean|dean\s+of)\b/i.test(query)) queryType = 'deans';
+    else if (isLeadershipQuery || isOfficeHeadQuery) {
+      if (isOfficeHeadQuery) queryType = 'office';
+      else queryType = 'leadership';
+    }
+    else if (isStudentOrgQuery) queryType = 'student_org';
+    // CRITICAL: Values/Outcomes queries MUST be checked BEFORE programs - "graduate" matches programs pattern
+    // Values/Outcomes queries (must be checked before comprehensive - "values" is in comprehensive pattern)
+    else if (/\b(core\s+values?|values?\s+of|graduate\s+outcomes?|outcomes?|quality\s+policy|mandate|charter)\b/i.test(query)) queryType = 'values';
+    else if (isProgramQuery) queryType = 'programs';
+    else if (isFacultyQuery) queryType = 'faculties';
+    else if (isAdmissionRequirementsQuery) queryType = 'admission_requirements';
+    // Hymn/Anthem queries (must be checked before comprehensive/general)
+    else if (/\b(hymn|anthem|university\s+hymn|university\s+anthem|dorsu\s+hymn|dorsu\s+anthem|lyrics|song|composer)\b/i.test(query)) queryType = 'hymn';
+    // Vision/Mission queries (must be checked before comprehensive/general)
+    else if (/\b(vision|mission|what\s+is\s+.*\s+(vision|mission)|dorsu.*\s+(vision|mission)|university.*\s+(vision|mission))\b/i.test(query)) queryType = 'vision_mission';
+    // Schedule/Calendar queries (must be checked before comprehensive/general)
+    else if (isScheduleQuery) queryType = 'schedule';
+    else if (isComprehensive || isListingQuery || hasPluralKeyword) queryType = 'comprehensive';
+    
+    // For admission requirements queries, increase maxResults to get all requirement chunks
+    const adjustedMaxResults = isAdmissionRequirementsQuery ? maxSections * 5 : maxSections * 3;
+    
+    // Get relevant data using VectorSearchService
+    let relevantData = [];
+    try {
+      relevantData = await this.vectorSearchService.search(query, {
+        maxResults: adjustedMaxResults, // Get more for admission requirements to ensure all student categories are included
+        maxSections: maxSections,
+        queryType: queryType
+      });
       
-      // Force keyword search to get ALL vision/mission chunks
-      const visionMissionSections = ['vision_mission', 'visionMission', 'mandate', 'values', 'graduate_outcomes', 'quality_policy'];
-      const sectionChunks = this.faissOptimizedData.chunks.filter(chunk => 
-        visionMissionSections.some(section => 
-          chunk.section?.toLowerCase().includes(section.toLowerCase()) ||
-          chunk.type?.toLowerCase().includes(section.toLowerCase())
-        )
-      );
+      Logger.debug(`✅ VectorSearchService returned ${relevantData.length} chunks for query type: ${queryType || 'general'}`);
       
-      if (sectionChunks.length > 0) {
-        Logger.debug(`Found ${sectionChunks.length} exact vision/mission chunks`);
-        relevantData = sectionChunks.map(chunk => ({
-          id: chunk.id,
-          section: chunk.section,
-          type: chunk.type,
-          text: chunk.text,
-          score: 100, // Highest priority
-          metadata: chunk.entities,
-          keywords: chunk.keywords,
-          source: 'exact_section_match'
-        }));
+      // For admission requirements, prioritize chunks with type 'admission_requirements'
+      if (isAdmissionRequirementsQuery && relevantData.length > 0) {
+        const requirementsChunks = relevantData.filter(chunk => 
+          chunk.type === 'admission_requirements' || 
+          chunk.category?.includes('requirements') ||
+          chunk.text?.toLowerCase().includes('requirements')
+        );
+        const otherChunks = relevantData.filter(chunk => 
+          chunk.type !== 'admission_requirements' && 
+          !chunk.category?.includes('requirements') &&
+          !chunk.text?.toLowerCase().includes('requirements')
+        );
+        // Prioritize requirements chunks
+        relevantData = [...requirementsChunks, ...otherChunks].slice(0, maxSections);
+        Logger.debug(`📋 Admission requirements: Found ${requirementsChunks.length} requirements chunks, ${otherChunks.length} other chunks`);
+      }
+    } catch (error) {
+      Logger.error(`VectorSearchService failed: ${error.message}`);
+      relevantData = [];
+    }
+    
+    // Handle vision/mission queries separately (if needed) - use VectorSearchService
+    if (isVisionMissionQuery && relevantData.length === 0) {
+      Logger.debug(`VISION/MISSION QUERY: Trying comprehensive search for "${query.substring(0, 40)}..."`);
+      try {
+        relevantData = await this.vectorSearchService.search(query, {
+          maxResults: maxSections * 2,
+          maxSections: maxSections,
+          queryType: 'comprehensive'
+        });
+      } catch (error) {
+        Logger.debug(`Vision/mission search failed: ${error.message}`);
       }
     }
     
-    // For comprehensive/listing queries, get MORE chunks - prioritize completeness
-    let relevantData;
-    if ((isComprehensive && maxSections >= 8) || isListingQuery || hasPluralKeyword) {
-      Logger.debug(`COMPREHENSIVE QUERY: Getting ALL related chunks for "${query.substring(0, 40)}..."`);
-      
-      // Increase retrieval significantly for comprehensive queries
-      const expandedMaxSections = Math.max(maxSections * 3, 30);
-      
-      // Use keyword search for comprehensive queries to ensure we get ALL related chunks
-      relevantData = this.findRelevantDataKeyword(query, expandedMaxSections);
-      
-      // Also try FAISS and merge results
-      const faissData = await this.findRelevantDataFAISS(query, expandedMaxSections);
-      
-      // Merge and deduplicate results
-      const allData = [...relevantData, ...faissData];
-      const uniqueData = allData.filter((item, index, self) => 
-        index === self.findIndex(t => t.id === item.id)
-      );
-      
-      // Sort by relevance score
-      relevantData = uniqueData.sort((a, b) => (b.score || 0) - (a.score || 0));
-      
-      // For queries about specific sections (like faculties), filter to that section
-      if (hasPluralKeyword) {
-        const sectionKeywordMap = {
-          'faculties': 'faculties',
-          'faculty': 'faculties',
-          'programs': 'programs',
-          'programme': 'programs',
-          'campuses': 'enrollment',
-          'campus': 'enrollment',
-          'values': 'values',
-          'missions': 'vision_mission',
-          'objectives': 'mandate',
-          'commitments': 'quality_policy',
-          'outcomes': 'graduate_outcomes'
-        };
+    // Ensure we have data before proceeding
+    if (!relevantData || relevantData.length === 0) {
+      Logger.warn('RAG: No relevant data found');
+      return '[NO KNOWLEDGE BASE DATA AVAILABLE]';
+    }
+    
+    // NOTE: All search/retrieval logic is now handled by VectorSearchService above
+    // The old search logic (history, leadership, office, comprehensive, etc.) has been moved to vector-search.js
+    // This keeps rag.js focused on response generation and context building
+    
+    // Calendar event handling (if needed)
+    // All search logic has been moved to VectorSearchService - see vector-search.js
+    // The old search code has been removed - VectorSearchService handles all retrieval
+    
+    // For schedule queries, also fetch and include schedule events
+    let scheduleEventsData = [];
+    if (isScheduleQuery && scheduleService && this.mongoService) {
+      try {
+        // IMPROVED: Extract month/year/semester from query for better filtering
+        const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 
+                           'july', 'august', 'september', 'october', 'november', 'december'];
+        const monthAbbr = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 
+                          'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
         
-        const matchedSection = Object.entries(sectionKeywordMap).find(([key]) => 
-          query.toLowerCase().includes(key)
-        );
+        let requestedMonth = null;
+        let requestedYear = null;
+        let requestedSemester = null;
         
-        if (matchedSection) {
-          const [_, sectionName] = matchedSection;
-          // Get ALL chunks from that specific section
-          const sectionChunks = relevantData.filter(chunk => chunk.section === sectionName);
-          if (sectionChunks.length > 0) {
-            Logger.debug(`Found ${sectionChunks.length} chunks in section "${sectionName}"`);
-            relevantData = sectionChunks;
+        const queryLower = query.toLowerCase();
+        
+        // Extract year (4 digits)
+        const yearMatch = queryLower.match(/\b(20\d{2})\b/);
+        if (yearMatch) {
+          requestedYear = parseInt(yearMatch[1], 10);
+        }
+        
+        // Extract month
+        monthNames.forEach((month, index) => {
+          if (queryLower.includes(month)) {
+            requestedMonth = index; // 0-11
+          }
+        });
+        if (requestedMonth === null) {
+          monthAbbr.forEach((month, index) => {
+            if (queryLower.includes(month)) {
+              requestedMonth = index; // 0-11
+            }
+          });
+        }
+        
+        // Extract semester: 1 (1st semester), 2 (2nd semester), or "Off" (off semester)
+        const semesterPatterns = [
+          { pattern: /\b(1st|first)\s+semester\b/i, value: 1 },
+          { pattern: /\b(2nd|second)\s+semester\b/i, value: 2 },
+          { pattern: /\boff\s+semester\b/i, value: 'Off' },
+          { pattern: /\bsemester\s+1\b|\bsemester\s+one\b/i, value: 1 },
+          { pattern: /\bsemester\s+2\b|\bsemester\s+two\b/i, value: 2 },
+          { pattern: /\b1\s+sem\b|\bfirst\s+sem\b/i, value: 1 },
+          { pattern: /\b2\s+sem\b|\bsecond\s+sem\b/i, value: 2 }
+        ];
+        
+        for (const { pattern, value } of semesterPatterns) {
+          if (pattern.test(queryLower)) {
+            requestedSemester = value;
+            Logger.debug(`📅 Detected semester from query: ${value}`);
+            break;
           }
         }
-      }
-    } else {
-      // Generate context using optimized FAISS (with fallback to keyword search)
-      relevantData = await this.findRelevantDataFAISS(query, maxSections);
-    }
-    
-    // For calendar queries, also fetch and include calendar events
-    let calendarEventsData = [];
-    if (isCalendarQuery && calendarService && this.mongoService) {
-      try {
+        
+        // Calculate date range based on query
         const now = new Date();
-        const startDate = new Date(now);
-        startDate.setDate(startDate.getDate() - 30); // Past 30 days
-        const endDate = new Date(now);
-        endDate.setDate(endDate.getDate() + 365); // Next 365 days
+        let startDate = new Date(now);
+        let endDate = new Date(now);
         
-        const events = await calendarService.getEvents({
-          startDate: startDate.toISOString(),
-          endDate: endDate.toISOString(),
-          limit: 100
-        });
+        if (requestedMonth !== null && requestedYear) {
+          // User specified month and year - filter to that month
+          startDate = new Date(requestedYear, requestedMonth, 1);
+          endDate = new Date(requestedYear, requestedMonth + 1, 0, 23, 59, 59); // Last day of month
+          Logger.debug(`📅 Filtering calendar events to ${monthNames[requestedMonth]} ${requestedYear}`);
+        } else if (requestedYear) {
+          // User specified year only - filter to that year
+          startDate = new Date(requestedYear, 0, 1);
+          endDate = new Date(requestedYear, 11, 31, 23, 59, 59);
+          Logger.debug(`📅 Filtering calendar events to year ${requestedYear}`);
+        } else {
+          // Default: Past 30 days to future 365 days
+          startDate.setDate(startDate.getDate() - 30);
+          endDate.setDate(endDate.getDate() + 365);
+        }
         
-        if (events && events.length > 0) {
-          // Convert calendar events to RAG format chunks
-          calendarEventsData = events.map((event, idx) => {
+        // Check if schedule events are already in relevantData from vector search
+        let scheduleEventsFromVectorSearch = relevantData.filter(item => item.section === 'schedule_events');
+        
+        Logger.debug(`📅 RAG: Already have ${scheduleEventsFromVectorSearch.length} schedule events from vector search`);
+        
+        // Extract exam type from query for filtering
+        // Improved patterns to catch more variations (e.g., "prelim exam schedule", "preliminary examination", "prelim exam", "final and prelim")
+        // Check if query contains exam type keywords - if multiple types are mentioned, treat as multiple exam query
+        const hasPrelim = /\b(prelim|preliminary|prelims?)\b/i.test(query);
+        const hasMidterm = /\b(midterm|mid-term|mid\s+term)\b/i.test(query);
+        const hasFinal = /\b(final|finals?)\b/i.test(query);
+        const hasExam = /\b(exam|examination|exams?)\b/i.test(query);
+        const hasSchedule = /\b(schedule|schedules?|date|dates?|when)\b/i.test(query);
+        
+        // Count how many exam types are mentioned
+        const examTypesCount = [hasPrelim, hasMidterm, hasFinal].filter(Boolean).length;
+        const isMultipleExamQuery = examTypesCount > 1;
+        
+        // If query mentions exam/schedule keywords OR mentions multiple exam types, treat as exam query
+        // This handles cases like "final and prelim" even without "exam" keyword
+        const hasExamContext = hasExam || hasSchedule || isMultipleExamQuery;
+        
+        // For prelim: must have "prelim/preliminary" AND exam context
+        const isPrelimQuery = hasPrelim && hasExamContext;
+        // For midterm: must have "midterm" AND exam context
+        const isMidtermQuery = hasMidterm && hasExamContext;
+        // For final: must have "final" AND exam context
+        const isFinalQuery = hasFinal && hasExamContext;
+        const isExamQuery = hasExam;
+        
+        Logger.debug(`📅 Exam query detection: hasPrelim=${hasPrelim}, hasMidterm=${hasMidterm}, hasFinal=${hasFinal}, hasExam=${hasExam}, hasSchedule=${hasSchedule}`);
+        Logger.debug(`📅 Exam query detection: examTypesCount=${examTypesCount}, isMultipleExamQuery=${isMultipleExamQuery}, hasExamContext=${hasExamContext}`);
+        Logger.debug(`📅 Exam query detection: prelim=${isPrelimQuery}, midterm=${isMidtermQuery}, final=${isFinalQuery}, exam=${isExamQuery}`);
+        
+        // Filter vector search results for exam type if this is an exam-specific query
+        // Support multiple exam types (e.g., "final and prelim")
+        if (isPrelimQuery || isMidtermQuery || isFinalQuery) {
+          const filteredFromVector = scheduleEventsFromVectorSearch.filter(event => {
+            const titleLower = (event.metadata?.title || event.text || '').toLowerCase();
+            // Use OR logic to match ANY of the requested exam types
+            let matches = false;
+            if (isPrelimQuery) matches = matches || titleLower.includes('prelim') || titleLower.includes('preliminary');
+            if (isMidtermQuery) matches = matches || titleLower.includes('midterm');
+            if (isFinalQuery) matches = matches || titleLower.includes('final');
+            return matches;
+          });
+          
+          const requestedTypes = [];
+          if (isPrelimQuery) requestedTypes.push('prelim');
+          if (isMidtermQuery) requestedTypes.push('midterm');
+          if (isFinalQuery) requestedTypes.push('final');
+          const examTypesStr = requestedTypes.join(' + ');
+          
+          Logger.debug(`📅 RAG: Filtered vector search results from ${scheduleEventsFromVectorSearch.length} to ${filteredFromVector.length} ${examTypesStr} exam events`);
+          
+          if (filteredFromVector.length > 0) {
+            scheduleEventsFromVectorSearch = filteredFromVector;
+            // Remove unfiltered schedule events from relevantData and add filtered ones
+            const otherData = relevantData.filter(item => item.section !== 'schedule_events');
+            relevantData = [...scheduleEventsFromVectorSearch, ...otherData];
+          }
+        }
+        
+        let events = [];
+        
+        // Only fetch from scheduleService if we don't have enough exam-filtered schedule events from vector search
+        // For exam queries, always try to fetch directly to ensure we get the best results (even if vector search had some)
+        if (scheduleEventsFromVectorSearch.length < 3 || (isPrelimQuery || isMidtermQuery || isFinalQuery)) {
+          // Log schedule fetch operation
+          Logger.logDataFetch('fetchScheduleEvents', query, {
+            method: 'scheduleService.getEvents',
+            filters: {
+              startDate: startDate.toISOString(),
+              endDate: endDate.toISOString(),
+              semester: requestedSemester,
+              requestedMonth,
+              requestedYear,
+              limit: 100,
+              examFilter: isPrelimQuery ? 'prelim' : isMidtermQuery ? 'midterm' : isFinalQuery ? 'final' : null
+            }
+          });
+
+          // For multiple exam types, don't use MongoDB examType filter (it only supports one type)
+          // Instead, fetch all events and filter JavaScript-side for ALL requested types
+          let examTypeForQuery = null;
+          const requestedExamTypes = [];
+          if (isPrelimQuery) requestedExamTypes.push('prelim');
+          if (isMidtermQuery) requestedExamTypes.push('midterm');
+          if (isFinalQuery) requestedExamTypes.push('final');
+          
+          // Only use MongoDB filter if exactly ONE exam type is requested
+          if (requestedExamTypes.length === 1) {
+            examTypeForQuery = requestedExamTypes[0];
+          }
+          // If multiple exam types, fetch without examType filter and filter JavaScript-side
+          
+          events = await scheduleService.getEvents({
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+            semester: requestedSemester, // Pass semester filter
+            limit: 100,
+            examType: examTypeForQuery, // Only set if single exam type, null for multiple types
+            enableLogging: true // Enable logging for RAG/AI queries
+          });
+          
+          const examTypesStr = requestedExamTypes.length > 0 ? requestedExamTypes.join(' + ') : 'none';
+          Logger.debug(`📅 RAG: Fetched ${events.length} schedule events from scheduleService${examTypeForQuery ? ` (MongoDB filtered for ${examTypeForQuery})` : ` (requested: ${examTypesStr}, will filter JS-side)`}`);
+          
+          // Additional JavaScript filtering for exam type - support multiple exam types with OR logic
+          if (isPrelimQuery || isMidtermQuery || isFinalQuery) {
+            const beforeCount = events.length;
+            events = events.filter(event => {
+              const titleLower = (event.title || '').toLowerCase();
+              // Use OR logic: match ANY of the requested exam types
+              let matches = false;
+              if (isPrelimQuery) matches = matches || titleLower.includes('prelim') || titleLower.includes('preliminary');
+              if (isMidtermQuery) matches = matches || titleLower.includes('midterm');
+              if (isFinalQuery) matches = matches || titleLower.includes('final');
+              return matches;
+            });
+            if (events.length !== beforeCount) {
+              Logger.debug(`📅 RAG: Additional filtering reduced results from ${beforeCount} to ${events.length} ${examTypesStr} exam events`);
+            }
+          }
+        } else {
+          Logger.debug(`📅 RAG: Using ${scheduleEventsFromVectorSearch.length} schedule events from vector search, skipping direct fetch`);
+        }
+        
+        // Additional filtering: For date ranges, check if query month/year falls within the range
+        let filteredEvents = events;
+        if (requestedMonth !== null && requestedYear) {
+          filteredEvents = events.filter(event => {
+            // For date ranges, check if the requested month/year overlaps with the range
+            if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+              const rangeStart = new Date(event.startDate);
+              const rangeEnd = new Date(event.endDate);
+              const queryStart = new Date(requestedYear, requestedMonth, 1);
+              const queryEnd = new Date(requestedYear, requestedMonth + 1, 0, 23, 59, 59);
+              
+              // Check if ranges overlap
+              return (rangeStart <= queryEnd && rangeEnd >= queryStart);
+            } else {
+              // For single dates, check if it's in the requested month/year
+              const eventDate = new Date(event.isoDate || event.date);
+              return eventDate.getMonth() === requestedMonth && eventDate.getFullYear() === requestedYear;
+            }
+          });
+          Logger.debug(`📅 Filtered ${events.length} events to ${filteredEvents.length} events for ${monthNames[requestedMonth]} ${requestedYear}`);
+        }
+        
+        if (filteredEvents && filteredEvents.length > 0) {
+          // Convert schedule events to RAG format chunks
+          scheduleEventsData = filteredEvents.map((event, idx) => {
             const eventDate = event.isoDate || event.date;
             const dateStr = eventDate ? new Date(eventDate).toLocaleDateString('en-US', { 
               year: 'numeric', 
@@ -762,6 +805,14 @@ export class OptimizedRAGService {
             eventText += `Date: ${dateStr}. `;
             if (event.time) eventText += `Time: ${event.time}. `;
             if (event.category) eventText += `Category: ${event.category}. `;
+            // Include semester information in event text for better searchability
+            if (event.semester) {
+              const semesterText = event.semester === 1 ? '1st Semester' : 
+                                   event.semester === 2 ? '2nd Semester' : 
+                                   event.semester === 'Off' ? 'Off Semester' : 
+                                   `Semester ${event.semester}`;
+              eventText += `Semester: ${semesterText}. `;
+            }
             if (event.dateType === 'date_range' && event.startDate && event.endDate) {
               const start = new Date(event.startDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
               const end = new Date(event.endDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -772,15 +823,21 @@ export class OptimizedRAGService {
             const keywords = [];
             if (event.title) keywords.push(...event.title.toLowerCase().split(/\s+/).filter(w => w.length > 3));
             if (event.category) keywords.push(event.category.toLowerCase());
+            // Add semester to keywords for better matching
+            if (event.semester) {
+              if (event.semester === 1) keywords.push('1st', 'first', 'semester');
+              else if (event.semester === 2) keywords.push('2nd', 'second', 'semester');
+              else if (event.semester === 'Off') keywords.push('off', 'semester');
+            }
             if (event.description) {
               const descWords = event.description.toLowerCase().split(/\s+/).filter(w => w.length > 4);
               keywords.push(...descWords.slice(0, 5)); // Top 5 words from description
             }
             
             return {
-              id: `calendar-${event._id || event.id || idx}`,
-              section: 'calendar_events',
-              type: 'calendar_event',
+              id: `schedule-${event._id || event.id || idx}`,
+              section: 'schedule_events',
+              type: 'schedule_event',
               text: eventText.trim(),
               score: 100, // High score for calendar events in calendar queries
               metadata: {
@@ -791,42 +848,131 @@ export class OptimizedRAGService {
                 description: event.description,
                 dateType: event.dateType,
                 startDate: event.startDate,
-                endDate: event.endDate
+                endDate: event.endDate,
+                semester: event.semester // Include semester in metadata
               },
               keywords: [...new Set(keywords)], // Remove duplicates
-              source: 'calendar_database'
+              source: 'schedule_database'
             };
           });
           
-          // Merge calendar events with RAG results, prioritizing calendar events for calendar queries
-          if (isCalendarQuery) {
-            relevantData = [...calendarEventsData, ...relevantData];
+          // Log converted schedule events
+          Logger.logRetrievedChunks(query, scheduleEventsData, {
+            source: 'rag_schedule_events',
+            maxChunks: 30,
+            showFullContent: false
+          });
+          
+          // Merge schedule events with RAG results, but avoid duplicates
+          // CRITICAL: For exam-specific queries, only use filtered events - never merge unfiltered vector search results
+          const otherData = relevantData.filter(item => item.section !== 'schedule_events');
+          
+          if (isPrelimQuery || isMidtermQuery || isFinalQuery) {
+            // For exam queries, ONLY use the directly fetched and filtered events
+            // Support multiple exam types with OR logic
+            const filteredVectorEvents = scheduleEventsFromVectorSearch.filter(event => {
+              const titleLower = (event.metadata?.title || event.text || '').toLowerCase();
+              // Use OR logic: match ANY of the requested exam types
+              let matches = false;
+              if (isPrelimQuery) matches = matches || titleLower.includes('prelim') || titleLower.includes('preliminary');
+              if (isMidtermQuery) matches = matches || titleLower.includes('midterm');
+              if (isFinalQuery) matches = matches || titleLower.includes('final');
+              return matches;
+            });
+            
+            const requestedTypes = [];
+            if (isPrelimQuery) requestedTypes.push('prelim');
+            if (isMidtermQuery) requestedTypes.push('midterm');
+            if (isFinalQuery) requestedTypes.push('final');
+            const examTypesStr = requestedTypes.join(' + ');
+            
+            // Merge: filtered direct fetch events first, then filtered vector search events (if any), then other data
+            relevantData = [...scheduleEventsData, ...filteredVectorEvents, ...otherData];
+            Logger.debug(`📅 RAG: For ${examTypesStr} exam query, merged ${scheduleEventsData.length} direct + ${filteredVectorEvents.length} filtered vector events`);
+          } else if (scheduleEventsFromVectorSearch.length > 0) {
+            // For non-exam queries, merge normally
+            if (isScheduleQuery) {
+              // For schedule queries, prioritize directly fetched/filtered events
+              relevantData = [...scheduleEventsData, ...scheduleEventsFromVectorSearch, ...otherData];
+            } else {
+              // For other queries, keep vector search results first
+              relevantData = [...scheduleEventsFromVectorSearch, ...scheduleEventsData, ...otherData];
+            }
           } else {
-            relevantData = [...relevantData, ...calendarEventsData];
+            // No schedule events from vector search, just merge directly fetched ones
+            if (isScheduleQuery) {
+              relevantData = [...scheduleEventsData, ...otherData];
+            } else {
+              relevantData = [...otherData, ...scheduleEventsData];
+            }
           }
           
-          Logger.debug(`RAG: Added ${calendarEventsData.length} calendar events to context`);
+          Logger.debug(`RAG: Added ${scheduleEventsData.length} schedule events to context (total schedule events: ${relevantData.filter(item => item.section === 'schedule_events').length})`);
+          Logger.logDataFetch('ragScheduleEventsAdded', query, {
+            method: 'rag_context_merge',
+            chunksAdded: scheduleEventsData.length,
+            totalScheduleEvents: relevantData.filter(item => item.section === 'schedule_events').length,
+            totalRelevantData: relevantData.length
+          });
+        } else if (scheduleEventsFromVectorSearch.length > 0 && !(isPrelimQuery || isMidtermQuery || isFinalQuery)) {
+          // If we didn't fetch directly but have vector search results, use them
+          // BUT: For exam-specific queries, never use unfiltered vector search results
+          // If filtered results are empty, it means no exam events were found
+          Logger.debug(`RAG: Using ${scheduleEventsFromVectorSearch.length} schedule events from vector search only`);
+          Logger.logDataFetch('ragScheduleEventsFromVectorSearch', query, {
+            method: 'vector_search_only',
+            chunksAdded: scheduleEventsFromVectorSearch.length,
+            totalRelevantData: relevantData.length
+          });
+        } else if (isPrelimQuery || isMidtermQuery || isFinalQuery) {
+          // For exam queries with no results, remove unfiltered schedule events from relevantData
+          // Support multiple exam types with OR logic
+          const requestedTypes = [];
+          if (isPrelimQuery) requestedTypes.push('prelim');
+          if (isMidtermQuery) requestedTypes.push('midterm');
+          if (isFinalQuery) requestedTypes.push('final');
+          const examTypesStr = requestedTypes.join(' + ');
+          Logger.debug(`📅 RAG: No ${examTypesStr} exam events found. Removing unfiltered schedule events from results.`);
+          
+          // Remove unfiltered schedule events that don't match ANY of the requested exam types
+          relevantData = relevantData.filter(item => {
+            if (item.section !== 'schedule_events') return true;
+            const titleLower = (item.metadata?.title || item.text || '').toLowerCase();
+            // Use OR logic: match ANY of the requested exam types
+            let matches = false;
+            if (isPrelimQuery) matches = matches || titleLower.includes('prelim') || titleLower.includes('preliminary');
+            if (isMidtermQuery) matches = matches || titleLower.includes('midterm');
+            if (isFinalQuery) matches = matches || titleLower.includes('final');
+            return matches;
+          });
+          
+          Logger.logDataFetch('ragExamQueryNoResults', query, {
+            method: 'exam_filter_removed',
+            examType,
+            remainingEvents: relevantData.filter(item => item.section === 'schedule_events').length,
+            totalRelevantData: relevantData.length
+          });
         }
-      } catch (calendarError) {
-        Logger.error('RAG: Error fetching calendar events', calendarError);
-        // Continue without calendar data if there's an error
+      } catch (scheduleError) {
+        Logger.error('RAG: Error fetching schedule events', scheduleError);
+        // Continue without schedule data if there's an error
       }
     }
     
-    if (relevantData.length === 0) {
-      const basicInfo = this.getBasicInfo();
-      this.cache.set(cacheKey, basicInfo); // Cache basic info (no TTL - persists until scheduled clear)
-      this.cacheStats.sets++;
-      return basicInfo;
+    // Final check: ensure we have data
+    if (!relevantData || relevantData.length === 0) {
+      Logger.warn('RAG: No relevant data found after all searches');
+      return '[NO KNOWLEDGE BASE DATA AVAILABLE]';
     }
-
+    
+    // Build context from retrieved data
     // For basic queries, use minimal context
     let context = '';
     let currentTokens = 0;
     
     // Only add basic info for basic queries
     if (isBasicQuery && !isComprehensive) {
-    const basicInfo = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
+      const basicInfo = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
 **Full Name:** Davao Oriental State University
 **Type:** State-funded research-based coeducational higher education institution
 **Location:** Mati City, Davao Oriental, Philippines
@@ -845,15 +991,15 @@ export class OptimizedRAGService {
     // No need to cap here - trust the server's calculation
     const effectiveMaxTokens = maxTokens; // Use requested tokens directly
     
-    // Separate calendar events from other data for better formatting
-    const calendarEvents = relevantData.filter(item => item.section === 'calendar_events');
-    const otherData = relevantData.filter(item => item.section !== 'calendar_events');
+    // Separate schedule events from other data for better formatting
+    const scheduleEvents = relevantData.filter(item => item.section === 'schedule_events');
+    const otherData = relevantData.filter(item => item.section !== 'schedule_events');
     
-    // Add calendar events section first if present
-    if (calendarEvents.length > 0 && isCalendarQuery) {
-      const calendarHeader = `\n## CALENDAR EVENTS AND SCHEDULES\n\n`;
-      context += calendarHeader;
-      currentTokens += Math.round(calendarHeader.length / 4);
+    // Add schedule events section first if present
+    if (scheduleEvents.length > 0 && isScheduleQuery) {
+      const scheduleHeader = `\n## SCHEDULE EVENTS AND ANNOUNCEMENTS\n\n`;
+      context += scheduleHeader;
+      currentTokens += Math.round(scheduleHeader.length / 4);
       
       // Helper function to format date concisely (e.g., "Jan 11" or "Jan 11 - Jan 15")
       const formatDateConcise = (date) => {
@@ -866,7 +1012,7 @@ export class OptimizedRAGService {
       
       // Group events by title to avoid redundancy
       const groupedEvents = new Map();
-      calendarEvents.forEach(event => {
+      scheduleEvents.forEach(event => {
         const title = event.metadata?.title || 'Untitled Event';
         if (!groupedEvents.has(title)) {
           groupedEvents.set(title, []);
@@ -888,64 +1034,69 @@ export class OptimizedRAGService {
         const category = firstEvent.metadata?.category;
         const time = firstEvent.metadata?.time;
         const description = firstEvent.metadata?.description;
+        const semester = firstEvent.metadata?.semester;
         
         let eventText = `**${title}**\n`;
         
-        // Check if all events in group are date ranges
-        const allAreDateRanges = eventGroup.every(e => 
-          e.metadata?.dateType === 'date_range' && e.metadata.startDate && e.metadata.endDate
-        );
+        // Add semester information if available
+        if (semester) {
+          const semesterText = semester === 1 ? '1st Semester' : 
+                               semester === 2 ? '2nd Semester' : 
+                               semester === 'Off' ? 'Off Semester' : 
+                               `Semester ${semester}`;
+          eventText += `📚 Semester: ${semesterText}\n`;
+        }
         
-        if (allAreDateRanges && eventGroup.length > 0) {
-          // For date ranges, show the range concisely
-          const startDate = eventGroup[0].metadata.startDate;
-          const endDate = eventGroup[eventGroup.length - 1].metadata.endDate;
+        // FIXED: Group events by their actual date range to prevent mixing different ranges
+        // Each unique date range should be shown separately
+        const dateRanges = new Map(); // Map to store unique date ranges
+        
+        eventGroup.forEach(event => {
+          let rangeKey = '';
+          let rangeDisplay = '';
           
-          // If all events are part of the same range, show single range
-          if (eventGroup.length === 1) {
-            const start = formatDateConcise(startDate);
-            const end = formatDateConcise(endDate);
-            const year = new Date(startDate).getFullYear();
-            eventText += `📅 Date: ${start} - ${end}, ${year}\n`;
-          } else {
-            // Multiple ranges - show first and last
-            const firstStart = formatDateConcise(startDate);
-            const lastEnd = formatDateConcise(endDate);
-            const year = new Date(startDate).getFullYear();
-            eventText += `📅 Dates: ${firstStart} - ${lastEnd}, ${year}\n`;
+          if (event.metadata?.dateType === 'date_range' && event.metadata.startDate && event.metadata.endDate) {
+            // For date ranges, use startDate-endDate as key
+            const start = formatDateConcise(event.metadata.startDate);
+            const end = formatDateConcise(event.metadata.endDate);
+            rangeKey = `${event.metadata.startDate}_${event.metadata.endDate}`;
+            rangeDisplay = `${start} - ${end}`;
+          } else if (event.metadata?.date) {
+            // For single dates, use the date as key
+            rangeKey = event.metadata.date;
+            rangeDisplay = formatDateConcise(event.metadata.date);
+          } else if (event.metadata?.startDate) {
+            // Fallback to startDate
+            rangeKey = event.metadata.startDate;
+            rangeDisplay = formatDateConcise(event.metadata.startDate);
           }
-        } else {
-          // Mix of single dates and ranges, or all single dates
-          const dates = [];
-          eventGroup.forEach(event => {
-            if (event.metadata?.dateType === 'date_range' && event.metadata.startDate && event.metadata.endDate) {
-              const start = formatDateConcise(event.metadata.startDate);
-              const end = formatDateConcise(event.metadata.endDate);
-              dates.push(`${start} - ${end}`);
-            } else if (event.metadata?.date) {
-              dates.push(formatDateConcise(event.metadata.date));
-            }
-          });
           
-          if (dates.length > 0) {
-            // Remove duplicates and format
-            const uniqueDates = [...new Set(dates)];
-            const year = eventGroup[0].metadata?.date 
-              ? new Date(eventGroup[0].metadata.date).getFullYear()
-              : eventGroup[0].metadata?.startDate 
-                ? new Date(eventGroup[0].metadata.startDate).getFullYear()
-                : new Date().getFullYear();
-            
-            if (uniqueDates.length === 1) {
-              eventText += `📅 Date: ${uniqueDates[0]}, ${year}\n`;
-            } else if (uniqueDates.length <= 3) {
-              eventText += `📅 Dates: ${uniqueDates.join(', ')}, ${year}\n`;
-            } else {
-              // Too many dates, show range
-              const firstDate = uniqueDates[0];
-              const lastDate = uniqueDates[uniqueDates.length - 1];
-              eventText += `📅 Dates: ${firstDate} - ${lastDate}, ${year}\n`;
-            }
+          if (rangeKey && !dateRanges.has(rangeKey)) {
+            dateRanges.set(rangeKey, rangeDisplay);
+          }
+        });
+        
+        if (dateRanges.size > 0) {
+          const uniqueRanges = Array.from(dateRanges.values());
+          
+          // Determine year from first event
+          const firstEvent = eventGroup[0];
+          const year = firstEvent.metadata?.date 
+            ? new Date(firstEvent.metadata.date).getFullYear()
+            : firstEvent.metadata?.startDate 
+              ? new Date(firstEvent.metadata.startDate).getFullYear()
+              : new Date().getFullYear();
+          
+          if (uniqueRanges.length === 1) {
+            eventText += `📅 Date: ${uniqueRanges[0]}, ${year}\n`;
+          } else if (uniqueRanges.length <= 3) {
+            eventText += `📅 Dates: ${uniqueRanges.join(', ')}, ${year}\n`;
+          } else {
+            // Too many ranges - list them separately
+            eventText += `📅 Dates:\n`;
+            uniqueRanges.forEach(range => {
+              eventText += `   • ${range}, ${year}\n`;
+            });
           }
         }
         
@@ -1006,120 +1157,30 @@ export class OptimizedRAGService {
 • Campus locations and enrollment`;
     }
 
-    // Cache the result (no TTL - persists until scheduled clear)
-    this.cache.set(cacheKey, context);
-    this.cacheStats.sets++;
+    // NO CACHING - Always return fresh results
     
     return context;
   }
 
-  // Get basic university info
-  getBasicInfo() {
-    return `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
-**Full Name:** Davao Oriental State University
-**Type:** State-funded research-based coeducational higher education institution
-**Location:** Mati City, Davao Oriental, Philippines
-**Founded:** December 13, 1989
-**Total Enrollment:** 17,251 students (as of 2025)
-**President:** Dr. Roy G. Ponce
-
-## VISION & MISSION
-**Vision:** A university of excellence, innovation and inclusion.
-**Mission:** To elevate knowledge generation, promote sustainable development, and produce holistic human resources.
-
-## ACADEMIC STRUCTURE
-**7 Faculties:** FACET, FALS, FTED, FBM, FCJE, FNAHS, FHUSOCOM
-**Programs:** Undergraduate and Graduate programs across various disciplines
-**Campuses:** Main Campus plus 5 Extension Campuses`;
-  }
-
   // Cache AI responses for common queries
-  // NOTE: No TTL - cache persists until scheduled clear time
+  // IMPORTANT: Do NOT cache negative responses (e.g., "I don't have that information")
+  // Only cache positive, informative responses to prevent caching incorrect "no data" answers
   async cacheAIResponse(query, response, complexity) {
-    const normalizedQuery = query.toLowerCase().trim();
-    const cacheKey = `ai_opt_${normalizedQuery.replace(/\s+/g, '_')}`;
-    
-    // Store in-memory cache (fast access)
-    this.cache.set(cacheKey, {
-      response: response,
-      complexity: complexity,
-      cachedAt: Date.now()
-    });
-    
-    // Also store in MongoDB for persistence (survives server restarts)
-    if (this.mongoService) {
-      try {
-        // Store in MongoDB ai_cache collection (no expiration - cleared at scheduled times)
-        await this.mongoService.cacheResponse(normalizedQuery, response, complexity, 0); // 0 = no expiration
-        Logger.debug(`Cached AI response in MongoDB for "${query.substring(0, 30)}..."`);
-      } catch (error) {
-        Logger.warn(`Failed to cache in MongoDB (using in-memory only): ${error.message}`);
-      }
-    }
-    
-    this.cacheStats.sets++;
-    Logger.debug(`Cached AI response for "${query.substring(0, 30)}..." (in-memory + MongoDB)`);
+    // NO-OP: Caching completely disabled for fresh data every time
+    return;
   }
 
-  // Get cached AI response (checks both in-memory and MongoDB)
+  // Get cached AI response - DISABLED
   async getCachedAIResponse(query) {
-    const normalizedQuery = query.toLowerCase().trim();
-    const cacheKey = `ai_opt_${normalizedQuery.replace(/\s+/g, '_')}`;
-    
-    // First check in-memory cache (fastest)
-    const cached = this.cache.get(cacheKey);
-    if (cached) {
-      this.cacheStats.hits++;
-      // Handle both old format (string) and new format (object with metadata)
-      const response = typeof cached === 'string' ? cached : cached.response;
-      Logger.debug(`Cache HIT (in-memory): "${query.substring(0, 30)}..."`);
-      return response;
-    }
-    
-    // If not in memory, check MongoDB (persistent cache)
-    if (this.mongoService) {
-      try {
-        const mongoCached = await this.mongoService.getCachedResponse(normalizedQuery);
-        if (mongoCached) {
-          // Restore to in-memory cache for faster future access
-          this.cache.set(cacheKey, {
-            response: mongoCached,
-            complexity: 'unknown',
-            cachedAt: Date.now()
-          });
-          this.cacheStats.hits++;
-          Logger.debug(`Cache HIT (MongoDB): "${query.substring(0, 30)}..."`);
-          return mongoCached;
-        }
-      } catch (error) {
-        Logger.debug(`MongoDB cache check failed (continuing): ${error.message}`);
-      }
-    }
-    
-    this.cacheStats.misses++;
+    // NO-OP: Always return null to force fresh fetch
     return null;
   }
   
-  // Clear all AI response cache (both in-memory and MongoDB)
+  // Clear all AI response cache - DISABLED
   async clearAIResponseCache() {
-    // Clear in-memory cache
-    const keys = this.cache.keys();
-    const aiResponseKeys = keys.filter(key => key.startsWith('ai_opt_'));
-    aiResponseKeys.forEach(key => this.cache.del(key));
-    this.cacheStats.deletes += aiResponseKeys.length;
-    
-    // Clear MongoDB cache collection
-    if (this.mongoService && this.mongoService.db) {
-      try {
-        const collection = this.mongoService.db.collection('ai_cache');
-        const result = await collection.deleteMany({});
-        Logger.info(`Cleared ${result.deletedCount} cached responses from MongoDB ai_cache collection`);
-      } catch (error) {
-        Logger.warn(`Failed to clear MongoDB cache: ${error.message}`);
-      }
-    }
-    Logger.info(`Cleared ${aiResponseKeys.length} AI response cache entries`);
-    return aiResponseKeys.length;
+    // NO-OP: No cache to clear
+    Logger.info('Cache clearing skipped - caching is disabled');
+    return 0;
   }
 
   // Sync with MongoDB to get latest uploaded data
@@ -1140,41 +1201,62 @@ export class OptimizedRAGService {
       Logger.info(`Syncing with MongoDB: ${mongoChunks.length} total chunks`);
       
       // Convert ALL MongoDB chunks to RAG format (replace, not merge)
+      // CRITICAL FIX: Include ALL chunks, not just those with embeddings
+      // Chunks without embeddings will be handled by keyword search
       const allChunks = [];
+      const chunksWithoutEmbeddings = [];
+      
       for (const chunk of mongoChunks) {
+        const chunkData = {
+          id: chunk.id,
+          text: chunk.content || chunk.text || '',
+          section: chunk.section || chunk.topic || 'general',
+          type: chunk.type || chunk.category || 'info',
+          topic: chunk.topic,
+          category: chunk.category || 'general',
+          keywords: chunk.keywords || [],
+          metadata: chunk.metadata || {},
+          entities: chunk.entities || chunk.metadata || {},
+          embedding: chunk.embedding
+        };
+        
         if (chunk.embedding) {
-          allChunks.push({
-            id: chunk.id,
-            text: chunk.content,
-            section: chunk.section || chunk.topic || 'general',
-            type: chunk.type || chunk.category || 'info',
-            topic: chunk.topic,
-            category: chunk.category || 'general',
-            keywords: chunk.keywords || [],
-            metadata: chunk.metadata || {},
-            entities: chunk.entities || {},
-            embedding: chunk.embedding
-          });
+          allChunks.push(chunkData);
+        } else {
+          chunksWithoutEmbeddings.push(chunkData);
         }
       }
+      
+      // Log chunks without embeddings (they'll still be searchable via keyword search)
+      if (chunksWithoutEmbeddings.length > 0) {
+        Logger.warn(`⚠️  Found ${chunksWithoutEmbeddings.length} chunks without embeddings (will use keyword search only)`);
+      }
+      
+      // CRITICAL FIX: Always update keyword search index, even if no chunks have embeddings
+      // This ensures ALL chunks are searchable via keyword search
+      // CRITICAL: data-refresh.js creates both content and text - preserve both for compatibility
+      const allChunksForKeywordSearch = [...allChunks, ...chunksWithoutEmbeddings];
+      this.faissOptimizedData = {
+        chunks: allChunksForKeywordSearch.map(chunk => ({
+          id: chunk.id,
+          text: chunk.text || chunk.content || '', // Use both content and text
+          content: chunk.content || chunk.text || '', // Preserve both fields
+          section: chunk.section,
+          type: chunk.type,
+          category: chunk.category, // CRITICAL: Include category (used for offices acronym, leadership position, etc.)
+          keywords: chunk.keywords || [],
+          entities: chunk.metadata || chunk.entities || {},
+          metadata: chunk.metadata || chunk.entities || {} // Preserve metadata structure
+        }))
+      };
+      
+      Logger.info(`📚 Updated keyword search index: ${this.faissOptimizedData.chunks.length} total chunks (${allChunks.length} with embeddings, ${chunksWithoutEmbeddings.length} without)`);
       
       if (allChunks.length > 0) {
         Logger.info(`Loading ${allChunks.length} chunks from MongoDB (replacing local data)`);
         
         // REPLACE textChunks array completely (don't merge)
         this.textChunks = allChunks;
-        
-        // CRITICAL FIX: Also update faissOptimizedData.chunks for keyword search
-        this.faissOptimizedData = {
-          chunks: allChunks.map(chunk => ({
-            id: chunk.id,
-            text: chunk.text,
-            section: chunk.section,
-            type: chunk.type,
-            keywords: chunk.keywords,
-            entities: chunk.metadata
-          }))
-        };
         
         // Rebuild FAISS index with all embeddings
         if (this.faissIndex) {
@@ -1199,14 +1281,30 @@ export class OptimizedRAGService {
           }
         }
         
-        Logger.success(`Successfully loaded ${allChunks.length} chunks from MongoDB`);
-        Logger.debug(`   - textChunks: ${this.textChunks.length}`);
-        Logger.debug(`   - faissOptimizedData.chunks: ${this.faissOptimizedData.chunks.length}`);
-        Logger.debug(`   - FAISS embeddings: ${this.embeddings.length}`);
+        Logger.success(`Successfully loaded ${allChunks.length} chunks with embeddings from MongoDB`);
+        Logger.info(`   📊 Total chunks in keyword search: ${this.faissOptimizedData.chunks.length}`);
+        Logger.info(`   🔍 FAISS vector search: ${this.embeddings.length} embeddings`);
+        Logger.info(`   📝 Text chunks: ${this.textChunks.length}`);
         
-        // Clear AI cache since knowledge base changed
-        this.cache.flushAll();
-        Logger.info('Cleared AI cache (knowledge base updated)');
+        // Verify all chunks are accounted for
+        if (this.faissOptimizedData.chunks.length !== mongoChunks.length) {
+          Logger.warn(`⚠️  Mismatch: MongoDB has ${mongoChunks.length} chunks, but keyword index has ${this.faissOptimizedData.chunks.length}`);
+        }
+        
+        // NO CACHE - No need to clear anything
+      } else if (chunksWithoutEmbeddings.length > 0) {
+        // Even if no chunks have embeddings, we still have chunks for keyword search
+        Logger.info(`📚 Loaded ${chunksWithoutEmbeddings.length} chunks for keyword search only (no embeddings available)`);
+        Logger.info(`   📊 Total chunks in keyword search: ${this.faissOptimizedData.chunks.length}`);
+      } else {
+        Logger.warn('⚠️  No chunks loaded from MongoDB (neither with nor without embeddings)');
+      }
+      
+      // Update VectorSearchService with latest data
+      if (this.vectorSearchService) {
+        this.vectorSearchService.faissOptimizedData = this.faissOptimizedData;
+        this.vectorSearchService.faissIndex = this.faissIndex;
+        this.vectorSearchService.textChunks = this.textChunks;
       }
       
       this.lastMongoSync = now;
@@ -1220,5 +1318,88 @@ export class OptimizedRAGService {
   async forceSyncMongoDB() {
     Logger.info('Forcing MongoDB sync...');
     await this.syncWithMongoDB();
+  }
+
+  // ===== HELPER METHODS =====
+  
+  /**
+   * Detect calendar query patterns
+   */
+  _detectCalendarQuery(query) {
+    const calendarPattern = /\b(date|dates|event|events|announcement|announcements|schedule|schedules|calendar|when|upcoming|coming|next|this\s+(week|month|year)|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule|timeline|time\s+table)\b/i;
+    const calendarIntentPattern = /\b(when\s+(is|are|will|does)|what\s+(date|dates|time|schedule)|tell\s+me\s+(about\s+)?(the\s+)?(schedule|dates?|events?))\b/i;
+    return calendarPattern.test(query) || calendarIntentPattern.test(query);
+  }
+
+  /**
+   * Detect history query patterns
+   */
+  _detectHistoryQuery(query) {
+    return /\b(history|historical|founded|established|background|evolution|development|kasaysayan|itinatag|pinagmulan|gitukod|timeline|narrative|heritage|conversion|doscst|mcc|mati community college)\b/i.test(query);
+  }
+
+  /**
+   * Detect all query types based on data structures
+   */
+  _detectAllQueryTypes(query) {
+    return {
+      isHistoryQuery: /\b(history|historical|founded|established|background|evolution|development|kasaysayan|itinatag|pinagmulan|gitukod|timeline|narrative|heritage|conversion|doscst|mcc|mati community college)\b/i.test(query),
+      isLeadershipQuery: /\b(president|vice president|vice presidents|chancellor|director|directors|leadership|board|governance|administration|executive|executives|board of regents)\b/i.test(query),
+      isSUASTQuery: /\b(suast|state university aptitude|scholarship test|entrance exam|admission test|applicants|passers|passing rate|statistics|stats|exam results)\b/i.test(query),
+      isAdmissionRequirementsQuery: /\b(admission\s+requirements?|requirements?\s+for\s+admission|admission\s+req|what\s+(are|do|does)\s+.*\s+(need|required|requirement))\b/i.test(query) || 
+        (/\b(admission|admissions)\b/i.test(query) && /\b(requirements?|required|need|needed)\b/i.test(query)),
+      isEnrollmentQuery: /\b(enrollment|enrolment|enroll|enrol|schedule|enrollment schedule|student count|total students|campus enrollment)\b/i.test(query) && 
+        !/\b(admission\s+requirements?|requirements?\s+for\s+admission)\b/i.test(query),
+      isFacultyQuery: /\b(faculty|faculties|FACET|FALS|FTED|FBM|FCJE|FNAHS|FHUSOCOM|college|colleges)\b/i.test(query),
+      isProgramQuery: /\b(program|programs|programme|course|courses|degree|degrees|undergraduate|graduate|masters|doctorate|bachelor|BS|BA|MA|MS|PhD|EdD)\b/i.test(query),
+      isCampusQuery: /\b(campus|campuses|extension|main campus|baganga|banaybanay|cateel|san isidro|tarragona|location|locations)\b/i.test(query),
+      isOfficeQuery: /\b(office|offices|unit|units|service|services)\b/i.test(query),
+      isStudentOrgQuery: /\b(usc|university student council|ang.*sidlakan|catalyst|student organization|student organizations|student publication|yearbook)\b/i.test(query),
+      isValuesQuery: /\b(core values|graduate outcomes|values|outcomes|quality policy|mandate|charter)\b/i.test(query),
+      isLibraryQuery: /\b(library|libraries|learning resource|information resource|book|books|borrow|borrowing)\b/i.test(query)
+    };
+  }
+
+  /**
+   * Sort results by score (highest first)
+   */
+  _sortByScore(results) {
+    return results.sort((a, b) => (b.score || 0) - (a.score || 0));
+  }
+
+  /**
+   * Convert MongoDB chunks to RAG format
+   */
+  _convertMongoChunksToRAG(chunks, baseScore = 100, source = 'mongodb_search') {
+    return chunks.map(chunk => ({
+      id: chunk.id,
+      section: chunk.section,
+      type: chunk.type,
+      text: chunk.content || chunk.text,
+      score: baseScore + (chunk.relevanceScore || 0),
+      metadata: chunk.metadata || {},
+      keywords: chunk.keywords || [],
+      category: chunk.category,
+      source
+    }));
+  }
+
+  /**
+   * Sort chunks by score first, then by date (for chronological order)
+   */
+  _sortByScoreAndDate(chunks) {
+    return chunks.sort((a, b) => {
+      // Primary sort: by score
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+      // Secondary sort: by date (if available in metadata or category)
+      const dateA = a.metadata?.date || a.category || '';
+      const dateB = b.metadata?.date || b.category || '';
+      if (dateA && dateB) {
+        return dateA.localeCompare(dateB); // Chronological order
+      }
+      return 0;
+    });
   }
 }

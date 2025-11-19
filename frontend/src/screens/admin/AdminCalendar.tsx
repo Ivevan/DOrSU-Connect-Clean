@@ -396,38 +396,41 @@ const AdminCalendar = () => {
   }, []);
 
   // Load calendar events from backend - load all events (or wide range)
-  React.useEffect(() => {
-    let cancelled = false;
-    const loadEvents = async () => {
-      try {
-        setIsLoadingEvents(true);
-        // Load events for a wide range (2020-2030) to cover all possible dates
-        // This ensures we get all events regardless of year
-        const startDate = new Date(2020, 0, 1).toISOString(); // January 1, 2020
-        const endDate = new Date(2030, 11, 31).toISOString(); // December 31, 2030
-        
-        const events = await CalendarService.getEvents({
-          startDate,
-          endDate,
-          limit: 2000, // Increased limit to get more events
-        });
-        
-        if (!cancelled) {
-          setCalendarEvents(Array.isArray(events) ? events : []);
+  // Refresh when screen comes into focus to show newly created posts/events
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      const loadEvents = async () => {
+        try {
+          setIsLoadingEvents(true);
+          // Load events for a wide range (2020-2030) to cover all possible dates
+          // This ensures we get all events regardless of year
+          const startDate = new Date(2020, 0, 1).toISOString(); // January 1, 2020
+          const endDate = new Date(2030, 11, 31).toISOString(); // December 31, 2030
+          
+          const events = await CalendarService.getEvents({
+            startDate,
+            endDate,
+            limit: 2000, // Increased limit to get more events
+          });
+          
+          if (!cancelled) {
+            setCalendarEvents(Array.isArray(events) ? events : []);
+          }
+        } catch (error) {
+          console.error('Failed to load calendar events:', error);
+          if (!cancelled) setCalendarEvents([]);
+        } finally {
+          if (!cancelled) setIsLoadingEvents(false);
         }
-      } catch (error) {
-        console.error('Failed to load calendar events:', error);
-        if (!cancelled) setCalendarEvents([]);
-      } finally {
-        if (!cancelled) setIsLoadingEvents(false);
-      }
-    };
-    
-    loadEvents();
-    return () => {
-      cancelled = true;
-    };
-  }, []); // Empty dependency array means this runs only once on mount
+      };
+      
+      loadEvents();
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
 
   // Entrance animation disabled for debugging
 

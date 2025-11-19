@@ -86,7 +86,21 @@ export class LlamaService {
       return result;
     } catch (error) {
       console.error(`${this.provider.toUpperCase()} chat error:`, error);
-      throw new Error(`Failed to generate response: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Extract and clean error message
+      let errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // If error message already contains a user-friendly message (from our cleanup), use it as-is
+      // Otherwise, wrap it in a generic message
+      if (errorMessage.includes('Groq API server error') || 
+          errorMessage.includes('rate_limit_exceeded') ||
+          errorMessage.includes('tokens per day')) {
+        // Error message is already cleaned and user-friendly
+        throw new Error(errorMessage);
+      } else {
+        // Generic error - provide user-friendly message
+        throw new Error(`Failed to generate response: ${errorMessage}`);
+      }
     }
   }
 
@@ -97,12 +111,14 @@ export class LlamaService {
   async chatWithGroqFallback(messages, options = {}) {
     let lastError = null;
     const maxKeyAttempts = this.groqClients.length; // Only try different keys, not models
+    const maxServerErrorRetries = 3; // Max retries per key for server errors
     
     // Model is fixed - always use llama-3.3-70b-versatile
     const startingKeyIndex = this.currentKeyIndex;
     let keyAttempts = 0;
+    const serverErrorRetries = {}; // Track retries per key: { keyIndex: retryCount }
     
-    for (let totalAttempt = 0; totalAttempt < maxKeyAttempts; totalAttempt++) {
+    for (let totalAttempt = 0; totalAttempt < maxKeyAttempts * (maxServerErrorRetries + 1); totalAttempt++) {
       try {
         // Log key usage for debugging (model is always the same)
         if (this.groqApiKeys.length > 1 && this.currentKeyIndex !== startingKeyIndex) {
@@ -142,6 +158,38 @@ export class LlamaService {
           errorMessage = JSON.stringify(error);
         }
         
+        // Clean up HTML error pages (e.g., from Cloudflare 500 errors)
+        // Remove HTML tags and extract meaningful error info
+        if (errorMessage.includes('<!DOCTYPE html>') || errorMessage.includes('<html')) {
+          // Extract status code if present
+          const statusMatch = errorMessage.match(/Error code (\d+)/i) || errorMessage.match(/(\d{3})/);
+          const statusCode = statusMatch ? statusMatch[1] : '500';
+          
+          // Check if it's a server error from Cloudflare/Groq
+          if (errorMessage.includes('Internal server error') || errorMessage.includes('500')) {
+            errorMessage = `Groq API server error (${statusCode}): Internal server error. Please try again in a few moments.`;
+          } else if (errorMessage.includes('Bad Gateway') || errorMessage.includes('502')) {
+            errorMessage = `Groq API server error (502): Bad Gateway. Please try again in a few moments.`;
+          } else if (errorMessage.includes('Service Unavailable') || errorMessage.includes('503')) {
+            errorMessage = `Groq API server error (503): Service temporarily unavailable. Please try again in a few moments.`;
+          } else if (errorMessage.includes('Gateway Timeout') || errorMessage.includes('504')) {
+            errorMessage = `Groq API server error (504): Gateway timeout. Please try again in a few moments.`;
+          } else {
+            errorMessage = `Groq API server error (${statusCode}): Please try again in a few moments.`;
+          }
+        }
+        
+        // Get HTTP status code from error (check multiple possible locations)
+        const httpStatus = error?.status || 
+                          error?.statusCode || 
+                          error?.response?.status ||
+                          error?.response?.statusCode ||
+                          (errorMessage.match(/Error code (\d+)/i) ? parseInt(errorMessage.match(/Error code (\d+)/i)[1]) : null) ||
+                          (errorMessage.match(/\b(500|502|503|504)\b/) ? parseInt(errorMessage.match(/\b(500|502|503|504)\b/)[1]) : null);
+        
+        // Check if it's a server error (500, 502, 503, 504) - these are transient and should be retried
+        const isServerError = httpStatus >= 500 && httpStatus < 600;
+        
         // Check if it's a rate limit error (429)
         // Groq can return rate limits for both requests and tokens
         const isRateLimit = error?.status === 429 || 
@@ -152,6 +200,51 @@ export class LlamaService {
                            errorMessage?.includes('tokens per day (TPD)') ||
                            errorMessage?.includes('"type":"tokens"') ||
                            (error?.error?.type === 'tokens' || error?.error?.code === 'rate_limit_exceeded');
+        
+        // Handle server errors (500, 502, 503, 504) with retry logic
+        if (isServerError) {
+          const failedKeyIndex = this.currentKeyIndex;
+          
+          // Track retries for this key
+          if (!serverErrorRetries[failedKeyIndex]) {
+            serverErrorRetries[failedKeyIndex] = 0;
+          }
+          serverErrorRetries[failedKeyIndex]++;
+          const retryCount = serverErrorRetries[failedKeyIndex];
+          
+          const baseDelay = 2000; // Base delay: 2 seconds
+          const exponentialDelay = Math.min(baseDelay * Math.pow(2, retryCount - 1), 10000); // Max 10 seconds
+          
+          Logger.warn(`⚠️  Server error (${httpStatus}) on key ${failedKeyIndex + 1}, retry ${retryCount}/${maxServerErrorRetries}. Retrying in ${exponentialDelay / 1000}s...`);
+          
+          // If we haven't exceeded max retries for this key, wait and retry
+          if (retryCount < maxServerErrorRetries) {
+            await new Promise(resolve => setTimeout(resolve, exponentialDelay));
+            continue; // Retry with same key
+          } else {
+            // Max retries exceeded for this key, try next key if available
+            Logger.warn(`⚠️  Key ${failedKeyIndex + 1} failed after ${maxServerErrorRetries} retries due to server error (${httpStatus})`);
+            
+            if (this.groqApiKeys.length > 1 && keyAttempts < maxKeyAttempts - 1) {
+              const nextAvailableKey = this.findNextAvailableKey();
+              if (nextAvailableKey !== failedKeyIndex) {
+                this.currentKeyIndex = nextAvailableKey;
+                this.groqClient = this.groqClients[this.currentKeyIndex];
+                this.keySwitchCount++;
+                keyAttempts++;
+                // Reset retry count for new key
+                serverErrorRetries[this.currentKeyIndex] = 0;
+                Logger.info(`🔄 Switching to key ${this.currentKeyIndex + 1}/${this.groqApiKeys.length} due to server error`);
+                // Wait a bit before retrying with new key
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                continue;
+              }
+            }
+            // All retries and keys exhausted, break to throw error
+            Logger.error(`❌ Server error (${httpStatus}) persisted after ${maxServerErrorRetries} retries on key ${failedKeyIndex + 1} and all available keys`);
+            break;
+          }
+        }
         
         if (isRateLimit) {
           // Mark current key as exhausted
@@ -250,8 +343,22 @@ export class LlamaService {
     }
     
     // All keys failed (model is fixed, so we only try keys)
-    Logger.error(`❌ All ${maxKeyAttempts} keys exhausted. Model fixed to ${this.groqModel}. Last error: ${lastError?.message}`);
-    throw lastError;
+    // Clean up error message if it contains HTML
+    let finalErrorMessage = lastError?.message || 'Unknown error';
+    if (finalErrorMessage.includes('<!DOCTYPE html>') || finalErrorMessage.includes('<html')) {
+      const statusMatch = finalErrorMessage.match(/Error code (\d+)/i) || finalErrorMessage.match(/(\d{3})/);
+      const statusCode = statusMatch ? statusMatch[1] : '500';
+      finalErrorMessage = `Groq API server error (${statusCode}): The service is temporarily unavailable. Please try again in a few moments.`;
+    }
+    
+    Logger.error(`❌ All ${maxKeyAttempts} keys exhausted. Model fixed to ${this.groqModel}. Last error: ${finalErrorMessage}`);
+    
+    // Create a new error with cleaned message
+    const cleanedError = new Error(finalErrorMessage);
+    if (lastError?.stack) {
+      cleanedError.stack = lastError.stack;
+    }
+    throw cleanedError;
   }
 
   /**

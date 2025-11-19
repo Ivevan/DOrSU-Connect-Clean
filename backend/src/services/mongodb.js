@@ -95,14 +95,32 @@ class MongoDBService {
       await chunksCollection.createIndex({ keywords: 1 });
       await chunksCollection.createIndex({ 'metadata.updated_at': -1 });
       
-      // Text search index for full-text search
-      await chunksCollection.createIndex({ 
-        text: 'text', 
-        keywords: 'text' 
-      }, { 
-        name: 'text_search_index',
-        weights: { text: 10, keywords: 5 }
-      });
+      // IMPROVED: Compound indexes for common query patterns
+      await chunksCollection.createIndex({ section: 1, type: 1 });
+      await chunksCollection.createIndex({ category: 1, section: 1 });
+      await chunksCollection.createIndex({ 'metadata.acronym': 1, section: 1 });
+      await chunksCollection.createIndex({ 'metadata.year': 1, type: 1 });
+      await chunksCollection.createIndex({ keywords: 1, section: 1 });
+      
+      // Text search index for full-text search (IMPROVED: Include content field)
+      try {
+        await chunksCollection.createIndex({ 
+          content: 'text', 
+          text: 'text',
+          keywords: 'text' 
+        }, { 
+          name: 'text_search_index',
+          weights: { content: 10, text: 10, keywords: 5 },
+          default_language: 'english'
+        });
+      } catch (error) {
+        // If text index already exists with different fields, create a new one
+        if (error.code === 85) {
+          Logger.debug('Text index already exists, skipping...');
+        } else {
+          throw error;
+        }
+      }
       
       // Indexes for cache
       await cacheCollection.createIndex({ query: 1 }, { unique: true });
@@ -136,33 +154,69 @@ class MongoDBService {
   }
 
   /**
-   * Insert knowledge chunks (bulk insert)
+   * Insert knowledge chunks (bulk insert with upsert to prevent data loss)
+   * CRITICAL FIX: Use upsert instead of insert to update existing chunks and prevent duplicates from being skipped
+   * FIXED: Handle metadata fields individually to avoid conflict with $setOnInsert
    */
   async insertChunks(chunks) {
     try {
       const collection = this.getCollection(mongoConfig.collections.chunks);
       
-      // Add timestamps
-      const chunksWithTimestamps = chunks.map(chunk => ({
-        ...chunk,
-        metadata: {
-          ...chunk.metadata,
-          created_at: new Date(),
-          updated_at: new Date()
-        }
-      }));
+      // CRITICAL FIX: Set metadata fields individually using dot notation
+      // This avoids the conflict between $set (entire metadata object) and $setOnInsert (metadata.created_at)
+      const bulkOps = chunks.map(chunk => {
+        const now = new Date();
+        
+        // Build update object - set all fields individually, especially metadata fields
+        const updateDoc = {
+          $set: {
+            id: chunk.id,
+            content: chunk.content,
+            text: chunk.text || chunk.content,
+            section: chunk.section,
+            type: chunk.type,
+            category: chunk.category,
+            keywords: chunk.keywords || [],
+            embedding: chunk.embedding,
+            // Set all metadata fields individually using dot notation to avoid conflict
+            ...Object.keys(chunk.metadata || {}).reduce((acc, key) => {
+              // Skip created_at - it's handled by $setOnInsert
+              if (key !== 'created_at') {
+                acc[`metadata.${key}`] = chunk.metadata[key];
+              }
+              return acc;
+            }, {}),
+            'metadata.updated_at': now
+          },
+          $setOnInsert: {
+            'metadata.created_at': now // Only set on insert, preserve existing on update
+          }
+        };
+        
+        return {
+          updateOne: {
+            filter: { id: chunk.id },
+            update: updateDoc,
+            upsert: true
+          }
+        };
+      });
       
-      const result = await collection.insertMany(chunksWithTimestamps, { ordered: false });
-      Logger.success(`✅ Inserted ${result.insertedCount} chunks into MongoDB`);
+      const result = await collection.bulkWrite(bulkOps, { ordered: false });
+      
+      Logger.success(`✅ Processed chunks: ${result.upsertedCount} inserted, ${result.modifiedCount} updated, ${result.matchedCount} matched (total: ${chunks.length})`);
+      
+      // Warn if there's a mismatch
+      const totalProcessed = result.upsertedCount + result.modifiedCount + result.matchedCount;
+      if (totalProcessed < chunks.length) {
+        Logger.warn(`⚠️  Warning: Only ${totalProcessed} of ${chunks.length} chunks were processed. Some may have failed.`);
+      }
+      
       return result;
       
     } catch (error) {
-      if (error.code === 11000) {
-        Logger.warn('Some chunks already exist (duplicate key), skipping...');
-      } else {
-        Logger.error('Failed to insert chunks:', error);
-        throw error;
-      }
+      Logger.error('Failed to insert chunks:', error);
+      throw error;
     }
   }
 
@@ -219,34 +273,160 @@ class MongoDBService {
   }
 
   /**
-   * Vector similarity search using cosine similarity
-   * Note: MongoDB Atlas supports vector search with $vectorSearch in Atlas Search
+   * Vector similarity search using MongoDB Atlas Vector Search
+   * Uses the "DOrSUAI" vector search index for efficient semantic search
    */
   async vectorSearch(queryEmbedding, limit = 10) {
     try {
       const collection = this.getCollection(mongoConfig.collections.chunks);
       
-      // Get all chunks with embeddings
-      const chunks = await collection.find({ embedding: { $exists: true } }).toArray();
+      // Use MongoDB Atlas Vector Search aggregation pipeline
+      // This leverages the "DOrSUAI" vector search index you created
+      const pipeline = [
+        {
+          $vectorSearch: {
+            index: 'DOrSUAI',
+            path: 'embedding',
+            queryVector: queryEmbedding,
+            numCandidates: Math.max(limit * 10, 100), // Search more candidates for better results
+            limit: limit
+          }
+        },
+        {
+          $project: {
+            _id: 1,
+            id: 1,
+            content: 1,
+            text: 1,
+            section: 1,
+            type: 1,
+            category: 1,
+            keywords: 1,
+            metadata: 1,
+            embedding: 1,
+            score: { $meta: 'vectorSearchScore' } // Get the similarity score from Atlas
+          }
+        }
+      ];
       
-      // Calculate cosine similarity for each chunk
-      const results = chunks.map(chunk => {
-        const similarity = this.cosineSimilarity(queryEmbedding, chunk.embedding);
-        return {
-          ...chunk,
-          similarity,
-          score: similarity * 100
-        };
-      });
+      const results = await collection.aggregate(pipeline).toArray();
       
-      // Sort by similarity and return top results
-      return results
-        .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, limit);
+      // Map results to expected format
+      return results.map(chunk => ({
+        ...chunk,
+        similarity: chunk.score || 0, // Use vectorSearchScore as similarity
+        score: (chunk.score || 0) * 100 // Scale to 0-100
+      }));
       
     } catch (error) {
-      Logger.error('Vector search failed:', error);
-      throw error;
+      // Fallback to manual cosine similarity if vector search fails
+      Logger.warn(`Atlas Vector Search failed, falling back to manual cosine similarity: ${error.message}`);
+      
+      try {
+        const collection = this.getCollection(mongoConfig.collections.chunks);
+        const chunks = await collection.find({ embedding: { $exists: true } }).limit(limit * 5).toArray();
+        
+        const results = chunks.map(chunk => {
+          const similarity = this.cosineSimilarity(queryEmbedding, chunk.embedding);
+          return {
+            ...chunk,
+            similarity,
+            score: similarity * 100
+          };
+        });
+        
+        return results
+          .sort((a, b) => b.similarity - a.similarity)
+          .slice(0, limit);
+      } catch (fallbackError) {
+        Logger.error('Vector search fallback also failed:', fallbackError);
+        throw error; // Throw original error
+      }
+    }
+  }
+
+  /**
+   * Vector similarity search for schedule collection using MongoDB Atlas Vector Search
+   * Uses a vector search index on the schedule collection for semantic search of events/announcements
+   * @param {number[]} queryEmbedding - Query embedding vector (384 dimensions)
+   * @param {number} limit - Maximum number of results to return
+   * @param {string} indexName - Name of the vector search index (default: 'schedule_vector_index')
+   * @returns {Promise<Array>} Array of schedule events with similarity scores
+   */
+  async vectorSearchSchedule(queryEmbedding, limit = 10, indexName = 'schedule_vector_index') {
+    try {
+      const collection = this.getCollection('schedule');
+      
+      // Use MongoDB Atlas Vector Search aggregation pipeline
+      const pipeline = [
+        {
+          $vectorSearch: {
+            index: indexName,
+            path: 'embedding',
+            queryVector: queryEmbedding,
+            numCandidates: Math.max(limit * 10, 100), // Search more candidates for better results
+            limit: limit
+          }
+        },
+        {
+          $project: {
+            _id: 1,
+            title: 1,
+            description: 1,
+            category: 1,
+            type: 1,
+            date: 1,
+            isoDate: 1,
+            time: 1,
+            semester: 1,
+            dateType: 1,
+            startDate: 1,
+            endDate: 1,
+            image: 1,
+            images: 1,
+            imageFileId: 1,
+            source: 1,
+            createdAt: 1,
+            updatedAt: 1,
+            createdBy: 1,
+            score: { $meta: 'vectorSearchScore' } // Get the similarity score from Atlas
+          }
+        }
+      ];
+      
+      const results = await collection.aggregate(pipeline).toArray();
+      
+      // Map results to expected format
+      return results.map(event => ({
+        ...event,
+        similarity: event.score || 0, // Use vectorSearchScore as similarity
+        score: (event.score || 0) * 100 // Scale to 0-100
+      }));
+      
+    } catch (error) {
+      // Fallback to manual cosine similarity if vector search fails
+      Logger.warn(`Schedule Vector Search failed, falling back to manual cosine similarity: ${error.message}`);
+      
+      try {
+        const collection = this.getCollection('schedule');
+        const events = await collection.find({ embedding: { $exists: true } }).limit(limit * 5).toArray();
+        
+        const results = events.map(event => {
+          const similarity = this.cosineSimilarity(queryEmbedding, event.embedding);
+          return {
+            ...event,
+            similarity,
+            score: similarity * 100
+          };
+        });
+        
+        return results
+          .sort((a, b) => b.similarity - a.similarity)
+          .slice(0, limit);
+      } catch (fallbackError) {
+        Logger.error('Schedule vector search fallback also failed:', fallbackError);
+        throw error; // Throw original error
+      }
     }
   }
 

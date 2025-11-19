@@ -331,7 +331,7 @@ class FileProcessorService {
       });
     };
     
-    // Required/Expected fields: Type, Event, DateType, StartDate, EndDate, Year, Month, WeekOfMonth, Description
+    // Required/Expected fields: Type, Event, DateType, StartDate, EndDate, Year, Month, WeekOfMonth, Description, Semester
     const typeIndex = findFieldIndex(['type', 'category', 'eventtype']);
     const eventIndex = findFieldIndex(['event', 'title', 'name']);
     const dateTypeIndex = findFieldIndex(['datetype', 'datetype', 'date_type']);
@@ -342,6 +342,7 @@ class FileProcessorService {
     const weekOfMonthIndex = findFieldIndex(['weekofmonth', 'week_of_month', 'weekinmonth', 'week_in_month']);
     const descriptionIndex = findFieldIndex(['description', 'desc', 'details']);
     const timeIndex = findFieldIndex(['time', 'eventtime', 'event_time']);
+    const semesterIndex = findFieldIndex(['semester', 'sem', 'term']);
     
     // Count how many required fields are present (need at least 3, including Event)
     const foundFields = [
@@ -353,7 +354,8 @@ class FileProcessorService {
       yearIndex !== -1,
       monthIndex !== -1,
       weekOfMonthIndex !== -1,
-      descriptionIndex !== -1
+      descriptionIndex !== -1,
+      semesterIndex !== -1
     ].filter(Boolean).length;
     
     // Validate: Must have Event field and at least 2 other fields (total 3+)
@@ -370,7 +372,7 @@ class FileProcessorService {
     // For old format, find date column
     const dateIndex = findFieldIndex(['date', 'eventdate', 'event_date', 'when']);
     
-    Logger.info(`CSV Format detected - Fields found: ${foundFields}/9. Event: ${eventIndex !== -1}, Type: ${typeIndex !== -1}, DateType: ${dateTypeIndex !== -1}, StartDate: ${startDateIndex !== -1}, EndDate: ${endDateIndex !== -1}, Year: ${yearIndex !== -1}, Month: ${monthIndex !== -1}, WeekOfMonth: ${weekOfMonthIndex !== -1}, Description: ${descriptionIndex !== -1}`);
+    Logger.info(`CSV Format detected - Fields found: ${foundFields}/10. Event: ${eventIndex !== -1}, Type: ${typeIndex !== -1}, DateType: ${dateTypeIndex !== -1}, StartDate: ${startDateIndex !== -1}, EndDate: ${endDateIndex !== -1}, Year: ${yearIndex !== -1}, Month: ${monthIndex !== -1}, WeekOfMonth: ${weekOfMonthIndex !== -1}, Description: ${descriptionIndex !== -1}, Semester: ${semesterIndex !== -1}`);
     
     // Get current year for month-only dates
     const currentYear = new Date().getFullYear();
@@ -391,6 +393,30 @@ class FileProcessorService {
       
       const description = descriptionIndex >= 0 ? fields[descriptionIndex]?.trim() || '' : '';
       const time = timeIndex >= 0 ? fields[timeIndex]?.trim() || 'All Day' : 'All Day';
+      
+      // Parse semester field: 1 (1st semester), 2 (2nd semester), or "Off" (off semester)
+      let semester = null;
+      if (semesterIndex >= 0) {
+        const semesterRaw = fields[semesterIndex]?.trim() || '';
+        const semesterLower = semesterRaw.toLowerCase();
+        
+        // Normalize semester values
+        if (semesterLower === '1' || semesterLower === 'first' || semesterLower === '1st' || semesterLower === 'first semester' || semesterLower === '1st semester') {
+          semester = 1;
+        } else if (semesterLower === '2' || semesterLower === 'second' || semesterLower === '2nd' || semesterLower === 'second semester' || semesterLower === '2nd semester') {
+          semester = 2;
+        } else if (semesterLower === 'off' || semesterLower === 'off semester' || semesterLower === 'off-semester' || semesterLower === 'off_semester') {
+          semester = 'Off';
+        } else if (semesterRaw !== '') {
+          // Try to parse as number
+          const semesterNum = parseInt(semesterRaw, 10);
+          if (!isNaN(semesterNum) && (semesterNum === 1 || semesterNum === 2)) {
+            semester = semesterNum;
+          } else {
+            Logger.warn(`Row ${i + 1}: Invalid semester value "${semesterRaw}", expected 1, 2, or "Off"`);
+          }
+        }
+      }
       
       if (isNewFormat) {
         // New format: DateType, StartDate, EndDate, WeekOfMonth, Month, Year
@@ -444,7 +470,8 @@ class FileProcessorService {
             source: 'CSV Upload',
             dateType: 'month',
             month: parseInt(month, 10),
-            year: yearNum
+            year: yearNum,
+            semester: semester
           });
         } else if (dateType === 'week_in_month' || dateType === 'week') {
           // Week-only event (no specific date, just week of month)
@@ -470,7 +497,8 @@ class FileProcessorService {
             dateType: 'week',
             weekOfMonth: weekNum,
             month: parseInt(month, 10),
-            year: yearNum
+            year: yearNum,
+            semester: semester
           });
         } else if (dateType === 'date_range' && startDate && endDate) {
           // Date range: create events for all dates in the range to mark them on calendar
@@ -495,7 +523,8 @@ class FileProcessorService {
               endDate: startDate.toISOString(),
               weekOfMonth: weekOfMonth ? parseInt(weekOfMonth, 10) : null,
               month: month ? parseInt(month, 10) : null,
-              year: parseInt(year, 10)
+              year: parseInt(year, 10),
+              semester: semester
             });
           } else {
             // Create an event for each date in the range to mark all dates on calendar
@@ -514,7 +543,8 @@ class FileProcessorService {
                 endDate: endDate.toISOString(),
                 weekOfMonth: weekOfMonth ? parseInt(weekOfMonth, 10) : null,
                 month: month ? parseInt(month, 10) : null,
-                year: parseInt(year, 10)
+                year: parseInt(year, 10),
+                semester: semester
               });
             }
           }
@@ -533,7 +563,8 @@ class FileProcessorService {
             endDate: startDate.toISOString(),
             weekOfMonth: weekOfMonth ? parseInt(weekOfMonth, 10) : null,
             month: month ? parseInt(month, 10) : null,
-            year: parseInt(year, 10)
+            year: parseInt(year, 10),
+            semester: semester
           });
         } else {
           // If we can't parse the date type, log a warning but don't skip if we have dates
@@ -578,7 +609,8 @@ class FileProcessorService {
             time,
             category,
             description,
-            source: 'CSV Upload'
+            source: 'CSV Upload',
+            semester: semester
           });
         }
       }

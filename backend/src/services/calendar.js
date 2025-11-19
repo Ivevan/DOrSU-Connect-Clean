@@ -480,26 +480,99 @@ export class CalendarService {
 
   /**
    * Get calendar events from MongoDB
+   * IMPROVED: Handles both single dates and date ranges properly
+   * Supports semester filtering: 1 (1st semester), 2 (2nd semester), or "Off" (off semester)
    */
-  async getEvents({ startDate, endDate, category, limit = 100 }) {
+  async getEvents({ startDate, endDate, category, semester, limit = 100 }) {
     try {
       const calendarCollection = this.mongoService.getCollection('calendar');
       
-      // Build query
+      // Build query - for date ranges, check if query range overlaps with event range
       const query = {};
       
       if (startDate || endDate) {
-        query.isoDate = {};
-        if (startDate) {
-          query.isoDate.$gte = new Date(startDate).toISOString();
+        const queryStart = startDate ? new Date(startDate) : null;
+        const queryEnd = endDate ? new Date(endDate) : null;
+        
+        // Build date query: check both isoDate (for single dates) and date ranges
+        // For date ranges, an event matches if:
+        // 1. Event startDate is within query range, OR
+        // 2. Event endDate is within query range, OR  
+        // 3. Event range completely contains query range
+        query.$or = [];
+        
+        // Single date events: isoDate falls within query range
+        const singleDateQuery = {};
+        if (queryStart) singleDateQuery.$gte = queryStart.toISOString();
+        if (queryEnd) singleDateQuery.$lte = queryEnd.toISOString();
+        if (Object.keys(singleDateQuery).length > 0) {
+          query.$or.push({
+            isoDate: singleDateQuery,
+            $or: [
+              { dateType: { $ne: 'date_range' } },
+              { dateType: { $exists: false } }
+            ]
+          });
         }
-        if (endDate) {
-          query.isoDate.$lte = new Date(endDate).toISOString();
+        
+        // Date range events: check if ranges overlap
+        if (queryStart || queryEnd) {
+          const rangeConditions = [];
+          
+          // Event startDate is within query range
+          if (queryStart && queryEnd) {
+            rangeConditions.push({
+              startDate: { $gte: queryStart.toISOString(), $lte: queryEnd.toISOString() }
+            });
+            // Event endDate is within query range
+            rangeConditions.push({
+              endDate: { $gte: queryStart.toISOString(), $lte: queryEnd.toISOString() }
+            });
+            // Event range completely contains query range
+            rangeConditions.push({
+              startDate: { $lte: queryStart.toISOString() },
+              endDate: { $gte: queryEnd.toISOString() }
+            });
+          } else if (queryStart) {
+            rangeConditions.push({ endDate: { $gte: queryStart.toISOString() } });
+          } else if (queryEnd) {
+            rangeConditions.push({ startDate: { $lte: queryEnd.toISOString() } });
+          }
+          
+          if (rangeConditions.length > 0) {
+            query.$or.push({
+              dateType: 'date_range',
+              $or: rangeConditions
+            });
+          }
+        }
+        
+        // If no $or conditions, remove it
+        if (query.$or.length === 0) {
+          delete query.$or;
         }
       }
       
       if (category) {
         query.category = category;
+      }
+      
+      // Filter by semester if provided
+      // Semester values: 1 (1st semester), 2 (2nd semester), or "Off" (off semester)
+      if (semester !== undefined && semester !== null) {
+        if (semester === 1 || semester === '1' || semester === 'first' || semester === '1st') {
+          query.semester = 1;
+        } else if (semester === 2 || semester === '2' || semester === 'second' || semester === '2nd') {
+          query.semester = 2;
+        } else if (semester === 'Off' || semester === 'off' || semester === 'off semester') {
+          query.semester = 'Off';
+        } else {
+          // Try to parse as number
+          const semesterNum = parseInt(semester, 10);
+          if (!isNaN(semesterNum) && (semesterNum === 1 || semesterNum === 2)) {
+            query.semester = semesterNum;
+          }
+        }
       }
 
       // Fetch events sorted by date

@@ -459,9 +459,24 @@ const AdminDashboard = () => {
         // Fetch dashboard statistics
         const dashboardStats = await AdminDataService.getDashboard();
         
-        // Fetch recent updates (posts/announcements)
+        // Fetch recent updates (posts/announcements/news/events)
+        // Backend already filters for Announcement/News/Event (excludes Institutional/Academic)
         const posts = await AdminDataService.getPosts();
-        const postsData = posts.map(post => {
+        
+        // Additional frontend filtering to ensure only Announcement/News/Event categories
+        // Exclude Institutional/Academic (those go to calendar)
+        const filteredPosts = posts.filter(post => {
+          const category = (post.category || '').toLowerCase();
+          // Include: Announcement, News, Event (general events)
+          // Exclude: Institutional, Academic (these are calendar-only)
+          return category === 'announcement' || 
+                 category === 'news' || 
+                 category === 'event' ||
+                 !category || // Include items with no category as fallback
+                 (category !== 'institutional' && category !== 'academic');
+        });
+        
+        const postsData = filteredPosts.map(post => {
           // Ensure images array is properly set
           let images = post.images;
           if (!images || !Array.isArray(images) || images.length === 0) {
@@ -1208,7 +1223,21 @@ const AdminDashboard = () => {
             ]);
             
             setCalendarEvents(Array.isArray(events) ? events : []);
-            const postsData = posts.map(post => {
+            
+            // Additional frontend filtering to ensure only Announcement/News/Event categories
+            // Exclude Institutional/Academic (those go to calendar)
+            const filteredPosts = posts.filter(post => {
+              const category = (post.category || '').toLowerCase();
+              // Include: Announcement, News, Event (general events)
+              // Exclude: Institutional, Academic (these are calendar-only)
+              return category === 'announcement' || 
+                     category === 'news' || 
+                     category === 'event' ||
+                     !category || // Include items with no category as fallback
+                     (category !== 'institutional' && category !== 'academic');
+            });
+            
+            const postsData = filteredPosts.map(post => {
               // Ensure images array is properly set
               let images = post.images;
               if (!images || !Array.isArray(images) || images.length === 0) {
@@ -1296,7 +1325,21 @@ const AdminDashboard = () => {
             setDashboardError(null);
             
             const posts = await AdminDataService.getPosts();
-            const postsData = posts.map(post => {
+            
+            // Additional frontend filtering to ensure only Announcement/News/Event categories
+            // Exclude Institutional/Academic (those go to calendar)
+            const filteredPosts = posts.filter(post => {
+              const category = (post.category || '').toLowerCase();
+              // Include: Announcement, News, Event (general events)
+              // Exclude: Institutional, Academic (these are calendar-only)
+              return category === 'announcement' || 
+                     category === 'news' || 
+                     category === 'event' ||
+                     !category || // Include items with no category as fallback
+                     (category !== 'institutional' && category !== 'academic');
+            });
+            
+            const postsData = filteredPosts.map(post => {
               let images = post.images;
               if (!images || !Array.isArray(images) || images.length === 0) {
                 if (post.image) {

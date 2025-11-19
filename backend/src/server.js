@@ -4,7 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AuthService, authMiddleware } from './services/auth.js';
-import { getCalendarService } from './services/calendar.js';
+import { getScheduleService } from './services/schedule.js';
 import { getChatHistoryService } from './services/chat-history.js';
 import conversationService from './services/conversation.js';
 import { getDataRefreshService } from './services/data-refresh.js';
@@ -12,18 +12,10 @@ import { getFileProcessorService } from './services/file-processor.js';
 import responseFormatter from './services/formatter.js';
 import { getGridFSService } from './services/gridfs.js';
 import { getMongoDBService } from './services/mongodb.js';
-import { getPostService } from './services/posts.js';
 import { OptimizedRAGService } from './services/rag.js';
 import { getNewsScraperService } from './services/scraper.js';
 import { LlamaService } from './services/service.js';
-import {
-  generateCampusesResponse,
-  generateFacultiesResponse,
-  generateOfficersResponse,
-  generateProgramListResponse,
-  generateVisionMissionResponse
-} from './services/structured-responses.js';
-import { buildSystemInstructions, getCalendarEventsInstructions } from './services/system.js';
+import { buildSystemInstructions, getCalendarEventsInstructions, getHistoryCriticalRules, getHistoryDataSummary, getHistoryInstructions, getHymnCriticalRules, getHymnInstructions, getLeadershipCriticalRules, getLeadershipInstructions, getPresidentInstructions, getProgramInstructions, getProgramCriticalRules } from './services/system.js';
 import { IntentClassifier } from './utils/intent-classifier.js';
 import { Logger } from './utils/logger.js';
 import { parseMultipartFormData } from './utils/multipart-parser.js';
@@ -47,8 +39,7 @@ let dataRefreshService = null;
 let newsScraperService = null;
 let authService = null;
 let chatHistoryService = null;
-let calendarService = null;
-let postService = null;
+let scheduleService = null;
 
 // ===== FALLBACK CONTEXT =====
 const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
@@ -76,13 +67,9 @@ const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
     chatHistoryService = getChatHistoryService(mongoService, authService);
     Logger.success('Chat history service initialized');
     
-    // Initialize calendar service
-    calendarService = getCalendarService(mongoService, authService);
-    Logger.success('Calendar service initialized');
-    
-    // Initialize post service
-    postService = getPostService(mongoService, authService);
-    Logger.success('Post service initialized');
+    // Initialize schedule service (unified calendar and posts)
+    scheduleService = getScheduleService(mongoService, authService);
+    Logger.success('Schedule service initialized');
     
     // Initialize data refresh service
     dataRefreshService = getDataRefreshService();
@@ -147,12 +134,11 @@ const server = http.createServer(async (req, res) => {
   if (url === '/api/top-queries' || rawUrl.includes('top-queries')) {
     Logger.info(`🔍 Request: ${method} ${rawUrl} -> Parsed: ${url}`);
   }
-  if (url === '/api/admin/upload-calendar-csv' || rawUrl.includes('upload-calendar-csv')) {
-    Logger.info(`🔍 Calendar CSV Request: ${method} ${rawUrl} -> Parsed: ${url}`);
-    Logger.info(`🔍 Calendar service available: ${calendarService ? 'YES' : 'NO'}`);
-  }
-  if (url === '/api/admin/posts' || rawUrl.includes('/api/admin/posts')) {
-    Logger.info(`🔍 Posts Request: ${method} ${rawUrl} -> Parsed: ${url}`);
+  if (url === '/api/admin/upload-calendar-csv' || rawUrl.includes('upload-calendar-csv') ||
+      url === '/api/admin/posts' || rawUrl.includes('/api/admin/posts') ||
+      url.startsWith('/api/calendar/') || url.startsWith('/api/admin/calendar/')) {
+    Logger.info(`🔍 Schedule Request: ${method} ${rawUrl} -> Parsed: ${url}`);
+    Logger.info(`🔍 Schedule service available: ${scheduleService ? 'YES' : 'NO'}`);
   }
 
   // ===== CORS HEADERS =====
@@ -696,28 +682,36 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ===== POSTS ENDPOINTS =====
-  // All post routes are handled by PostService
-  if (url === '/api/admin/create-post' || url === '/api/admin/posts' || url.startsWith('/api/admin/posts/')) {
-    // Initialize post service if not already initialized (for early requests)
-    if (!postService && mongoService && authService) {
-      postService = getPostService(mongoService, authService);
-      if (postService) {
-        Logger.info('📝 Post service initialized on-demand');
+  // ===== SCHEDULE ENDPOINTS (Unified Calendar and Posts) =====
+  // All schedule routes (calendar events, posts, announcements) are handled by ScheduleService
+  // This includes legacy calendar and posts endpoints for backward compatibility
+  if (url === '/api/admin/create-post' || 
+      url === '/api/admin/posts' || 
+      url.startsWith('/api/admin/posts/') ||
+      url === '/api/admin/upload-calendar-csv' || 
+      url.startsWith('/api/calendar/') || 
+      url.startsWith('/api/admin/calendar/') ||
+      url.startsWith('/api/schedule/') ||
+      url.startsWith('/api/admin/schedule/')) {
+    // Initialize schedule service if not already initialized (for early requests)
+    if (!scheduleService && mongoService && authService) {
+      scheduleService = getScheduleService(mongoService, authService);
+      if (scheduleService) {
+        Logger.info('📅 Schedule service initialized on-demand');
       }
     }
     
-    if (postService) {
-      Logger.info(`📝 Post service check: ${method} ${url}`);
-      const handled = await postService.handleRoute(req, res, method, url, rawUrl);
+    if (scheduleService) {
+      Logger.info(`📅 Schedule service check: ${method} ${url}`);
+      const handled = await scheduleService.handleRoute(req, res, method, url, rawUrl);
       if (handled) {
-        Logger.info(`✅ Post service handled route: ${method} ${url}`);
+        Logger.info(`✅ Schedule service handled route: ${method} ${url}`);
         return;
       } else {
-        Logger.warn(`⚠️ Post service did not handle route: ${method} ${url} - will continue to other handlers`);
+        Logger.warn(`⚠️ Schedule service did not handle route: ${method} ${url} - will continue to other handlers`);
       }
     } else {
-      Logger.warn(`⚠️ Post service not initialized. mongoService: ${!!mongoService}, authService: ${!!authService}`);
+      Logger.warn(`⚠️ Schedule service not initialized. mongoService: ${!!mongoService}, authService: ${!!authService}`);
     }
   }
 
@@ -756,32 +750,6 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 404, { error: 'Image not found' });
       }
       return;
-    }
-  }
-
-  // ===== CALENDAR ENDPOINTS =====
-  // All calendar routes are handled by CalendarService
-  // Check for calendar routes BEFORE other admin routes to ensure proper routing
-  if (url === '/api/admin/upload-calendar-csv' || url.startsWith('/api/calendar/') || url.startsWith('/api/admin/calendar/')) {
-    // Initialize calendar service if not already initialized (for early requests)
-    if (!calendarService && mongoService && authService) {
-      calendarService = getCalendarService(mongoService, authService);
-      if (calendarService) {
-        Logger.info('📅 Calendar service initialized on-demand');
-      }
-    }
-    
-    if (calendarService) {
-      Logger.info(`📅 Calendar service check: ${method} ${url}`);
-      const handled = await calendarService.handleRoute(req, res, method, url);
-      if (handled) {
-        Logger.info(`✅ Calendar service handled route: ${method} ${url}`);
-        return;
-      } else {
-        Logger.warn(`⚠️ Calendar service did not handle route: ${method} ${url} - will continue to other handlers`);
-      }
-    } else {
-      Logger.warn(`⚠️ Calendar service not initialized. mongoService: ${!!mongoService}, authService: ${!!authService}`);
     }
   }
 
@@ -829,11 +797,125 @@ const server = http.createServer(async (req, res) => {
           processedPrompt = 'What is DOrSU (Davao Oriental State University)?';
         }
         
-        // Handle president queries - request comprehensive information
-        const presidentPattern = /\b(president|head|leader)\b/i;
-        const isPresidentQuery = presidentPattern.test(prompt) && /\b(dorsu|university)\b/i.test(prompt);
+        // ===== COMPREHENSIVE QUERY NORMALIZATION =====
+        // Normalize ALL query types based on data structures in dorsu_data.json
+        // This ensures consistent RAG retrieval regardless of query phrasing
+        
+        // CRITICAL: Check office head queries FIRST (before president queries)
+        // Office head queries (declare early for use in director queries)
+        const isOfficeHeadQuery = /\b(who\s+(is|are)\s+(the\s+)?(head|director|chief|manager)\s+(of|in)?|head\s+of|director\s+of|chief\s+of|manager\s+of)\b/i.test(prompt) && 
+                                   (/\b(OSPAT|OSA|OSCD|FASG|PESO|IRO|HSU|CGAD|IP-TBM|GCTC|office|offices|unit|units)\b/i.test(prompt));
+        
+        if (isOfficeHeadQuery) {
+          // Extract office acronym from query
+          const officeAcronymMatch = prompt.match(/\b(OSPAT|OSA|OSCD|FASG|PESO|IRO|HSU|CGAD|IP-TBM|GCTC)\b/i);
+          const officeAcronym = officeAcronymMatch ? officeAcronymMatch[0] : 'office';
+          processedPrompt = `Who is the head of ${officeAcronym} (${officeAcronym === 'OSA' ? 'Office of Student Affairs' : officeAcronym === 'OSPAT' ? 'Office of Student Programs and Activities' : officeAcronym}) at DOrSU as of 2025? Provide the name, title, and role.`;
+          Logger.debug(`🔍 Office head query detected - normalized for ${officeAcronym}`);
+        }
+        
+        // President queries (MUST be more specific - require "president" keyword, not just "head")
+        const presidentPattern = /\b(president|university\s+president|dorsu\s+president)\b/i;
+        const hasDorsuContext = /\b(dorsu|davao oriental state university|university)\b/i.test(prompt);
+        const isPresidentQuery = presidentPattern.test(prompt) && hasDorsuContext && !isOfficeHeadQuery;
         if (isPresidentQuery) {
           processedPrompt = 'Who is the president of DOrSU as of 2025? Provide comprehensive information including: full name, title, educational background - degrees and institutions, expertise areas, major achievements - UNESCO work, museums, awards, and current role. Give complete details, not just the name.';
+          Logger.debug(`🔍 President query detected - normalized`);
+        }
+        
+        // Vice President queries
+        const vpPattern = /\b(vice president|vice presidents|vp|vps)\b/i;
+        const isVPQuery = vpPattern.test(prompt);
+        if (isVPQuery && !isPresidentQuery && !isOfficeHeadQuery) {
+          processedPrompt = 'Who are the vice presidents of DOrSU as of 2025? Provide comprehensive information including names, positions, and roles for all vice presidents.';
+          Logger.debug(`🔍 VP query detected - normalized`);
+        }
+        
+        // SUAST/Statistics queries
+        const suastPattern = /\b(suast|state university aptitude|scholarship test|entrance exam|admission test|applicants|passers|passing rate|statistics|stats|exam results)\b/i;
+        const isSUASTQuery = suastPattern.test(prompt);
+        if (isSUASTQuery) {
+          processedPrompt = 'What are the SUAST (State University Aptitude and Scholarship Test) statistics? Provide information about applicants, passers, passing rates, and enrolled applicants by year.';
+          Logger.debug(`🔍 SUAST query detected - normalized`);
+        }
+        
+        // History queries
+        const historyPattern = /\b(history|historical|founded|established|background|evolution|development|kasaysayan|itinatag|pinagmulan|gitukod|timeline|narrative|heritage|conversion)\b/i;
+        let isHistoryQuery = historyPattern.test(prompt);
+        if (isHistoryQuery) {
+          processedPrompt = 'What is the history of DOrSU? Provide timeline of major events with key persons involved, including founding dates and Republic Acts.';
+          Logger.debug(`🔍 History query detected - normalized`);
+        }
+        
+        // Admission requirements queries (SPECIFIC - must be checked before general enrollment)
+        const admissionRequirementsPattern = /\b(admission\s+requirements|requirements\s+for\s+admission|admission\s+req|what\s+(are|do|does)\s+.*\s+(need|required|requirement))\b/i;
+        const isAdmissionRequirementsQuery = admissionRequirementsPattern.test(prompt) || 
+          (/\b(admission|admissions)\b/i.test(prompt) && /\b(requirements?|required|need|needed|what.*need)\b/i.test(prompt));
+        
+        if (isAdmissionRequirementsQuery) {
+          processedPrompt = 'What are the admission requirements for DOrSU? Include requirements for returning students, continuing students, transferring students, second-degree students, and incoming first-year students.';
+          Logger.debug(`🔍 Admission requirements query detected - normalized`);
+        }
+        
+        // CRITICAL: Exam schedule queries MUST be checked BEFORE general enrollment/schedule queries
+        // Exam schedule queries (prelim, midterm, final examination schedules)
+        const hasPrelim = /\b(prelim|preliminary|prelims?)\b/i.test(prompt);
+        const hasMidterm = /\b(midterm|mid-term|mid\s+term)\b/i.test(prompt);
+        const hasFinal = /\b(final|finals?)\b/i.test(prompt);
+        const hasExam = /\b(exam|examination|exams?)\b/i.test(prompt);
+        const hasSchedule = /\b(schedule|schedules?|date|dates?|when)\b/i.test(prompt);
+        
+        // Check if query mentions exam types AND schedule/exam keywords (in any order)
+        const examTypesCount = [hasPrelim, hasMidterm, hasFinal].filter(Boolean).length;
+        const isMultipleExamQuery = examTypesCount > 1;
+        const hasExamContext = hasExam || hasSchedule || isMultipleExamQuery;
+        
+        const isExamScheduleQuery = (hasPrelim || hasMidterm || hasFinal || hasExam) && hasExamContext && 
+                                   !isAdmissionRequirementsQuery &&
+                                   !/\b(enrollment|enrolment|enroll)\s+(schedule|information)\b/i.test(prompt);
+        
+        // Enrollment queries (general - schedules, counts, etc.) - but NOT exam schedules or general schedule queries
+        // CRITICAL: Enrollment queries MUST have BOTH enrollment AND registration keywords together
+        // Examples: "when is the registration enrollment period", "enrollment and registration schedule"
+        // This prevents general schedule queries like "when is siglakass schedule" from being misclassified
+        const enrollmentKeywords = /\b(enrollment|enrolment|enroll)\b/i;
+        const registrationKeywords = /\b(registration|register|enrollment period|enrollment schedule)\b/i;
+        // Only match if query has BOTH enrollment AND registration keywords together
+        const isEnrollmentQuery = enrollmentKeywords.test(prompt) && 
+                                  registrationKeywords.test(prompt) &&
+                                  !isAdmissionRequirementsQuery && 
+                                  !isExamScheduleQuery;
+        
+        if (isExamScheduleQuery) {
+          // Don't normalize exam schedule queries - preserve the exam type keywords
+          // This allows the detection logic in rag.js and vector-search.js to work correctly
+          processedPrompt = prompt; // Keep original query with exam type keywords
+          Logger.debug(`🔍 Exam schedule query detected - preserving original query with exam keywords`);
+        } else if (isEnrollmentQuery) {
+          processedPrompt = 'What are the enrollment information and schedule for DOrSU? Include enrollment by campus and enrollment schedule.';
+          Logger.debug(`🔍 Enrollment query detected - normalized`);
+        }
+        // General schedule queries (like "when is siglakass schedule") are NOT transformed here
+        // They will be handled by the general schedule pattern detection later and preserve original query
+        
+        // Leadership queries (declare early for use in dean/director queries)
+        const leadershipPattern = /\b(president|vice president|vice presidents|chancellor|dean|deans|director|directors|leadership|board|governance|administration|executive|executives|officials?|officers?)\b/i;
+        const isLeadershipQuery = leadershipPattern.test(prompt) && !isOfficeHeadQuery;
+        
+        // Dean queries
+        const deanPattern = /\b(dean|deans|faculty.*dean)\b/i;
+        const isDeanQuery = deanPattern.test(prompt) && !isLeadershipQuery;
+        if (isDeanQuery) {
+          processedPrompt = 'Who are the deans of DOrSU faculties as of 2025? Provide names and their respective faculties.';
+          Logger.debug(`🔍 Dean query detected - normalized`);
+        }
+        
+        // Director queries
+        const directorPattern = /\b(director|directors)\b/i;
+        const isDirectorQuery = directorPattern.test(prompt) && !isLeadershipQuery && !isOfficeHeadQuery;
+        if (isDirectorQuery) {
+          processedPrompt = 'Who are the directors of DOrSU offices and centers as of 2025? Provide names and their respective offices or centers.';
+          Logger.debug(`🔍 Director query detected - normalized`);
         }
         
         // Handle USC queries - prioritize DOrSU context
@@ -873,83 +955,74 @@ const server = http.createServer(async (req, res) => {
           processedPrompt = prompt.replace(/\b(course|courses)\b/gi, 'program');
         }
         
-        // Detect calendar-related queries (dates, events, announcements, schedules)
-        const calendarPattern = /\b(date|dates|event|events|announcement|announcements|schedule|schedules|calendar|when|upcoming|coming|next|this\s+(week|month|year)|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule)\b/i;
-        const isCalendarQuery = calendarPattern.test(prompt);
+        // IMPROVED: Unified schedule queries - all calendar, events, announcements, schedules use schedule collection
+        // Schedule queries: Focus on dates, schedules, timelines, deadlines, events, announcements
+        const schedulePattern = /\b(date|dates|schedule|schedules|calendar|when|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule|timeline|time\s+table|what\s+date|what\s+dates|when\s+is|when\s+are|when\s+will|event|events|announcement|announcements|upcoming|coming|next|this\s+(week|month|year))\b/i;
+        const isScheduleQuery = schedulePattern.test(prompt) && !isExamScheduleQuery && !isEnrollmentQuery;
         
-        // SMART FALLBACK: Detect "list all" queries and return structured data without AI
-        // Programs/Courses
-        const listAllPattern = /\b(list|show|give me|give|what are|enumerate|tell me|can you give)\s+(all|the|me)?\s*(list of)?\s*(program|programs|course|courses)\b/i;
-        const byFacultyPattern = /\b(program|programs|course|courses)\s+(by|per|in|under|for each)\s+(faculty|faculties)\b/i;
-        const offeredPattern = /\b(program|programs|course|courses)\s+(offered|available)\b/i;
-        const isProgramListQuery = listAllPattern.test(prompt) || byFacultyPattern.test(prompt) || offeredPattern.test(prompt);
-        
-        // Officers/Leadership
-        const officersPattern = /\b(list|show|give me|give|what are|who are|enumerate|tell me)\s+(all|the|me)?\s*(list of)?\s*(officer|officers|dean|deans|director|directors|leadership|leaders|officials?)\b/i;
-        const presidentListPattern = /\b(who is|who's|tell me about)\s+(the\s+)?(university\s+)?president\b/i;
-        const isOfficersQuery = officersPattern.test(prompt) || presidentListPattern.test(prompt);
-        
-        // Faculties
-        const facultiesPattern = /\b(list|show|give me|give|what are|enumerate|tell me)\s+(all|the|me)?\s*(list of)?\s*(faculty|faculties)\b/i;
-        const isFacultiesQuery = facultiesPattern.test(prompt);
-        
-        // Campuses
-        const campusesPattern = /\b(list|show|give me|give|what are|enumerate|tell me)\s+(all|the|me)?\s*(list of)?\s*(campus|campuses|extension)\b/i;
-        const isCampusesQuery = campusesPattern.test(prompt);
-        
-        // Vision/Mission (EXACT DATA REQUIRED)
-        const visionPattern = /\b(what is|what's|tell me|give me)\s+(the\s+)?(vision|mission|mission and vision|vision and mission)\s+(of\s+)?(dorsu|davao oriental state university)?\b/i;
-        const isVisionOnly = /\b(vision)\b/i.test(prompt) && !/\b(mission)\b/i.test(prompt);
-        const isMissionOnly = /\b(mission)\b/i.test(prompt) && !/\b(vision)\b/i.test(prompt);
-        const isVisionMissionQuery = visionPattern.test(prompt);
-        
-        // Check if any fallback pattern matches
-        if (isProgramListQuery || isOfficersQuery || isFacultiesQuery || isCampusesQuery || isVisionMissionQuery) {
-          let fallbackType = '';
-          let structuredResponse = '';
-          
-          if (isProgramListQuery) {
-            fallbackType = 'programs';
-            structuredResponse = generateProgramListResponse(byFacultyPattern.test(prompt));
-          } else if (isOfficersQuery) {
-            fallbackType = 'officers';
-            structuredResponse = generateOfficersResponse(presidentListPattern.test(prompt));
-          } else if (isFacultiesQuery) {
-            fallbackType = 'faculties';
-            structuredResponse = generateFacultiesResponse();
-          } else if (isCampusesQuery) {
-            fallbackType = 'campuses';
-            structuredResponse = generateCampusesResponse();
-          } else if (isVisionMissionQuery) {
-            fallbackType = 'vision-mission';
-            structuredResponse = generateVisionMissionResponse(isVisionOnly, isMissionOnly);
+        // CRITICAL: Preserve original query for general schedule queries (like "when is siglakass schedule")
+        // Don't transform them - let rag.js and vector-search.js handle the query as-is
+        if (isScheduleQuery && !isExamScheduleQuery && !isEnrollmentQuery) {
+          // Ensure original query is preserved - don't let any earlier transformations affect it
+          if (processedPrompt !== prompt) {
+            // If it was transformed, restore original (but this shouldn't happen if logic is correct)
+            Logger.debug(`⚠️ General schedule query was transformed - restoring original: "${prompt.substring(0, 50)}..."`);
+            processedPrompt = prompt;
+          } else {
+            // Query is already preserved (no transformation applied) - this is correct
+            Logger.debug(`🔍 General schedule query detected - preserving original query: "${prompt.substring(0, 50)}..."`);
           }
-          
-          Logger.info(`📋 ${fallbackType.toUpperCase()} list query detected - using structured fallback (no AI needed)`);
-          
-          sendJson(res, 200, {
-            reply: structuredResponse,
-            source: 'structured-fallback',
-            model: 'none',
-            provider: 'static',
-            complexity: 'simple',
-            responseTime: Date.now() - Date.now(),
-            usedKnowledgeBase: true,
-            intent: {
-              conversational: 'information_query',
-              confidence: 100,
-              dataSource: 'knowledge_base',
-              category: fallbackType
-            }
-          });
-          return;
         }
         
         // Handle programs/courses list queries - ensure complete list
         const programPattern = /\b(program|programs|course|courses)\s+(offered|available|in|at|of|does|do)\b/i;
+        // Vision/Mission queries
+        const visionMissionPattern = /\b(vision|mission|what\s+is\s+.*\s+(vision|mission)|dorsu.*\s+(vision|mission)|university.*\s+(vision|mission))\b/i;
+        const isVisionMissionQuery = visionMissionPattern.test(prompt);
+        if (isVisionMissionQuery) {
+          processedPrompt = 'Provide the vision and mission of DOrSU from the knowledge base. Include the vision statement and all mission statements. Format: "Vision:" followed by the vision, then "Mission:" followed by all mission statements as a list.';
+          Logger.debug(`🔍 Vision/Mission query detected - normalized`);
+        }
+        
+        // Values/Outcomes/Mandate queries
+        const valuesPattern = /\b(core\s+values?|values?\s+of|graduate\s+outcomes?|outcomes?|quality\s+policy|mandate|charter)\b/i;
+        const isValuesQuery = valuesPattern.test(prompt);
+        if (isValuesQuery) {
+          const isCoreValuesQuery = /\b(core\s+values?|values?)\b/i.test(prompt) && !/\bgraduate\s+outcomes?|outcomes?|mandate|quality\s+policy|charter\b/i.test(prompt);
+          const isOutcomesQuery = /\b(graduate\s+outcomes?|outcomes?)\b/i.test(prompt) && !/\bcore\s+values?|mandate|quality\s+policy|charter\b/i.test(prompt);
+          const isMandateQuery = /\b(mandate|charter)\b/i.test(prompt);
+          const isQualityPolicyQuery = /\bquality\s+policy\b/i.test(prompt);
+          if (isCoreValuesQuery) {
+            processedPrompt = 'Provide the core values of DOrSU from the knowledge base. List ALL core values as a numbered or bulleted list.';
+          } else if (isOutcomesQuery) {
+            processedPrompt = 'Provide the graduate outcomes of DOrSU from the knowledge base. List ALL graduate outcomes as a numbered or bulleted list.';
+          } else if (isMandateQuery) {
+            processedPrompt = 'Provide the mandate of DOrSU from the knowledge base. Include the mandate statement and all mandate objectives. Format: "Mandate:" followed by the mandate statement, then "Objectives:" followed by all objectives as a list.';
+          } else if (isQualityPolicyQuery) {
+            processedPrompt = 'Provide the quality policy of DOrSU from the knowledge base. Include the complete quality policy statement.';
+          } else {
+            processedPrompt = 'Provide the core values and graduate outcomes of DOrSU from the knowledge base. Format: "Core Values:" followed by all core values, then "Graduate Outcomes:" followed by all graduate outcomes. List each as a numbered or bulleted list.';
+          }
+          Logger.debug(`🔍 Values/Outcomes/Mandate query detected - normalized`);
+        }
+        
+        const isHymnQuery = /\b(hymn|anthem|university\s+hymn|university\s+anthem|dorsu\s+hymn|dorsu\s+anthem|lyrics|song|composer)\b/i.test(prompt);
+        if (isHymnQuery) {
+          processedPrompt = 'Provide the complete lyrics of the DOrSU hymn in the correct order: Verse 1, Chorus, Verse 2, Final Chorus. Include ALL lines from each section. Label each section clearly (Verse 1, Chorus, Verse 2, Final Chorus). Include the hymn link: https://dorsu.edu.ph/university-hymn/';
+          Logger.debug(`🔍 Hymn query detected - normalized`);
+        }
+        
         const isProgramQuery = programPattern.test(prompt);
         if (isProgramQuery) {
-          processedPrompt = 'List ALL 38 programs - 29 undergraduate plus 9 graduate - offered by DOrSU from the knowledge base. Include program code, full name, and faculty. DO NOT list programs from your training data - ONLY from knowledge base chunks. Verify count: exactly 29 undergrad plus 9 grad.';
+          processedPrompt = 'Organize and list the programs offered by DOrSU from the knowledge base, grouped by faculty category. For each faculty, show the faculty name and list the programs under that faculty with their codes and full names. Format: "Faculty of [Name] (Code)" followed by the programs. DO NOT list programs from your training data - ONLY from knowledge base chunks. At the end, ask if the user would like to know about programs from other faculties.';
+        }
+        
+        // Faculty queries
+        const facultyPattern = /\b(faculty|faculties|FACET|FALS|FTED|FBM|FCJE|FNAHS|FHUSOCOM|college|colleges)\s+(of|in|at)?\b/i;
+        const isFacultyQuery = facultyPattern.test(prompt) && !isDeanQuery;
+        if (isFacultyQuery) {
+          processedPrompt = 'What are the faculties of DOrSU? List all faculties with their codes and full names.';
+          Logger.debug(`🔍 Faculty query detected - normalized`);
         }
         
         // Handle news queries
@@ -1039,8 +1112,28 @@ const server = http.createServer(async (req, res) => {
         
         // --- Query Analysis ---
         
-        // Analyze query complexity and intent
+        // Correct typos in query before analysis
+        const { TypoCorrector } = await import('./utils/query-analyzer.js');
+        const typoCorrection = TypoCorrector.correctTypos(processedPrompt, {
+          maxDistance: 2,
+          minSimilarity: 0.6,
+          correctPhrases: true
+        });
+        
+        // Use corrected query if corrections were made
+        if (typoCorrection.hasCorrections) {
+          Logger.info(`🔤 Typo correction: "${typoCorrection.original}" → "${typoCorrection.corrected}"`);
+          Logger.debug(`   Corrections: ${typoCorrection.corrections.map(c => `${c.original}→${c.corrected} (${(c.similarity * 100).toFixed(0)}%)`).join(', ')}`);
+          processedPrompt = typoCorrection.corrected;
+        }
+        
+        // Analyze query complexity and intent (using corrected query)
         const queryAnalysis = QueryAnalyzer.analyzeComplexity(processedPrompt);
+        
+        // Check if query is vague and needs clarification
+        if (queryAnalysis.isVague && queryAnalysis.needsClarification) {
+          Logger.info(`🤔 Vague query detected: "${processedPrompt}" - Reason: ${queryAnalysis.vagueReason}`);
+        }
         const smartSettings = queryAnalysis.settings;
         const intentClassification = queryAnalysis.intentClassification;
         
@@ -1072,7 +1165,7 @@ const server = http.createServer(async (req, res) => {
         
         // --- Cache Check ---
         
-        // Check cache (now async - checks both in-memory and MongoDB)
+        // Check cache (in-memory only - no MongoDB to prevent stale negative responses)
         if (ragService) {
           const cachedResponse = await ragService.getCachedAIResponse(processedPrompt);
           if (cachedResponse) {
@@ -1103,8 +1196,8 @@ const server = http.createServer(async (req, res) => {
 
         // --- Context Retrieval & System Prompt Building ---
         
-        // Calendar queries should always be treated as DOrSU queries to fetch calendar data
-        const isDOrSUQuery = intentClassification.source === 'knowledge_base' || isCalendarQuery;
+        // Schedule queries should always be treated as DOrSU queries to fetch schedule data
+        const isDOrSUQuery = intentClassification.source === 'knowledge_base' || isScheduleQuery;
         let systemPrompt = '';
         
         if (isDOrSUQuery) {
@@ -1122,14 +1215,57 @@ const server = http.createServer(async (req, res) => {
             ragSections = 15;       // Reduced from 25 - focus on top 15 most relevant
             ragTokens = 1200;       // Reduced from 2500 - CRITICAL: Controls input token cost
             retrievalType = '(USC query - optimized retrieval)';
+          } else if (isFacultyQuery) {
+            ragSections = 10;       // Faculties - need all 7 faculties
+            ragTokens = 800;        // Enough tokens for faculty list
+            retrievalType = '(Faculty query - comprehensive retrieval)';
+            Logger.debug(`🔍 Faculty query detected - using enhanced retrieval: ${ragSections} sections, ${ragTokens} tokens`);
           } else if (isProgramQuery) {
-            ragSections = 18;       // Reduced from 28 - sufficient for complete lists
-            ragTokens = 1400;       // Reduced from 2800 - CRITICAL: Controls input token cost
-            retrievalType = '(Program list query - optimized retrieval)';
+            ragSections = 25;       // Increased to ensure all faculties are represented (7 faculties * 3-4 programs each)
+            ragTokens = 1600;       // Increased to accommodate programs from all faculties
+            retrievalType = '(Program list query - comprehensive retrieval)';
+            Logger.debug(`🔍 Program query detected - using enhanced retrieval: ${ragSections} sections, ${ragTokens} tokens`);
           } else if (isPresidentQuery) {
-            ragSections = 8;        // Reduced from 12 - focused retrieval
-            ragTokens = 800;       // Reduced from 1500 - CRITICAL: Controls input token cost
-            retrievalType = '(President query - focused retrieval)';
+            // CRITICAL FIX: Increase retrieval for president queries to ensure comprehensive data
+            ragSections = 25;       // Increased from 15 - need even more chunks for comprehensive president info (education, expertise, achievements)
+            ragTokens = 2000;      // Increased from 1200 - need more tokens for detailed president information (all fields)
+            retrievalType = '(President query - comprehensive retrieval)';
+            Logger.debug(`🔍 President query detected - using enhanced retrieval: ${ragSections} sections, ${ragTokens} tokens`);
+          } else if (isVPQuery) {
+            ragSections = 20;       // Increased from 12 - need to get ALL vice presidents
+            ragTokens = 1500;       // Increased from 1000 - need more tokens for multiple VPs
+            retrievalType = '(VP query - comprehensive retrieval)';
+            Logger.debug(`🔍 VP query detected - using enhanced retrieval: ${ragSections} sections, ${ragTokens} tokens`);
+          } else if (isSUASTQuery) {
+            ragSections = 10;       // SUAST statistics
+            ragTokens = 800;
+            retrievalType = '(SUAST query - statistics retrieval)';
+          } else if (isHistoryQuery) {
+            ragSections = 60;       // History needs comprehensive timeline data (increased to match chunk retrieval)
+            ragTokens = 3000;       // Increased token limit to ensure all history chunks are included
+            retrievalType = '(History query - comprehensive retrieval)';
+          } else if (isAdmissionRequirementsQuery) {
+            ragSections = 15;       // Admission requirements - need all student categories
+            ragTokens = 2000;       // Need enough tokens for all requirements lists
+            retrievalType = '(Admission requirements query - comprehensive retrieval)';
+            Logger.debug(`🔍 Admission requirements query detected - using enhanced retrieval: ${ragSections} sections, ${ragTokens} tokens`);
+          } else if (isEnrollmentQuery) {
+            ragSections = 12;       // Enrollment data (schedules, counts)
+            ragTokens = 1000;
+            retrievalType = '(Enrollment query - comprehensive retrieval)';
+          } else if (isOfficeHeadQuery) {
+            ragSections = 15;       // Office head queries - need specific office info
+            ragTokens = 1200;       // Need enough tokens for office head details
+            retrievalType = '(Office head query - specific office retrieval)';
+            Logger.debug(`🔍 Office head query detected - using enhanced retrieval: ${ragSections} sections, ${ragTokens} tokens`);
+          } else if (isDeanQuery) {
+            ragSections = 15;       // Increased from 10 - need to get ALL deans
+            ragTokens = 1200;       // Increased from 800 - need more tokens for multiple deans
+            retrievalType = '(Dean query - comprehensive retrieval)';
+          } else if (isDirectorQuery) {
+            ragSections = 20;       // Increased from 15 - need to get ALL directors
+            ragTokens = 1500;       // Increased from 1200 - need more tokens for multiple directors
+            retrievalType = '(Director query - comprehensive retrieval)';
           }
           
           relevantContext = await ragService.getContextForTopic(
@@ -1137,15 +1273,227 @@ const server = http.createServer(async (req, res) => {
             ragTokens,
             ragSections,
             false, // suggestMore
-            calendarService // Pass calendarService for calendar event retrieval
+            scheduleService // Pass scheduleService for calendar event retrieval
           );
           Logger.info(`📊 RAG: ${ragSections} sections, ${relevantContext.length} chars ${retrievalType}`);
+          
+          // DIRECT MONGODB FALLBACK: For leadership and office head queries, if RAG returns basic info only or insufficient data, query MongoDB directly
+          // TOKEN-AWARE: Limit fallback data to prevent excessive token usage
+          // Note: isLeadershipQuery and isOfficeHeadQuery are already declared earlier in the code
+          // Re-check on processedPrompt in case prompt was normalized
+          const isLeadershipQueryProcessed = isLeadershipQuery || /\b(president|vice president|vice presidents|chancellor|dean|deans|director|directors|leadership|board|governance|administration|executive|executives|officials?|officers?)\b/i.test(processedPrompt);
+          const isOfficeHeadQueryProcessed = isOfficeHeadQuery || (/\b(who\s+(is|are)\s+(the\s+)?(head|director|chief|manager)\s+(of|in)?|head\s+of|director\s+of|chief\s+of|manager\s+of)\b/i.test(processedPrompt) && 
+                                   (/\b(OSPAT|OSA|OSCD|FASG|PESO|IRO|HSU|CGAD|IP-TBM|GCTC|office|offices|unit|units)\b/i.test(processedPrompt)));
+          
+          const hasBasicInfoOnly = relevantContext && relevantContext.includes('## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)') && 
+                                   !relevantContext.includes('vice president') && 
+                                   !relevantContext.includes('Vice President') &&
+                                   !relevantContext.includes('Vice Presidents');
+          const hasInsufficientData = !relevantContext || relevantContext.trim().length < 500; // Less than 500 chars is likely insufficient
+          const hasNoOfficeInfo = isOfficeHeadQueryProcessed && relevantContext && 
+                                  !relevantContext.toLowerCase().includes('ospat') && 
+                                  !relevantContext.toLowerCase().includes('office') &&
+                                  !relevantContext.toLowerCase().includes('head');
+          // CRITICAL: For president queries, check if context contains president person information
+          // Trigger fallback if context exists but doesn't have president name (roy + ponce) OR doesn't have any president details
+          const contextLower = relevantContext ? relevantContext.toLowerCase() : '';
+          const hasPresidentName = contextLower.includes('roy') && contextLower.includes('ponce');
+          const hasPresidentDetails = contextLower.includes('education') || 
+                                     contextLower.includes('expertise') || 
+                                     contextLower.includes('achievement') || 
+                                     contextLower.includes('melbourne') ||
+                                     contextLower.includes('university of melbourne');
+          const hasNoPresidentInfo = isPresidentQuery && relevantContext && 
+                                     (!hasPresidentName || !hasPresidentDetails);
+          
+          if ((isLeadershipQueryProcessed || isOfficeHeadQueryProcessed) && mongoService && (hasBasicInfoOnly || hasInsufficientData || hasNoOfficeInfo || hasNoPresidentInfo)) {
+            const queryType = isOfficeHeadQueryProcessed ? 'office head' : (isPresidentQuery ? 'president' : 'leadership');
+            const reason = hasNoPresidentInfo ? 'no president info' : 
+                          hasBasicInfoOnly ? 'basic info only' : 
+                          hasNoOfficeInfo ? 'no office info' : 
+                          'insufficient data';
+            Logger.warn(`⚠️  RAG returned ${reason} for ${queryType} query - trying direct MongoDB query as fallback`);
+            
+            try {
+              const chunksCollection = mongoService.getCollection('knowledge_chunks');
+              
+              // Build query based on query type
+              let directQuery;
+              if (isOfficeHeadQueryProcessed) {
+                // Direct MongoDB query for office head data
+                const officeAcronyms = processedPrompt.match(/\b(OSPAT|OSA|OSCD|FASG|PESO|IRO|HSU|CGAD|IP-TBM|GCTC)\b/i);
+                const officePattern = officeAcronyms ? officeAcronyms[0] : 'office';
+                
+                directQuery = {
+                  $or: [
+                    { section: { $regex: /offices|unitsAndOfficesHeads|detailedOfficeServices|additionalOfficesAndCenters/i } },
+                    { type: { $regex: /office|unit|head/i } },
+                    { topic: { $regex: /office|unit|head/i } },
+                    { content: { $regex: new RegExp(`${officePattern}|office.*head|head.*office`, 'i') } },
+                    { text: { $regex: new RegExp(`${officePattern}|office.*head|head.*office`, 'i') } },
+                    { keywords: { $in: [officePattern.toLowerCase(), 'office', 'head', 'director'] } }
+                  ]
+                };
+              } else if (isPresidentQuery) {
+                // CRITICAL: For president queries, use EXACT match to ensure we get the president chunk
+                directQuery = {
+                  $and: [
+                    {
+                      $or: [
+                        { section: { $regex: /^leadership$/i } },
+                        { section: { $regex: /^organizationalStructure\/DOrSUOfficials2025$/i } }
+                      ]
+                    },
+                    {
+                      $or: [
+                        { type: { $regex: /^president$/i } },
+                        { category: { $regex: /^president$/i } },
+                        { content: { $regex: /roy.*g\.?\s*ponce|dr\.?\s*roy.*g\.?\s*ponce|roy.*ponce/i } },
+                        { text: { $regex: /roy.*g\.?\s*ponce|dr\.?\s*roy.*g\.?\s*ponce|roy.*ponce/i } },
+                        { 'metadata.name': { $regex: /roy.*ponce/i } }
+                      ]
+                    }
+                  ]
+                };
+              } else {
+                // Direct MongoDB query for leadership data (non-president)
+                directQuery = {
+                  $or: [
+                    { section: { $regex: /leadership|president|vice|chancellor|dean|director|board|governance|administration/i } },
+                    { type: { $regex: /leadership|president|vice|chancellor|dean|director|board|governance|administration/i } },
+                    { topic: { $regex: /leadership|president|vice|chancellor|dean|director|board|governance|administration/i } },
+                    { content: { $regex: /vice president|president|leadership|dean|director|chancellor/i } },
+                    { text: { $regex: /vice president|president|leadership|dean|director|chancellor/i } }
+                  ]
+                };
+              }
+              
+              const leadershipQuery = directQuery;
+              
+              // TOKEN-AWARE: Limit to top 10 chunks (reduced from 30) to control token usage
+              // Prioritize chunks with relevant keywords for better relevance
+              const allChunks = await chunksCollection.find(leadershipQuery).limit(50).toArray();
+              
+              if (allChunks && allChunks.length > 0) {
+                // Sort by relevance based on query type
+                const sortedChunks = allChunks.sort((a, b) => {
+                  const contentA = (a.content || a.text || '').toLowerCase();
+                  const contentB = (b.content || b.text || '').toLowerCase();
+                  
+                  if (isOfficeHeadQueryProcessed) {
+                    // For office queries, prioritize chunks with office acronym and "head"
+                    const officeAcronyms = processedPrompt.match(/\b(OSPAT|OSA|OSCD|FASG|PESO|IRO|HSU|CGAD|IP-TBM|GCTC)\b/i);
+                    if (officeAcronyms) {
+                      const acronym = officeAcronyms[0].toLowerCase();
+                      const hasAcronymA = contentA.includes(acronym);
+                      const hasAcronymB = contentB.includes(acronym);
+                      const hasHeadA = contentA.includes('head') || contentA.includes('director');
+                      const hasHeadB = contentB.includes('head') || contentB.includes('director');
+                      
+                      // Prioritize: acronym + head > acronym only > head only > others
+                      if (hasAcronymA && hasHeadA && !(hasAcronymB && hasHeadB)) return -1;
+                      if (hasAcronymB && hasHeadB && !(hasAcronymA && hasHeadA)) return 1;
+                      if (hasAcronymA && !hasAcronymB) return -1;
+                      if (hasAcronymB && !hasAcronymA) return 1;
+                    }
+                    // If both have or both don't have, sort by length (longer = more complete info)
+                    return (contentB.length) - (contentA.length);
+                  } else if (isPresidentQuery) {
+                    // For president queries, prioritize chunks with president type and name
+                    const hasPresidentTypeA = (a.type || '').toLowerCase() === 'president' || (a.category || '').toLowerCase() === 'president';
+                    const hasPresidentTypeB = (b.type || '').toLowerCase() === 'president' || (b.category || '').toLowerCase() === 'president';
+                    const hasPresidentNameA = contentA.includes('roy') && contentA.includes('ponce');
+                    const hasPresidentNameB = contentB.includes('roy') && contentB.includes('ponce');
+                    const hasPresidentDetailsA = contentA.includes('education') || contentA.includes('expertise') || contentA.includes('achievement');
+                    const hasPresidentDetailsB = contentB.includes('education') || contentB.includes('expertise') || contentB.includes('achievement');
+                    
+                    // Highest priority: president type + name + details
+                    if (hasPresidentTypeA && hasPresidentNameA && hasPresidentDetailsA && !(hasPresidentTypeB && hasPresidentNameB && hasPresidentDetailsB)) return -1;
+                    if (hasPresidentTypeB && hasPresidentNameB && hasPresidentDetailsB && !(hasPresidentTypeA && hasPresidentNameA && hasPresidentDetailsA)) return 1;
+                    
+                    // High priority: president type + name
+                    if (hasPresidentTypeA && hasPresidentNameA && !(hasPresidentTypeB && hasPresidentNameB)) return -1;
+                    if (hasPresidentTypeB && hasPresidentNameB && !(hasPresidentTypeA && hasPresidentNameA)) return 1;
+                    
+                    // Medium priority: president name + details
+                    if (hasPresidentNameA && hasPresidentDetailsA && !(hasPresidentNameB && hasPresidentDetailsB)) return -1;
+                    if (hasPresidentNameB && hasPresidentDetailsB && !(hasPresidentNameA && hasPresidentDetailsA)) return 1;
+                    
+                    // If both have or both don't have, sort by length (longer = more complete info)
+                    return (contentB.length) - (contentA.length);
+                  } else {
+                    // For other leadership queries, prioritize chunks with "vice president"
+                    const hasVicePresidentA = contentA.includes('vice president');
+                    const hasVicePresidentB = contentB.includes('vice president');
+                    
+                    if (hasVicePresidentA && !hasVicePresidentB) return -1;
+                    if (!hasVicePresidentA && hasVicePresidentB) return 1;
+                    
+                    // If both have or both don't have, sort by length (longer = more complete info)
+                    return (contentB.length) - (contentA.length);
+                  }
+                });
+                
+                // Take top 10 most relevant chunks (reduced from 30)
+                const topChunks = sortedChunks.slice(0, 10);
+                
+                // Calculate current context size in tokens (rough estimate: 1 token ≈ 4 characters)
+                const currentContextTokens = Math.round((relevantContext?.length || 0) / 4);
+                const remainingTokenBudget = Math.max(0, ragTokens - currentContextTokens - 200); // Reserve 200 tokens for formatting
+                const maxFallbackChars = remainingTokenBudget * 4; // Convert tokens to characters
+                
+                // Format leadership chunks with token limit
+                let leadershipContext = '';
+                let addedChars = 0;
+                let chunksAdded = 0;
+                
+                for (const chunk of topChunks) {
+                  const section = chunk.section || chunk.topic || 'leadership';
+                  let content = chunk.content || chunk.text || '';
+                  
+                  // CRITICAL: For president queries, don't truncate - we need all details
+                  // For other queries, truncate if too long (max 500 chars per chunk)
+                  if (!isPresidentQuery && content.length > 500) {
+                    content = content.substring(0, 500) + '...';
+                  }
+                  
+                  const chunkText = `## ${section}\n${content}\n\n`;
+                  const chunkChars = chunkText.length;
+                  
+                  // Check if adding this chunk would exceed token budget
+                  if (addedChars + chunkChars > maxFallbackChars && chunksAdded > 0) {
+                    Logger.debug(`Token budget reached: ${Math.round((addedChars + currentContextTokens) / 4)} tokens used, stopping fallback data`);
+                    break;
+                  }
+                  
+                  leadershipContext += chunkText;
+                  addedChars += chunkChars;
+                  chunksAdded++;
+                }
+                
+                if (chunksAdded > 0) {
+                  // Append to existing context
+                  const dataLabel = isOfficeHeadQueryProcessed ? 'OFFICE HEAD DATA' : 'LEADERSHIP DATA';
+                  relevantContext = relevantContext + `\n\n=== DIRECT MONGODB ${dataLabel} ===\n` + leadershipContext + `\n=== END OF ${dataLabel} ===\n`;
+                  const totalTokens = Math.round((relevantContext.length) / 4);
+                  Logger.info(`✅ Added ${chunksAdded} ${isOfficeHeadQueryProcessed ? 'office' : 'leadership'} chunks from direct MongoDB query (${Math.round(addedChars / 4)} tokens, total context: ~${totalTokens} tokens)`);
+                } else {
+                  Logger.warn(`⚠️  No ${isOfficeHeadQueryProcessed ? 'office' : 'leadership'} chunks could be added due to token budget constraints`);
+                }
+              } else {
+                Logger.warn(`⚠️  Direct MongoDB query also found no ${isOfficeHeadQueryProcessed ? 'office' : 'leadership'} chunks`);
+              }
+            } catch (mongoError) {
+              Logger.error('Direct MongoDB query failed:', mongoError);
+              // Continue with RAG context even if direct query fails
+            }
+          }
         }
           
-          // Fetch calendar events if query is calendar-related
-          let calendarContext = '';
-          let calendarInstruction = '';
-          if (isCalendarQuery && calendarService && mongoService) {
+          // Fetch schedule events if query is schedule-related
+          let scheduleContext = '';
+          let scheduleInstruction = '';
+          if (isScheduleQuery && scheduleService && mongoService) {
             try {
               // Get current date and date range (past 30 days to future 365 days)
               const now = new Date();
@@ -1154,7 +1502,7 @@ const server = http.createServer(async (req, res) => {
               const endDate = new Date(now);
               endDate.setDate(endDate.getDate() + 365); // Next 365 days
               
-              const events = await calendarService.getEvents({
+              const events = await scheduleService.getEvents({
                 startDate: startDate.toISOString(),
                 endDate: endDate.toISOString(),
                 limit: 100 // Get up to 100 events
@@ -1268,25 +1616,169 @@ const server = http.createServer(async (req, res) => {
                   formattedEvents.push(eventInfo);
                 }
                 
-                calendarContext = `\n\n=== DOrSU CALENDAR EVENTS (${groupedEvents.size} unique events found) ===\n` +
+                scheduleContext = `\n\n=== DOrSU SCHEDULE EVENTS (${groupedEvents.size} unique events found) ===\n` +
                   `The following are calendar events, announcements, and schedules from DOrSU:\n\n` +
                   formattedEvents.join('\n') +
-                  `\n=== END OF CALENDAR EVENTS ===\n`;
+                  `\n=== END OF SCHEDULE EVENTS ===\n`;
                 
-                calendarInstruction = getCalendarEventsInstructions();
+                scheduleInstruction = getCalendarEventsInstructions();
                 
-                Logger.info(`📅 Calendar: Fetched ${events.length} events for calendar query`);
+                Logger.info(`📅 Schedule: Fetched ${events.length} events for schedule query`);
               } else {
-                Logger.info('📅 Calendar: No events found in database');
+                Logger.info('📅 Schedule: No events found in database');
               }
-            } catch (calendarError) {
-              Logger.error('📅 Calendar: Error fetching events:', calendarError);
-              // Continue without calendar data if there's an error
+            } catch (scheduleError) {
+              Logger.error('📅 Schedule: Error fetching events:', scheduleError);
+              // Continue without schedule data if there's an error
             }
         }
           
-          // Build system instructions with conversation context AND intent classification
-          const hasContext = relevantContext && relevantContext.trim().length > 100;
+          // Fetch additional schedule items (announcements/events) from schedule collection
+          let postsContext = '';
+          if (isScheduleQuery && mongoService) {
+            try {
+              const scheduleCollection = mongoService.getCollection('schedule');
+              // Get recent schedule items (last 100, sorted by date descending)
+              // Filter for posts/announcements (source: 'Admin' or type: 'announcement')
+              const posts = await scheduleCollection
+                .find({
+                  $or: [
+                    { source: 'Admin' },
+                    { type: 'announcement' }
+                  ]
+                })
+                .sort({ date: -1, createdAt: -1 })
+                .limit(100)
+                .toArray();
+              
+              if (posts && posts.length > 0) {
+                const formattedPosts = posts.map(post => {
+                  let postText = `- **${post.title || 'Untitled'}**\n`;
+                  
+                  if (post.date) {
+                    const postDate = new Date(post.date);
+                    const month = postDate.toLocaleDateString('en-US', { month: 'short' });
+                    const day = postDate.getDate();
+                    const year = postDate.getFullYear();
+                    postText += `  📅 Date: ${month} ${day}, ${year}\n`;
+                  }
+                  
+                  if (post.category) {
+                    postText += `  🏷️ Category: ${post.category}\n`;
+                  }
+                  
+                  if (post.type) {
+                    postText += `  📌 Type: ${post.type}\n`;
+                  }
+                  
+                  if (post.description) {
+                    const desc = post.description.length > 200 
+                      ? post.description.substring(0, 200) + '...' 
+                      : post.description;
+                    postText += `  📝 ${desc}\n`;
+                  }
+                  
+                  return postText;
+                });
+                
+                postsContext = `\n\n=== DOrSU ANNOUNCEMENTS AND EVENTS (${posts.length} posts found) ===\n` +
+                  `The following are announcements and events from DOrSU:\n\n` +
+                  formattedPosts.join('\n') +
+                  `\n=== END OF ANNOUNCEMENTS AND EVENTS ===\n`;
+                
+                Logger.info(`📢 Posts: Fetched ${posts.length} posts for announcements/events query`);
+              } else {
+                Logger.info('📢 Posts: No posts found in database');
+              }
+              
+              // Also fetch calendar events from schedule collection for comprehensive coverage
+              if (scheduleService && !scheduleContext) {
+                try {
+                  const now = new Date();
+                  const startDate = new Date(now);
+                  startDate.setDate(startDate.getDate() - 30);
+                  const endDate = new Date(now);
+                  endDate.setDate(endDate.getDate() + 365);
+                  
+                  const events = await scheduleService.getEvents({
+                    startDate: startDate.toISOString(),
+                    endDate: endDate.toISOString(),
+                    limit: 50
+                  });
+                  
+                  if (events && events.length > 0) {
+                    const formatDateConcise = (date) => {
+                      if (!date) return 'Date TBD';
+                      const d = new Date(date);
+                      const month = d.toLocaleDateString('en-US', { month: 'short' });
+                      const day = d.getDate();
+                      return `${month} ${day}`;
+                    };
+                    
+                    const formattedEvents = events.slice(0, 20).map(event => {
+                      let eventText = `- **${event.title || 'Untitled Event'}**\n`;
+                      if (event.isoDate || event.date) {
+                        const eventDate = new Date(event.isoDate || event.date);
+                        const month = eventDate.toLocaleDateString('en-US', { month: 'short' });
+                        const day = eventDate.getDate();
+                        const year = eventDate.getFullYear();
+                        eventText += `  📅 Date: ${month} ${day}, ${year}\n`;
+                      }
+                      if (event.category) eventText += `  🏷️ Category: ${event.category}\n`;
+                      if (event.description) {
+                        const desc = event.description.length > 150 
+                          ? event.description.substring(0, 150) + '...' 
+                          : event.description;
+                        eventText += `  📝 ${desc}\n`;
+                      }
+                      return eventText;
+                    });
+                    
+                    if (postsContext) {
+                      postsContext += `\n\n=== SCHEDULE EVENTS (${events.length} events found) ===\n` +
+                        `The following are calendar events with specific dates:\n\n` +
+                        formattedEvents.join('\n') +
+                        `\n=== END OF SCHEDULE EVENTS ===\n`;
+                    } else {
+                      postsContext = `\n\n=== SCHEDULE EVENTS (${events.length} events found) ===\n` +
+                        `The following are calendar events with specific dates:\n\n` +
+                        formattedEvents.join('\n') +
+                        `\n=== END OF SCHEDULE EVENTS ===\n`;
+                    }
+                    
+                    Logger.info(`📅 Schedule: Fetched ${events.length} events for schedule query`);
+                  }
+                } catch (scheduleError) {
+                  Logger.debug('📅 Schedule: Error fetching events for schedule query:', scheduleError);
+                }
+              }
+            } catch (scheduleError) {
+              Logger.error('📢 Schedule: Error fetching schedule items:', scheduleError);
+              // Continue without schedule data if there's an error
+            }
+          }
+          
+          // Check if query is vague and has insufficient context
+          const isVagueWithInsufficientContext = queryAnalysis.isVague && 
+            queryAnalysis.needsClarification && 
+            (!relevantContext || relevantContext.trim().length < 100) &&
+            !scheduleContext &&
+            !postsContext &&
+            !newsContext;
+          
+          // CRITICAL FIX: hasContext check - be more lenient to prevent false negatives
+          // Even getBasicInfo() contains useful data (president name, etc.)
+          // Only consider "no context" if it's truly empty or just the placeholder
+          const contextText = relevantContext ? relevantContext.trim() : '';
+          const hasContext = contextText.length > 50 && 
+                            !contextText.includes('[NO KNOWLEDGE BASE DATA AVAILABLE]') &&
+                            !contextText.includes('NO KNOWLEDGE BASE DATA AVAILABLE');
+          
+          // CRITICAL: Log context status for debugging
+          if (!hasContext && contextText.length > 0) {
+            Logger.warn(`⚠️  Context exists but marked as insufficient: ${contextText.length} chars`);
+            Logger.debug(`   Context preview: "${contextText.substring(0, 200)}..."`);
+          }
           
           // Add summarization instructions if summarizing an article
           const summarizationInstruction = articleContent ? 
@@ -1305,11 +1797,145 @@ const server = http.createServer(async (req, res) => {
             '• Format your response with clear paragraphs and bullet points if helpful\n' +
             '• At the end, mention: "For the full article, visit: [article URL]"\n\n' : '';
           
+          // Re-check history queries on processed prompt (in case prompt was normalized)
+          isHistoryQuery = /\b(history|historical|founded|established|background|evolution|development|kasaysayan|itinatag|pinagmulan|gitukod)\b/i.test(processedPrompt) || isHistoryQuery;
+          
+          // Build data source instructions based on query type
+          let dataSourceInstructions = '';
+          if (isScheduleQuery) {
+            dataSourceInstructions = '\n📅 DATA SOURCE FOR THIS QUERY:\n' +
+              '• For dates, schedules, events, announcements, and timelines → Use ONLY the "SCHEDULE EVENTS" section above (from "schedule" collection)\n' +
+              '• The schedule collection contains all calendar events, announcements, and posts\n' +
+              '• DO NOT use general knowledge or training data about dates, events, or announcements\n' +
+              '• If schedule events are provided above, use those EXACT dates and information\n' +
+              '• Check both calendar events and announcements/events sections as they are from the unified schedule collection\n\n';
+          } else if (isDirectNewsQuery) {
+            dataSourceInstructions = '\n📰 DATA SOURCE FOR THIS QUERY:\n' +
+              '• For news and updates → Use ONLY the "NEWS" section above (from "news" collection)\n' +
+              '• DO NOT use general knowledge about news\n' +
+              '• If news items are provided above, use that information\n\n';
+          } else if (isHistoryQuery) {
+            dataSourceInstructions = getHistoryInstructions();
+          } else if (isPresidentQuery) {
+            dataSourceInstructions = getPresidentInstructions();
+          } else if (isOfficeHeadQuery) {
+            dataSourceInstructions = '\n📋 DATA SOURCE FOR THIS QUERY:\n' +
+              '• For office head information → Use ONLY the "KNOWLEDGE BASE" section above (from "knowledge_chunks" collection)\n' +
+              '• Look for chunks with section: "offices", "unitsAndOfficesHeads", "detailedOfficeServices", or "additionalOfficesAndCenters"\n' +
+              '• Match the office acronym (OSA, OSPAT, etc.) in the category, metadata.acronym, or content fields\n' +
+              '• Extract the head/director name, title, and role from the chunks\n' +
+              '• DO NOT use training data or general knowledge\n' +
+              '• If office head information is provided above, use that information\n\n';
+          } else if (isVPQuery) {
+            dataSourceInstructions = getLeadershipInstructions(true, false, false);
+          } else if (isDeanQuery) {
+            dataSourceInstructions = getLeadershipInstructions(false, true, false);
+          } else if (isDirectorQuery) {
+            dataSourceInstructions = getLeadershipInstructions(false, false, true);
+          } else if (isLeadershipQuery) {
+            dataSourceInstructions = getLeadershipInstructions(false, false, false);
+          } else if (isProgramQuery) {
+            dataSourceInstructions = getProgramInstructions();
+          } else if (isVisionMissionQuery) {
+            dataSourceInstructions = '\n🎯 DATA SOURCE FOR THIS QUERY:\n' +
+              '• For vision and mission → Use ONLY the "KNOWLEDGE BASE" section above (from "knowledge_chunks" collection)\n' +
+              '• Look for chunks with metadata.field containing "visionMission.vision" or "visionMission.mission"\n' +
+              '• Extract the vision statement and all mission statements from the chunks\n' +
+              '• Format: "Vision:" followed by the vision statement, then "Mission:" followed by all mission statements\n' +
+              '• DO NOT use training data or general knowledge\n' +
+              '• If vision/mission information is provided above, use that information\n' +
+              '• CRITICAL: Exclude hymn chunks that just contain "Davao Oriental State University" - only use actual vision/mission content\n\n';
+          } else if (isValuesQuery) {
+            const isCoreValuesQuery = /\b(core\s+values?|values?)\b/i.test(prompt) && !/\bgraduate\s+outcomes?|outcomes?|mandate|quality\s+policy|charter\b/i.test(prompt);
+            const isOutcomesQuery = /\b(graduate\s+outcomes?|outcomes?)\b/i.test(prompt) && !/\bcore\s+values?|mandate|quality\s+policy|charter\b/i.test(prompt);
+            const isMandateQuery = /\b(mandate|charter)\b/i.test(prompt);
+            const isQualityPolicyQuery = /\bquality\s+policy\b/i.test(prompt);
+            if (isCoreValuesQuery) {
+              dataSourceInstructions = '\n💎 DATA SOURCE FOR THIS QUERY:\n' +
+                '• For core values → Use ONLY the "KNOWLEDGE BASE" section above (from "knowledge_chunks" collection)\n' +
+                '• Look for chunks with metadata.field containing "valuesAndOutcomes.coreValues"\n' +
+                '• Extract ALL core values from the chunks\n' +
+                '• Format: List all core values as a numbered or bulleted list\n' +
+                '• DO NOT use training data or general knowledge\n' +
+                '• If core values information is provided above, use that information\n\n';
+            } else if (isOutcomesQuery) {
+              dataSourceInstructions = '\n💎 DATA SOURCE FOR THIS QUERY:\n' +
+                '• For graduate outcomes → Use ONLY the "KNOWLEDGE BASE" section above (from "knowledge_chunks" collection)\n' +
+                '• Look for chunks with metadata.field containing "valuesAndOutcomes.graduateOutcomes"\n' +
+                '• Extract ALL graduate outcomes from the chunks\n' +
+                '• Format: List all graduate outcomes as a numbered or bulleted list\n' +
+                '• DO NOT use training data or general knowledge\n' +
+                '• If graduate outcomes information is provided above, use that information\n\n';
+            } else if (isMandateQuery) {
+              dataSourceInstructions = '\n💎 DATA SOURCE FOR THIS QUERY:\n' +
+                '• For mandate → Use ONLY the "KNOWLEDGE BASE" section above (from "knowledge_chunks" collection)\n' +
+                '• Look for chunks with metadata.field containing "mandate.statement" or "mandate.objectives"\n' +
+                '• Extract the mandate statement and all mandate objectives from the chunks\n' +
+                '• Format: "Mandate:" followed by the mandate statement, then "Objectives:" followed by all objectives as a numbered or bulleted list\n' +
+                '• DO NOT use training data or general knowledge\n' +
+                '• If mandate information is provided above, use that information\n\n';
+            } else if (isQualityPolicyQuery) {
+              dataSourceInstructions = '\n💎 DATA SOURCE FOR THIS QUERY:\n' +
+                '• For quality policy → Use ONLY the "KNOWLEDGE BASE" section above (from "knowledge_chunks" collection)\n' +
+                '• Look for chunks with metadata.field containing "qualityPolicy" or section "qualityPolicy"\n' +
+                '• Extract the complete quality policy statement from the chunks\n' +
+                '• DO NOT use training data or general knowledge\n' +
+                '• If quality policy information is provided above, use that information\n\n';
+            } else {
+              dataSourceInstructions = '\n💎 DATA SOURCE FOR THIS QUERY:\n' +
+                '• For core values and graduate outcomes → Use ONLY the "KNOWLEDGE BASE" section above (from "knowledge_chunks" collection)\n' +
+                '• Look for chunks with metadata.field containing "valuesAndOutcomes.coreValues" or "valuesAndOutcomes.graduateOutcomes"\n' +
+                '• Extract ALL core values and ALL graduate outcomes from the chunks\n' +
+                '• Format: "Core Values:" followed by all core values, then "Graduate Outcomes:" followed by all graduate outcomes\n' +
+                '• List each section as a numbered or bulleted list\n' +
+                '• DO NOT use training data or general knowledge\n' +
+                '• If values/outcomes information is provided above, use that information\n\n';
+            }
+          } else if (isHymnQuery) {
+            dataSourceInstructions = getHymnInstructions();
+          } else {
+            dataSourceInstructions = '\n📚 DATA SOURCE FOR THIS QUERY:\n' +
+              '• For general DOrSU knowledge → Use ONLY the "KNOWLEDGE BASE" section above (from "knowledge_chunks" collection)\n' +
+              '• DO NOT use training data or general knowledge\n' +
+              '• If knowledge base chunks are provided above, use that information\n\n';
+          }
+          
+          // For vague queries with insufficient context, ask for clarification
+          const clarificationInstruction = isVagueWithInsufficientContext ? 
+            '\n\n🤔 CLARIFICATION REQUIRED (CRITICAL):\n' +
+            '• The user\'s query is VAGUE or AMBIGUOUS and lacks sufficient context\n' +
+            '• DO NOT guess or use training data to answer\n' +
+            '• DO NOT provide generic information\n' +
+            '• DO NOT simply say "I don\'t have that information yet" - you MUST ask for clarification\n' +
+            '• You MUST ask the user for clarification in a friendly, helpful way\n' +
+            '• Ask specific questions to understand what they need:\n' +
+            '  - If they mentioned an acronym (like "MCC"), ask what it stands for or what they\'re referring to\n' +
+            '  - If they mentioned a vague term (like "final exam", "schedule"), ask for more context:\n' +
+            '    * Which subject/course/program?\n' +
+            '    * Which semester/academic year?\n' +
+            '    * What specific information do they need?\n' +
+            '  - If the query is too short, ask them to provide more details\n' +
+            '• Be friendly and helpful: "I\'d be happy to help! Could you provide more details about..."\n' +
+            '• Example response format:\n' +
+            '  "I\'d like to help you with [vague term], but I need a bit more information. Could you please clarify:\n' +
+            '  - [Specific question 1]\n' +
+            '  - [Specific question 2]\n' +
+            '  Once you provide these details, I can give you accurate information from the knowledge base."\n' +
+            '• IMPORTANT: Always ask follow-up questions for vague queries - never just say you don\'t have the information\n\n' : '';
+          
           systemPrompt = buildSystemInstructions(conversationContext, intentClassification) + '\n\n' +
+            dataSourceInstructions +
+            clarificationInstruction +
             '=== DOrSU KNOWLEDGE BASE (YOUR ONLY SOURCE OF TRUTH - STRICTLY ENFORCED) ===\n' + 
-            (hasContext ? relevantContext : '[NO KNOWLEDGE BASE DATA AVAILABLE - You MUST inform the user you don\'t have this information]') + 
+            (hasContext ? relevantContext : 
+             (relevantContext && relevantContext.trim().length > 0 ? 
+              (isHistoryQuery ? 
+                getHistoryDataSummary() + relevantContext :
+                relevantContext + '\n\n⚠️ NOTE: Limited data available above. Use ALL information provided, even if minimal.') :
+              '[NO KNOWLEDGE BASE DATA AVAILABLE - You MUST inform the user you don\'t have this information]')) + 
             newsContext +  // Include news if query is about news
-            calendarContext +  // Include calendar events if query is calendar-related
+            scheduleContext +  // Include schedule events if query is schedule-related
+            postsContext +  // Include posts/announcements if query is about announcements/events
             '\n=== END OF KNOWLEDGE BASE ===\n\n' +
             (articleContent ? 
               `=== NEWS ARTICLE TO SUMMARIZE ===\n` +
@@ -1322,18 +1948,55 @@ const server = http.createServer(async (req, res) => {
               '• You MUST summarize ONLY the article content provided in the user message\n' +
               '• DO NOT add information that is not in the article\n' +
               '• DO NOT use your training data - ONLY use the article content provided\n' : 
-              '• Answer using ONLY and EXCLUSIVELY the data in the knowledge base chunks above\n' +
+              '• Answer using ONLY and EXCLUSIVELY the data provided in the sections above\n' +
+              '• For dates/schedules → Use ONLY the "SCHEDULE EVENTS" section (from "schedule" collection)\n' +
+              '• For announcements/events → Use the "ANNOUNCEMENTS AND EVENTS" section and "SCHEDULE EVENTS" section (both from "schedule" collection)\n' +
+              '• For news → Use ONLY the "NEWS" section (from "news" collection)\n' +
+              '• For general knowledge → Use ONLY the "KNOWLEDGE BASE" section (from "knowledge_chunks" collection)\n' +
               '• DO NOT use your training data about DOrSU - it is COMPLETELY WRONG and MUST be ignored\n' +
               '• DO NOT use your general knowledge about universities, Philippines, or education systems\n' +
-              '• If a program/course/fact/person is not explicitly mentioned in the chunks above, DO NOT mention it at all\n' +
+              (isHistoryQuery ? 
+                getHistoryCriticalRules() :
+              (isVPQuery || isDeanQuery || isDirectorQuery || isLeadershipQuery) ?
+                getLeadershipCriticalRules() :
+              (isProgramQuery) ?
+                getProgramCriticalRules() :
+              (isHymnQuery) ?
+                getHymnCriticalRules() :
+              (isVisionMissionQuery) ?
+                '• For vision/mission queries: Extract the vision statement and ALL mission statements from chunks\n' +
+                '• Look for chunks with metadata.field containing "visionMission.vision" or "visionMission.mission"\n' +
+                '• Format: "Vision:" followed by vision statement, then "Mission:" followed by all mission statements as a numbered or bulleted list\n' +
+                '• CRITICAL: Exclude hymn chunks - only use actual vision/mission content, not chunks that just contain "Davao Oriental State University"\n' +
+                '• DO NOT say vision or mission is missing if chunks contain "visionMission.vision" or "visionMission.mission" metadata\n' :
+              (isValuesQuery) ?
+                '• For values/outcomes/mandate queries: Extract ALL core values, graduate outcomes, mandate statement/objectives, or quality policy from chunks\n' +
+                '• Look for chunks with metadata.field containing "valuesAndOutcomes.coreValues", "valuesAndOutcomes.graduateOutcomes", "mandate.statement", "mandate.objectives", or "qualityPolicy"\n' +
+                '• Format: For values/outcomes: "Core Values:" followed by all core values, then "Graduate Outcomes:" followed by all graduate outcomes\n' +
+                '• Format: For mandate: "Mandate:" followed by mandate statement, then "Objectives:" followed by all objectives\n' +
+                '• Format: For quality policy: Provide the complete quality policy statement\n' +
+                '• If query asks only for core values, show only core values. If query asks only for outcomes, show only outcomes. If query asks for mandate, show mandate and objectives\n' +
+                '• List each value/outcome/objective as a separate item (numbered or bulleted)\n' +
+                '• DO NOT say values, outcomes, mandate, or quality policy are missing if chunks contain the corresponding metadata\n' :
+              (isOfficeHeadQuery) ?
+                '• For office head queries, extract ONLY the head/director name, title, and role from the chunks\n' +
+                '• If the office acronym (OSA, OSPAT, etc.) is mentioned in the query, ONLY return information for that specific office\n' +
+                '• DO NOT confuse different offices (e.g., OSA vs OSPAT)\n' +
+                '• If office head information is not in the chunks above, DO NOT mention it at all\n' :
+                '• If information is not in the sections above, DO NOT mention it at all\n') +
               '• When listing programs, ONLY list ones that appear word-for-word in the knowledge base chunks above\n' +
               '• NEVER create, invent, or hallucinate URLs - ONLY use URLs that appear exactly in the knowledge base chunks\n' +
               '• If you see a URL in the knowledge base, copy it EXACTLY (including query parameters and all characters)\n' +
               '• Student manuals are on heyzine.com - NEVER create dorsu.edu.ph/wp-content/uploads URLs for manuals\n' +
-              (hasContext ? '' : '• ⚠️ WARNING: Knowledge base chunks are empty or insufficient - You MUST tell the user: "I don\'t have that specific information in the knowledge base yet."\n')) +
+              '• For dates: Use EXACT dates from the calendar events section - DO NOT modify or approximate\n' +
+              // CRITICAL FIX: Only show "no data" warning if truly no data exists
+              // Check if we have ANY context (even minimal) before claiming no data
+              ((hasContext || (relevantContext && relevantContext.trim().length > 50) || scheduleContext || postsContext || newsContext) ? 
+                '• ✅ Data is available above - USE IT ALL. Extract every detail from the provided chunks.\n' :
+                '• ⚠️ WARNING: No relevant data found in any collection - You MUST tell the user: "I don\'t have that specific information in the knowledge base yet."\n')) +
             (summarizationInstruction || '') +
             (newsInstruction || '') +  // Include news instruction only if present
-            (calendarInstruction || '');  // Include calendar instruction only if present
+            (scheduleInstruction || '');  // Include schedule instruction only if present
         } else {
           // For non-DOrSU queries, still restrict to knowledge base if available
           if (ragService && relevantContext && relevantContext.trim().length > 100) {

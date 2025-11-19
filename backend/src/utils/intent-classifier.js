@@ -151,7 +151,18 @@ export class IntentClassifier {
       
       // DOrSU-specific entities (people, places, programs)
       const dorsuEntities = {
-        // People
+        // Leadership & Organizational (HIGH PRIORITY - always DOrSU-specific)
+        leadership: [
+          'president', 'presidents', 'vice president', 'vice presidents', 'vp', 'vps',
+          'chancellor', 'chancellors', 'dean', 'deans', 'director', 'directors',
+          'board of regents', 'board members', 'administrator', 'administrators',
+          'leadership', 'officials', 'officers', 'executive', 'executives',
+          'presidente', 'bise presidente', 'dekano', 'direktor', 'dire',
+          'presidente ng dorsu', 'president ng dorsu', 'vice president ng dorsu',
+          'vice presidents ng dorsu', 'who are the', 'who is the'
+        ],
+        
+        // People (specific names)
         people: [
           'roy ponce', 'roy g. ponce', 'roy padilla', 'lilibeth galvez',
           'lea jimenez', 'edito sumile', 'misael clapano', 'anglie nemenzo',
@@ -203,9 +214,12 @@ export class IntentClassifier {
       
       // DOrSU-specific questions (patterns that are university-specific)
       const dorsuQuestionPatterns = [
-        // Organizational
-        /\b(president|vice president|dean|director|chancellor|administrator|board of regents)\s+(of|ng)?\s*(dorsu|the university|our university)?\b/i,
-        /\bwho\s+(is|ang)\s+the\s+(president|vp|dean|director|head)\b/i,
+        // Organizational - IMPROVED: More comprehensive patterns
+        /\b(president|vice president|vp|vps|dean|director|chancellor|administrator|board of regents)\s+(of|ng)?\s*(dorsu|the university|our university)?\b/i,
+        /\bwho\s+(is|are|ang)\s+(the\s+)?(president|presidents|vice president|vice presidents|vp|vps|dean|deans|director|directors|chancellor|chancellors|head|heads|officials|officers|executives?)\b/i,
+        /\bwhat\s+(are|is)\s+(the\s+)?(vice presidents?|presidents?|deans?|directors?|chancellors?|officials?|officers?|executives?)\b/i,
+        /\b(list|tell\s+me|show\s+me|name)\s+(the\s+)?(vice presidents?|presidents?|deans?|directors?|chancellors?|officials?|officers?|executives?|leadership)\b/i,
+        /\b(vice presidents?|presidents?|deans?|directors?|chancellors?|officials?|officers?|executives?|leadership)\s+(of|in|at|ng|sa)\s*(dorsu|the university|our university|this university)?\b/i,
         
         // Academic
         /\b(programs|courses|faculties|departments|colleges)\s+(offered|available|in|ng|sa)\s*(dorsu|the university)?\b/i,
@@ -318,21 +332,47 @@ export class IntentClassifier {
         reasoning.push('Direct DOrSU mention');
       }
       
-      // Check for DOrSU entities
+      // Check for DOrSU entities (with special handling for leadership)
       Object.entries(dorsuEntities).forEach(([category, entities]) => {
         const found = entities.filter(entity => lowerQuery.includes(entity));
         if (found.length > 0) {
-          dorsuScore += found.length * 50;
+          // Leadership queries get HIGHER weight (always DOrSU-specific)
+          const weight = category === 'leadership' ? 80 : 50;
+          dorsuScore += found.length * weight;
           detectedDorsuEntities.push({ category, entities: found });
           reasoning.push(`DOrSU ${category}: ${found.join(', ')}`);
+          
+          // If leadership terms found, strongly indicate DOrSU (even without explicit mention)
+          if (category === 'leadership') {
+            dorsuScore += 30; // Bonus for leadership queries
+            reasoning.push('Leadership query detected - likely DOrSU-specific');
+          }
         }
       });
       
       // Check for DOrSU question patterns
       const matchedDorsuPatterns = dorsuQuestionPatterns.filter(pattern => pattern.test(lowerQuery));
       if (matchedDorsuPatterns.length > 0) {
-        dorsuScore += matchedDorsuPatterns.length * 30;
-        reasoning.push(`DOrSU question pattern matched`);
+        dorsuScore += matchedDorsuPatterns.length * 40; // Increased from 30 to 40
+        reasoning.push(`DOrSU question pattern matched (${matchedDorsuPatterns.length} patterns)`);
+      }
+      
+      // SPECIAL CASE: Leadership queries without explicit DOrSU mention
+      // If query asks about "vice presidents", "presidents", "deans", etc. without context,
+      // assume it's about DOrSU (since this is a DOrSU chatbot)
+      const leadershipTerms = ['vice president', 'vice presidents', 'president', 'presidents', 
+                               'dean', 'deans', 'director', 'directors', 'chancellor', 'chancellors',
+                               'officials', 'officers', 'executives', 'leadership', 'board'];
+      const hasLeadershipTerm = leadershipTerms.some(term => lowerQuery.includes(term));
+      const hasLeadershipQuestion = /\b(who\s+(are|is)|what\s+(are|is)|list|tell\s+me|show\s+me|name)\s+(the\s+)?(vice\s+presidents?|presidents?|deans?|directors?|chancellors?|officials?|officers?|executives?|leadership)\b/i.test(lowerQuery);
+      
+      // Determine if this is a leadership query (used in multiple places)
+      const isLeadershipQuery = detectedDorsuEntities.some(e => e.category === 'leadership') ||
+                                (hasLeadershipTerm && hasLeadershipQuestion);
+      
+      if (hasLeadershipTerm && hasLeadershipQuestion && !hasDorsuMention && dorsuScore < 50) {
+        dorsuScore += 60; // Strong boost for leadership queries
+        reasoning.push('Leadership query detected (assuming DOrSU context)');
       }
       
       // Check for general knowledge patterns
@@ -357,13 +397,16 @@ export class IntentClassifier {
       };
       
       // If mentions university but no DOrSU entities, it's likely general
-      if (contextualClues.university.test(lowerQuery) && dorsuScore === 0) {
+      // BUT: Don't penalize if it's a leadership query (those are always DOrSU)
+      
+      if (contextualClues.university.test(lowerQuery) && dorsuScore === 0 && !isLeadershipQuery) {
         generalScore += 20;
         reasoning.push('General university question');
       }
       
       // Generic "what is" questions without DOrSU context
-      if (contextualClues.whatIs.test(lowerQuery) && dorsuScore === 0) {
+      // BUT: Don't penalize leadership queries
+      if (contextualClues.whatIs.test(lowerQuery) && dorsuScore === 0 && !isLeadershipQuery) {
         generalScore += 15;
         reasoning.push('General "what is" question');
       }
@@ -371,18 +414,30 @@ export class IntentClassifier {
       // ============================================================
       // 4. FINAL CLASSIFICATION
       // ============================================================
+      // DORSU-EXCLUSIVE MODE: Always use knowledge base to prevent hallucination
+      // Only use training data for clearly non-DOrSU queries (and even then, we'll be cautious)
+      // ============================================================
       
       let intent = 'unknown';
-      let source = 'ai_training_data';
+      let source = 'knowledge_base'; // DEFAULT: Always use knowledge base (prevents hallucination)
       let confidence = 0;
-      let category = 'general';
+      let category = 'dorsu'; // DEFAULT: DOrSU category
       
-      if (dorsuScore > generalScore) {
-        intent = 'dorsu_specific';
-        source = 'knowledge_base';
-        confidence = Math.min(100, Math.round((dorsuScore / (dorsuScore + generalScore + 1)) * 100));
-        category = 'dorsu';
-      } else if (generalScore > 0) {
+      // Check if query is CLEARLY general knowledge (not DOrSU-related at all)
+      // Only classify as general if:
+      // 1. No DOrSU score at all (dorsuScore === 0)
+      // 2. Strong general knowledge indicators
+      // 3. NOT a leadership query
+      // 4. NOT ambiguous (has clear general knowledge patterns)
+      const isClearlyGeneralKnowledge = dorsuScore === 0 && 
+                                       generalScore > 50 && 
+                                       !isLeadershipQuery &&
+                                       detectedGeneralCategories.length > 0 &&
+                                       !hasDorsuMention;
+      
+      if (isClearlyGeneralKnowledge) {
+        // Only for clearly non-DOrSU queries (e.g., "what is photosynthesis")
+        // Even then, we'll be cautious and the system prompt will tell AI to redirect
         intent = 'general_knowledge';
         source = 'ai_training_data';
         confidence = Math.min(100, Math.round((generalScore / (dorsuScore + generalScore + 1)) * 100));
@@ -391,13 +446,30 @@ export class IntentClassifier {
         if (detectedGeneralCategories.length > 0) {
           category = detectedGeneralCategories[0];
         }
+        reasoning.push('Clearly general knowledge query (non-DOrSU)');
+      } else if (dorsuScore > 0 || isLeadershipQuery || hasDorsuMention) {
+        // DOrSU-related query - ALWAYS use knowledge base
+        intent = 'dorsu_specific';
+        source = 'knowledge_base';
+        confidence = Math.min(100, Math.round((dorsuScore / (dorsuScore + generalScore + 1)) * 100));
+        category = 'dorsu';
+        
+        if (isLeadershipQuery) {
+          confidence = Math.max(confidence, 70); // Minimum 70% confidence for leadership queries
+          reasoning.push('Leadership query - using knowledge base');
+        }
+        
+        if (dorsuScore > 0) {
+          reasoning.push('DOrSU-related query detected - using knowledge base');
+        }
       } else {
-        // Ambiguous - default to DOrSU if no clear indicator
-        intent = 'ambiguous';
-        source = 'knowledge_base';  // Default to knowledge base for safety
-        confidence = 30;
-        category = 'ambiguous';
-        reasoning.push('No clear indicators - defaulting to DOrSU knowledge base');
+        // Ambiguous or unclear - DEFAULT to knowledge base (safer, prevents hallucination)
+        // Better to check knowledge base and say "I don't have that info" than hallucinate
+        intent = 'dorsu_specific'; // Treat as DOrSU query
+        source = 'knowledge_base';  // Always use knowledge base for safety
+        confidence = 40; // Lower confidence but still use knowledge base
+        category = 'dorsu';
+        reasoning.push('Ambiguous query - defaulting to DOrSU knowledge base (prevents hallucination)');
       }
       
       return {
@@ -456,6 +528,7 @@ export class IntentClassifier {
     
     /**
      * Get system prompt enhancement based on conversational intent
+     * DORSU-EXCLUSIVE: Always prioritize knowledge base to prevent hallucination
      */
     static getSystemPrompt(classification, hasKnowledgeBase = false) {
       let basePrompt = '';
@@ -465,8 +538,12 @@ export class IntentClassifier {
         basePrompt = 'You are a DOrSU Assistant. Answer using ONLY the DOrSU knowledge base provided. ' +
                      'If the information is not in the knowledge base, say "I don\'t have that specific information about DOrSU."';
       } else {
-        basePrompt = 'You are a helpful AI assistant. Answer this general knowledge question using your training data. ' +
-                     'Be accurate, concise, and educational. If you\'re unsure, acknowledge it.';
+        // For general knowledge queries, still redirect to DOrSU focus
+        // This prevents hallucination and keeps the AI focused on DOrSU
+        basePrompt = 'You are a DOrSU Assistant specialized in Davao Oriental State University information. ' +
+                     'This question appears to be about general knowledge, not DOrSU. ' +
+                     'Politely redirect: "I\'m a DOrSU Assistant and can only help with DOrSU-related questions. ' +
+                     'Could you rephrase your question about DOrSU, or would you like to know something about the university?"';
       }
       
       // Add conversational intent guidance

@@ -2,10 +2,11 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
+import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Linking, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Linking, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
@@ -415,6 +416,49 @@ const AdminAIChat = () => {
 
   const handleSuggestionPress = (suggestion: string) => {
     handleSendMessage(suggestion);
+  };
+
+  const handleCopyMessage = async (content: string, role: 'user' | 'assistant') => {
+    try {
+      // Remove markdown formatting for cleaner copy (strip markdown syntax)
+      let textToCopy = content;
+      
+      // Basic markdown cleanup - remove markdown syntax but keep the text
+      textToCopy = textToCopy
+        .replace(/#{1,6}\s+/g, '') // Remove headers
+        .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold
+        .replace(/\*(.*?)\*/g, '$1') // Remove italic
+        .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') // Remove links but keep text
+        .replace(/`([^`]+)`/g, '$1') // Remove inline code
+        .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+        .replace(/^\s*[-*+]\s+/gm, '• ') // Convert list markers to bullet
+        .replace(/^\s*\d+\.\s+/gm, '') // Remove numbered list markers
+        .trim();
+
+      await Clipboard.setStringAsync(textToCopy);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      // Show brief feedback
+      Alert.alert('Copied!', `${role === 'user' ? 'Your message' : 'AI response'} has been copied to clipboard.`);
+    } catch (error) {
+      console.error('Failed to copy message:', error);
+      // Fallback: show the text in an alert that can be manually copied
+      const displayText = content.length > 1000 ? content.substring(0, 1000) + '...' : content;
+      Alert.alert(
+        'Copy Message',
+        displayText,
+        [
+          { text: 'OK' },
+          {
+            text: 'Select All & Copy',
+            onPress: () => {
+              // On some platforms, the text in Alert can be selected and copied manually
+              // This is a fallback for when clipboard API fails
+            }
+          }
+        ]
+      );
+    }
   };
 
   return (
@@ -827,27 +871,45 @@ const AdminAIChat = () => {
                   </View>
                 )}
                 {message.role === 'user' ? (
-                  <View
-                    style={[
-                      styles.messageBubble,
-                      { backgroundColor: isDarkMode ? '#2563EB' : '#2563EB' }
-                    ]}
-                  >
-                    <Text style={[styles.messageText, { color: '#FFFFFF' }]}>
-                      {message.content}
-                    </Text>
+                  <View style={styles.messageBubbleContainer}>
+                    <View
+                      style={[
+                        styles.messageBubble,
+                        { backgroundColor: isDarkMode ? '#2563EB' : '#2563EB' }
+                      ]}
+                    >
+                      <Text style={[styles.messageText, { color: '#FFFFFF' }]}>
+                        {message.content}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.copyButton, { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' }]}
+                      onPress={() => handleCopyMessage(message.content, 'user')}
+                      accessibilityLabel="Copy message"
+                    >
+                      <Ionicons name="copy-outline" size={16} color={isDarkMode ? '#9CA3AF' : '#6B7280'} />
+                    </TouchableOpacity>
                   </View>
                 ) : (
-                  <View style={[styles.messageBubble, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}>
-                    <Markdown
-                      style={getMarkdownStyles(theme)}
-                      onLinkPress={(url: string) => {
-                        Linking.openURL(url).catch(err => console.error('Failed to open URL:', err));
-                        return false;
-                      }}
+                  <View style={styles.messageBubbleContainer}>
+                    <View style={[styles.messageBubble, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}>
+                      <Markdown
+                        style={getMarkdownStyles(theme)}
+                        onLinkPress={(url: string) => {
+                          Linking.openURL(url).catch(err => console.error('Failed to open URL:', err));
+                          return false;
+                        }}
+                      >
+                        {message.content}
+                      </Markdown>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.copyButton, { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' }]}
+                      onPress={() => handleCopyMessage(message.content, 'assistant')}
+                      accessibilityLabel="Copy AI response"
                     >
-                      {message.content}
-                    </Markdown>
+                      <Ionicons name="copy-outline" size={16} color={isDarkMode ? '#9CA3AF' : '#6B7280'} />
+                    </TouchableOpacity>
                   </View>
                 )}
               </View>
@@ -1457,11 +1519,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: 4,
   },
+  messageBubbleContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    maxWidth: '85%',
+  },
   messageBubble: {
-    maxWidth: '75%',
+    flex: 1,
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 20,
+  },
+  copyButton: {
+    padding: 6,
+    marginTop: 4,
+    borderRadius: 8,
   },
   messageText: {
     fontSize: 15,

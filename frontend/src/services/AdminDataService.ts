@@ -170,7 +170,9 @@ const AdminDataService = {
         });
       }
 
-      // Fetch from backend MongoDB
+      // Fetch from backend MongoDB (using unified schedule collection)
+      // Filter for posts/announcements/news/events (exclude institutional/academic which go to calendar)
+      // Use /api/admin/posts endpoint which is designed for dashboard posts
       const response = await fetch(`${apiConfig.baseUrl}/api/admin/posts?limit=1000`, {
         method: 'GET',
         headers: {
@@ -184,10 +186,22 @@ const AdminDataService = {
       }
 
       const data = await response.json();
+      // Filter posts to exclude institutional/academic (these go to calendar)
+      // Only include Announcement, News, Event categories for dashboard Updates section
       if (data.success && Array.isArray(data.posts)) {
+        const filteredPosts = data.posts.filter((post: Post) => {
+          const category = (post.category || '').toLowerCase();
+          // Include: Announcement, News, Event (general events)
+          // Exclude: Institutional, Academic (these are calendar-only)
+          return category === 'announcement' || 
+                 category === 'news' || 
+                 category === 'event' ||
+                 !category || // Include items with no category as fallback
+                 (category !== 'institutional' && category !== 'academic');
+        });
         // Update local store for offline access
-        postsStore = data.posts;
-        return data.posts;
+        postsStore = filteredPosts;
+        return filteredPosts;
       }
       
       // Fallback to local store
@@ -481,8 +495,8 @@ const AdminDataService = {
         console.log('ℹ️ No image provided in postData');
       }
 
-      // Call backend API
-      console.log('📤 Sending FormData to backend...');
+      // Call backend API (using unified schedule endpoint)
+      console.log('📤 Sending FormData to backend (unified schedule endpoint)...');
       console.log('📤 FormData entries:');
       // Log FormData contents (for debugging)
       for (const [key, value] of formData.entries()) {
@@ -497,7 +511,8 @@ const AdminDataService = {
       }
       
       try {
-        const response = await fetch(`${apiConfig.baseUrl}/api/admin/create-post`, {
+        // Use unified schedule endpoint - supports both legacy /api/admin/create-post and new /api/admin/schedule/events
+        const response = await fetch(`${apiConfig.baseUrl}/api/admin/schedule/events`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -664,7 +679,7 @@ const AdminDataService = {
           }
         }
 
-        response = await fetch(`${apiConfig.baseUrl}/api/admin/posts/${id}`, {
+        response = await fetch(`${apiConfig.baseUrl}/api/admin/schedule/events/${id}`, {
           method: 'PUT',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -674,7 +689,7 @@ const AdminDataService = {
         });
       } else {
         // Use JSON for text-only updates
-        response = await fetch(`${apiConfig.baseUrl}/api/admin/posts/${id}`, {
+        response = await fetch(`${apiConfig.baseUrl}/api/admin/schedule/events/${id}`, {
           method: 'PUT',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -718,8 +733,8 @@ const AdminDataService = {
         return postsStore.length < before;
       }
 
-      // Call backend API
-      const response = await fetch(`${apiConfig.baseUrl}/api/admin/posts/${id}`, {
+      // Call backend API (using unified schedule collection)
+      const response = await fetch(`${apiConfig.baseUrl}/api/admin/schedule/events/${id}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`,

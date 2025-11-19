@@ -117,7 +117,7 @@ class CalendarService {
       if (params?.category) queryParams.append('category', params.category);
       if (params?.limit) queryParams.append('limit', String(params.limit));
 
-      const url = `${this.baseUrl}/api/calendar/events${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      const url = `${this.baseUrl}/api/schedule/events${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
       
       const response = await fetch(url, {
         method: 'GET',
@@ -147,7 +147,7 @@ class CalendarService {
    */
   async getEventById(eventId: string): Promise<CalendarEvent | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/calendar/events/${eventId}`, {
+      const response = await fetch(`${this.baseUrl}/api/schedule/events/${eventId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -190,7 +190,7 @@ class CalendarService {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const url = `${this.baseUrl}/api/admin/calendar/events/${eventId}`;
+      const url = `${this.baseUrl}/api/admin/schedule/events/${eventId}`;
       console.log('📤 Sending DELETE request', { url, method: 'DELETE', hasAuth: !!token });
 
       const response = await fetch(url, {
@@ -229,7 +229,7 @@ class CalendarService {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch(`${this.baseUrl}/api/admin/calendar/events/${eventId}`, {
+      const response = await fetch(`${this.baseUrl}/api/admin/schedule/events/${eventId}`, {
         method: 'PUT',
         headers,
         body: JSON.stringify(updates),
@@ -265,7 +265,7 @@ class CalendarService {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch(`${this.baseUrl}/api/admin/calendar/events`, {
+      const response = await fetch(`${this.baseUrl}/api/admin/schedule/events`, {
         method: 'DELETE',
         headers,
       });
@@ -299,7 +299,7 @@ class CalendarService {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch(`${this.baseUrl}/api/admin/calendar/events`, {
+      const response = await fetch(`${this.baseUrl}/api/admin/schedule/events`, {
         method: 'POST',
         headers,
         body: JSON.stringify(event),

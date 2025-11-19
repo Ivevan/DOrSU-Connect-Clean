@@ -213,9 +213,7 @@ const CreateAccount = () => {
   const KeyboardWrapper = Platform.OS === 'ios' ? KeyboardAvoidingView : View;
   const keyboardProps = Platform.OS === 'ios' ? { behavior: 'padding' as const, keyboardVerticalOffset: 0 } : {};
 
-  const isMobile = width < 768;
-
-  // Render form content (shared between mobile and desktop)
+  // Render form content
   const renderFormContent = () => {
     return (
       <>
@@ -557,68 +555,20 @@ const CreateAccount = () => {
         animated={true}
       />
       
-      {/* Split Screen Layout - Desktop/Tablet, Stacked - Mobile */}
-      {isMobile ? (
-        // Mobile Layout - Full screen form with background
-        <View style={styles.mobileContainer}>
-          <Image 
-            source={require('../../../../assets/DOrSU_STATUE.png')} 
-            style={styles.mobileBackgroundImage}
-            resizeMode="cover"
-          />
-          <LinearGradient
-            colors={['rgba(101, 67, 33, 0.2)', 'rgba(139, 90, 43, 0.5)', 'rgba(101, 67, 33, 0.7)']}
-            style={styles.gradientOverlay}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-          />
-          <View style={[styles.mobileOverlay, { paddingTop: insets.top }]}>
-            <KeyboardWrapper 
-              style={styles.keyboardAvoidingView}
-              {...keyboardProps}
-            >
-              <ScrollView 
-                contentContainerStyle={styles.scrollContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-                bounces={Platform.OS === 'ios'}
-              >
-                <View style={styles.mobileFormCard}>
-                  {renderFormContent()}
-                </View>
-              </ScrollView>
-            </KeyboardWrapper>
-          </View>
-        </View>
-      ) : (
-        // Desktop/Tablet Layout - Split Screen
-        <View style={styles.splitContainer}>
-          {/* Left Panel - Background Image with University Name */}
-          <View style={styles.leftPanel}>
-            <Image 
-              source={require('../../../../assets/DOrSU_STATUE.png')} 
-              style={styles.backgroundImage}
-              resizeMode="cover"
-            />
-            <LinearGradient
-              colors={['rgba(101, 67, 33, 0.15)', 'rgba(139, 90, 43, 0.4)', 'rgba(101, 67, 33, 0.6)']}
-              style={styles.gradientOverlay}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-            />
-            <View style={styles.overlay}>
-              <View style={styles.universityTextContainer}>
-                <Text style={styles.universityText}>DAVAO ORIENTAL STATE</Text>
-                <Text style={styles.universityText}>UNIVERSITY</Text>
-              </View>
-              <View style={styles.portalBanner}>
-                <Text style={styles.portalText}>-STUDENT PORTAL-</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Right Panel - Sign Up Form */}
-          <View style={styles.rightPanel}>
+      {/* Mobile Layout - Full screen form with background */}
+      <View style={styles.mobileContainer}>
+        <Image 
+          source={require('../../../../assets/DOrSU_STATUE.png')} 
+          style={styles.mobileBackgroundImage}
+          resizeMode="cover"
+        />
+        <LinearGradient
+          colors={['rgba(101, 67, 33, 0.2)', 'rgba(139, 90, 43, 0.5)', 'rgba(101, 67, 33, 0.7)']}
+          style={styles.gradientOverlay}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+        />
+        <View style={[styles.mobileOverlay, { paddingTop: insets.top }]}>
           <KeyboardWrapper 
             style={styles.keyboardAvoidingView}
             {...keyboardProps}
@@ -629,14 +579,13 @@ const CreateAccount = () => {
               showsVerticalScrollIndicator={false}
               bounces={Platform.OS === 'ios'}
             >
-              <View style={styles.formCard}>
+              <View style={styles.mobileFormCard}>
                 {renderFormContent()}
               </View>
             </ScrollView>
           </KeyboardWrapper>
         </View>
-        </View>
-      )}
+      </View>
       
       {/* Success Modal */}
       <SuccessModal
@@ -656,78 +605,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-  splitContainer: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  // Left Panel Styles
-  leftPanel: {
-    flex: 1,
-    position: 'relative',
-    ...Platform.select({
-      web: {
-        minWidth: width * 0.5,
-      },
-    }),
-  },
-  backgroundImage: {
-    width: '100%',
-    height: '100%',
-    position: 'absolute',
-  },
-  gradientOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 1,
-  },
-  overlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 40,
-    zIndex: 2,
-  },
-  universityTextContainer: {
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  universityText: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    letterSpacing: 2,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
-  portalBanner: {
-    backgroundColor: '#FFD700',
-    paddingHorizontal: 30,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  portalText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
-    letterSpacing: 1,
-  },
-  // Right Panel Styles
-  rightPanel: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-    ...Platform.select({
-      web: {
-        minWidth: width * 0.5,
-      },
-    }),
-  },
   keyboardAvoidingView: {
     flex: 1,
   },
@@ -736,26 +613,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 20,
   },
-  formCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    marginHorizontal: 40,
-    marginVertical: 20,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-    ...Platform.select({
-      web: {
-        maxWidth: 500,
-        alignSelf: 'center',
-        width: '100%',
-      },
-    }),
+  gradientOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1,
   },
   // Logo Section
   logoSection: {
@@ -899,7 +763,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textDecorationLine: 'underline',
   },
-  // Mobile Styles
   mobileContainer: {
     flex: 1,
     position: 'relative',

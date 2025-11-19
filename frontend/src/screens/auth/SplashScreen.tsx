@@ -182,277 +182,10 @@ const SplashScreen = () => {
   }, []);
 
 
-  return (
-    <View style={styles.container}>
-      <StatusBar
-        backgroundColor="transparent"
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        translucent={true}
-        animated={true}
-      />
-      
-      {/* Background Gradient Layer */}
-      <LinearGradient
-        colors={[
-          isDarkMode ? '#0B1220' : '#FBF8F3',
-          isDarkMode ? '#111827' : '#F8F5F0',
-          isDarkMode ? '#1F2937' : '#F5F2ED'
-        ]}
-        style={styles.backgroundGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-      />
-      
-      {/* Blur overlay on entire background - very subtle */}
-      <BlurView
-        intensity={Platform.OS === 'ios' ? 5 : 3}
-        tint="default"
-        style={styles.backgroundGradient}
-      />
-
-      {/* Animated Floating Background Orbs (Copilot-style) - same as AIChat */}
-      <View style={styles.floatingBgContainer} pointerEvents="none">
-        {/* Light Spot 1 - Top right gentle glow */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '8%',
-              right: '12%',
-              transform: [
-                {
-                  translateX: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -15],
-                  }),
-                },
-                {
-                  translateY: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 12],
-                  }),
-                },
-                {
-                  scale: lightSpot1.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.08, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot1}>
-            <LinearGradient
-              colors={['rgba(255, 220, 180, 0.35)', 'rgba(255, 200, 150, 0.18)', 'rgba(255, 230, 200, 0.08)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.2, y: 0.2 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Light Spot 2 - Middle left soft circle */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '45%',
-              left: '8%',
-              transform: [
-                {
-                  translateX: lightSpot2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 18],
-                  }),
-                },
-                {
-                  translateY: lightSpot2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -10],
-                  }),
-                },
-                {
-                  scale: lightSpot2.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.06, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot2}>
-            <LinearGradient
-              colors={['rgba(255, 210, 170, 0.28)', 'rgba(255, 200, 160, 0.15)', 'rgba(255, 220, 190, 0.06)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.3, y: 0.3 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Light Spot 3 - Bottom center blurry glow */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              bottom: '12%',
-              left: '55%',
-              transform: [
-                {
-                  translateX: lightSpot3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -20],
-                  }),
-                },
-                {
-                  translateY: lightSpot3.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 8],
-                  }),
-                },
-                {
-                  scale: lightSpot3.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.1, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.lightSpot3}>
-            <LinearGradient
-              colors={['rgba(255, 190, 140, 0.25)', 'rgba(255, 180, 130, 0.12)', 'rgba(255, 210, 170, 0.05)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.4, y: 0.4 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Cloud variation 1 - Top left soft light patch */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              top: '15%',
-              left: '10%',
-              transform: [
-                {
-                  translateX: cloudAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 20],
-                  }),
-                },
-                {
-                  translateY: cloudAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -15],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.cloudPatch1}>
-            <LinearGradient
-              colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.22)', 'rgba(255, 230, 200, 0.1)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Cloud variation 2 - Bottom right gentle tone */}
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              bottom: '20%',
-              right: '15%',
-              transform: [
-                {
-                  translateX: cloudAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -25],
-                  }),
-                },
-                {
-                  translateY: cloudAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 10],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.cloudPatch2}>
-            <LinearGradient
-              colors={['rgba(255, 190, 140, 0.32)', 'rgba(255, 200, 160, 0.18)', 'rgba(255, 220, 190, 0.08)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0.3, y: 0.3 }}
-              end={{ x: 1, y: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        {/* Orb 1 - Soft Orange Glow (Center area) */}
-        <Animated.View
-          style={[
-            styles.floatingOrbWrapper,
-            {
-              top: '35%',
-              left: '50%',
-              marginLeft: -250,
-              transform: [
-                {
-                  translateX: floatAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [-30, 30],
-                  }),
-                },
-                {
-                  translateY: floatAnim1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [-20, 20],
-                  }),
-                },
-                {
-                  scale: floatAnim1.interpolate({
-                    inputRange: [0, 0.5, 1],
-                    outputRange: [1, 1.05, 1],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.floatingOrb1}>
-            <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
-              style={StyleSheet.absoluteFillObject}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-            <BlurView
-              intensity={Platform.OS === 'ios' ? 60 : 45}
-              tint="default"
-              style={StyleSheet.absoluteFillObject}
-            />
-          </View>
-        </Animated.View>
-      </View>
-
-      <View style={[styles.content, {
-        paddingTop: insets.top,
-        paddingBottom: insets.bottom,
-        paddingLeft: insets.left,
-        paddingRight: insets.right,
-      }]}>
+  // Render splash content
+  const renderSplashContent = () => {
+    return (
+      <>
         {/* Logo Container */}
         <View style={styles.logoContainer}>
           <Animated.View
@@ -498,8 +231,276 @@ const SplashScreen = () => {
             />
           </View>
         </Animated.View>
+      </>
+    );
+  };
 
-      </View>
+  return (
+    <View style={styles.container}>
+      <StatusBar
+        backgroundColor="transparent"
+        barStyle="light-content"
+        translucent={true}
+        animated={true}
+      />
+      
+      {/* Mobile Layout - Full screen with background */}
+      <View style={styles.mobileContainer}>
+        <Image 
+          source={require('../../../../assets/DOrSU_STATUE.png')} 
+          style={styles.mobileBackgroundImage}
+          resizeMode="cover"
+        />
+        <LinearGradient
+          colors={['rgba(101, 67, 33, 0.2)', 'rgba(139, 90, 43, 0.5)', 'rgba(101, 67, 33, 0.7)']}
+          style={styles.gradientOverlay}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+        />
+        
+        {/* Animated Floating Background Orbs */}
+        <View style={styles.floatingBgContainer} pointerEvents="none">
+            {/* Light Spot 1 - Top right gentle glow */}
+            <Animated.View
+              style={[
+                styles.cloudWrapper,
+                {
+                  top: '8%',
+                  right: '12%',
+                  transform: [
+                    {
+                      translateX: lightSpot1.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, -15],
+                      }),
+                    },
+                    {
+                      translateY: lightSpot1.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, 12],
+                      }),
+                    },
+                    {
+                      scale: lightSpot1.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [1, 1.08, 1],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <View style={styles.lightSpot1}>
+                <LinearGradient
+                  colors={['rgba(255, 220, 180, 0.35)', 'rgba(255, 200, 150, 0.18)', 'rgba(255, 230, 200, 0.08)']}
+                  style={StyleSheet.absoluteFillObject}
+                  start={{ x: 0.2, y: 0.2 }}
+                  end={{ x: 1, y: 1 }}
+                />
+              </View>
+            </Animated.View>
+
+            {/* Light Spot 2 - Middle left soft circle */}
+            <Animated.View
+              style={[
+                styles.cloudWrapper,
+                {
+                  top: '45%',
+                  left: '8%',
+                  transform: [
+                    {
+                      translateX: lightSpot2.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, 18],
+                      }),
+                    },
+                    {
+                      translateY: lightSpot2.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, -10],
+                      }),
+                    },
+                    {
+                      scale: lightSpot2.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [1, 1.06, 1],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <View style={styles.lightSpot2}>
+                <LinearGradient
+                  colors={['rgba(255, 210, 170, 0.28)', 'rgba(255, 200, 160, 0.15)', 'rgba(255, 220, 190, 0.06)']}
+                  style={StyleSheet.absoluteFillObject}
+                  start={{ x: 0.3, y: 0.3 }}
+                  end={{ x: 1, y: 1 }}
+                />
+              </View>
+            </Animated.View>
+
+            {/* Light Spot 3 - Bottom center blurry glow */}
+            <Animated.View
+              style={[
+                styles.cloudWrapper,
+                {
+                  bottom: '12%',
+                  left: '55%',
+                  transform: [
+                    {
+                      translateX: lightSpot3.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, -20],
+                      }),
+                    },
+                    {
+                      translateY: lightSpot3.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, 8],
+                      }),
+                    },
+                    {
+                      scale: lightSpot3.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [1, 1.1, 1],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <View style={styles.lightSpot3}>
+                <LinearGradient
+                  colors={['rgba(255, 190, 140, 0.25)', 'rgba(255, 180, 130, 0.12)', 'rgba(255, 210, 170, 0.05)']}
+                  style={StyleSheet.absoluteFillObject}
+                  start={{ x: 0.4, y: 0.4 }}
+                  end={{ x: 1, y: 1 }}
+                />
+              </View>
+            </Animated.View>
+
+            {/* Cloud variation 1 - Top left soft light patch */}
+            <Animated.View
+              style={[
+                styles.cloudWrapper,
+                {
+                  top: '15%',
+                  left: '10%',
+                  transform: [
+                    {
+                      translateX: cloudAnim1.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, 20],
+                      }),
+                    },
+                    {
+                      translateY: cloudAnim1.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, -15],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <View style={styles.cloudPatch1}>
+                <LinearGradient
+                  colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.22)', 'rgba(255, 230, 200, 0.1)']}
+                  style={StyleSheet.absoluteFillObject}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                />
+              </View>
+            </Animated.View>
+
+            {/* Cloud variation 2 - Bottom right gentle tone */}
+            <Animated.View
+              style={[
+                styles.cloudWrapper,
+                {
+                  bottom: '20%',
+                  right: '15%',
+                  transform: [
+                    {
+                      translateX: cloudAnim2.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, -25],
+                      }),
+                    },
+                    {
+                      translateY: cloudAnim2.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, 10],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <View style={styles.cloudPatch2}>
+                <LinearGradient
+                  colors={['rgba(255, 190, 140, 0.32)', 'rgba(255, 200, 160, 0.18)', 'rgba(255, 220, 190, 0.08)']}
+                  style={StyleSheet.absoluteFillObject}
+                  start={{ x: 0.3, y: 0.3 }}
+                  end={{ x: 1, y: 1 }}
+                />
+              </View>
+            </Animated.View>
+
+            {/* Orb 1 - Soft Orange Glow (Center area) */}
+            <Animated.View
+              style={[
+                styles.floatingOrbWrapper,
+                {
+                  top: '35%',
+                  left: '50%',
+                  marginLeft: -250,
+                  transform: [
+                    {
+                      translateX: floatAnim1.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-30, 30],
+                      }),
+                    },
+                    {
+                      translateY: floatAnim1.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [-20, 20],
+                      }),
+                    },
+                    {
+                      scale: floatAnim1.interpolate({
+                        inputRange: [0, 0.5, 1],
+                        outputRange: [1, 1.05, 1],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <View style={styles.floatingOrb1}>
+                <LinearGradient
+                  colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+                  style={StyleSheet.absoluteFillObject}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                />
+                <BlurView
+                  intensity={Platform.OS === 'ios' ? 60 : 45}
+                  tint="default"
+                  style={StyleSheet.absoluteFillObject}
+                />
+              </View>
+            </Animated.View>
+          </View>
+
+          <View style={[styles.mobileOverlay, { paddingTop: insets.top }]}>
+            <View style={styles.mobileContentCard}>
+              {renderSplashContent()}
+            </View>
+          </View>
+        </View>
     </View>
   );
 };
@@ -507,14 +508,15 @@ const SplashScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#FFFFFF',
   },
-  backgroundGradient: {
+  gradientOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    zIndex: -1,
+    zIndex: 1,
   },
   // Floating background orbs container (Copilot-style)
   floatingBgContainer: {
@@ -574,22 +576,23 @@ const styles = StyleSheet.create({
     opacity: 0.5,
     overflow: 'hidden',
   },
-  content: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
+  // Logo and Loading Styles
   logoContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,
   },
   logoWrapper: {
-    width: width * 0.4,
-    height: width * 0.4,
+    width: width * 0.3,
+    height: width * 0.3,
     justifyContent: 'center',
     alignItems: 'center',
+    ...Platform.select({
+      web: {
+        width: 200,
+        height: 200,
+      },
+    }),
   },
   logoImage: {
     width: '100%',
@@ -598,9 +601,11 @@ const styles = StyleSheet.create({
   loadingContainer: {
     alignItems: 'center',
     marginTop: 16,
+    width: '100%',
   },
   loadingBarBackground: {
-    width: width * 0.8,
+    width: '100%',
+    maxWidth: 400,
     height: 8,
     borderRadius: 4,
     overflow: 'hidden',
@@ -608,6 +613,38 @@ const styles = StyleSheet.create({
   loadingBar: {
     height: '100%',
     borderRadius: 4,
+  },
+  mobileContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  mobileBackgroundImage: {
+    width: '100%',
+    height: '100%',
+    position: 'absolute',
+  },
+  mobileOverlay: {
+    flex: 1,
+    zIndex: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  mobileContentCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    margin: 16,
+    borderRadius: 16,
+    padding: 32,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: width * 0.9,
+    maxWidth: 400,
   },
 });
 

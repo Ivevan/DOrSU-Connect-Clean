@@ -65,49 +65,48 @@ const AppNavigator = () => {
   useEffect(() => {
     const checkAuthStatus = async () => {
       try {
-        // Check for admin login first
-        const isAdmin = await AsyncStorage.getItem('isAdmin');
-        const adminToken = await AsyncStorage.getItem('userToken');
-        const adminEmail = await AsyncStorage.getItem('userEmail');
+        // Always start with SplashScreen for fresh installs
+        // Only route to authenticated screens if we have a valid, verified session
         
-        if (isAdmin === 'true' && adminToken && adminEmail) {
-          // Admin is logged in - route to admin AI chat
-          setInitialRoute('AdminAIChat');
-          setIsLoading(false);
-          return;
+        // Check for Firebase auth first (most reliable)
+        let hasFirebaseAuth = false;
+        try {
+          const { getCurrentUser } = require('../services/authService');
+          const currentUser = getCurrentUser();
+          if (currentUser?.email) {
+            hasFirebaseAuth = true;
+          }
+        } catch {
+          // No Firebase auth
         }
         
-        // Check for regular user backend auth token
+        // Check for backend auth token
         const userToken = await AsyncStorage.getItem('userToken');
         const userEmail = await AsyncStorage.getItem('userEmail');
         const authProvider = await AsyncStorage.getItem('authProvider');
         const userRole = await AsyncStorage.getItem('userRole');
+        const isAdmin = await AsyncStorage.getItem('isAdmin');
         
-        // If user has valid session, determine initial screen based on role
-        if ((userToken && userEmail) || (userEmail && authProvider === 'google')) {
-          // Check if user is admin
-          if (userRole === 'admin') {
+        // Only route to authenticated screens if we have BOTH:
+        // 1. A valid token (or Firebase auth)
+        // 2. A user email
+        // This prevents routing on stale/incomplete data
+        const hasValidSession = (userToken && userToken.length > 20 && userEmail) || (hasFirebaseAuth && userEmail);
+        
+        if (hasValidSession) {
+          // Determine route based on role
+          if (isAdmin === 'true' || userRole === 'admin') {
             setInitialRoute('AdminAIChat');
           } else {
             setInitialRoute('AIChat');
           }
         } else {
-          // Check for Firebase auth (if user logged in with Google)
-          try {
-            const { getCurrentUser } = require('../services/authService');
-            const currentUser = getCurrentUser();
-            if (currentUser?.email) {
-              // Default to AIChat for regular users
-              setInitialRoute('AIChat');
-            } else {
-              setInitialRoute('SplashScreen');
-            }
-          } catch {
-            setInitialRoute('SplashScreen');
-          }
+          // No valid session - start with SplashScreen
+          setInitialRoute('SplashScreen');
         }
       } catch (error) {
         console.error('Auth check error:', error);
+        // On any error, default to SplashScreen
         setInitialRoute('SplashScreen');
       } finally {
         setIsLoading(false);

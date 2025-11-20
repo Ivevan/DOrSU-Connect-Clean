@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useRef } from 'react';
-import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet from '../components/common/BottomSheet';
 import { useThemeValues } from '../contexts/ThemeContext';
@@ -161,6 +161,18 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
           {/* Single Event Details */}
           {primaryEvent && (
             <View style={styles.eventDetails}>
+              {/* Image (if available) */}
+              {(primaryEvent.images?.[0] || primaryEvent.image) && (
+                <Image
+                  source={{ uri: primaryEvent.images?.[0] || primaryEvent.image }}
+                  style={styles.eventImage}
+                  resizeMode="cover"
+                  onError={(error) => {
+                    console.error('Image load error:', error.nativeEvent.error);
+                  }}
+                />
+              )}
+
               {/* Title */}
               <Text style={[styles.eventTitle, { color: theme.colors.text }]}>
                 {primaryEvent.title || 'Untitled Event'}
@@ -342,6 +354,13 @@ const styles = StyleSheet.create({
   },
   eventDetails: {
     marginBottom: 16,
+  },
+  eventImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    marginBottom: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
   },
   eventTitle: {
     fontSize: 18,

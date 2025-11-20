@@ -79,15 +79,20 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
   }, [allEvents]);
   
   const eventsToShow = uniqueEvents;
-  const primaryEvent = selectedEvent || eventsToShow[0];
-
-  const eventColor = primaryEvent?.color || categoryToColors(primaryEvent?.category || primaryEvent?.type || 'Event').dot;
-  const eventCategory = primaryEvent?.category || primaryEvent?.type || 'Event';
+  const primaryEvent = selectedEvent || eventsToShow[0] || null;
 
   // Early return after all hooks have been called
-  if (!selectedEvent && selectedDateEvents.length === 0) {
+  if (!visible || (!selectedEvent && selectedDateEvents.length === 0)) {
     return null;
   }
+
+  // Ensure we have a primary event to display
+  if (!primaryEvent) {
+    return null;
+  }
+
+  const eventColor = primaryEvent.color || categoryToColors(primaryEvent.category || primaryEvent.type || 'Event').dot;
+  const eventCategory = primaryEvent.category || primaryEvent.type || 'Event';
 
   return (
     <BottomSheet
@@ -158,7 +163,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
             <View style={styles.eventDetails}>
               {/* Title */}
               <Text style={[styles.eventTitle, { color: theme.colors.text }]}>
-                {primaryEvent.title}
+                {primaryEvent.title || 'Untitled Event'}
               </Text>
 
               {/* Category Badge */}
@@ -252,6 +257,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    minHeight: 200,
   },
   header: {
     flexDirection: 'row',
@@ -299,11 +305,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 8,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
   },
   eventAccent: {
     width: 3,

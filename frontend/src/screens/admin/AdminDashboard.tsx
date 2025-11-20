@@ -874,15 +874,6 @@ const AdminDashboard = () => {
       {/* AddPostDrawer removed - using PostUpdate screen navigation instead */}
 
       {/* View Event Modal - Used for both calendar events and updates */}
-          date: selectedPost.isoDate || selectedPost.date,
-          tag: selectedPost.category,
-          time: selectedPost.time,
-          image: selectedPost.image,
-          images: selectedPost.images,
-          description: selectedPost.description,
-          source: selectedPost.source,
-          pinned: selectedPost.isPinned,
-          isoDate: selectedPost.isoDate || selectedPost.date,
       <ViewEventModal
         visible={showEventDrawer}
         onClose={closeEventDrawer}
@@ -1350,11 +1341,6 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     overflow: 'hidden',
     backgroundColor: 'transparent',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
   },
   updateAccent: {
     width: 3,
@@ -1448,11 +1434,6 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     overflow: 'hidden',
     backgroundColor: 'transparent',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
   },
   calendarEventAccent: {
     width: 3,

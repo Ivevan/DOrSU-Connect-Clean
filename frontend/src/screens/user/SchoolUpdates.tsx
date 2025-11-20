@@ -1759,11 +1759,6 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     overflow: 'hidden',
     backgroundColor: 'transparent',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
   },
   calendarEventAccent: {
     width: 3,
@@ -1867,11 +1862,6 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     overflow: 'hidden',
     backgroundColor: 'transparent',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
   },
   updateAccent: {
     width: 3,

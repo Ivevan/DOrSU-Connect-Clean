@@ -113,6 +113,11 @@ const styles = StyleSheet.create({
   container: {
     position: 'relative',
     backgroundColor: 'transparent',
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   blurBackground: {
     borderTopLeftRadius: 20,
@@ -120,11 +125,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 0,
     borderBottomWidth: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   navContent: {
     flexDirection: 'row',

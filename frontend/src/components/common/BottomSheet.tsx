@@ -1,5 +1,5 @@
 import React, { ReactNode } from 'react';
-import { Animated, Modal, StyleProp, StyleSheet, TouchableOpacity, View, ViewStyle } from 'react-native';
+import { Animated, Dimensions, Modal, StyleProp, StyleSheet, TouchableOpacity, View, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeValues } from '../../contexts/ThemeContext';
 
@@ -48,6 +48,12 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
   const insets = useSafeAreaInsets();
   const { theme } = useThemeValues();
   const defaultBackgroundColor = backgroundColor || theme.colors.surface;
+  
+  // Calculate maxHeight in pixels if it's a percentage string
+  const screenHeight = Dimensions.get('window').height;
+  const calculatedMaxHeight = typeof maxHeight === 'string' && maxHeight.includes('%')
+    ? (screenHeight * parseFloat(maxHeight) / 100)
+    : (typeof maxHeight === 'number' ? maxHeight : screenHeight * 0.5);
 
   return (
     <Modal 
@@ -72,7 +78,8 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
               backgroundColor: defaultBackgroundColor,
               transform: [{ translateY: sheetY }],
               paddingBottom: Math.max(insets.bottom, 20),
-              ...(typeof maxHeight === 'string' ? { maxHeight: maxHeight as any } : { maxHeight }),
+              maxHeight: calculatedMaxHeight,
+              height: calculatedMaxHeight,
             },
           ]}
         >
@@ -101,6 +108,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalSheet: {
+    width: '100%',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     shadowColor: '#000',
@@ -108,6 +116,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 12,
     elevation: 20,
+    minHeight: 200,
   },
   modalHandle: {
     width: 36,
@@ -120,6 +129,8 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     paddingTop: 8,
+    flex: 1,
+    minHeight: 0,
   },
 });
 

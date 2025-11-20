@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { API_BASE_URL } from '../config/api.config';
+import NotificationService from '../services/NotificationService';
 import { getCurrentUser, User } from '../services/authService';
 
 interface AuthContextType {
@@ -273,6 +274,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         inactivityTimerRef.current = null;
       }
       
+      // Reset notification session on logout
+      await NotificationService.onLogout();
+      
       // Clear AsyncStorage (including admin tokens)
       await AsyncStorage.multiRemove([
         'userToken', 
@@ -314,9 +318,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Check auth status on mount
+  // Check auth status on mount and initialize notification session
   useEffect(() => {
     checkAuthStatus();
+    // Initialize new notification session on app startup
+    NotificationService.initializeNewSession();
   }, []);
 
   // Set up inactivity timer when authenticated

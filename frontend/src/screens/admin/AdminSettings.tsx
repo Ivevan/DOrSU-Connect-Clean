@@ -115,6 +115,10 @@ const AdminSettings = () => {
 
   const confirmLogout = useCallback(async () => {
     try {
+      // Reset notification session on logout
+      const NotificationService = require('../../services/NotificationService').default;
+      await NotificationService.onLogout();
+      
       // Clear all admin and user data from AsyncStorage
       await AsyncStorage.multiRemove([
         'userToken', 

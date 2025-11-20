@@ -158,6 +158,10 @@ const UserSettings = () => {
 
   const confirmLogout = useCallback(async () => {
     try {
+      // Reset notification session on logout
+      const NotificationService = require('../../services/NotificationService').default;
+      await NotificationService.onLogout();
+      
       // Clear backend auth data from AsyncStorage
       await AsyncStorage.multiRemove(['userToken', 'userEmail', 'userName', 'userId', 'userPhoto', 'authProvider']);
       

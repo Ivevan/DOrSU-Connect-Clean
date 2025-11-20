@@ -11,8 +11,10 @@ import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import UserSidebar from '../../components/navigation/UserSidebar';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import ViewEventModal from '../../modals/ViewEventModal';
+import NotificationsModal from '../../modals/NotificationsModal';
 import AdminDataService from '../../services/AdminDataService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
+import NotificationService from '../../services/NotificationService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import { categoryToColors } from '../../utils/calendarUtils';
 
@@ -362,6 +364,12 @@ const SchoolUpdates = () => {
   const [selectedDateForDrawer, setSelectedDateForDrawer] = useState<Date | null>(null);
   const [selectedDateEvents, setSelectedDateEvents] = useState<any[]>([]);
 
+  // Notifications state
+  const [showNotificationsModal, setShowNotificationsModal] = useState(false);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const previousEventIdsRef = useRef<Set<string>>(new Set());
+  const previousPostIdsRef = useRef<Set<string>>(new Set());
+
 
   // Memoize safe area insets to prevent recalculation during navigation
   const safeInsets = useMemo(() => ({
@@ -415,7 +423,8 @@ const SchoolUpdates = () => {
     return () => unsubscribe();
   }, []);
 
-  // Load backend user photo on screen focus
+  // Load backend user photo and notification count on screen focus
+  // Also check for today's items based on current day
   useFocusEffect(
     useCallback(() => {
       const loadBackendUserData = async () => {
@@ -423,13 +432,26 @@ const SchoolUpdates = () => {
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const userPhoto = await AsyncStorage.getItem('userPhoto');
           setBackendUserPhoto(userPhoto);
+          await loadUnreadCount();
+          
+          // Check for today's items (events + posts) based on current day
+          await checkForTodaysItems();
         } catch (error) {
           console.error('Failed to load backend user data:', error);
         }
       };
       loadBackendUserData();
-    }, [])
+    }, [loadUnreadCount, checkForTodaysItems])
   );
+
+  // Periodic check for today's items every minute when component is mounted
+  useEffect(() => {
+    const interval = setInterval(() => {
+      checkForTodaysItems();
+    }, 60000); // Check every minute
+
+    return () => clearInterval(interval);
+  }, [checkForTodaysItems]);
 
   const getUserInitials = () => {
     if (!userName) return '?';
@@ -468,8 +490,70 @@ const SchoolUpdates = () => {
   }, []);
 
   const handleNotificationsPress = useCallback(() => {
-    Alert.alert('Notifications', 'Notifications feature coming soon.');
+    setShowNotificationsModal(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
+
+  // Development: Long press notification bell to create test notification
+  const handleNotificationBellLongPress = useCallback(async () => {
+    if (__DEV__) {
+      await NotificationService.createTestNotification('today');
+      await loadUnreadCount();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+  }, [loadUnreadCount]);
+
+  // Load unread notification count
+  const loadUnreadCount = useCallback(async () => {
+    const count = await NotificationService.getUnreadCount();
+    setUnreadNotificationCount(count);
+  }, []);
+
+  // Check for new events and create notifications
+  const checkForNewEventNotifications = useCallback(async (events: CalendarEvent[]) => {
+    try {
+      const currentEventIds = new Set(events.map(e => e._id || `calendar-${e.isoDate}-${e.title}`));
+      
+      // Check for new events
+      await NotificationService.checkForNewEvents(events, previousEventIdsRef.current);
+      
+      // Update previous event IDs
+      previousEventIdsRef.current = currentEventIds;
+      
+      // Reload unread count
+      await loadUnreadCount();
+    } catch (error) {
+      console.error('Failed to check for new event notifications:', error);
+    }
+  }, [loadUnreadCount]);
+
+  // Check for new posts and create notifications
+  const checkForNewPostNotifications = useCallback(async (posts: any[]) => {
+    try {
+      const currentPostIds = new Set(posts.map(p => p.id));
+      
+      // Check for new posts
+      await NotificationService.checkForNewPosts(posts, previousPostIdsRef.current);
+      
+      // Update previous post IDs
+      previousPostIdsRef.current = currentPostIds;
+      
+      // Reload unread count
+      await loadUnreadCount();
+    } catch (error) {
+      console.error('Failed to check for new post notifications:', error);
+    }
+  }, [loadUnreadCount]);
+
+  // Check for today's items (events + posts) based on current day
+  const checkForTodaysItems = useCallback(async () => {
+    try {
+      await NotificationService.checkForTodaysItems(calendarEvents, updates);
+      await loadUnreadCount();
+    } catch (error) {
+      console.error('Failed to check for today\'s items:', error);
+    }
+  }, [calendarEvents, updates, loadUnreadCount]);
 
   // Track last fetch time to prevent unnecessary refetches
   const lastFetchTime = useRef<number>(0);
@@ -538,6 +622,11 @@ const SchoolUpdates = () => {
       });
       
       setUpdates(uniqueUpdates);
+      
+      // Check for new posts and create notifications
+      if (uniqueUpdates.length > 0) {
+        await checkForNewPostNotifications(uniqueUpdates);
+      }
     } catch (err: any) {
       setError(err?.message || 'Failed to load updates');
       if (__DEV__) console.error('Error fetching updates:', err);
@@ -550,7 +639,7 @@ const SchoolUpdates = () => {
   // Fetch updates on mount only
   useEffect(() => {
     fetchUpdates(true); // Force refresh on mount
-  }, []); // Empty deps - only run on mount
+  }, [checkForNewPostNotifications]); // Include checkForNewPostNotifications in deps
 
   // Refresh updates when screen comes into focus (with smart refresh)
   useFocusEffect(
@@ -773,8 +862,16 @@ const SchoolUpdates = () => {
         limit: 1000,
       });
       
-      setCalendarEvents(Array.isArray(events) ? events : []);
+      const eventsArray = Array.isArray(events) ? events : [];
+      setCalendarEvents(eventsArray);
       setRetryCount(0);
+      
+      // Check for new events and create notifications
+      if (eventsArray.length > 0) {
+        await checkForNewEventNotifications(eventsArray);
+        // Also check for today's items after loading events
+        await checkForTodaysItems();
+      }
     } catch (error: any) {
       console.error('Failed to load calendar events:', error);
       const errorMessage = error?.message || 'Failed to load calendar events. Please try again.';
@@ -797,7 +894,8 @@ const SchoolUpdates = () => {
   // Fetch calendar events for current month
   useEffect(() => {
     refreshCalendarEvents();
-  }, [refreshCalendarEvents]);
+    loadUnreadCount();
+  }, [refreshCalendarEvents, loadUnreadCount]);
 
   // Auto-scroll to center today's events when events load
   // Layout: Past events (left) -> Today's events (center) -> Future events (right)
@@ -1094,6 +1192,22 @@ const SchoolUpdates = () => {
               <View style={[styles.hamburgerLine, styles.hamburgerLineLong, { backgroundColor: '#FFF' }]} />
               <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: '#FFF' }]} />
             </View>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={handleNotificationsPress}
+            onLongPress={handleNotificationBellLongPress}
+            style={styles.notificationButton}
+            accessibilityLabel="Open notifications"
+            accessibilityHint={__DEV__ ? "Long press to create test notification" : undefined}
+          >
+            <Ionicons name="notifications-outline" size={24} color="#FFF" />
+            {unreadNotificationCount > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>
+                  {unreadNotificationCount > 99 ? '99+' : unreadNotificationCount}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
         
@@ -1448,6 +1562,15 @@ const SchoolUpdates = () => {
         selectedDateEvents={selectedDateEvents}
       />
 
+      {/* Notifications Modal */}
+      <NotificationsModal
+        visible={showNotificationsModal}
+        onClose={() => {
+          setShowNotificationsModal(false);
+          loadUnreadCount();
+        }}
+      />
+
       {/* Bottom Navigation Bar - Fixed position */}
       <View style={[styles.bottomNavContainer, {
         bottom: 0,
@@ -1509,7 +1632,7 @@ const styles = StyleSheet.create({
   headerTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
     marginBottom: 16,
     position: 'relative',
     zIndex: 1,
@@ -1537,6 +1660,35 @@ const styles = StyleSheet.create({
   },
   hamburgerLineLong: {
     width: 24,
+  },
+  notificationButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    marginLeft: 'auto',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: '#DC2626',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: '#FF9500',
+  },
+  notificationBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   welcomeSectionInHeader: {
     marginTop: 8,

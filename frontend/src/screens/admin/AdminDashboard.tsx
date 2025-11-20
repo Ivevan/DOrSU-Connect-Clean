@@ -68,6 +68,28 @@ const getPHDateKey = (d: Date | string) => {
   }
 };
 
+// Helper function to safely format dates
+const formatDateSafe = (dateStr: string | Date | null | undefined): string => {
+  if (!dateStr) return 'No date';
+  
+  try {
+    const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return 'No date';
+    }
+    
+    // Format as M/D/YYYY or use locale string
+    return date.toLocaleDateString('en-US', {
+      month: 'numeric',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  } catch {
+    return 'No date';
+  }
+};
 
 const AdminDashboard = () => {
   const insets = useSafeAreaInsets();
@@ -155,7 +177,7 @@ const AdminDashboard = () => {
       .map(event => ({
         id: event._id || `calendar-${event.isoDate}-${event.title}`,
         title: event.title,
-        date: new Date(event.isoDate || event.date).toLocaleDateString(),
+        date: formatDateSafe(event.isoDate || event.date),
         tag: event.category || 'Event',
         description: event.description || '',
         image: undefined,
@@ -364,7 +386,7 @@ const AdminDashboard = () => {
           return {
             id: post.id,
             title: post.title,
-            date: new Date(post.date).toLocaleDateString(),
+            date: formatDateSafe(post.date),
             tag: post.category,
             description: post.description,
             image: post.image,
@@ -647,9 +669,11 @@ const AdminDashboard = () => {
                   <TouchableOpacity
                     key={event.id}
                     style={[styles.calendarEventCard, { 
-                      backgroundColor: cardBackgroundColor, 
-                      borderColor: accentColor + '30',
-                      minWidth: 260,
+                      backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.95)',
+                      borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
+                      borderLeftWidth: 4,
+                      borderLeftColor: accentColor,
+                      minWidth: 280,
                     }]}
                     activeOpacity={0.7}
                     delayPressIn={0}
@@ -662,19 +686,20 @@ const AdminDashboard = () => {
                       }
                     }}
                   >
-                    <View style={[styles.calendarEventAccent, { backgroundColor: accentColor }]} collapsable={false} />
                     <View style={styles.calendarEventContent} collapsable={false}>
                       <View style={styles.calendarEventHeader}>
-                        <View style={[styles.calendarEventIconWrapper, { backgroundColor: accentColor + '20' }]}>
-                          <Ionicons name="calendar" size={16} color={accentColor} />
+                        <View style={[styles.calendarEventIconWrapper, { backgroundColor: accentColor + '15' }]}>
+                          <Ionicons name="calendar" size={18} color={accentColor} />
                         </View>
-                        <Text style={[styles.calendarEventTag, { color: accentColor }]}>{event.tag}</Text>
+                        <View style={[styles.calendarEventTagContainer, { backgroundColor: accentColor + '15' }]}>
+                          <Text style={[styles.calendarEventTag, { color: accentColor }]}>{event.tag}</Text>
+                        </View>
                       </View>
                       <Text style={[styles.calendarEventTitle, { color: theme.colors.text }]} numberOfLines={2}>
                         {event.title}
                       </Text>
                       <View style={styles.calendarEventDateRow}>
-                        <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
+                        <Ionicons name="time-outline" size={14} color={theme.colors.textMuted} />
                         <Text style={[styles.calendarEventDate, { color: theme.colors.textMuted }]}>
                           {event.date}
                         </Text>
@@ -874,15 +899,6 @@ const AdminDashboard = () => {
       {/* AddPostDrawer removed - using PostUpdate screen navigation instead */}
 
       {/* View Event Modal - Used for both calendar events and updates */}
-          date: selectedPost.isoDate || selectedPost.date,
-          tag: selectedPost.category,
-          time: selectedPost.time,
-          image: selectedPost.image,
-          images: selectedPost.images,
-          description: selectedPost.description,
-          source: selectedPost.source,
-          pinned: selectedPost.isPinned,
-          isoDate: selectedPost.isoDate || selectedPost.date,
       <ViewEventModal
         visible={showEventDrawer}
         onClose={closeEventDrawer}
@@ -1444,15 +1460,16 @@ const styles = StyleSheet.create({
   calendarEventCard: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    borderRadius: 12,
-    borderWidth: 0,
+    borderRadius: 16,
+    borderWidth: 1,
     overflow: 'hidden',
     backgroundColor: 'transparent',
     shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+    marginRight: 12,
   },
   calendarEventAccent: {
     width: 3,
@@ -1460,48 +1477,53 @@ const styles = StyleSheet.create({
   },
   calendarEventContent: {
     flex: 1,
-    padding: 10,
+    padding: 14,
   },
   calendarEventHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 6,
+    marginBottom: 10,
   },
   calendarEventIconWrapper: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  calendarEventTagContainer: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
   calendarEventTag: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
   calendarEventTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
-    marginBottom: 6,
-    lineHeight: 18,
+    marginBottom: 8,
+    lineHeight: 20,
     letterSpacing: -0.2,
   },
   calendarEventDateRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginBottom: 6,
+    gap: 6,
+    marginBottom: 8,
   },
   calendarEventDate: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '600',
   },
   calendarEventDescription: {
-    fontSize: 10,
-    lineHeight: 14,
-    opacity: 0.8,
+    fontSize: 11,
+    lineHeight: 16,
+    opacity: 0.75,
   },
 });
 

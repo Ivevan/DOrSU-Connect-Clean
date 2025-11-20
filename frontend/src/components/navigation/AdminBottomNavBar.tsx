@@ -1,9 +1,8 @@
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
-import { BlurView } from 'expo-blur';
 
 interface AdminBottomNavBarProps {
   onDashboardPress?: () => void;
@@ -28,11 +27,9 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
         paddingBottom: insets.bottom,
       }
     ]} collapsable={false}>
-      <BlurView
-        intensity={Platform.OS === 'ios' ? 50 : 40}
-        tint={isDarkMode ? 'dark' : 'light'}
-        style={styles.blurBackground}
-      >
+      <View style={[styles.blurBackground, {
+        backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.85)',
+      }]}>
         <View style={[styles.navContent, {
           backgroundColor: 'transparent',
         }]}>
@@ -60,7 +57,7 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
             />
           </TouchableOpacity>
         </View>
-      </BlurView>
+      </View>
     </View>
   );
 };
@@ -81,6 +78,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 8,
+    backdropFilter: 'blur(10px)',
   },
   navContent: {
     flexDirection: 'row',

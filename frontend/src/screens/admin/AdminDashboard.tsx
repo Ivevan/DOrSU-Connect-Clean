@@ -624,7 +624,7 @@ const AdminDashboard = () => {
         <Image
           source={require('../../../../assets/DOrSU_STATUE.png')}
           style={styles.headerStatueImage}
-          resizeMode="cover"
+          resizeMode="contain"
         />
         
         <View style={styles.headerTopRow}>
@@ -1319,12 +1319,11 @@ const styles = StyleSheet.create({
   },
   headerStatueImage: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: '100%',
-    height: '100%',
+    bottom: -150,
+    left: '50%',
+    marginLeft: -170,
+    width: 360,
+    height: 360,
     opacity: 0.15,
     zIndex: 0,
     pointerEvents: 'none',

@@ -24,8 +24,6 @@ const AdminGeneralSettings = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   // State for settings
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [soundEnabled, setSoundEnabled] = useState(true);
   const [isThemeColorModalVisible, setIsThemeColorModalVisible] = useState(false);
 
   // Animated floating background orb
@@ -179,7 +177,7 @@ const AdminGeneralSettings = () => {
               </View>
             </TouchableOpacity>
 
-            <View style={styles.settingItem}>
+            <View style={styles.settingItemLast}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                   <Ionicons name="moon-outline" size={20} color="#FF9500" />
@@ -191,44 +189,6 @@ const AdminGeneralSettings = () => {
                 onValueChange={(value) => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   toggleTheme();
-                }}
-                trackColor={{ false: t.colors.border, true: '#FF9500' }}
-                thumbColor={t.colors.surface}
-                ios_backgroundColor={t.colors.border}
-              />
-            </View>
-
-            <View style={styles.settingItem}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="notifications-outline" size={20} color="#FF9500" />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Notifications</Text>
-              </View>
-              <Switch
-                value={notificationsEnabled}
-                onValueChange={(value) => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  setNotificationsEnabled(value);
-                }}
-                trackColor={{ false: t.colors.border, true: '#FF9500' }}
-                thumbColor={t.colors.surface}
-                ios_backgroundColor={t.colors.border}
-              />
-            </View>
-
-            <View style={styles.settingItemLast}>
-              <View style={styles.settingLeft}>
-                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="volume-high-outline" size={20} color="#FF9500" />
-                </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Sound</Text>
-              </View>
-              <Switch
-                value={soundEnabled}
-                onValueChange={(value) => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                  setSoundEnabled(value);
                 }}
                 trackColor={{ false: t.colors.border, true: '#FF9500' }}
                 thumbColor={t.colors.surface}

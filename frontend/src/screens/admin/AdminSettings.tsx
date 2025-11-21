@@ -409,28 +409,22 @@ const AdminSettings = () => {
             </TouchableOpacity>
           </BlurView>
 
-          {/* Sign Out Section */}
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 50 : 40}
-            tint={isDarkMode ? 'dark' : 'light'}
-            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)', marginTop: themeConfig.spacing(1.5) }]}
+          {/* Sign Out Button */}
+          <TouchableOpacity 
+            style={[
+              styles.signOutButton, 
+              { 
+                backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)',
+                borderColor: isDarkMode ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.2)',
+                marginTop: themeConfig.spacing(1.5),
+              }
+            ]}
+            onPress={openLogout}
+            activeOpacity={0.7}
           >
-            {/* Sign Out Button */}
-            <TouchableOpacity 
-              style={[
-                styles.signOutButtonInCard, 
-                { 
-                  backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)',
-                  borderColor: isDarkMode ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.2)',
-                }
-              ]}
-              onPress={openLogout}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="log-out-outline" size={18} color="#EF4444" />
-              <Text style={[styles.signOutText, { color: '#EF4444' }]}>Sign out</Text>
-            </TouchableOpacity>
-          </BlurView>
+            <Ionicons name="log-out-outline" size={18} color="#EF4444" />
+            <Text style={[styles.signOutText, { color: '#EF4444' }]}>Sign out</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 

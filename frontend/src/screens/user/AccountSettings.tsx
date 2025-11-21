@@ -343,16 +343,6 @@ const AccountSettings = () => {
             </View>
             {!isEditingName && <Ionicons name="pencil" size={18} color={t.colors.textMuted} />}
           </TouchableOpacity>
-
-          <TouchableOpacity style={styles.settingItemLast}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                <Ionicons name="notifications-outline" size={20} color="#FF9500" />
-              </View>
-              <Text style={[styles.settingTitle, { color: t.colors.text }]}>Notifications</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-          </TouchableOpacity>
         </BlurView>
 
         <TouchableOpacity 

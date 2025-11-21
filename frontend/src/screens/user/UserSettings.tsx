@@ -408,16 +408,6 @@ const UserSettings = () => {
             </TouchableOpacity>
 
             <TouchableOpacity 
-              style={styles.sectionTitleButton}
-              onPress={() => {
-                // TODO: Navigate to feedback screen or open feedback form
-              }}
-            >
-              <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Give Feedback</Text>
-              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity 
               style={styles.sectionTitleButtonLast}
               onPress={() => navigation.navigate('About')}
             >

@@ -22,7 +22,6 @@ const GeneralSettings = () => {
   const { isDarkMode, theme: t } = useThemeValues();
   const { toggleTheme } = useThemeActions();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [language, setLanguage] = useState('English');
   const [isThemeColorModalVisible, setIsThemeColorModalVisible] = useState(false);
 
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -156,7 +155,7 @@ const GeneralSettings = () => {
             </View>
           </TouchableOpacity>
 
-          <View style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
+          <View style={styles.settingItemLast}>
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                 <Ionicons name="moon-outline" size={20} color="#FF9500" />
@@ -174,19 +173,6 @@ const GeneralSettings = () => {
               ios_backgroundColor={t.colors.border}
             />
           </View>
-
-          <TouchableOpacity style={styles.settingItemLast}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                <Ionicons name="language-outline" size={20} color="#FF9500" />
-              </View>
-              <Text style={[styles.settingTitle, { color: t.colors.text }]}>Language</Text>
-            </View>
-            <View style={styles.settingRight}>
-              <Text style={[styles.settingValue, { color: t.colors.textMuted }]}>{language}</Text>
-              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-            </View>
-          </TouchableOpacity>
         </BlurView>
       </ScrollView>
 

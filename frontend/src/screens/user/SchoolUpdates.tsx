@@ -423,6 +423,58 @@ const SchoolUpdates = () => {
     return () => unsubscribe();
   }, []);
 
+  // Load unread notification count
+  const loadUnreadCount = useCallback(async () => {
+    const count = await NotificationService.getUnreadCount();
+    setUnreadNotificationCount(count);
+  }, []);
+
+  // Check for new events and create notifications
+  const checkForNewEventNotifications = useCallback(async (events: CalendarEvent[]) => {
+    try {
+      const currentEventIds = new Set(events.map(e => e._id || `calendar-${e.isoDate}-${e.title}`));
+      
+      // Check for new events
+      await NotificationService.checkForNewEvents(events, previousEventIdsRef.current);
+      
+      // Update previous event IDs
+      previousEventIdsRef.current = currentEventIds;
+      
+      // Reload unread count
+      await loadUnreadCount();
+    } catch (error) {
+      console.error('Failed to check for new event notifications:', error);
+    }
+  }, [loadUnreadCount]);
+
+  // Check for new posts and create notifications
+  const checkForNewPostNotifications = useCallback(async (posts: any[]) => {
+    try {
+      const currentPostIds = new Set(posts.map(p => p.id));
+      
+      // Check for new posts
+      await NotificationService.checkForNewPosts(posts, previousPostIdsRef.current);
+      
+      // Update previous post IDs
+      previousPostIdsRef.current = currentPostIds;
+      
+      // Reload unread count
+      await loadUnreadCount();
+    } catch (error) {
+      console.error('Failed to check for new post notifications:', error);
+    }
+  }, [loadUnreadCount]);
+
+  // Check for today's items (events + posts) based on current day
+  const checkForTodaysItems = useCallback(async () => {
+    try {
+      await NotificationService.checkForTodaysItems(calendarEvents, updates);
+      await loadUnreadCount();
+    } catch (error) {
+      console.error('Failed to check for today\'s items:', error);
+    }
+  }, [calendarEvents, updates, loadUnreadCount]);
+
   // Load backend user photo and notification count on screen focus
   // Also check for today's items based on current day
   useFocusEffect(
@@ -502,58 +554,6 @@ const SchoolUpdates = () => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
   }, [loadUnreadCount]);
-
-  // Load unread notification count
-  const loadUnreadCount = useCallback(async () => {
-    const count = await NotificationService.getUnreadCount();
-    setUnreadNotificationCount(count);
-  }, []);
-
-  // Check for new events and create notifications
-  const checkForNewEventNotifications = useCallback(async (events: CalendarEvent[]) => {
-    try {
-      const currentEventIds = new Set(events.map(e => e._id || `calendar-${e.isoDate}-${e.title}`));
-      
-      // Check for new events
-      await NotificationService.checkForNewEvents(events, previousEventIdsRef.current);
-      
-      // Update previous event IDs
-      previousEventIdsRef.current = currentEventIds;
-      
-      // Reload unread count
-      await loadUnreadCount();
-    } catch (error) {
-      console.error('Failed to check for new event notifications:', error);
-    }
-  }, [loadUnreadCount]);
-
-  // Check for new posts and create notifications
-  const checkForNewPostNotifications = useCallback(async (posts: any[]) => {
-    try {
-      const currentPostIds = new Set(posts.map(p => p.id));
-      
-      // Check for new posts
-      await NotificationService.checkForNewPosts(posts, previousPostIdsRef.current);
-      
-      // Update previous post IDs
-      previousPostIdsRef.current = currentPostIds;
-      
-      // Reload unread count
-      await loadUnreadCount();
-    } catch (error) {
-      console.error('Failed to check for new post notifications:', error);
-    }
-  }, [loadUnreadCount]);
-
-  // Check for today's items (events + posts) based on current day
-  const checkForTodaysItems = useCallback(async () => {
-    try {
-      await NotificationService.checkForTodaysItems(calendarEvents, updates);
-      await loadUnreadCount();
-    } catch (error) {
-      console.error('Failed to check for today\'s items:', error);
-    }
-  }, [calendarEvents, updates, loadUnreadCount]);
 
   // Track last fetch time to prevent unnecessary refetches
   const lastFetchTime = useRef<number>(0);

@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { theme } from '../../config/theme';
 import { useThemeValues, useThemeActions } from '../../contexts/ThemeContext';
+import NotificationService from '../../services/NotificationService';
 import ThemeColorModal from '../../modals/ThemeColorModal';
 
 type RootStackParamList = {
@@ -25,6 +26,15 @@ const AdminGeneralSettings = () => {
 
   // State for settings
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  
+  // Load notification preference on mount
+  useEffect(() => {
+    const loadNotificationPreference = async () => {
+      const enabled = await NotificationService.areNotificationsEnabled();
+      setNotificationsEnabled(enabled);
+    };
+    loadNotificationPreference();
+  }, []);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [isThemeColorModalVisible, setIsThemeColorModalVisible] = useState(false);
 
@@ -207,9 +217,14 @@ const AdminGeneralSettings = () => {
               </View>
               <Switch
                 value={notificationsEnabled}
-                onValueChange={(value) => {
+                onValueChange={async (value) => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   setNotificationsEnabled(value);
+                  await NotificationService.setNotificationsEnabled(value);
+                  if (value) {
+                    // Request permissions when enabling
+                    await NotificationService.requestPermissions();
+                  }
                 }}
                 trackColor={{ false: t.colors.border, true: '#FF9500' }}
                 thumbColor={t.colors.surface}

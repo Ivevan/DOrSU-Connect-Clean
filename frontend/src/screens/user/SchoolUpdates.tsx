@@ -13,8 +13,10 @@ import { useThemeValues } from '../../contexts/ThemeContext';
 import ViewEventModal from '../../modals/ViewEventModal';
 import AdminDataService from '../../services/AdminDataService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
+import NotificationService from '../../services/NotificationService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import { categoryToColors } from '../../utils/calendarUtils';
+import NotificationModal from '../../modals/NotificationModal';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -361,6 +363,9 @@ const SchoolUpdates = () => {
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   const [selectedDateForDrawer, setSelectedDateForDrawer] = useState<Date | null>(null);
   const [selectedDateEvents, setSelectedDateEvents] = useState<any[]>([]);
+  
+  // Notification modal state
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
 
 
   // Memoize safe area insets to prevent recalculation during navigation
@@ -468,7 +473,7 @@ const SchoolUpdates = () => {
   }, []);
 
   const handleNotificationsPress = useCallback(() => {
-    Alert.alert('Notifications', 'Notifications feature coming soon.');
+    setShowNotificationModal(true);
   }, []);
 
   // Track last fetch time to prevent unnecessary refetches
@@ -550,6 +555,21 @@ const SchoolUpdates = () => {
   // Fetch updates on mount only
   useEffect(() => {
     fetchUpdates(true); // Force refresh on mount
+    
+    // Request notification permissions and check notifications on mount
+    const setupNotifications = async () => {
+      try {
+        await NotificationService.requestPermissions();
+        // Check notifications after a short delay to allow data to load
+        setTimeout(() => {
+          NotificationService.checkAllNotifications();
+        }, 2000);
+      } catch (error) {
+        console.error('Error setting up notifications:', error);
+      }
+    };
+    
+    setupNotifications();
   }, []); // Empty deps - only run on mount
 
   // Refresh updates when screen comes into focus (with smart refresh)
@@ -1095,6 +1115,13 @@ const SchoolUpdates = () => {
               <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: '#FFF' }]} />
             </View>
           </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={handleNotificationsPress} 
+            style={styles.notificationButton}
+            accessibilityLabel="Notifications"
+          >
+            <Ionicons name="notifications-outline" size={24} color="#FFF" />
+          </TouchableOpacity>
         </View>
         
         {/* Welcome Section inside Orange Header */}
@@ -1448,6 +1475,12 @@ const SchoolUpdates = () => {
         selectedDateEvents={selectedDateEvents}
       />
 
+      {/* Notification Modal */}
+      <NotificationModal
+        visible={showNotificationModal}
+        onClose={() => setShowNotificationModal(false)}
+      />
+
       {/* Bottom Navigation Bar - Fixed position */}
       <View style={[styles.bottomNavContainer, {
         bottom: 0,
@@ -1509,7 +1542,7 @@ const styles = StyleSheet.create({
   headerTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
     marginBottom: 16,
     position: 'relative',
     zIndex: 1,
@@ -1520,7 +1553,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+  },
+  notificationButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   customHamburger: {
     width: 24,

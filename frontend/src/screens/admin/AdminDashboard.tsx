@@ -14,8 +14,10 @@ import { useThemeValues } from '../../contexts/ThemeContext';
 import ViewEventModal from '../../modals/ViewEventModal';
 import AdminDataService from '../../services/AdminDataService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
+import NotificationService from '../../services/NotificationService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
+import NotificationModal from '../../modals/NotificationModal';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -107,6 +109,9 @@ const AdminDashboard = () => {
   const [selectedDateEvents, setSelectedDateEvents] = useState<any[]>([]);
   const [selectedDateForDrawer, setSelectedDateForDrawer] = useState<Date | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Notification modal state
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
   
   // Animated floating background orb (Copilot-style)
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -203,6 +208,10 @@ const AdminDashboard = () => {
     }
     return userName.substring(0, 2).toUpperCase();
   };
+
+  const handleNotificationsPress = useCallback(() => {
+    setShowNotificationModal(true);
+  }, []);
 
   // Animate floating background orb on mount
   useEffect(() => {
@@ -403,6 +412,21 @@ const AdminDashboard = () => {
   // Fetch dashboard data on mount only
   useEffect(() => {
     fetchDashboardData(true); // Force refresh on mount
+    
+    // Request notification permissions and check notifications on mount
+    const setupNotifications = async () => {
+      try {
+        await NotificationService.requestPermissions();
+        // Check notifications after a short delay to allow data to load
+        setTimeout(() => {
+          NotificationService.checkAllNotifications();
+        }, 2000);
+      } catch (error) {
+        console.error('Error setting up notifications:', error);
+      }
+    };
+    
+    setupNotifications();
   }, []); // Empty deps - only run on mount
 
   // Refresh dashboard data when screen comes into focus (with smart refresh)
@@ -532,6 +556,13 @@ const AdminDashboard = () => {
               <View style={[styles.hamburgerLine, styles.hamburgerLineLong, { backgroundColor: '#FFF' }]} />
               <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: '#FFF' }]} />
             </View>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={handleNotificationsPress} 
+            style={styles.notificationButton}
+            accessibilityLabel="Notifications"
+          >
+            <Ionicons name="notifications-outline" size={24} color="#FFF" />
           </TouchableOpacity>
         </View>
         
@@ -930,6 +961,12 @@ const AdminDashboard = () => {
           }
         }}
       />
+
+      {/* Notification Modal */}
+      <NotificationModal
+        visible={showNotificationModal}
+        onClose={() => setShowNotificationModal(false)}
+      />
     </View>
   );
 };
@@ -1001,7 +1038,7 @@ const styles = StyleSheet.create({
   headerTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
     marginBottom: 16,
     position: 'relative',
     zIndex: 1,
@@ -1024,7 +1061,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+  },
+  notificationButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   customHamburger: {
     width: 24,

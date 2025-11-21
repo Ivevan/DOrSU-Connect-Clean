@@ -175,18 +175,6 @@ const GeneralSettings = () => {
             />
           </View>
 
-          <TouchableOpacity style={styles.settingItemLast}>
-            <View style={styles.settingLeft}>
-              <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                <Ionicons name="language-outline" size={20} color="#FF9500" />
-              </View>
-              <Text style={[styles.settingTitle, { color: t.colors.text }]}>Language</Text>
-            </View>
-            <View style={styles.settingRight}>
-              <Text style={[styles.settingValue, { color: t.colors.textMuted }]}>{language}</Text>
-              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-            </View>
-          </TouchableOpacity>
         </BlurView>
       </ScrollView>
 

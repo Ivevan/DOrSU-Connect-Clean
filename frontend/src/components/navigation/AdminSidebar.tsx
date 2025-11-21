@@ -219,7 +219,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
               color: currentScreen === 'AdminDashboard' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
               fontWeight: currentScreen === 'AdminDashboard' ? '600' : '500'
             }]}>
-              Dashboard
+              Events
             </Text>
           </TouchableOpacity>
 

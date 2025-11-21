@@ -213,7 +213,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
               color: currentScreen === 'SchoolUpdates' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
               fontWeight: currentScreen === 'SchoolUpdates' ? '600' : '500'
             }]}>
-              Discover
+              Events
             </Text>
           </TouchableOpacity>
 

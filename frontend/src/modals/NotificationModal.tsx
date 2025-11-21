@@ -7,6 +7,7 @@
  * - Notification settings
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -30,6 +31,7 @@ interface NotificationItem {
   message: string;
   timestamp: number;
   data?: any;
+  read?: boolean;
 }
 
 // Helper function to get Philippines timezone date key
@@ -66,6 +68,56 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [notificationItems, setNotificationItems] = useState<NotificationItem[]>([]);
   const [hasPermission, setHasPermission] = useState(false);
+  const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(new Set());
+
+  // Load read notification IDs from AsyncStorage
+  const loadReadNotifications = useCallback(async () => {
+    try {
+      const readIdsJson = await AsyncStorage.getItem('readNotificationIds');
+      if (readIdsJson) {
+        const readIds = JSON.parse(readIdsJson);
+        setReadNotificationIds(new Set(readIds));
+      }
+    } catch (error) {
+      console.error('Error loading read notifications:', error);
+    }
+  }, []);
+
+  // Save read notification IDs to AsyncStorage
+  const saveReadNotifications = useCallback(async (readIds: Set<string>) => {
+    try {
+      const readIdsArray = Array.from(readIds);
+      await AsyncStorage.setItem('readNotificationIds', JSON.stringify(readIdsArray));
+      setReadNotificationIds(readIds);
+    } catch (error) {
+      console.error('Error saving read notifications:', error);
+    }
+  }, []);
+
+  // Mark a notification as read
+  const markAsRead = useCallback(async (notificationId: string) => {
+    const newReadIds = new Set(readNotificationIds);
+    newReadIds.add(notificationId);
+    await saveReadNotifications(newReadIds);
+    
+    // Update the notification item's read status
+    setNotificationItems(prev => 
+      prev.map(item => 
+        item.id === notificationId ? { ...item, read: true } : item
+      )
+    );
+  }, [readNotificationIds, saveReadNotifications]);
+
+  // Mark all notifications as read
+  const markAllAsRead = useCallback(async () => {
+    const allIds = new Set(notificationItems.map(item => item.id));
+    await saveReadNotifications(allIds);
+    
+    // Update all notification items' read status
+    setNotificationItems(prev => 
+      prev.map(item => ({ ...item, read: true }))
+    );
+  }, [notificationItems, saveReadNotifications]);
 
   // Animate sheet when visible changes
   useEffect(() => {
@@ -85,7 +137,7 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
         useNativeDriver: true,
       }).start();
     }
-  }, [visible, sheetY]);
+  }, [visible, sheetY, loadNotifications]);
 
   const handleClose = useCallback(() => {
     Animated.timing(sheetY, {
@@ -108,9 +160,22 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
     }
   };
 
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
     try {
       setIsLoading(true);
+      
+      // Load read status first
+      let currentReadIds = readNotificationIds;
+      try {
+        const readIdsJson = await AsyncStorage.getItem('readNotificationIds');
+        if (readIdsJson) {
+          const readIds = JSON.parse(readIdsJson);
+          currentReadIds = new Set(readIds);
+          setReadNotificationIds(currentReadIds);
+        }
+      } catch (error) {
+        console.error('Error loading read notifications:', error);
+      }
       
       // Fetch current data to show what would trigger notifications
       const [posts, events] = await Promise.all([
@@ -189,13 +254,19 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
       // Sort by timestamp (newest first)
       items.sort((a, b) => b.timestamp - a.timestamp);
 
-      setNotificationItems(items);
+      // Mark items as read based on stored read IDs
+      const itemsWithReadStatus = items.map(item => ({
+        ...item,
+        read: currentReadIds.has(item.id),
+      }));
+
+      setNotificationItems(itemsWithReadStatus);
     } catch (error) {
       console.error('Error loading notifications:', error);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [readNotificationIds]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -326,6 +397,17 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
             </Text>
           </View>
 
+          {/* Mark All as Read Button */}
+          {notificationItems.length > 0 && notificationItems.some(item => !item.read) && (
+            <TouchableOpacity
+              style={[styles.markAllReadButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+              onPress={markAllAsRead}
+            >
+              <Ionicons name="checkmark-done" size={18} color={theme.colors.accent} />
+              <Text style={[styles.markAllReadText, { color: theme.colors.accent }]}>Mark all as read</Text>
+            </TouchableOpacity>
+          )}
+
           {/* Notification Items */}
           {isLoading ? (
             <View style={styles.loadingContainer}>
@@ -344,16 +426,40 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
             <View style={styles.notificationsList}>
               {notificationItems.map((item) => {
                 const iconColor = getNotificationColor(item.type);
+                const isRead = item.read || false;
                 return (
-                  <View
+                  <TouchableOpacity
                     key={item.id}
-                    style={[styles.notificationCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                    style={[
+                      styles.notificationCard, 
+                      { 
+                        backgroundColor: theme.colors.surface, 
+                        borderColor: theme.colors.border,
+                        opacity: isRead ? 0.7 : 1,
+                      }
+                    ]}
+                    onPress={() => !isRead && markAsRead(item.id)}
+                    activeOpacity={0.7}
                   >
+                    {!isRead && (
+                      <View style={[styles.unreadIndicator, { backgroundColor: theme.colors.accent }]} />
+                    )}
                     <View style={[styles.notificationIcon, { backgroundColor: iconColor + '20' }]}>
                       <Ionicons name={getNotificationIcon(item.type) as any} size={24} color={iconColor} />
                     </View>
                     <View style={styles.notificationContent}>
-                      <Text style={[styles.notificationTitle, { color: theme.colors.text }]}>{item.title}</Text>
+                      <View style={styles.notificationTitleRow}>
+                        <Text style={[styles.notificationTitle, { color: theme.colors.text }]}>{item.title}</Text>
+                        {!isRead && (
+                          <TouchableOpacity
+                            onPress={() => markAsRead(item.id)}
+                            style={styles.markReadButton}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          >
+                            <Ionicons name="checkmark-circle-outline" size={20} color={theme.colors.accent} />
+                          </TouchableOpacity>
+                        )}
+                      </View>
                       <Text style={[styles.notificationMessage, { color: theme.colors.text }]} numberOfLines={2}>
                         {item.message}
                       </Text>
@@ -373,7 +479,7 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
                         </View>
                       )}
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 );
               })}
             </View>
@@ -525,6 +631,38 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     gap: 10,
+    position: 'relative',
+  },
+  unreadIndicator: {
+    position: 'absolute',
+    left: 0,
+    top: 12,
+    bottom: 12,
+    width: 3,
+    borderRadius: 2,
+  },
+  notificationTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  markReadButton: {
+    padding: 4,
+  },
+  markAllReadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 12,
+    gap: 8,
+  },
+  markAllReadText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   notificationIcon: {
     width: 36,

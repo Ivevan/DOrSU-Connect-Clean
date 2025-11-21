@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Dimensions,
   StatusBar,
@@ -17,7 +16,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../contexts/ThemeContext';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 type RootStackParamList = {
   SplashScreen: undefined;
@@ -29,7 +28,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'SplashScree
 const SplashScreen = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
-  const { isDarkMode, theme: t } = useTheme();
+  const { isDarkMode } = useTheme();
 
   // Animation values
   const logoScale = useRef(new Animated.Value(0)).current;
@@ -46,47 +45,44 @@ const SplashScreen = () => {
   const lightSpot3 = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Start the animation sequence
-    const startAnimations = () => {
-      // Logo entrance animation
+    // Logo entrance animation
+    Animated.parallel([
+      Animated.timing(logoOpacity, {
+        toValue: 1,
+        duration: 800,
+        delay: 300,
+        useNativeDriver: true,
+      }),
+      Animated.spring(logoScale, {
+        toValue: 1,
+        delay: 300,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      // Start loading bar animation after logo appears
       Animated.parallel([
-        Animated.timing(logoOpacity, {
+        Animated.timing(loadingOpacity, {
           toValue: 1,
-          duration: 800,
-          delay: 300,
+          duration: 300,
           useNativeDriver: true,
         }),
-        Animated.spring(logoScale, {
+        Animated.timing(loadingBarWidth, {
           toValue: 1,
-          delay: 300,
-          tension: 50,
-          friction: 8,
-          useNativeDriver: true,
+          duration: 2000,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
         }),
-      ]).start(() => {
-        // Start loading bar animation after logo appears
-        Animated.parallel([
-          Animated.timing(loadingOpacity, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-          Animated.timing(loadingBarWidth, {
-            toValue: 1,
-            duration: 2000,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: false,
-          }),
-        ]).start();
-      });
+      ]).start();
+    });
 
-      // Navigate to GetStarted after loading completes
-      setTimeout(() => {
-        navigation.replace('GetStarted');
-      }, 3500);
-    };
+    // Navigate to GetStarted after loading completes
+    const navigationTimeout = setTimeout(() => {
+      navigation.replace('GetStarted');
+    }, 3500);
 
-    startAnimations();
+    return () => clearTimeout(navigationTimeout);
   }, [navigation]);
 
   // Animate floating background orbs on mount (same as AIChat)

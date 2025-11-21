@@ -1,11 +1,11 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useRef } from 'react';
-import { Animated, Dimensions, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, BackHandler, Dimensions, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../config/api.config';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
@@ -16,11 +16,12 @@ type RootStackParamList = {
   GetStarted: undefined;
   SignIn: undefined;
   CreateAccount: undefined;
+  SchoolUpdates: undefined;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'CreateAccount'>;
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 const CreateAccount = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -34,21 +35,48 @@ const CreateAccount = () => {
   const loadingRotation = useRef(new Animated.Value(0)).current;
   
   // Form state
-  const [username, setUsername] = React.useState('');
-  const [email, setEmail] = React.useState('');
-  const [password, setPassword] = React.useState('');
-  const [confirmPassword, setConfirmPassword] = React.useState('');
-  const [showPassword, setShowPassword] = React.useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [showSuccessModal, setShowSuccessModal] = React.useState(false);
-  const [errors, setErrors] = React.useState({ username: '', email: '', password: '', confirmPassword: '', general: '' });
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [errors, setErrors] = useState({ username: '', email: '', password: '', confirmPassword: '', general: '' });
   
   // Input focus states
   const usernameFocus = useRef(new Animated.Value(0)).current;
   const emailFocus = useRef(new Animated.Value(0)).current;
   const passwordFocus = useRef(new Animated.Value(0)).current;
   const confirmPasswordFocus = useRef(new Animated.Value(0)).current;
+
+  // Handle back button/gesture to navigate to GetStarted
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        navigation.navigate('GetStarted');
+        return true; // Prevent default behavior
+      };
+
+      if (Platform.OS === 'android') {
+        const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+        return () => subscription.remove();
+      }
+    }, [navigation])
+  );
+
+  // Handle navigation back button and iOS swipe back gesture
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      // Prevent default behavior of leaving the screen
+      e.preventDefault();
+      // Navigate to GetStarted instead
+      navigation.navigate('GetStarted');
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   // Button press handler
   const handleButtonPress = (scaleRef: Animated.Value, callback: () => void) => {
@@ -144,16 +172,13 @@ const CreateAccount = () => {
     }
 
     setIsLoading(true);
-    const startLoadingAnimation = () => {
-      Animated.loop(
-        Animated.timing(loadingRotation, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        })
-      ).start();
-    };
-    startLoadingAnimation();
+    Animated.loop(
+      Animated.timing(loadingRotation, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      })
+    ).start();
     
     try {
       // Call backend API to register user
@@ -190,7 +215,7 @@ const CreateAccount = () => {
       // Navigate after modal shows
       setTimeout(() => {
         setShowSuccessModal(false);
-        navigation.navigate('SchoolUpdates' as any);
+        navigation.navigate('SchoolUpdates');
       }, 2500);
     } catch (error: any) {
       setIsLoading(false);
@@ -534,9 +559,9 @@ const CreateAccount = () => {
           {/* Links Section */}
           <View style={styles.linksSection}>
             <TouchableOpacity 
-              style={styles.linkButton}
               onPress={() => navigation.navigate('SignIn')}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              activeOpacity={0.7}
             >
               <Text style={styles.linkText}>Already have an account? Sign In</Text>
             </TouchableOpacity>
@@ -752,16 +777,13 @@ const styles = StyleSheet.create({
   },
   // Links Section
   linksSection: {
-    marginBottom: 0,
-  },
-  linkButton: {
-    marginBottom: 0,
+    marginTop: 16,
+    alignItems: 'center',
   },
   linkText: {
     color: '#2563EB',
     fontSize: 14,
     fontWeight: '500',
-    textDecorationLine: 'underline',
   },
   mobileContainer: {
     flex: 1,

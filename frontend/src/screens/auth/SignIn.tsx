@@ -1,11 +1,11 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useRef } from 'react';
-import { Animated, Dimensions, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, BackHandler, Dimensions, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../config/api.config';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
@@ -21,7 +21,7 @@ type RootStackParamList = {
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'SignIn'>;
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 const SignIn = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -35,15 +35,42 @@ const SignIn = () => {
   const loadingRotation = useRef(new Animated.Value(0)).current;
   
   // Form state management
-  const [email, setEmail] = React.useState('');
-  const [password, setPassword] = React.useState('');
-  const [showPassword, setShowPassword] = React.useState(false);
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [errors, setErrors] = React.useState({ email: '', password: '', general: '' });
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState({ email: '', password: '', general: '' });
   
   // Input focus states
   const emailFocus = useRef(new Animated.Value(0)).current;
   const passwordFocus = useRef(new Animated.Value(0)).current;
+
+  // Handle back button/gesture to navigate to GetStarted
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        navigation.navigate('GetStarted');
+        return true; // Prevent default behavior
+      };
+
+      if (Platform.OS === 'android') {
+        const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+        return () => subscription.remove();
+      }
+    }, [navigation])
+  );
+
+  // Handle navigation back button and iOS swipe back gesture
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      // Prevent default behavior of leaving the screen
+      e.preventDefault();
+      // Navigate to GetStarted instead
+      navigation.navigate('GetStarted');
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   // Animation functions
   const handleButtonPress = (scaleRef: Animated.Value, callback: () => void) => {
@@ -82,16 +109,13 @@ const SignIn = () => {
     setIsLoading(true);
     
     // Start loading spinner animation
-    const startLoadingAnimation = () => {
-      Animated.loop(
-        Animated.timing(loadingRotation, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        })
-      ).start();
-    };
-    startLoadingAnimation();
+    Animated.loop(
+      Animated.timing(loadingRotation, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      })
+    ).start();
     
     try {
       // Check for static admin credentials FIRST (before validation)
@@ -204,7 +228,7 @@ const SignIn = () => {
       
       // Success - navigate to AI Chat for regular users
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      (navigation as any).navigate('AIChat');
+      navigation.navigate('AIChat');
     } catch (error: any) {
       setIsLoading(false);
       loadingRotation.stopAnimation();
@@ -428,9 +452,9 @@ const SignIn = () => {
           {/* Links Section */}
           <View style={styles.linksSection}>
             <TouchableOpacity 
-              style={styles.linkButton}
               onPress={() => navigation.navigate('CreateAccount')}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              activeOpacity={0.7}
             >
               <Text style={styles.linkText}>Create New Account</Text>
             </TouchableOpacity>
@@ -636,16 +660,13 @@ const styles = StyleSheet.create({
   },
   // Links Section
   linksSection: {
-    marginBottom: 0,
-  },
-  linkButton: {
-    marginBottom: 0,
+    marginTop: 16,
+    alignItems: 'center',
   },
   linkText: {
     color: '#2563EB',
     fontSize: 14,
     fontWeight: '500',
-    textDecorationLine: 'underline',
   },
   mobileContainer: {
     flex: 1,

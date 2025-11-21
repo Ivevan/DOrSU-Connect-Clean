@@ -1,11 +1,13 @@
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { API_BASE_URL } from '../../config/api.config';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getGoogleSignInErrorMessage, signInWithGoogle } from '../../services/authService';
@@ -14,15 +16,13 @@ type RootStackParamList = {
   GetStarted: undefined;
   SignIn: undefined;
   CreateAccount: undefined;
-  AdminDashboard: undefined;
   AdminAIChat: undefined;
-  SchoolUpdates: undefined;
   AIChat: undefined;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'GetStarted'>;
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 const GetStarted = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -39,30 +39,27 @@ const GetStarted = () => {
   const signInButtonScale = useRef(new Animated.Value(1)).current;
   const googleLoadingRotation = useRef(new Animated.Value(0)).current;
   const floatingAnimation = useRef(new Animated.Value(0)).current;
-  const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
-  const [showErrorModal, setShowErrorModal] = React.useState(false);
-  const [errorMessage, setErrorMessage] = React.useState('');
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Start floating animation on mount
-  React.useEffect(() => {
-    const startFloatingAnimation = () => {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(floatingAnimation, {
-            toValue: 1,
-            duration: 3000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(floatingAnimation, {
-            toValue: 0,
-            duration: 3000,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    };
-    startFloatingAnimation();
-  }, []);
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatingAnimation, {
+          toValue: 1,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatingAnimation, {
+          toValue: 0,
+          duration: 3000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, [floatingAnimation]);
 
   // Animation functions
   const handleLogoPress = () => {
@@ -112,16 +109,13 @@ const GetStarted = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
     // Start loading animation
-    const startLoadingAnimation = () => {
-      Animated.loop(
-        Animated.timing(googleLoadingRotation, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        })
-      ).start();
-    };
-    startLoadingAnimation();
+    Animated.loop(
+      Animated.timing(googleLoadingRotation, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      })
+    ).start();
 
     Animated.timing(googleButtonScale, {
       toValue: 0.98,
@@ -133,7 +127,6 @@ const GetStarted = () => {
       const user = await signInWithGoogle();
       
       // Save Google user data to AsyncStorage for persistence
-      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
       if (user.email) {
         await AsyncStorage.setItem('userEmail', user.email);
       }
@@ -164,7 +157,6 @@ const GetStarted = () => {
         
         console.log('🔄 GetStarted: Attempting Firebase token exchange, token length:', idToken.length, 'parts:', tokenParts.length);
         
-        const { API_BASE_URL } = require('../../config/api.config');
         const resp = await fetch(`${API_BASE_URL}/api/auth/firebase-login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

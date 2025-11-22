@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import PreviewModal from '../../modals/PreviewModal';
 import BottomSheet from '../../components/common/BottomSheet';
+import MonthPickerModal from '../../modals/MonthPickerModal';
 
 type RootStackParamList = {
   AdminDashboard: undefined;
@@ -72,10 +73,28 @@ const PostUpdate: React.FC = () => {
     cachedUri?: string | null;
   } | null>(null);
 
+  // Track original values to detect changes when editing
+  const [originalValues, setOriginalValues] = useState<{
+    title: string;
+    category: string;
+    date: string;
+    time: string;
+    description: string;
+    hasFile: boolean;
+  }>({
+    title: '',
+    category: 'Announcement',
+    date: '',
+    time: '',
+    description: '',
+    hasFile: false,
+  });
+
   // Category and Date picker state
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDateObj, setSelectedDateObj] = useState<Date | null>(null);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
   
   // Time picker state
   const [showStartTimePicker, setShowStartTimePicker] = useState(false);
@@ -109,6 +128,10 @@ const PostUpdate: React.FC = () => {
   const endTimePickerSheetY = useRef(new Animated.Value(300)).current;
   const cancelAlertSheetY = useRef(new Animated.Value(300)).current;
   const publishAlertSheetY = useRef(new Animated.Value(300)).current;
+  
+  // Month picker animation refs
+  const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
+  const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
 
   // Inline, dependency-free date data
   const months = useMemo(() => [
@@ -197,9 +220,126 @@ const PostUpdate: React.FC = () => {
     return new Date(year, monthIdx + 1, 0).getDate();
   };
 
+  // Calendar grid helper functions
+  const getFirstDayOfMonth = (year: number, monthIdx: number) => {
+    return new Date(year, monthIdx, 1).getDay();
+  };
+
+  const generateCalendarGrid = useMemo(() => {
+    const daysInMonth = getDaysInMonth(tmpYear, tmpMonth);
+    const firstDay = getFirstDayOfMonth(tmpYear, tmpMonth);
+    const grid: (number | null)[] = [];
+    
+    // Add empty cells for days before the first day of the month
+    for (let i = 0; i < firstDay; i++) {
+      grid.push(null);
+    }
+    
+    // Add all days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      grid.push(day);
+    }
+    
+    return grid;
+  }, [tmpYear, tmpMonth]);
+
   const daysInTmpMonth = getDaysInMonth(tmpYear, tmpMonth);
   const dayOptions = Array.from({ length: daysInTmpMonth }, (_, i) => i + 1);
   const yearOptions = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 2 + i); // [y-2..y+3]
+
+  // Month navigation functions
+  const goToPreviousMonth = useCallback(() => {
+    if (tmpMonth === 0) {
+      setTmpMonth(11);
+      setTmpYear(tmpYear - 1);
+    } else {
+      setTmpMonth(tmpMonth - 1);
+    }
+    // Reset day if it's invalid for the new month
+    const daysInNewMonth = getDaysInMonth(tmpMonth === 0 ? tmpYear - 1 : tmpYear, tmpMonth === 0 ? 11 : tmpMonth - 1);
+    if (tmpDay > daysInNewMonth) {
+      setTmpDay(daysInNewMonth);
+    }
+  }, [tmpMonth, tmpYear, tmpDay]);
+
+  const goToNextMonth = useCallback(() => {
+    if (tmpMonth === 11) {
+      setTmpMonth(0);
+      setTmpYear(tmpYear + 1);
+    } else {
+      setTmpMonth(tmpMonth + 1);
+    }
+    // Reset day if it's invalid for the new month
+    const daysInNewMonth = getDaysInMonth(tmpMonth === 11 ? tmpYear + 1 : tmpYear, tmpMonth === 11 ? 0 : tmpMonth + 1);
+    if (tmpDay > daysInNewMonth) {
+      setTmpDay(daysInNewMonth);
+    }
+  }, [tmpMonth, tmpYear, tmpDay]);
+
+  // Month picker handlers
+  const openMonthPicker = useCallback(() => {
+    setShowMonthPicker(true);
+    Animated.parallel([
+      Animated.spring(monthPickerScaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }),
+      Animated.timing(monthPickerOpacityAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [monthPickerScaleAnim, monthPickerOpacityAnim]);
+
+  const closeMonthPicker = useCallback(() => {
+    Animated.parallel([
+      Animated.spring(monthPickerScaleAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }),
+      Animated.timing(monthPickerOpacityAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setShowMonthPicker(false);
+    });
+  }, [monthPickerScaleAnim, monthPickerOpacityAnim]);
+
+  const selectMonth = useCallback((monthIndex: number, year?: number) => {
+    const targetYear = year || tmpYear;
+    setTmpMonth(monthIndex);
+    setTmpYear(targetYear);
+    // Reset day if it's invalid for the new month
+    const daysInNewMonth = getDaysInMonth(targetYear, monthIndex);
+    if (tmpDay > daysInNewMonth) {
+      setTmpDay(daysInNewMonth);
+    }
+    closeMonthPicker();
+    Haptics.selectionAsync();
+  }, [tmpYear, tmpDay, closeMonthPicker]);
+
+  // Double tap handler for month/year
+  const lastTapRef = useRef<number>(0);
+  const handleMonthYearDoubleTap = useCallback(() => {
+    const now = Date.now();
+    const DOUBLE_TAP_DELAY = 300;
+    
+    if (lastTapRef.current && (now - lastTapRef.current) < DOUBLE_TAP_DELAY) {
+      // Double tap detected
+      openMonthPicker();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      lastTapRef.current = 0;
+    } else {
+      lastTapRef.current = now;
+    }
+  }, [openMonthPicker]);
 
   const formatDate = (date: Date) => {
     const dd = String(date.getDate()).padStart(2, '0');
@@ -341,6 +481,26 @@ const PostUpdate: React.FC = () => {
       return;
     }
     
+    // Check if there are any changes compared to original values
+    const hasChanges = 
+      title.trim() !== originalValues.title.trim() ||
+      description.trim() !== originalValues.description.trim() ||
+      date !== originalValues.date ||
+      time !== originalValues.time ||
+      category !== originalValues.category ||
+      pickedFile !== null; // New file always counts as a change
+    
+    // If no changes, cancel immediately without showing modal
+    if (!hasChanges) {
+      if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
+        navigation.goBack();
+      } else {
+        (navigation as any).navigate('AdminDashboard');
+      }
+      return;
+    }
+    
+    // If there are changes, show confirmation modal
     setIsAnimating(true);
     setIsCancelAlertOpen(true);
     setTimeout(() => {
@@ -348,7 +508,7 @@ const PostUpdate: React.FC = () => {
     }, 0);
     // Reset animation state after a short delay
     setTimeout(() => setIsAnimating(false), 300);
-  }, [isAnimating, cancelAlertSheetY]);
+  }, [isAnimating, cancelAlertSheetY, title, description, date, time, category, pickedFile, originalValues, navigation]);
 
   const handleShowPreview = useCallback(() => {
     // Prevent rapid tapping during animation
@@ -393,14 +553,41 @@ const PostUpdate: React.FC = () => {
   React.useEffect(() => {
     let isCancelled = false;
     const load = async () => {
-      if (!editingPostId) return;
+      if (!editingPostId) {
+        // For new posts, reset original values
+        setOriginalValues({
+          title: '',
+          category: 'Announcement',
+          date: '',
+          time: '',
+          description: '',
+          hasFile: false,
+        });
+        return;
+      }
       const post = await AdminDataService.getPostById(editingPostId);
       if (isCancelled || !post) return;
-      setTitle(post.title || '');
-      setCategory(post.category || 'Announcement');
-      setDate(post.date || '');
-      setTime(post.time || '');
-      setDescription(post.description || '');
+      const loadedTitle = post.title || '';
+      const loadedCategory = post.category || 'Announcement';
+      const loadedDate = post.date || '';
+      const loadedTime = post.time || '';
+      const loadedDescription = post.description || '';
+      
+      setTitle(loadedTitle);
+      setCategory(loadedCategory);
+      setDate(loadedDate);
+      setTime(loadedTime);
+      setDescription(loadedDescription);
+      
+      // Store original values for change detection
+      setOriginalValues({
+        title: loadedTitle,
+        category: loadedCategory,
+        date: loadedDate,
+        time: loadedTime,
+        description: loadedDescription,
+        hasFile: false, // We don't track file changes from existing posts
+      });
     };
     load();
     return () => { isCancelled = true; };
@@ -642,11 +829,14 @@ const PostUpdate: React.FC = () => {
             }}
             style={styles.backButton}
             accessibilityLabel="Go back"
+            accessibilityRole="button"
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Ionicons name="arrow-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
           </TouchableOpacity>
         </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]} numberOfLines={1}>Post Update</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]} numberOfLines={1} pointerEvents="none">Post Update</Text>
         <View style={styles.headerRight}>
           <View style={[styles.categoryBadgeHeader, {
             backgroundColor: isDarkMode ? `${currentCategory.color}30` : `${currentCategory.color}20`,
@@ -793,51 +983,124 @@ const PostUpdate: React.FC = () => {
           </ScrollView>
         </BottomSheet>
 
-        {/* Native Date Picker replaced by custom modal */}
+        {/* Calendar Date Picker */}
         <BottomSheet
           visible={showDatePicker}
           onClose={cancelTmpDate}
           sheetY={datePickerSheetY}
           backgroundColor={theme.colors.card}
-          maxHeight="60%"
+          maxHeight="75%"
         >
-          <Text style={[styles.dateModalTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Select Date</Text>
-          <View style={styles.datePickersRow}>
-            {/* Month */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>Month</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {months.map((m, idx) => (
-                  <TouchableOpacity key={m} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpMonth === idx && styles.datePickerItemActive]} onPress={() => setTmpMonth(idx)}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }, tmpMonth === idx && styles.datePickerTextActive]} numberOfLines={1}>{m}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+          <ScrollView 
+            style={styles.calendarScrollView}
+            contentContainerStyle={styles.calendarScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Month/Year Header with Navigation */}
+            <View style={styles.calendarHeader}>
+              <TouchableOpacity onPress={goToPreviousMonth} style={styles.calendarNavButton}>
+                <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.calendarHeaderCenter}
+                onPress={handleMonthYearDoubleTap}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.calendarMonthYear, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>
+                  {months[tmpMonth]} {tmpYear}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={goToNextMonth} style={styles.calendarNavButton}>
+                <Ionicons name="chevron-forward" size={20} color={theme.colors.text} />
+              </TouchableOpacity>
             </View>
-            {/* Day */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>Day</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {dayOptions.map((d) => (
-                  <TouchableOpacity key={d} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpDay === d && styles.datePickerItemActive]} onPress={() => setTmpDay(d)}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }, tmpDay === d && styles.datePickerTextActive]}>{d}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+
+            {/* Weekday Headers */}
+            <View style={[styles.calendarWeekdays, { backgroundColor: theme.colors.surface }]}>
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+                <View key={index} style={[styles.calendarWeekday, { borderRightColor: theme.colors.border }]}>
+                  <Text style={[styles.calendarWeekdayText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }]}>{day}</Text>
+                </View>
+              ))}
             </View>
-            {/* Year */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>Year</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {yearOptions.map((y) => (
-                  <TouchableOpacity key={y} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpYear === y && styles.datePickerItemActive]} onPress={() => setTmpYear(y)}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }, tmpYear === y && styles.datePickerTextActive]}>{y}</Text>
+
+            {/* Calendar Grid */}
+            <View style={styles.calendarGrid}>
+              {generateCalendarGrid.map((day, index) => {
+                const currentDate = day ? new Date(tmpYear, tmpMonth, day) : null;
+                const isCurrentDay = currentDate ? (
+                  day === new Date().getDate() &&
+                  tmpMonth === new Date().getMonth() &&
+                  tmpYear === new Date().getFullYear()
+                ) : false;
+                const isSelectedDay = day === tmpDay;
+                
+                if (!day) {
+                  return (
+                    <View
+                      key={`empty-${index}`}
+                      style={[
+                        styles.calendarDayCell,
+                        {
+                          backgroundColor: theme.colors.surfaceAlt,
+                          borderRightColor: theme.colors.border,
+                          borderBottomColor: theme.colors.border,
+                          borderRightWidth: (index % 7) === 6 ? 0 : StyleSheet.hairlineWidth,
+                        },
+                      ]}
+                    />
+                  );
+                }
+                
+                const isLastColumn = (index % 7) === 6;
+                
+                return (
+                  <TouchableOpacity
+                    key={day}
+                    style={[
+                      styles.calendarDayCell,
+                      { 
+                        backgroundColor: theme.colors.card,
+                        borderTopWidth: isSelectedDay ? 2 : 0,
+                        borderTopColor: isSelectedDay ? '#FF9500' : 'transparent',
+                        borderLeftWidth: isSelectedDay ? 2 : 0,
+                        borderLeftColor: isSelectedDay ? '#FF9500' : 'transparent',
+                        borderRightWidth: isLastColumn ? (isSelectedDay ? 2 : 0) : (isSelectedDay ? 2 : StyleSheet.hairlineWidth),
+                        borderRightColor: isSelectedDay ? '#FF9500' : theme.colors.border,
+                        borderBottomWidth: isSelectedDay ? 2 : StyleSheet.hairlineWidth,
+                        borderBottomColor: isSelectedDay ? '#FF9500' : theme.colors.border,
+                      }
+                    ]}
+                    onPress={() => setTmpDay(day)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.calendarDayContent}>
+                      <View style={[
+                        styles.calendarDayNumberContainer,
+                        isCurrentDay && { backgroundColor: '#FF9500' },
+                      ]}>
+                        <Text
+                          style={[
+                            styles.calendarDayText,
+                            { 
+                              fontSize: theme.fontSize.scaleSize(12) 
+                            },
+                            isCurrentDay && { color: '#FFFFFF', fontWeight: '700' },
+                            !isCurrentDay && { color: theme.colors.text },
+                          ]}
+                        >
+                          {day}
+                        </Text>
+                      </View>
+                    </View>
                   </TouchableOpacity>
-                ))}
-              </ScrollView>
+                );
+              })}
             </View>
-          </View>
-          <View style={styles.dateModalActions}>
+          </ScrollView>
+
+          {/* Action Buttons - Fixed at bottom */}
+          <View style={[styles.dateModalActions, { borderTopColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' }]}>
             <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={cancelTmpDate}>
               <Text style={[styles.cancelText, { color: theme.colors.text }]}>Cancel</Text>
             </TouchableOpacity>
@@ -846,6 +1109,18 @@ const PostUpdate: React.FC = () => {
             </TouchableOpacity>
           </View>
         </BottomSheet>
+
+        {/* Month Picker Modal */}
+        <MonthPickerModal
+          visible={showMonthPicker}
+          currentMonth={new Date(tmpYear, tmpMonth, 1)}
+          onClose={closeMonthPicker}
+          onSelectMonth={selectMonth}
+          scaleAnim={monthPickerScaleAnim}
+          opacityAnim={monthPickerOpacityAnim}
+          minYear={new Date().getFullYear() - 2}
+          maxYear={new Date().getFullYear() + 3}
+        />
 
         {/* Time Picker Modal - Start Time */}
         <BottomSheet
@@ -965,13 +1240,14 @@ const PostUpdate: React.FC = () => {
           }}
           sheetY={cancelAlertSheetY}
           backgroundColor={theme.colors.card}
-          maxHeight="50%"
+          maxHeight="40%"
+          contentStyle={styles.cancelAlertContent}
         >
           <View style={styles.alertIconWrapWarning}>
-            <Ionicons name="warning" size={24} color="#F59E0B" />
+            <Ionicons name="warning" size={20} color="#F59E0B" />
           </View>
-          <Text style={[styles.alertTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(20) }]}>Discard Changes?</Text>
-          <Text style={[styles.alertSubtitle, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(14) }]}>All your changes will be lost and cannot be recovered.</Text>
+          <Text style={[styles.alertTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(18) }]}>Discard Changes?</Text>
+          <Text style={[styles.alertSubtitle, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(13) }]}>All your changes will be lost and cannot be recovered.</Text>
           <View style={styles.alertActionsRow}>
             <TouchableOpacity style={[styles.alertCancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={() => {
               Animated.timing(cancelAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
@@ -1314,7 +1590,8 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   headerLeft: {
-    width: 40,
+    width: 44,
+    zIndex: 1000,
   },
   backButton: {
     width: 44,
@@ -1322,6 +1599,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 1000,
   },
   headerTitle: {
     fontSize: 17,
@@ -1331,6 +1609,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     textAlign: 'center',
+    pointerEvents: 'none',
   },
   headerSubtitle: {
     fontSize: 11,
@@ -1782,7 +2061,83 @@ const styles = StyleSheet.create({
   dateModalActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 12,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+  },
+  // Calendar Grid Styles
+  calendarScrollView: {
+    flex: 1,
+  },
+  calendarScrollContent: {
+    paddingBottom: 8,
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    marginBottom: 0,
+  },
+  calendarNavButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarHeaderCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  calendarMonthYear: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  calendarWeekdays: {
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 0,
+  },
+  calendarWeekday: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRightWidth: 1,
+  },
+  calendarWeekdayText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 4,
+  },
+  calendarDayCell: {
+    width: '14.285%', // 100% / 7 days
+    aspectRatio: 1,
+  },
+  calendarDayContent: {
+    flex: 1,
+    padding: 2,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  calendarDayNumberContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  calendarDayText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   categoryChipsRow: {
     flexDirection: 'row',
@@ -1942,6 +2297,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   // Alert Modal Styles
+  cancelAlertContent: {
+    alignItems: 'center',
+    paddingTop: 4,
+    paddingBottom: 8,
+  },
   alertCard: {
     width: '100%',
     maxWidth: 360,
@@ -1956,13 +2316,14 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   alertIconWrapWarning: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#FEF3C7',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
+    alignSelf: 'center',
   },
   alertIconWrapSuccess: {
     width: 56,
@@ -1974,16 +2335,17 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   alertTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
-    marginBottom: 8,
+    marginBottom: 6,
     textAlign: 'center',
   },
   alertSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 20,
+    marginBottom: 16,
+    lineHeight: 18,
+    paddingHorizontal: 8,
   },
   alertPreviewInfo: {
     width: '100%',
@@ -2005,12 +2367,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
-    gap: 12,
+    gap: 10,
+    marginTop: 4,
   },
   alertCancelBtn: {
     flex: 1,
     borderWidth: 1,
-    paddingVertical: 12,
+    paddingVertical: 11,
     borderRadius: 12,
     alignItems: 'center',
   },
@@ -2021,7 +2384,7 @@ const styles = StyleSheet.create({
   alertDangerBtn: {
     flex: 1,
     backgroundColor: '#DC2626',
-    paddingVertical: 12,
+    paddingVertical: 11,
     borderRadius: 12,
     alignItems: 'center',
   },

@@ -384,8 +384,8 @@ const styles = StyleSheet.create({
     left: 0,
     bottom: 0,
     width: 320,
-    zIndex: 20,
-    elevation: 20,
+    zIndex: 1000,
+    elevation: 1000,
   },
   sidebarOverlay: {
     position: 'absolute',
@@ -394,7 +394,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 15,
+    zIndex: 999,
   },
   sidebarHeader: {
     flexDirection: 'row',

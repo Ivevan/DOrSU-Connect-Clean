@@ -430,19 +430,16 @@ const styles = StyleSheet.create({
   licenseName: {
     fontSize: 16,
     fontWeight: '700',
-    color: theme.colors.text,
     letterSpacing: 0.2,
     marginBottom: 2,
   },
   licenseVersion: {
     fontSize: 12,
-    color: theme.colors.textMuted,
     fontWeight: '500',
   },
   licenseDescription: {
     fontSize: 13,
     lineHeight: 18,
-    color: theme.colors.textMuted,
     opacity: 0.9,
     marginBottom: 12,
   },
@@ -461,12 +458,10 @@ const styles = StyleSheet.create({
   licenseType: {
     fontSize: 11,
     fontWeight: '700',
-    color: theme.colors.accent,
     letterSpacing: 0.5,
   },
   licenseCopyright: {
     fontSize: 11,
-    color: theme.colors.textMuted,
     opacity: 0.8,
     flex: 1,
     textAlign: 'right',

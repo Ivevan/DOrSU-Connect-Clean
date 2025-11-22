@@ -349,13 +349,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 10,
-    color: theme.colors.text,
     letterSpacing: 0.2,
   },
   sectionContent: {
     fontSize: 14,
     lineHeight: 20,
-    color: theme.colors.textMuted,
     opacity: 0.9,
   },
   lastUpdatedBoxWrapper: {

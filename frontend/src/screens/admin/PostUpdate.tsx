@@ -325,20 +325,10 @@ const PostUpdate: React.FC = () => {
     Haptics.selectionAsync();
   }, [tmpYear, tmpDay, closeMonthPicker]);
 
-  // Double tap handler for month/year
-  const lastTapRef = useRef<number>(0);
-  const handleMonthYearDoubleTap = useCallback(() => {
-    const now = Date.now();
-    const DOUBLE_TAP_DELAY = 300;
-    
-    if (lastTapRef.current && (now - lastTapRef.current) < DOUBLE_TAP_DELAY) {
-      // Double tap detected
-      openMonthPicker();
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      lastTapRef.current = 0;
-    } else {
-      lastTapRef.current = now;
-    }
+  // Single tap handler for month/year
+  const handleMonthYearTap = useCallback(() => {
+    openMonthPicker();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, [openMonthPicker]);
 
   const formatDate = (date: Date) => {
@@ -1003,7 +993,7 @@ const PostUpdate: React.FC = () => {
               </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.calendarHeaderCenter}
-                onPress={handleMonthYearDoubleTap}
+                onPress={handleMonthYearTap}
                 activeOpacity={0.7}
               >
                 <Text style={[styles.calendarMonthYear, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>

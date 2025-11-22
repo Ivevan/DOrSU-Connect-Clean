@@ -452,6 +452,12 @@ const AdminCalendar = () => {
     });
   };
 
+  // Single tap handler for month/year
+  const handleMonthYearTap = useCallback(() => {
+    openMonthPicker();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [openMonthPicker]);
+
   const transformPostToEvent = (p: any) => ({
     id: p.id,
     title: p.title,
@@ -1297,11 +1303,11 @@ const AdminCalendar = () => {
               
               <TouchableOpacity
                 style={styles.monthSelectorButton}
-                onPress={navigateToNextMonth}
+                onPress={handleMonthYearTap}
                 activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityLabel="Next month"
-                accessibilityHint="Navigate to next month"
+                accessibilityLabel="Open month picker"
+                accessibilityHint="Tap to open month and year picker"
               >
                 <Text style={[styles.monthHeaderText, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>
                   {getMonthName(currentMonth)} {currentMonth.getFullYear()}

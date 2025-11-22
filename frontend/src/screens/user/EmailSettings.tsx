@@ -284,7 +284,7 @@ const EmailSettings = () => {
         >
           <Ionicons name="chevron-back" size={28} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Email</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}>Email</Text>
       </View>
 
       <ScrollView
@@ -297,7 +297,7 @@ const EmailSettings = () => {
           tint={isDarkMode ? 'dark' : 'light'}
           style={styles.sectionCard}
         >
-          <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Email Address</Text>
+          <Text style={[styles.sectionTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(15) }]}>Email Address</Text>
 
           <TouchableOpacity style={styles.settingItemLast}>
             <View style={styles.settingLeft}>
@@ -305,8 +305,8 @@ const EmailSettings = () => {
                 <Ionicons name="mail-outline" size={20} color="#FF9500" />
               </View>
               <View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Email</Text>
-                <Text style={[styles.settingValue, { color: t.colors.textMuted, marginTop: 4 }]}>{userEmail}</Text>
+                <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Email</Text>
+                <Text style={[styles.settingValue, { color: t.colors.textMuted, marginTop: 4, fontSize: t.fontSize.scaleSize(13) }]}>{userEmail}</Text>
               </View>
             </View>
           </TouchableOpacity>

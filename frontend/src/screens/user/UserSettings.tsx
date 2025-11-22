@@ -298,7 +298,7 @@ const UserSettings = () => {
         >
           <Ionicons name="chevron-back" size={28} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Settings</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}>Settings</Text>
       </View>
 
       <ScrollView 
@@ -351,7 +351,7 @@ const UserSettings = () => {
           </View>
           <View style={styles.profileInfo}>
             <Text 
-              style={[styles.profileName, { color: t.colors.text }]}
+              style={[styles.profileName, { color: t.colors.text, fontSize: t.fontSize.scaleSize(18) }]}
               numberOfLines={1}
               ellipsizeMode="tail"
             >
@@ -360,7 +360,7 @@ const UserSettings = () => {
             <View style={styles.profileEmailContainer}>
               <Ionicons name="mail-outline" size={14} color={t.colors.textMuted} />
               <Text 
-                style={[styles.profileEmail, { color: t.colors.textMuted }]}
+                style={[styles.profileEmail, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(14) }]}
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
@@ -386,7 +386,7 @@ const UserSettings = () => {
               style={styles.sectionTitleButton}
               onPress={() => navigation.navigate('GeneralSettings')}
             >
-              <Text style={[styles.sectionTitle, { color: t.colors.text }]}>General</Text>
+              <Text style={[styles.sectionTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>General</Text>
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
 
@@ -394,7 +394,7 @@ const UserSettings = () => {
               style={styles.sectionTitleButton}
               onPress={() => navigation.navigate('AccountSettings')}
             >
-              <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Account</Text>
+              <Text style={[styles.sectionTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>Account</Text>
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
 
@@ -402,7 +402,7 @@ const UserSettings = () => {
               style={styles.sectionTitleButton}
               onPress={() => navigation.navigate('EmailSettings')}
             >
-              <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Email</Text>
+              <Text style={[styles.sectionTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>Email</Text>
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
 
@@ -410,7 +410,7 @@ const UserSettings = () => {
               style={styles.sectionTitleButtonLast}
               onPress={() => navigation.navigate('About')}
             >
-              <Text style={[styles.sectionTitle, { color: t.colors.text }]}>About</Text>
+              <Text style={[styles.sectionTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>About</Text>
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
           </BlurView>
@@ -428,7 +428,7 @@ const UserSettings = () => {
             activeOpacity={0.7}
           >
             <Ionicons name="log-out-outline" size={18} color="#EF4444" />
-            <Text style={[styles.signOutText, { color: '#EF4444' }]}>Sign out</Text>
+            <Text style={[styles.signOutText, { color: '#EF4444', fontSize: t.fontSize.scaleSize(14) }]}>Sign out</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

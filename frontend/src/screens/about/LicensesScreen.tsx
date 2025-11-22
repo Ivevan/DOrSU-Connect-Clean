@@ -2,8 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Animated, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../../contexts/ThemeContext';
-import { theme } from '../../config/theme';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,7 +17,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Licenses'>;
 
 const LicensesScreen = () => {
   const insets = useSafeAreaInsets();
-  const { isDarkMode } = useTheme();
+  const { isDarkMode, theme: t } = useThemeValues();
   const navigation = useNavigation<NavigationProp>();
 
   // Animated floating background orb (Copilot-style)
@@ -222,7 +221,7 @@ const LicensesScreen = () => {
             <Ionicons name="chevron-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
           </TouchableOpacity>
         </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Licenses</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}>Licenses</Text>
         <View style={styles.headerRight} />
       </View>
 
@@ -236,14 +235,14 @@ const LicensesScreen = () => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.descriptionContainer}>
-          <View style={[styles.descriptionCard, { borderColor: theme.colors.border }]}>
+          <View style={[styles.descriptionCard, { borderColor: t.colors.border }]}>
             <BlurView
               intensity={Platform.OS === 'ios' ? 20 : 15}
               tint={isDarkMode ? 'dark' : 'light'}
               style={styles.descriptionBlur}
             >
               <View style={[styles.descriptionContent, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
-                <Text style={[styles.description, { color: theme.colors.textMuted }]}>
+                <Text style={[styles.description, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(14) }]}>
                   DOrSU Connect is built using open-source software. This page lists the licenses for the third-party libraries used in this application.
                 </Text>
               </View>
@@ -255,7 +254,7 @@ const LicensesScreen = () => {
           {licenses.map((license, index) => (
             <View 
               key={index} 
-              style={[styles.licenseCardWrapper, { borderColor: theme.colors.border }]}
+              style={[styles.licenseCardWrapper, { borderColor: t.colors.border }]}
             >
               <BlurView
                 intensity={Platform.OS === 'ios' ? 20 : 15}
@@ -264,26 +263,26 @@ const LicensesScreen = () => {
               >
                 <View style={[styles.licenseCard, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
                   <View style={styles.licenseHeader}>
-                    <Ionicons name="code-outline" size={20} color={theme.colors.accent} />
+                    <Ionicons name="code-outline" size={20} color={t.colors.accent} />
                     <View style={styles.licenseTitleContainer}>
-                      <Text style={[styles.licenseName, { color: theme.colors.text }]}>
+                      <Text style={[styles.licenseName, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>
                         {license.name}
                       </Text>
-                      <Text style={[styles.licenseVersion, { color: theme.colors.textMuted }]}>
+                      <Text style={[styles.licenseVersion, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }]}>
                         v{license.version}
                       </Text>
                     </View>
                   </View>
-                  <Text style={[styles.licenseDescription, { color: theme.colors.textMuted }]}>
+                  <Text style={[styles.licenseDescription, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(13) }]}>
                     {license.description}
                   </Text>
                   <View style={styles.licenseFooter}>
                     <View style={[styles.licenseBadge, { backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.15)' : 'rgba(255, 149, 0, 0.1)' }]}>
-                      <Text style={[styles.licenseType, { color: theme.colors.accent }]}>
+                      <Text style={[styles.licenseType, { color: t.colors.accent, fontSize: t.fontSize.scaleSize(11) }]}>
                         {license.license}
                       </Text>
                     </View>
-                    <Text style={[styles.licenseCopyright, { color: theme.colors.textMuted }]}>
+                    <Text style={[styles.licenseCopyright, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(11) }]}>
                       {license.copyright}
                     </Text>
                   </View>
@@ -294,7 +293,7 @@ const LicensesScreen = () => {
         </View>
 
         {/* Additional Info */}
-        <View style={[styles.infoBoxWrapper, { borderColor: theme.colors.border }]}>
+        <View style={[styles.infoBoxWrapper, { borderColor: t.colors.border }]}>
           <BlurView
             intensity={Platform.OS === 'ios' ? 20 : 15}
             tint={isDarkMode ? 'dark' : 'light'}
@@ -302,10 +301,10 @@ const LicensesScreen = () => {
           >
             <View style={[styles.infoBox, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
               <View style={styles.infoHeader}>
-                <Ionicons name="information-circle-outline" size={20} color={theme.colors.accent} />
-                <Text style={[styles.infoTitle, { color: theme.colors.text }]}>Open Source</Text>
+                <Ionicons name="information-circle-outline" size={20} color={t.colors.accent} />
+                <Text style={[styles.infoTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(15) }]}>Open Source</Text>
               </View>
-              <Text style={[styles.infoText, { color: theme.colors.textMuted }]}>
+              <Text style={[styles.infoText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(13) }]}>
                 DOrSU Connect is built with open-source technologies. We are grateful to the open-source community for their contributions. Full license texts are available in the source code repository.
               </Text>
             </View>

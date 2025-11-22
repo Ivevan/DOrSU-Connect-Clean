@@ -285,7 +285,7 @@ const AccountSettings = () => {
         >
           <Ionicons name="chevron-back" size={28} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Account</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}>Account</Text>
       </View>
 
       <ScrollView
@@ -298,7 +298,7 @@ const AccountSettings = () => {
           tint={isDarkMode ? 'dark' : 'light'}
           style={styles.sectionCard}
         >
-          <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Account Information</Text>
+          <Text style={[styles.sectionTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(15) }]}>Account Information</Text>
 
           <TouchableOpacity 
             style={[styles.settingItem, { borderBottomColor: t.colors.border }]}
@@ -310,11 +310,11 @@ const AccountSettings = () => {
                 <Ionicons name="person-outline" size={20} color="#FF9500" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Name</Text>
+                <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Name</Text>
                 {isEditingName ? (
                   <View style={styles.editNameContainer}>
                     <TextInput
-                      style={[styles.nameInput, { color: t.colors.text, borderColor: t.colors.border }]}
+                      style={[styles.nameInput, { color: t.colors.text, borderColor: t.colors.border, fontSize: t.fontSize.scaleSize(14) }]}
                       value={editedName}
                       onChangeText={setEditedName}
                       placeholder="Enter your name"
@@ -326,18 +326,18 @@ const AccountSettings = () => {
                         style={[styles.actionButton, styles.cancelButton]}
                         onPress={handleCancelEdit}
                       >
-                        <Text style={styles.cancelText}>Cancel</Text>
+                        <Text style={[styles.cancelText, { fontSize: t.fontSize.scaleSize(13) }]}>Cancel</Text>
                       </TouchableOpacity>
                       <TouchableOpacity 
                         style={[styles.actionButton, styles.saveButton]}
                         onPress={handleSaveName}
                       >
-                        <Text style={styles.saveText}>Save</Text>
+                        <Text style={[styles.saveText, { fontSize: t.fontSize.scaleSize(13) }]}>Save</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
                 ) : (
-                  <Text style={[styles.settingValue, { color: t.colors.textMuted, marginTop: 4 }]}>{userName}</Text>
+                  <Text style={[styles.settingValue, { color: t.colors.textMuted, marginTop: 4, fontSize: t.fontSize.scaleSize(13) }]}>{userName}</Text>
                 )}
               </View>
             </View>
@@ -354,7 +354,7 @@ const AccountSettings = () => {
           onPress={() => setIsDeleteModalVisible(true)}
         >
           <Ionicons name="trash-outline" size={18} color="#EF4444" />
-          <Text style={styles.deleteAccountText}>Delete Account</Text>
+          <Text style={[styles.deleteAccountText, { fontSize: t.fontSize.scaleSize(14) }]}>Delete Account</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -369,15 +369,15 @@ const AccountSettings = () => {
                   <Ionicons name="checkmark-circle" size={64} color="#10B981" />
                 </View>
               </View>
-              <Text style={[styles.successTitle, { color: '#10B981' }]}>Account Deleted</Text>
-              <Text style={[styles.successMessage, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>
+              <Text style={[styles.successTitle, { color: '#10B981', fontSize: t.fontSize.scaleSize(20) }]}>Account Deleted</Text>
+              <Text style={[styles.successMessage, { color: isDarkMode ? '#D1D5DB' : '#4B5563', fontSize: t.fontSize.scaleSize(14) }]}>
                 Your account has been successfully deleted. You will be redirected to the sign in screen.
               </Text>
               <TouchableOpacity
                 style={styles.successButton}
                 onPress={handleSuccessClose}
               >
-                <Text style={styles.successButtonText}>Return to Sign In</Text>
+                <Text style={[styles.successButtonText, { fontSize: t.fontSize.scaleSize(14) }]}>Return to Sign In</Text>
               </TouchableOpacity>
             </View>
           ) : deleteStatus === 'error' ? (
@@ -388,15 +388,15 @@ const AccountSettings = () => {
                   <Ionicons name="alert-circle" size={64} color="#EF4444" />
                 </View>
               </View>
-              <Text style={[styles.errorTitle, { color: '#EF4444' }]}>Deletion Failed</Text>
-              <Text style={[styles.errorMessage, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>
+              <Text style={[styles.errorTitle, { color: '#EF4444', fontSize: t.fontSize.scaleSize(20) }]}>Deletion Failed</Text>
+              <Text style={[styles.errorMessage, { color: isDarkMode ? '#D1D5DB' : '#4B5563', fontSize: t.fontSize.scaleSize(14) }]}>
                 {deleteErrorMessage}
               </Text>
               <TouchableOpacity
                 style={styles.errorButton}
                 onPress={handleCancelDeleteModal}
               >
-                <Text style={styles.errorButtonText}>Try Again</Text>
+                <Text style={[styles.errorButtonText, { fontSize: t.fontSize.scaleSize(14) }]}>Try Again</Text>
               </TouchableOpacity>
             </View>
           ) : deleteStatus === 'wrong' ? (
@@ -407,32 +407,33 @@ const AccountSettings = () => {
                   <Ionicons name="warning" size={64} color="#F59E0B" />
                 </View>
               </View>
-              <Text style={[styles.warningTitle, { color: '#F59E0B' }]}>Incorrect Confirmation</Text>
-              <Text style={[styles.warningMessage, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>
+              <Text style={[styles.warningTitle, { color: '#F59E0B', fontSize: t.fontSize.scaleSize(20) }]}>Incorrect Confirmation</Text>
+              <Text style={[styles.warningMessage, { color: isDarkMode ? '#D1D5DB' : '#4B5563', fontSize: t.fontSize.scaleSize(14) }]}>
                 Please type "Delete" exactly to confirm the account deletion.
               </Text>
               <TouchableOpacity
                 style={styles.warningButton}
                 onPress={() => setDeleteStatus('idle')}
               >
-                <Text style={styles.warningButtonText}>Back</Text>
+                <Text style={[styles.warningButtonText, { fontSize: t.fontSize.scaleSize(14) }]}>Back</Text>
               </TouchableOpacity>
             </View>
           ) : (
             // Default Confirmation Modal
             <View style={[styles.modalContent, { backgroundColor: isDarkMode ? '#1F2937' : '#FFFFFF' }]}>
-              <Text style={[styles.modalTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Delete Account</Text>
-              <Text style={[styles.modalMessage, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>
+              <Text style={[styles.modalTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(18) }]}>Delete Account</Text>
+              <Text style={[styles.modalMessage, { color: isDarkMode ? '#D1D5DB' : '#4B5563', fontSize: t.fontSize.scaleSize(14) }]}>
                 This action cannot be undone. All your data will be permanently deleted.
               </Text>
-              <Text style={[styles.confirmLabel, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>
+              <Text style={[styles.confirmLabel, { color: isDarkMode ? '#D1D5DB' : '#4B5563', fontSize: t.fontSize.scaleSize(13) }]}>
                 Type "Delete" to confirm:
               </Text>
               <TextInput
                 style={[styles.confirmInput, { 
                   color: isDarkMode ? '#F9FAFB' : '#1F2937',
                   borderColor: '#EF4444',
-                  backgroundColor: isDarkMode ? 'rgba(0, 0, 0, 0.3)' : 'rgba(239, 68, 68, 0.1)'
+                  backgroundColor: isDarkMode ? 'rgba(0, 0, 0, 0.3)' : 'rgba(239, 68, 68, 0.1)',
+                  fontSize: t.fontSize.scaleSize(14)
                 }]}
                 placeholder="Delete"
                 placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
@@ -449,13 +450,13 @@ const AccountSettings = () => {
                   style={[styles.modalButton, styles.cancelModalButton]}
                   onPress={handleCancelDeleteModal}
                 >
-                  <Text style={[styles.modalButtonText, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Cancel</Text>
+                  <Text style={[styles.modalButtonText, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(14) }]}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.modalButton, styles.deleteModalButton]}
                   onPress={handleDeleteAccount}
                 >
-                  <Text style={styles.deleteModalButtonText}>Delete</Text>
+                  <Text style={[styles.deleteModalButtonText, { fontSize: t.fontSize.scaleSize(14) }]}>Delete</Text>
                 </TouchableOpacity>
               </View>
             </View>

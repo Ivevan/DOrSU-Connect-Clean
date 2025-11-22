@@ -786,11 +786,11 @@ const AIChat = () => {
           </TouchableOpacity>
         </View>
         <View style={styles.headerTitleContainer}>
-          <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>
+          <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}>
             {messages.length > 0 ? 'Conversation' : 'New Conversation'}
           </Text>
           <View style={[styles.userTypeLabel, { backgroundColor: selectedUserType === 'student' ? '#10B981' : '#2563EB' }]}>
-            <Text style={styles.userTypeLabelText}>
+            <Text style={[styles.userTypeLabelText, { fontSize: t.fontSize.scaleSize(9) }]}>
               {selectedUserType === 'faculty' ? 'Faculty' : 'Student'}
             </Text>
           </View>
@@ -808,7 +808,7 @@ const AIChat = () => {
               />
             ) : (
               <View style={[styles.profileIconCircle, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
-                <Text style={styles.profileInitials}>{getUserInitials()}</Text>
+                <Text style={[styles.profileInitials, { fontSize: t.fontSize.scaleSize(13) }]}>{getUserInitials()}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -866,35 +866,35 @@ const AIChat = () => {
         <View style={styles.infoModalOverlay}>
           <View style={[styles.infoCard, { backgroundColor: t.colors.card, borderColor: t.colors.border }]}>
             <View style={styles.infoHeader}>
-              <Text style={[styles.infoTitle, { color: t.colors.text }]}>About DOrSU AI</Text>
+              <Text style={[styles.infoTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>About DOrSU AI</Text>
               <Pressable onPress={() => setIsInfoOpen(false)} style={styles.infoCloseBtn} accessibilityLabel="Close info">
                 <Ionicons name="close" size={20} color={t.colors.textMuted} />
               </Pressable>
             </View>
-            <Text style={[styles.infoBodyText, { color: t.colors.textMuted }]}>DOrSU AI can help you:</Text>
+            <Text style={[styles.infoBodyText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(14) }]}>DOrSU AI can help you:</Text>
             <View style={styles.infoCards}>
               <View style={[styles.infoCardBox, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
                 <View style={[styles.infoCardIconWrap, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
                   <Ionicons name="help-circle" size={18} color={t.colors.primary} />
                 </View>
-                <Text style={[styles.infoCardText, { color: t.colors.text }]}>Answer questions about enrollment and policies</Text>
+                <Text style={[styles.infoCardText, { color: t.colors.text, fontSize: t.fontSize.scaleSize(13) }]}>Answer questions about enrollment and policies</Text>
               </View>
               <View style={[styles.infoCardBox, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
                 <View style={[styles.infoCardIconWrap, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
                   <Ionicons name="location" size={18} color={t.colors.primary} />
                 </View>
-                <Text style={[styles.infoCardText, { color: t.colors.text }]}>Find campus locations and facilities</Text>
+                <Text style={[styles.infoCardText, { color: t.colors.text, fontSize: t.fontSize.scaleSize(13) }]}>Find campus locations and facilities</Text>
               </View>
               <View style={[styles.infoCardBox, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
                 <View style={[styles.infoCardIconWrap, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
                   <Ionicons name="school" size={18} color={t.colors.primary} />
                 </View>
-                <Text style={[styles.infoCardText, { color: t.colors.text }]}>Get information about academic programs</Text>
+                <Text style={[styles.infoCardText, { color: t.colors.text, fontSize: t.fontSize.scaleSize(13) }]}>Get information about academic programs</Text>
               </View>
             </View>
             <View style={[styles.infoNote, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
               <Ionicons name="shield-checkmark-outline" size={16} color={t.colors.textMuted} />
-              <Text style={[styles.infoNoteText, { color: t.colors.textMuted }]}>Avoid sharing sensitive or personal data.</Text>
+              <Text style={[styles.infoNoteText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }]}>Avoid sharing sensitive or personal data.</Text>
             </View>
           </View>
         </View>
@@ -919,8 +919,8 @@ const AIChat = () => {
             <View style={styles.centerIconContainer}>
               <MaterialIcons name="support-agent" size={80} color={t.colors.textMuted} style={styles.centerIcon} />
             </View>
-            <Text style={[styles.askTitle, { color: t.colors.text }]}>Ask DOrSU AI anything</Text>
-            <Text style={[styles.disclaimer, { color: t.colors.textMuted }]}>Responses are generated by AI and may be inaccurate.</Text>
+            <Text style={[styles.askTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(18) }]}>Ask DOrSU AI anything</Text>
+            <Text style={[styles.disclaimer, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }]}>Responses are generated by AI and may be inaccurate.</Text>
           </>
         ) : (
           // Chat messages
@@ -946,7 +946,7 @@ const AIChat = () => {
                       { backgroundColor: isDarkMode ? '#2563EB' : '#2563EB' }
                     ]}
                   >
-                    <Text style={[styles.messageText, { color: '#FFFFFF' }]}>
+                    <Text style={[styles.messageText, { color: '#FFFFFF', fontSize: t.fontSize.scaleSize(15) }]}>
                       {message.content}
                     </Text>
                   </Pressable>
@@ -1063,7 +1063,7 @@ const AIChat = () => {
               activeOpacity={0.7}
             >
               <View style={styles.faqsHeader}>
-                <Text style={[styles.faqsLabel, { color: t.colors.text }]}>Top 5 FAQs</Text>
+                <Text style={[styles.faqsLabel, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>Top 5 FAQs</Text>
                 <Ionicons 
                   name={isFaqsExpanded ? "chevron-up" : "chevron-down"} 
                   size={20} 
@@ -1101,7 +1101,7 @@ const AIChat = () => {
                             <View style={[styles.promptIconWrap, { backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.15)' : 'rgba(255, 149, 0, 0.1)' }]}>
                               <Ionicons name="reorder-three" size={16} color="#FF9500" />
                             </View>
-                            <Text style={[styles.promptCardText, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>{txt}</Text>
+                            <Text style={[styles.promptCardText, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(14) }]}>{txt}</Text>
                           </View>
                         </BlurView>
                       </TouchableOpacity>
@@ -1155,7 +1155,7 @@ const AIChat = () => {
               >
                 <Text style={[
                   styles.userTypeToggleText,
-                  { color: selectedUserType === 'student' ? '#10B981' : '#FFFFFF' }
+                  { color: selectedUserType === 'student' ? '#10B981' : '#FFFFFF', fontSize: t.fontSize.scaleSize(12) }
                 ]}>
                   Student
                 </Text>
@@ -1170,7 +1170,7 @@ const AIChat = () => {
               >
                 <Text style={[
                   styles.userTypeToggleText,
-                  { color: selectedUserType === 'faculty' ? '#2563EB' : '#FFFFFF' }
+                  { color: selectedUserType === 'faculty' ? '#2563EB' : '#FFFFFF', fontSize: t.fontSize.scaleSize(12) }
                 ]}>
                   Faculty
                 </Text>
@@ -1188,7 +1188,7 @@ const AIChat = () => {
             shadowColor: '#000',
           }]}>
             <TextInput
-              style={[styles.input, { color: isDarkMode ? '#F9FAFB' : '#111827' }]}
+              style={[styles.input, { color: isDarkMode ? '#F9FAFB' : '#111827', fontSize: t.fontSize.scaleSize(15) }]}
               placeholder="Message DOrSU AI"
               placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
               value={inputText}
@@ -1245,7 +1245,7 @@ const AIChat = () => {
             <View style={styles.actionMenuHeader}>
               <Text style={[
                 styles.actionMenuTitle,
-                { color: isDarkMode ? '#F9FAFB' : '#1F2937' }
+                { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(18) }
               ]}>
                 {selectedMessage?.role === 'user' ? 'Message Options' : 'AI Response Options'}
               </Text>
@@ -1263,7 +1263,7 @@ const AIChat = () => {
                 <Ionicons name="copy-outline" size={20} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
                 <Text style={[
                   styles.actionMenuButtonText,
-                  { color: isDarkMode ? '#F9FAFB' : '#1F2937' }
+                  { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(16) }
                 ]}>
                   Copy
                 </Text>
@@ -1281,7 +1281,7 @@ const AIChat = () => {
                   <Ionicons name="create-outline" size={20} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
                   <Text style={[
                     styles.actionMenuButtonText,
-                    { color: isDarkMode ? '#F9FAFB' : '#1F2937' }
+                    { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(16) }
                   ]}>
                     Edit
                   </Text>
@@ -1299,7 +1299,7 @@ const AIChat = () => {
             >
               <Text style={[
                 styles.actionMenuCancelText,
-                { color: isDarkMode ? '#F9FAFB' : '#1F2937' }
+                { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(16) }
               ]}>
                 Cancel
               </Text>

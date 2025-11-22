@@ -137,7 +137,7 @@ const About = () => {
         >
           <Ionicons name="chevron-back" size={28} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>About</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}>About</Text>
       </View>
 
       <ScrollView
@@ -164,7 +164,7 @@ const About = () => {
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                   <Ionicons name="help-circle-outline" size={20} color="#FF9500" />
                 </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Help Center</Text>
+                <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Help Center</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
@@ -177,7 +177,7 @@ const About = () => {
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                   <Ionicons name="document-text-outline" size={20} color="#FF9500" />
                 </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Terms of Use</Text>
+                <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Terms of Use</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
@@ -190,7 +190,7 @@ const About = () => {
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                   <Ionicons name="shield-checkmark-outline" size={20} color="#FF9500" />
                 </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Privacy Policy</Text>
+                <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Privacy Policy</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
@@ -203,7 +203,7 @@ const About = () => {
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                   <Ionicons name="document-outline" size={20} color="#FF9500" />
                 </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Licenses</Text>
+                <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Licenses</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
@@ -213,9 +213,9 @@ const About = () => {
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                   <Ionicons name="information-circle-outline" size={20} color="#FF9500" />
                 </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>DOrSU Connect</Text>
+                <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>DOrSU Connect</Text>
               </View>
-              <Text style={[styles.settingValue, { color: t.colors.textMuted }]}>v1.0.0</Text>
+              <Text style={[styles.settingValue, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(14) }]}>v1.0.0</Text>
             </View>
           </BlurView>
         </View>

@@ -287,7 +287,7 @@ const AdminSettings = () => {
             <Ionicons name="chevron-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
           </TouchableOpacity>
         </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]} pointerEvents="none">Settings</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]} pointerEvents="none">Settings</Text>
         <View style={styles.headerRight} />
       </View>
 
@@ -328,7 +328,7 @@ const AdminSettings = () => {
           </View>
           <View style={styles.profileInfo}>
             <Text
-              style={[styles.profileName, { color: theme.colors.text }]}
+              style={[styles.profileName, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(18) }]}
               numberOfLines={1}
               ellipsizeMode="tail"
             >
@@ -337,7 +337,7 @@ const AdminSettings = () => {
             <View style={styles.profileEmailContainer}>
               <Ionicons name="mail-outline" size={14} color={theme.colors.textMuted} />
               <Text
-                style={[styles.profileEmail, { color: theme.colors.textMuted }]}
+                style={[styles.profileEmail, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(14) }]}
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
@@ -365,7 +365,7 @@ const AdminSettings = () => {
                 navigation.navigate('AdminGeneralSettings');
               }}
             >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>General</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>General</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 
@@ -375,7 +375,7 @@ const AdminSettings = () => {
                 navigation.navigate('AdminAccountSettings');
               }}
             >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Account</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Account</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 
@@ -385,7 +385,7 @@ const AdminSettings = () => {
                 navigation.navigate('AdminEmailSettings');
               }}
             >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Email</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Email</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 
@@ -395,7 +395,7 @@ const AdminSettings = () => {
                 navigation.navigate('AdminAbout');
               }}
             >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>About</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>About</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 
@@ -403,7 +403,7 @@ const AdminSettings = () => {
               style={[styles.sectionTitleButton, styles.sectionTitleButtonLast]}
               onPress={openKnowledgeBaseModal}
             >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Update</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Update</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
           </BlurView>
@@ -422,7 +422,7 @@ const AdminSettings = () => {
             activeOpacity={0.7}
           >
             <Ionicons name="log-out-outline" size={18} color="#EF4444" />
-            <Text style={[styles.signOutText, { color: '#EF4444' }]}>Sign out</Text>
+            <Text style={[styles.signOutText, { color: '#EF4444', fontSize: theme.fontSize.scaleSize(14) }]}>Sign out</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -444,7 +444,7 @@ const AdminSettings = () => {
         <View style={styles.modalHeader}>
           <View style={styles.uploadSectionHeader}>
             <Ionicons name="document-text-outline" size={20} color={theme.colors.primary} />
-            <Text style={[styles.uploadSectionTitle, { color: theme.colors.text }]}>Knowledge Base</Text>
+            <Text style={[styles.uploadSectionTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Knowledge Base</Text>
           </View>
           <TouchableOpacity
             onPress={closeKnowledgeBaseModal}
@@ -454,7 +454,7 @@ const AdminSettings = () => {
             <Ionicons name="close" size={24} color={theme.colors.text} />
           </TouchableOpacity>
         </View>
-        <Text style={[styles.uploadSectionDescription, { color: theme.colors.textMuted }]}>
+        <Text style={[styles.uploadSectionDescription, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(13) }]}>
           Upload .txt, .csv, or .json files to update the knowledge base
         </Text>
         <TouchableOpacity 
@@ -472,12 +472,12 @@ const AdminSettings = () => {
           {isUploadingFile ? (
             <>
               <Ionicons name="hourglass-outline" size={18} color="#FFFFFF" />
-              <Text style={styles.uploadButtonText}>Uploading...</Text>
+              <Text style={[styles.uploadButtonText, { fontSize: theme.fontSize.scaleSize(14) }]}>Uploading...</Text>
             </>
           ) : (
             <>
               <Ionicons name="cloud-upload-outline" size={18} color="#FFFFFF" />
-              <Text style={styles.uploadButtonText}>Upload File</Text>
+              <Text style={[styles.uploadButtonText, { fontSize: theme.fontSize.scaleSize(14) }]}>Upload File</Text>
             </>
           )}
         </TouchableOpacity>

@@ -12,6 +12,7 @@ import { theme } from '../../config/theme';
 import { useThemeValues, useThemeActions } from '../../contexts/ThemeContext';
 import NotificationService from '../../services/NotificationService';
 import ThemeColorModal from '../../modals/ThemeColorModal';
+import FontSizeModal from '../../modals/FontSizeModal';
 
 type RootStackParamList = {
   AdminSettings: undefined;
@@ -20,9 +21,20 @@ type RootStackParamList = {
 
 const AdminGeneralSettings = () => {
   const insets = useSafeAreaInsets();
-  const { isDarkMode, theme: t } = useThemeValues();
+  const { isDarkMode, theme: t, fontSizeScale } = useThemeValues();
   const { toggleTheme } = useThemeActions();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [isFontSizeModalVisible, setIsFontSizeModalVisible] = useState(false);
+  
+  const getFontSizeLabel = () => {
+    switch (fontSizeScale) {
+      case 'small': return 'Small';
+      case 'medium': return 'Medium';
+      case 'large': return 'Large';
+      case 'extraLarge': return 'Extra Large';
+      default: return 'Medium';
+    }
+  };
 
   // State for settings
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -182,19 +194,19 @@ const AdminGeneralSettings = () => {
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                   <Ionicons name="color-palette-outline" size={20} color="#FF9500" />
                 </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Theme Color</Text>
+                <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Theme Color</Text>
               </View>
               <View style={styles.settingRight}>
                 <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
               </View>
             </TouchableOpacity>
 
-            <View style={styles.settingItemLast}>
+            <View style={[styles.settingItem, { borderBottomColor: 'rgba(255, 255, 255, 0.1)' }]}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                   <Ionicons name="moon-outline" size={20} color="#FF9500" />
                 </View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Dark Mode</Text>
+                <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Dark Mode</Text>
               </View>
               <Switch
                 value={isDarkMode}
@@ -207,6 +219,27 @@ const AdminGeneralSettings = () => {
                 ios_backgroundColor={t.colors.border}
               />
             </View>
+
+            <TouchableOpacity 
+              style={styles.settingItemLast}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setIsFontSizeModalVisible(true);
+              }}
+            >
+              <View style={styles.settingLeft}>
+                <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
+                  <Ionicons name="text-outline" size={20} color="#FF9500" />
+                </View>
+                <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Font Size</Text>
+              </View>
+              <View style={styles.settingRight}>
+                <Text style={[styles.settingValue, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(14) }]}>
+                  {getFontSizeLabel()}
+                </Text>
+                <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+              </View>
+            </TouchableOpacity>
           </BlurView>
         </View>
       </ScrollView>
@@ -215,6 +248,12 @@ const AdminGeneralSettings = () => {
       <ThemeColorModal
         visible={isThemeColorModalVisible}
         onClose={() => setIsThemeColorModalVisible(false)}
+      />
+
+      {/* Font Size Modal */}
+      <FontSizeModal
+        visible={isFontSizeModalVisible}
+        onClose={() => setIsFontSizeModalVisible(false)}
       />
     </View>
   );
@@ -335,6 +374,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: theme.colors.text,
+  },
+  settingValue: {
+    fontSize: 14,
+    fontWeight: '400',
   },
 });
 

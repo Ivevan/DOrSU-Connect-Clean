@@ -51,21 +51,8 @@ export type User = FirebaseAuthTypes.User;
  */
 export const signInWithGoogleAndroid = async (): Promise<User> => {
   try {
-    // Check if your device supports Google Play
+    // Check if your device supports Google Play (only once)
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-
-    // Ensure Google Sign-In is properly configured before attempting sign-in
-    // This helps prevent web view fallback
-    try {
-      const isSignedIn = await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-      if (isSignedIn) {
-        // Sign out from Google Sign-In to force account selection
-        await GoogleSignin.signOut();
-      }
-    } catch (signOutError) {
-      // Ignore sign out errors (user might not be signed in)
-      console.log('Sign out before sign in (expected):', signOutError);
-    }
 
     // Get the user's ID token from Google Sign-In
     // This uses native sign-in - should not open web view

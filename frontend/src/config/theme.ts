@@ -1,5 +1,14 @@
 export type ThemeMode = 'light' | 'dark';
 export type ColorTheme = 'facet' | 'fnahs' | 'fals';
+export type FontSizeScale = 'small' | 'medium' | 'large' | 'extraLarge';
+
+// Font size multipliers
+export const fontSizeScales: Record<FontSizeScale, number> = {
+  small: 0.85,
+  medium: 1.0,
+  large: 1.15,
+  extraLarge: 1.3,
+};
 
 // Color Palettes - Each faculty/department can have its own color scheme
 export const colorPalettes = {
@@ -71,8 +80,9 @@ export const colorPalettes = {
 };
 
 // Function to get theme with color palette applied
-const createTheme = (isDark: boolean, colorTheme: ColorTheme = 'facet') => {
+const createTheme = (isDark: boolean, colorTheme: ColorTheme = 'facet', fontSizeScale: FontSizeScale = 'medium') => {
   const palette = colorPalettes[colorTheme];
+  const fontSizeMultiplier = fontSizeScales[fontSizeScale];
   
   return isDark ? {
     colors: {
@@ -102,6 +112,14 @@ const createTheme = (isDark: boolean, colorTheme: ColorTheme = 'facet') => {
       orbColors: palette.orbColors,
     },
     radii: { sm: 8, md: 12, lg: 16, pill: 999 },
+    fontSize: {
+      scale: fontSizeScale,
+      multiplier: fontSizeMultiplier,
+      // Helper function to scale font sizes
+      scaleSize(size: number): number {
+        return size * fontSizeMultiplier;
+      },
+    },
     spacing(n: number) {
       return n * 8;
     },
@@ -154,6 +172,14 @@ const createTheme = (isDark: boolean, colorTheme: ColorTheme = 'facet') => {
       orbColors: palette.orbColors,
     },
     radii: { sm: 8, md: 12, lg: 16, pill: 999 },
+    fontSize: {
+      scale: fontSizeScale,
+      multiplier: fontSizeMultiplier,
+      // Helper function to scale font sizes
+      scaleSize(size: number): number {
+        return size * fontSizeMultiplier;
+      },
+    },
     spacing(n: number) {
       return n * 8;
     },
@@ -181,9 +207,9 @@ const createTheme = (isDark: boolean, colorTheme: ColorTheme = 'facet') => {
   };
 };
 
-// Backward compatibility - default themes with 'facet' palette
-export const lightTheme = createTheme(false, 'facet');
-export const darkTheme = createTheme(true, 'facet');
+// Backward compatibility - default themes with 'facet' palette and 'medium' font size
+export const lightTheme = createTheme(false, 'facet', 'medium');
+export const darkTheme = createTheme(true, 'facet', 'medium');
 
 // Default theme (light)
 export const theme = lightTheme;
@@ -194,11 +220,11 @@ export type Theme = typeof lightTheme;
 const themeCache = new Map<string, Theme>();
 
 // Helper function to get theme based on mode and color theme - returns cached objects
-export const getTheme = (isDark: boolean, colorTheme: ColorTheme = 'facet'): Theme => {
-  const cacheKey = `${isDark ? 'dark' : 'light'}-${colorTheme}`;
+export const getTheme = (isDark: boolean, colorTheme: ColorTheme = 'facet', fontSizeScale: FontSizeScale = 'medium'): Theme => {
+  const cacheKey = `${isDark ? 'dark' : 'light'}-${colorTheme}-${fontSizeScale}`;
   
   if (!themeCache.has(cacheKey)) {
-    themeCache.set(cacheKey, createTheme(isDark, colorTheme));
+    themeCache.set(cacheKey, createTheme(isDark, colorTheme, fontSizeScale));
   }
   
   return themeCache.get(cacheKey)!;

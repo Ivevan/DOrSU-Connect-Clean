@@ -1,19 +1,21 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useRef } from 'react';
 import { useColorScheme, Platform, Animated } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Theme, getTheme, ColorTheme } from '../config/theme';
+import { Theme, getTheme, ColorTheme, FontSizeScale, fontSizeScales } from '../config/theme';
 
 // Split context into values and actions to reduce re-renders
 interface ThemeValuesType {
   isDarkMode: boolean;
   theme: Theme;
   colorTheme: ColorTheme;
+  fontSizeScale: FontSizeScale;
 }
 
 interface ThemeActionsType {
   toggleTheme: () => void;
   setTheme: (isDark: boolean) => void;
   setColorTheme: (colorTheme: ColorTheme) => void;
+  setFontSizeScale: (scale: FontSizeScale) => void;
 }
 
 interface ThemeContextType extends ThemeValuesType, ThemeActionsType {
@@ -60,6 +62,9 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   // Color theme preference - default to 'facet'
   const [selectedColorTheme, setSelectedColorTheme] = useState<ColorTheme>('facet');
   
+  // Font size scale preference - default to 'medium'
+  const [fontSizeScale, setFontSizeScaleState] = useState<FontSizeScale>('medium');
+  
   // Load saved theme preference from AsyncStorage on mount
   useEffect(() => {
     const loadThemePreference = async () => {
@@ -76,6 +81,12 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
         const savedColorTheme = await AsyncStorage.getItem('colorTheme');
         if (savedColorTheme && ['facet', 'fnahs', 'fals'].includes(savedColorTheme)) {
           setSelectedColorTheme(savedColorTheme as ColorTheme);
+        }
+        
+        // Load font size scale preference
+        const savedFontSizeScale = await AsyncStorage.getItem('fontSizeScale');
+        if (savedFontSizeScale && ['small', 'medium', 'large', 'extraLarge'].includes(savedFontSizeScale)) {
+          setFontSizeScaleState(savedFontSizeScale as FontSizeScale);
         }
       } catch (error) {
         console.error('Failed to load theme preference:', error);
@@ -106,6 +117,15 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
       });
     }
   }, [selectedColorTheme, isLoadingTheme]);
+  
+  // Save font size scale preference to AsyncStorage whenever it changes
+  useEffect(() => {
+    if (!isLoadingTheme) {
+      AsyncStorage.setItem('fontSizeScale', fontSizeScale).catch(error => {
+        console.error('Failed to save font size scale preference:', error);
+      });
+    }
+  }, [fontSizeScale, isLoadingTheme]);
 
   // Animation for theme transition - use refs to avoid triggering re-renders
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -145,23 +165,29 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const setColorTheme = React.useCallback((colorTheme: ColorTheme) => {
     setSelectedColorTheme(colorTheme);
   }, []);
+  
+  const setFontSizeScale = React.useCallback((scale: FontSizeScale) => {
+    setFontSizeScaleState(scale);
+  }, []);
 
   // Memoize theme calculation to prevent unnecessary recalculations
-  const theme = useMemo(() => getTheme(isDarkMode, selectedColorTheme), [isDarkMode, selectedColorTheme]);
+  const theme = useMemo(() => getTheme(isDarkMode, selectedColorTheme, fontSizeScale), [isDarkMode, selectedColorTheme, fontSizeScale]);
 
   // Split context values - only changes when theme actually changes
   const values: ThemeValuesType = useMemo(() => ({
     isDarkMode,
     theme,
     colorTheme: selectedColorTheme,
-  }), [isDarkMode, theme, selectedColorTheme]);
+    fontSizeScale,
+  }), [isDarkMode, theme, selectedColorTheme, fontSizeScale]);
 
   // Split context actions - stable, never changes
   const actions: ThemeActionsType = useMemo(() => ({
     toggleTheme,
     setTheme,
     setColorTheme,
-  }), [toggleTheme, setTheme, setColorTheme]);
+    setFontSizeScale,
+  }), [toggleTheme, setTheme, setColorTheme, setFontSizeScale]);
 
   // Full context value for backward compatibility
   const fullValue: ThemeContextType = useMemo(() => ({

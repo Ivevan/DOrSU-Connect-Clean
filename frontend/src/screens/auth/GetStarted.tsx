@@ -77,86 +77,92 @@ const GetStarted = () => {
     try {
       const user = await signInWithGoogle();
       
-      // Save Google user data to AsyncStorage for persistence
+      // Batch AsyncStorage operations for better performance
+      const storageUpdates: Array<[string, string]> = [];
+      
       if (user.email) {
-        await AsyncStorage.setItem('userEmail', user.email);
+        storageUpdates.push(['userEmail', user.email]);
       }
       if (user.displayName) {
-        await AsyncStorage.setItem('userName', user.displayName);
+        storageUpdates.push(['userName', user.displayName]);
       }
       if (user.photoURL) {
-        await AsyncStorage.setItem('userPhoto', user.photoURL);
+        storageUpdates.push(['userPhoto', user.photoURL]);
       }
-      // Mark as Google Sign-In user
-      await AsyncStorage.setItem('authProvider', 'google');
+      storageUpdates.push(['authProvider', 'google']);
 
-      // Exchange Firebase ID token for backend JWT and save user to MongoDB
-      let tokenExchangeSuccess = false;
-      try {
-        const idToken = await user.getIdToken(true);
-        
-        if (!idToken || typeof idToken !== 'string' || idToken.length < 100) {
-          console.error('❌ GetStarted: Invalid token format received from Firebase');
-          throw new Error('Invalid token format');
-        }
-        
-        const tokenParts = idToken.split('.');
-        if (tokenParts.length !== 3) {
-          console.error('❌ GetStarted: Token does not appear to be a valid JWT');
-          throw new Error('Invalid token format - expected JWT');
-        }
-        
-        console.log('🔄 GetStarted: Attempting Firebase token exchange, token length:', idToken.length, 'parts:', tokenParts.length);
-        
-        const resp = await fetch(`${API_BASE_URL}/api/auth/firebase-login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idToken }),
-        });
-        
-        const data = await resp.json();
-        if (resp.ok && data?.token && data?.user?.id) {
-          await AsyncStorage.setItem('userToken', data.token);
-          await AsyncStorage.setItem('userId', String(data.user.id));
-          await AsyncStorage.setItem('userEmail', data.user.email || user.email);
-          if (data?.user?.username) {
-            await AsyncStorage.setItem('userName', data.user.username);
-          }
-          
-          tokenExchangeSuccess = true;
-          console.log('✅ GetStarted: Google user saved to MongoDB and backend JWT stored', {
-            userId: data.user.id,
-            email: data.user.email,
-            username: data.user.username
-          });
-        } else {
-          console.error('❌ GetStarted: Firebase login exchange failed:', {
-            status: resp.status,
-            statusText: resp.statusText,
-            error: data?.error,
-            details: data?.details
-          });
-        }
-      } catch (ex: unknown) {
-        const msg = ex instanceof Error ? ex.message : String(ex);
-        console.error('❌ GetStarted: Failed to exchange Firebase token:', msg);
-      }
+      // Get Firebase ID token (don't force refresh for speed)
+      const idToken = await user.getIdToken(false);
       
-      if (!tokenExchangeSuccess) {
-        console.warn('⚠️ Token exchange failed - chat history may not work until token is exchanged');
-      }
-      
-      // Success
+      // Exchange token for backend JWT in parallel with storage operations
+      // Use Promise.allSettled to ensure we don't block even if exchange fails
+      const [storedIsAdmin, tokenExchangeResult] = await Promise.allSettled([
+        AsyncStorage.getItem('isAdmin'),
+        // Token exchange with timeout (max 3 seconds)
+        Promise.race([
+          (async () => {
+            try {
+              if (!idToken || idToken.length < 100) {
+                throw new Error('Invalid token format');
+              }
+              
+              const resp = await fetch(`${API_BASE_URL}/api/auth/firebase-login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idToken }),
+              });
+              
+              const data = await resp.json();
+              if (resp.ok && data?.token && data?.user?.id) {
+                // Batch save backend token data
+                const backendUpdates: Array<[string, string]> = [
+                  ['userToken', data.token],
+                  ['userId', String(data.user.id)],
+                ];
+                if (data.user.email) {
+                  backendUpdates.push(['userEmail', data.user.email]);
+                }
+                if (data.user.username) {
+                  backendUpdates.push(['userName', data.user.username]);
+                }
+                await Promise.all(
+                  backendUpdates.map(([key, value]) => AsyncStorage.setItem(key, value))
+                );
+                console.log('✅ GetStarted: Token exchange successful');
+                return true;
+              } else {
+                throw new Error(data?.error || 'Token exchange failed');
+              }
+            } catch (error) {
+              console.warn('⚠️ Token exchange failed:', error instanceof Error ? error.message : String(error));
+              return false;
+            }
+          })(),
+          // Timeout after 3 seconds
+          new Promise<boolean>((resolve) => {
+            setTimeout(() => {
+              console.warn('⚠️ Token exchange timed out, continuing without backend token');
+              resolve(false);
+            }, 3000);
+          }),
+        ]),
+      ]);
+
+      // Save user data to AsyncStorage
+      await Promise.all(
+        storageUpdates.map(([key, value]) => AsyncStorage.setItem(key, value))
+      );
+
+      // Success feedback
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       googleLoadingRotation.stopAnimation();
       
       // Navigate based on user role
       const userEmail = user.email?.toLowerCase().trim();
       const isAdminEmail = userEmail === 'admin@dorsu.edu.ph' || userEmail === 'admin';
+      const adminStatus = storedIsAdmin.status === 'fulfilled' ? storedIsAdmin.value : null;
       
-      const storedIsAdmin = await AsyncStorage.getItem('isAdmin');
-      
-      if (isAdminEmail || storedIsAdmin === 'true') {
+      if (isAdminEmail || adminStatus === 'true') {
         navigation.navigate('AdminAIChat');
       } else {
         navigation.navigate('AIChat');

@@ -208,19 +208,19 @@ const CalendarEventCard = memo<CalendarEventCardProps>(({ event, onPress, theme,
             <View style={[styles.calendarEventIconWrapper, { backgroundColor: accentColor + '20' }]}>
               <Ionicons name="calendar" size={18} color={accentColor} />
             </View>
-            <Text style={[styles.calendarEventTag, { color: accentColor }]}>{event.tag}</Text>
+            <Text style={[styles.calendarEventTag, { color: accentColor, fontSize: theme.fontSize.scaleSize(9) }]}>{event.tag}</Text>
           </View>
-          <Text style={[styles.calendarEventTitle, { color: theme.colors.text }]} numberOfLines={2}>
+          <Text style={[styles.calendarEventTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]} numberOfLines={2}>
             {event.title}
           </Text>
           <View style={styles.calendarEventDateRow}>
             <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-            <Text style={[styles.calendarEventDate, { color: theme.colors.textMuted }]}>
+            <Text style={[styles.calendarEventDate, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]}>
               {event.date}
             </Text>
           </View>
           {event.description && (
-            <Text style={[styles.calendarEventDescription, { color: theme.colors.textMuted }]} numberOfLines={2}>
+            <Text style={[styles.calendarEventDescription, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]} numberOfLines={2}>
               {event.description}
             </Text>
           )}
@@ -318,17 +318,17 @@ const EventCard = memo(({ update, onPress, theme }: { update: any; onPress: () =
       >
         <View style={styles.eventOverlayContent}>
           <View style={[styles.eventTagOverlay, { backgroundColor: getTagColor(update.tag) }]}>
-            <Text style={[styles.eventTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
+            <Text style={[styles.eventTagText, { color: getTagTextColor(update.tag), fontSize: theme.fontSize.scaleSize(11) }]}>{update.tag}</Text>
           </View>
-          <Text style={styles.eventTitleOverlay} numberOfLines={2}>{update.title}</Text>
+          <Text style={[styles.eventTitleOverlay, { fontSize: theme.fontSize.scaleSize(20) }]} numberOfLines={2}>{update.title}</Text>
           <View style={styles.eventDateTimeRow}>
             <Ionicons name="calendar-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-            <Text style={styles.eventDateOverlay}>{update.date}</Text>
+            <Text style={[styles.eventDateOverlay, { fontSize: theme.fontSize.scaleSize(14) }]}>{update.date}</Text>
             {update.time && (
               <>
-                <Text style={styles.eventTimeSeparator}>•</Text>
+                <Text style={[styles.eventTimeSeparator, { fontSize: theme.fontSize.scaleSize(14) }]}>•</Text>
                 <Ionicons name="time-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                <Text style={styles.eventDateOverlay}>{update.time}</Text>
+                <Text style={[styles.eventDateOverlay, { fontSize: theme.fontSize.scaleSize(14) }]}>{update.time}</Text>
               </>
             )}
           </View>
@@ -1135,13 +1135,13 @@ const SchoolUpdates = () => {
               />
             ) : (
               <View style={[styles.welcomeProfileIconCircle, { backgroundColor: '#FFF' }]}>
-                <Text style={styles.welcomeProfileInitials}>{getUserInitials()}</Text>
+                <Text style={[styles.welcomeProfileInitials, { fontSize: theme.fontSize.scaleSize(20) }]}>{getUserInitials()}</Text>
               </View>
             )}
             <View style={styles.welcomeText}>
-              <Text style={styles.welcomeGreetingInHeader}>Hello!</Text>
-              <Text style={styles.welcomeTitleInHeader}>{userName}</Text>
-              <Text style={styles.welcomeSubtitleInHeader}>Here are your latest campus updates</Text>
+              <Text style={[styles.welcomeGreetingInHeader, { fontSize: theme.fontSize.scaleSize(14) }]}>Hello!</Text>
+              <Text style={[styles.welcomeTitleInHeader, { fontSize: theme.fontSize.scaleSize(18) }]}>{userName}</Text>
+              <Text style={[styles.welcomeSubtitleInHeader, { fontSize: theme.fontSize.scaleSize(13) }]}>Here are your latest campus updates</Text>
             </View>
           </View>
         </View>
@@ -1220,7 +1220,7 @@ const SchoolUpdates = () => {
         {currentMonthEvents.length > 0 && (
           <View style={styles.sectionContainer}>
             <View style={styles.sectionDivider}>
-              <Text style={styles.sectionDividerLabel}>EVENTS THIS MONTH</Text>
+              <Text style={[styles.sectionDividerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>EVENTS THIS MONTH</Text>
             </View>
             <ScrollView
               horizontal
@@ -1277,19 +1277,19 @@ const SchoolUpdates = () => {
                         <View style={[styles.calendarEventIconWrapper, { backgroundColor: accentColor + '20' }]}>
                           <Ionicons name="calendar" size={16} color={accentColor} />
                         </View>
-                        <Text style={[styles.calendarEventTag, { color: accentColor }]}>{event.tag}</Text>
+                        <Text style={[styles.calendarEventTag, { color: accentColor, fontSize: theme.fontSize.scaleSize(9) }]}>{event.tag}</Text>
                       </View>
-                      <Text style={[styles.calendarEventTitle, { color: theme.colors.text }]} numberOfLines={2}>
+                      <Text style={[styles.calendarEventTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]} numberOfLines={2}>
                         {event.title}
                       </Text>
                       <View style={styles.calendarEventDateRow}>
                         <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-                        <Text style={[styles.calendarEventDate, { color: theme.colors.textMuted }]}>
+                        <Text style={[styles.calendarEventDate, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]}>
                           {event.date}
                         </Text>
                       </View>
                       {event.description && (
-                        <Text style={[styles.calendarEventDescription, { color: theme.colors.textMuted }]} numberOfLines={2}>
+                        <Text style={[styles.calendarEventDescription, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]} numberOfLines={2}>
                           {event.description}
                         </Text>
                       )}
@@ -1304,7 +1304,7 @@ const SchoolUpdates = () => {
         {/* Updates Section */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionDivider}>
-            <Text style={styles.sectionDividerLabel}>UPDATES</Text>
+              <Text style={[styles.sectionDividerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>UPDATES</Text>
           </View>
           
           {/* Time Filter Pills */}
@@ -1313,19 +1313,19 @@ const SchoolUpdates = () => {
               style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'all' && styles.filterPillActive]}
               onPress={() => setTimeFilter('all')}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'all' && styles.filterPillTextActive]}>All</Text>
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'all' && styles.filterPillTextActive]}>All</Text>
             </Pressable>
             <Pressable
               style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'upcoming' && styles.filterPillActive]}
               onPress={() => setTimeFilter('upcoming')}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'upcoming' && styles.filterPillTextActive]}>Upcoming</Text>
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'upcoming' && styles.filterPillTextActive]}>Upcoming</Text>
             </Pressable>
             <Pressable
               style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'recent' && styles.filterPillActive]}
               onPress={() => setTimeFilter('recent')}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'recent' && styles.filterPillTextActive]}>Recent</Text>
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'recent' && styles.filterPillTextActive]}>Recent</Text>
             </Pressable>
           </View>
           
@@ -1334,21 +1334,21 @@ const SchoolUpdates = () => {
             {error && (
               <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                 <Ionicons name="alert-circle-outline" size={40} color="#DC2626" />
-                <Text style={{ marginTop: 6, fontSize: 12, color: '#DC2626', fontWeight: '600' }}>{error}</Text>
+                <Text style={{ marginTop: 6, fontSize: theme.fontSize.scaleSize(12), color: '#DC2626', fontWeight: '600' }}>{error}</Text>
               </View>
             )}
 
             {isLoading && (
               <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                 <Ionicons name="hourglass-outline" size={40} color={theme.colors.textMuted} />
-                <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>Loading updates...</Text>
+                <Text style={{ marginTop: 6, fontSize: theme.fontSize.scaleSize(12), color: theme.colors.textMuted, fontWeight: '600' }}>Loading updates...</Text>
               </View>
             )}
 
             {!isLoading && !error && displayedUpdates.length === 0 && (
               <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                 <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
-                <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>
+                <Text style={{ marginTop: 6, fontSize: theme.fontSize.scaleSize(12), color: theme.colors.textMuted, fontWeight: '600' }}>
                   {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : 'No updates found'}
                 </Text>
               </View>
@@ -1426,20 +1426,20 @@ const SchoolUpdates = () => {
                       />
                     )}
                     <View style={styles.updateTextContent}>
-                      <Text style={[styles.updateTitle, { color: theme.colors.text }]} numberOfLines={2}>{update.title}</Text>
+                      <Text style={[styles.updateTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]} numberOfLines={2}>{update.title}</Text>
                       <View style={styles.updateDateRow}>
                         <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-                        <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
+                        <Text style={[styles.updateDate, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]}>{update.date}</Text>
                       </View>
                       {update.description && (
-                        <Text style={[styles.updateDescription, { color: theme.colors.textMuted }]} numberOfLines={2}>
+                        <Text style={[styles.updateDescription, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]} numberOfLines={2}>
                           {update.description}
                         </Text>
                       )}
                       <View style={styles.updateTagRow}>
                         <View style={styles.statusItem}>
                           <Ionicons name="pricetag-outline" size={12} color={accentColor} />
-                          <Text style={[styles.updateTagText, { color: accentColor }]}>{update.tag}</Text>
+                          <Text style={[styles.updateTagText, { color: accentColor, fontSize: theme.fontSize.scaleSize(11) }]}>{update.tag}</Text>
                         </View>
                       </View>
                     </View>

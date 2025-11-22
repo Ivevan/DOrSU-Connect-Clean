@@ -4,7 +4,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Animated, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import AIService, { ChatHistoryItem } from '../../services/AIService';
 import { getCurrentUser } from '../../services/authService';
 
@@ -49,7 +49,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
 }) => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute();
-  const { isDarkMode } = useTheme();
+  const { isDarkMode, theme: t } = useThemeValues();
   const insets = useSafeAreaInsets();
   const sidebarAnim = useRef(new Animated.Value(-320)).current;
 
@@ -137,7 +137,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             <View style={styles.sidebarLogo}>
               <Ionicons name="shield-checkmark" size={28} color="#FFFFFF" />
             </View>
-            <Text style={[styles.sidebarTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>
+            <Text style={[styles.sidebarTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(20) }]}>
               Admin Panel
             </Text>
           </View>
@@ -197,7 +197,8 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             />
             <Text style={[styles.sidebarMenuText, { 
               color: currentScreen === 'AdminAIChat' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: currentScreen === 'AdminAIChat' ? '600' : '500'
+              fontWeight: currentScreen === 'AdminAIChat' ? '600' : '500',
+              fontSize: t.fontSize.scaleSize(16)
             }]}>
               AI Assistant
             </Text>
@@ -217,7 +218,8 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             />
             <Text style={[styles.sidebarMenuText, { 
               color: currentScreen === 'AdminDashboard' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: currentScreen === 'AdminDashboard' ? '600' : '500'
+              fontWeight: currentScreen === 'AdminDashboard' ? '600' : '500',
+              fontSize: t.fontSize.scaleSize(16)
             }]}>
               Events
             </Text>
@@ -237,7 +239,8 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             />
             <Text style={[styles.sidebarMenuText, { 
               color: currentScreen === 'AdminCalendar' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: currentScreen === 'AdminCalendar' ? '600' : '500'
+              fontWeight: currentScreen === 'AdminCalendar' ? '600' : '500',
+              fontSize: t.fontSize.scaleSize(16)
             }]}>
               Calendar
             </Text>
@@ -257,7 +260,8 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             />
             <Text style={[styles.sidebarMenuText, { 
               color: currentScreen === 'PostUpdate' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: currentScreen === 'PostUpdate' ? '600' : '500'
+              fontWeight: currentScreen === 'PostUpdate' ? '600' : '500',
+              fontSize: t.fontSize.scaleSize(16)
             }]}>
               Post Update
             </Text>
@@ -277,7 +281,8 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             />
             <Text style={[styles.sidebarMenuText, { 
               color: currentScreen === 'ManagePosts' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: currentScreen === 'ManagePosts' ? '600' : '500'
+              fontWeight: currentScreen === 'ManagePosts' ? '600' : '500',
+              fontSize: t.fontSize.scaleSize(16)
             }]}>
               Manage Posts
             </Text>
@@ -287,7 +292,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
         {/* Chat History Section */}
         <View style={styles.sidebarHistorySection}>
           <View style={styles.sidebarSectionHeader}>
-            <Text style={[styles.sidebarSectionTitle, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+            <Text style={[styles.sidebarSectionTitle, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(12) }]}>
               Recent Chats
             </Text>
             {chatHistory.length > 0 && onDeleteAllChats && (
@@ -302,7 +307,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
                 }}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.clearAllText, { color: isDarkMode ? '#EF4444' : '#DC2626' }]}>
+                <Text style={[styles.clearAllText, { color: isDarkMode ? '#EF4444' : '#DC2626', fontSize: t.fontSize.scaleSize(12) }]}>
                   Clear All
                 </Text>
               </TouchableOpacity>
@@ -312,7 +317,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             {chatHistory.length === 0 ? (
               <View style={styles.emptyHistoryContainer}>
                 <Ionicons name="chatbubbles-outline" size={40} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
-                <Text style={[styles.emptyHistoryText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+                <Text style={[styles.emptyHistoryText, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(14) }]}>
                   No chat history yet
                 </Text>
               </View>
@@ -341,10 +346,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
                     )}
                     <View style={styles.historyItemContent}>
                       <View style={styles.historyItemTextContainer}>
-                        <Text style={[styles.historyTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]} numberOfLines={1}>
+                        <Text style={[styles.historyTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(14) }]} numberOfLines={1}>
                           {chat.title}
                         </Text>
-                        <Text style={[styles.historyPreview, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]} numberOfLines={1}>
+                        <Text style={[styles.historyPreview, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(13) }]} numberOfLines={1}>
                           {chat.preview}
                         </Text>
                       </View>

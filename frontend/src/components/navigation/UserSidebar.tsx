@@ -4,7 +4,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Animated, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import AIService, { ChatHistoryItem } from '../../services/AIService';
 import { getCurrentUser } from '../../services/authService';
 
@@ -43,7 +43,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
 }) => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute();
-  const { isDarkMode } = useTheme();
+  const { isDarkMode, theme: t } = useThemeValues();
   const insets = useSafeAreaInsets();
   const sidebarAnim = useRef(new Animated.Value(-320)).current;
 
@@ -131,7 +131,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
             <View style={styles.sidebarLogo}>
               <Ionicons name="school" size={28} color="#FFFFFF" />
             </View>
-            <Text style={[styles.sidebarTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>
+            <Text style={[styles.sidebarTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(20) }]}>
               DOrSU AI
             </Text>
           </View>
@@ -191,7 +191,8 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
             />
             <Text style={[styles.sidebarMenuText, { 
               color: currentScreen === 'AIChat' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: currentScreen === 'AIChat' ? '600' : '500'
+              fontWeight: currentScreen === 'AIChat' ? '600' : '500',
+              fontSize: t.fontSize.scaleSize(16)
             }]}>
               Conversation
             </Text>
@@ -211,7 +212,8 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
             />
             <Text style={[styles.sidebarMenuText, { 
               color: currentScreen === 'SchoolUpdates' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: currentScreen === 'SchoolUpdates' ? '600' : '500'
+              fontWeight: currentScreen === 'SchoolUpdates' ? '600' : '500',
+              fontSize: t.fontSize.scaleSize(16)
             }]}>
               Events
             </Text>
@@ -231,7 +233,8 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
             />
             <Text style={[styles.sidebarMenuText, { 
               color: currentScreen === 'Calendar' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: currentScreen === 'Calendar' ? '600' : '500'
+              fontWeight: currentScreen === 'Calendar' ? '600' : '500',
+              fontSize: t.fontSize.scaleSize(16)
             }]}>
               Calendar
             </Text>
@@ -241,7 +244,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
         {/* Chat History Section */}
         <View style={styles.sidebarHistorySection}>
           <View style={styles.sidebarSectionHeader}>
-            <Text style={[styles.sidebarSectionTitle, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+            <Text style={[styles.sidebarSectionTitle, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(12) }]}>
               Recent Chats
             </Text>
             {chatHistory.length > 0 && onDeleteAllChats && (
@@ -256,7 +259,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
                 }}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.clearAllText, { color: isDarkMode ? '#EF4444' : '#DC2626' }]}>
+                <Text style={[styles.clearAllText, { color: isDarkMode ? '#EF4444' : '#DC2626', fontSize: t.fontSize.scaleSize(11) }]}>
                   Clear All
                 </Text>
               </TouchableOpacity>
@@ -266,7 +269,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
             {chatHistory.length === 0 ? (
               <View style={styles.emptyHistoryContainer}>
                 <Ionicons name="chatbubbles-outline" size={40} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
-                <Text style={[styles.emptyHistoryText, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]}>
+                <Text style={[styles.emptyHistoryText, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(14) }]}>
                   No chat history yet
                 </Text>
               </View>
@@ -295,10 +298,10 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
                     )}
                     <View style={styles.historyItemContent}>
                       <View style={styles.historyItemTextContainer}>
-                        <Text style={[styles.historyTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]} numberOfLines={1}>
+                        <Text style={[styles.historyTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(14) }]} numberOfLines={1}>
                           {chat.title}
                         </Text>
-                        <Text style={[styles.historyPreview, { color: isDarkMode ? '#9CA3AF' : '#6B7280' }]} numberOfLines={1}>
+                        <Text style={[styles.historyPreview, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(13) }]} numberOfLines={1}>
                           {chat.preview}
                         </Text>
                       </View>

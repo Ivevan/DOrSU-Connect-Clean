@@ -1106,6 +1106,7 @@ const AdminCalendar = () => {
               accessibilityHint={hasEvents ? "Tap to view events for this date" : "Selects this date"}
               style={[
                 styles.dayNumber,
+                { fontSize: theme.fontSize.scaleSize(12) },
                 isCurrentDay && { color: '#FFFFFF', fontWeight: '700' }, // White text for current day (orange background)
                 !isCurrentDay && { color: cellColor ? '#FFFFFF' : theme.colors.text }, // White if cell has color, otherwise theme text
                 isCurrentDay && styles.todayText,
@@ -1239,7 +1240,7 @@ const AdminCalendar = () => {
             </View>
           </TouchableOpacity>
         </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>DOrSU Calendar</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}>DOrSU Calendar</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity 
             style={styles.profileButton} 
@@ -1247,7 +1248,7 @@ const AdminCalendar = () => {
             accessibilityLabel="Admin profile - Go to settings"
           >
             <View style={[styles.profileIconCircle, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
-              <Text style={styles.profileInitials}>AD</Text>
+              <Text style={[styles.profileInitials, { fontSize: t.fontSize.scaleSize(13) }]}>AD</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -1289,7 +1290,7 @@ const AdminCalendar = () => {
                 accessibilityLabel="Previous month"
                 accessibilityHint="Navigate to previous month"
               >
-                <Text style={[styles.angleBrackets, { color: t.colors.textMuted }]}>
+                <Text style={[styles.angleBrackets, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(18) }]}>
                   {'<'}
                 </Text>
               </TouchableOpacity>
@@ -1302,7 +1303,7 @@ const AdminCalendar = () => {
                 accessibilityLabel="Next month"
                 accessibilityHint="Navigate to next month"
               >
-                <Text style={[styles.monthHeaderText, { color: t.colors.text }]}>
+                <Text style={[styles.monthHeaderText, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>
                   {getMonthName(currentMonth)} {currentMonth.getFullYear()}
                 </Text>
               </TouchableOpacity>
@@ -1315,7 +1316,7 @@ const AdminCalendar = () => {
                 accessibilityLabel="Next month"
                 accessibilityHint="Navigate to next month"
               >
-                <Text style={[styles.angleBrackets, { color: t.colors.textMuted }]}>
+                <Text style={[styles.angleBrackets, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(18) }]}>
                   {'>'}
                 </Text>
               </TouchableOpacity>
@@ -1327,7 +1328,7 @@ const AdminCalendar = () => {
             {weekDays && Array.isArray(weekDays) && weekDays.map((day, index) => (
               <View key={index} style={[styles.weekDayHeader, { borderRightColor: t.colors.border }]}>
                 <Text
-                  style={[styles.weekDayText, { color: t.colors.textMuted }]}
+                  style={[styles.weekDayText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }]}
                   accessibilityElementsHidden={true}
                 >
                   {day}
@@ -1382,7 +1383,7 @@ const AdminCalendar = () => {
                 <View style={[styles.eventsIconWrap, { borderColor: t.colors.border }]}>
                   <Ionicons name="calendar-outline" size={14} color={t.colors.accent} />
                 </View>
-                <Text style={[styles.eventsTitle, { color: t.colors.text }]}>Events</Text>
+                <Text style={[styles.eventsTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(18) }]}>Events</Text>
                 <TouchableOpacity 
                   style={styles.infoIconButton}
                   onPress={() => {
@@ -1412,7 +1413,7 @@ const AdminCalendar = () => {
                   ) : (
                     <>
                       <Ionicons name="cloud-upload-outline" size={14} color={t.colors.accent} />
-                      <Text style={[styles.csvUploadText, { color: t.colors.accent }]}>Upload CSV</Text>
+                      <Text style={[styles.csvUploadText, { color: t.colors.accent, fontSize: t.fontSize.scaleSize(11) }]}>Upload CSV</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -1431,7 +1432,7 @@ const AdminCalendar = () => {
                   ) : (
                     <>
                       <Ionicons name="trash-outline" size={14} color="#DC2626" />
-                      <Text style={[styles.deleteAllText, { color: '#DC2626' }]}>Delete All</Text>
+                      <Text style={[styles.deleteAllText, { color: '#DC2626', fontSize: t.fontSize.scaleSize(11) }]}>Delete All</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -1457,7 +1458,7 @@ const AdminCalendar = () => {
                   >
                     <Text style={[
                       styles.timeRangeDropdownText,
-                      { color: t.colors.text }
+                      { color: t.colors.text, fontSize: t.fontSize.scaleSize(11) }
                     ]}>
                       {eventTimeRange === 'allYear' ? 'Yearly' : 'Monthly'}
                     </Text>
@@ -1484,7 +1485,7 @@ const AdminCalendar = () => {
                           }}
                           activeOpacity={0.7}
                         >
-                          <Text style={[styles.timeRangeDropdownOptionText, { color: t.colors.text }]}>Yearly</Text>
+                          <Text style={[styles.timeRangeDropdownOptionText, { color: t.colors.text, fontSize: t.fontSize.scaleSize(11) }]}>Yearly</Text>
                           {eventTimeRange === 'allYear' && (
                             <Ionicons name="checkmark" size={16} color="#8B5CF6" />
                           )}
@@ -1501,7 +1502,7 @@ const AdminCalendar = () => {
                           }}
                           activeOpacity={0.7}
                         >
-                          <Text style={[styles.timeRangeDropdownOptionText, { color: t.colors.text }]}>Monthly</Text>
+                          <Text style={[styles.timeRangeDropdownOptionText, { color: t.colors.text, fontSize: t.fontSize.scaleSize(11) }]}>Monthly</Text>
                           {eventTimeRange === 'byMonth' && (
                             <Ionicons name="checkmark" size={16} color="#8B5CF6" />
                           )}
@@ -1527,7 +1528,8 @@ const AdminCalendar = () => {
                     <Text style={[
                       styles.eventTypeToggleText,
                       { 
-                        color: selectedEventType === 'institutional' ? '#FFFFFF' : t.colors.textMuted 
+                        color: selectedEventType === 'institutional' ? '#FFFFFF' : t.colors.textMuted,
+                        fontSize: t.fontSize.scaleSize(11)
                       }
                     ]}>
                       Institutional
@@ -1550,7 +1552,8 @@ const AdminCalendar = () => {
                     <Text style={[
                       styles.eventTypeToggleText,
                       { 
-                        color: selectedEventType === 'academic' ? '#FFFFFF' : t.colors.textMuted 
+                        color: selectedEventType === 'academic' ? '#FFFFFF' : t.colors.textMuted,
+                        fontSize: t.fontSize.scaleSize(11)
                       }
                     ]}>
                       Academic
@@ -1562,7 +1565,7 @@ const AdminCalendar = () => {
           </View>
           
           <View style={styles.eventsSubtitleRowEnhanced}>
-            <Text style={[styles.eventsSubtitle, { color: t.colors.textMuted }]} numberOfLines={1}>
+            <Text style={[styles.eventsSubtitle, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }]} numberOfLines={1}>
               {(() => {
                 const eventCount = groupedEvents.reduce((sum, yearGroup) => 
                   sum + yearGroup.dates.reduce((dateSum, dateGroup) => dateSum + dateGroup.items.length, 0), 0
@@ -1587,8 +1590,8 @@ const AdminCalendar = () => {
               <View style={[styles.emptyStateIconWrap, { backgroundColor: t.colors.surfaceAlt }]}>
                 <Ionicons name="calendar-outline" size={20} color={t.colors.accent} />
               </View>
-              <Text style={[styles.emptyStateTitle, { color: t.colors.text }]}>No events yet</Text>
-              <Text style={[styles.emptyStateSubtitle, { color: t.colors.textMuted }]}>
+              <Text style={[styles.emptyStateTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>No events yet</Text>
+              <Text style={[styles.emptyStateSubtitle, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }]}>
                 {!showInstitutional && !showAcademic
                   ? 'Please enable at least one event type filter.'
                   : 'Upload a CSV file to add calendar events.'}
@@ -1605,7 +1608,7 @@ const AdminCalendar = () => {
                 activeOpacity={0.7}
               >
                 <Ionicons name="add" size={14} color={t.colors.accent} />
-                <Text style={[styles.emptyStateBtnText, { color: t.colors.accent }]}>Add Event</Text>
+                <Text style={[styles.emptyStateBtnText, { color: t.colors.accent, fontSize: t.fontSize.scaleSize(12) }]}>Add Event</Text>
           </TouchableOpacity>
             </View>
           )}
@@ -1613,7 +1616,7 @@ const AdminCalendar = () => {
           {isLoadingEvents ? (
             <View style={[styles.emptyStateCard, { paddingVertical: 16, overflow: 'hidden', backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
               <LinearGradient colors={[t.colors.surfaceAlt, t.colors.surface]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ ...StyleSheet.absoluteFillObject, opacity: 0.6 }} />
-              <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>Loading…</Text>
+              <Text style={{ color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }}>Loading…</Text>
             </View>
           ) : (
             /* All Events List - Flat list with dates inside cards */
@@ -1662,17 +1665,17 @@ const AdminCalendar = () => {
                       <View style={styles.eventContent}>
                         {/* Date inside the card */}
                         <View style={styles.eventDateRow}>
-                          <Text style={[styles.eventDateText, { color: t.colors.textMuted }]}>
+                          <Text style={[styles.eventDateText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(11) }]}>
                             {formatCalendarDate(new Date(dateGroup.key))}
                           </Text>
                         </View>
-                        <Text style={[styles.eventTitle, { color: t.colors.text }]} numberOfLines={2}>
+                        <Text style={[styles.eventTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]} numberOfLines={2}>
                           {event.title}
                         </Text>
                         <View style={styles.eventInnerDivider} />
                         <View style={styles.eventTimeRow}>
                           <Ionicons name="time-outline" size={12} color={t.colors.textMuted} />
-                          <Text style={[styles.eventTimeText, { color: t.colors.textMuted }]}>
+                          <Text style={[styles.eventTimeText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }]}>
                             {event.dateType === 'date_range' && event.startDate && event.endDate
                               ? `${formatDate(new Date(event.startDate))} - ${formatDate(new Date(event.endDate))}`
                               : event.dateType === 'week' && event.weekOfMonth && event.month
@@ -1686,7 +1689,7 @@ const AdminCalendar = () => {
                           {!!event.type && (
                             <View style={styles.statusItem}>
                               <Ionicons name="pricetag-outline" size={12} color={event.color} />
-                              <Text style={[styles.statusText, { color: event.color }]}>
+                              <Text style={[styles.statusText, { color: event.color, fontSize: t.fontSize.scaleSize(11) }]}>
                                 {String(event.type || '').charAt(0).toUpperCase() + String(event.type || '').slice(1)}
                               </Text>
                             </View>

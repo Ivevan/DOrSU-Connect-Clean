@@ -32,67 +32,18 @@ const GetStarted = () => {
   const isOnline = isConnected && isInternetReachable;
 
   // Simplified animation values
-  const logoScale = useRef(new Animated.Value(1)).current;
-  const logoGlow = useRef(new Animated.Value(0)).current;
   const googleButtonScale = useRef(new Animated.Value(1)).current;
   const signUpButtonScale = useRef(new Animated.Value(1)).current;
   const signInButtonScale = useRef(new Animated.Value(1)).current;
   const googleLoadingRotation = useRef(new Animated.Value(0)).current;
-  const floatingAnimation = useRef(new Animated.Value(0)).current;
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Start floating animation on mount
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(floatingAnimation, {
-          toValue: 1,
-          duration: 3000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(floatingAnimation, {
-          toValue: 0,
-          duration: 3000,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-  }, [floatingAnimation]);
-
-  // Animation functions
+  // Handle logo press
   const handleLogoPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    Animated.sequence([
-      Animated.parallel([
-        Animated.timing(logoScale, {
-          toValue: 0.95,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(logoGlow, {
-          toValue: 1,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.parallel([
-        Animated.timing(logoScale, {
-          toValue: 1,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(logoGlow, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]),
-    ]).start(() => {
-      navigation.navigate('AdminAIChat');
-    });
+    navigation.navigate('AdminAIChat');
   };
 
   // Handle Google Sign-In
@@ -261,35 +212,15 @@ const GetStarted = () => {
             activeOpacity={1}
             hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           >
-            <Animated.View style={{
-              transform: [
-                { scale: logoScale },
-                { 
-                  translateY: floatingAnimation.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -8],
-                  })
-                }
-              ],
-            }}>
-              <Animated.View style={[
-                styles.logoGlow,
-                {
-                  opacity: logoGlow,
-                },
-              ]} />
+            <View>
               <Image source={require('../../../../assets/DOrSU.png')} style={styles.logoImage} />
-            </Animated.View>
+            </View>
           </TouchableOpacity>
           <View style={styles.logoTextContainer}>
             <Text style={styles.logoTitle}>DOrSU CONNECT</Text>
-            <Text style={styles.logoSubtitle}>Official University Portal</Text>
+            <Text style={styles.logoSubtitle}>AI-Powered Academic Assistant</Text>
           </View>
         </View>
-
-        {/* Welcome Text */}
-        <Text style={styles.welcomeText}>Your Academic AI Assistant</Text>
-        <Text style={styles.subtitleText}>Get started with DOrSU Connect</Text>
 
         {/* Buttons Section */}
         <View style={styles.buttonsSection}>
@@ -389,7 +320,7 @@ const GetStarted = () => {
             resizeMode="cover"
           />
           <LinearGradient
-            colors={['rgba(101, 67, 33, 0.2)', 'rgba(139, 90, 43, 0.5)', 'rgba(101, 67, 33, 0.7)']}
+            colors={['rgba(59, 130, 246, 0.2)', 'rgba(37, 99, 235, 0.5)', 'rgba(29, 78, 216, 0.7)']}
             style={styles.gradientOverlay}
             start={{ x: 0, y: 0 }}
             end={{ x: 0, y: 1 }}
@@ -423,7 +354,7 @@ const GetStarted = () => {
               resizeMode="cover"
             />
             <LinearGradient
-              colors={['rgba(101, 67, 33, 0.15)', 'rgba(139, 90, 43, 0.4)', 'rgba(101, 67, 33, 0.6)']}
+              colors={['rgba(59, 130, 246, 0.15)', 'rgba(37, 99, 235, 0.4)', 'rgba(29, 78, 216, 0.6)']}
               style={styles.gradientOverlay}
               start={{ x: 0, y: 0 }}
               end={{ x: 0, y: 1 }}
@@ -616,30 +547,18 @@ const styles = StyleSheet.create({
     height: 50,
     marginRight: 10,
   },
-  logoGlow: {
-    position: 'absolute',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#2563EB',
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 15,
-    elevation: 12,
-    top: -5,
-    left: -5,
-  },
   logoTextContainer: {
     flex: 1,
   },
   logoTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#2563EB',
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#1E3A8A',
     marginBottom: 2,
+    textShadowColor: 'rgba(30, 58, 138, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+    letterSpacing: 0.5,
   },
   logoSubtitle: {
     fontSize: 12,
@@ -728,7 +647,7 @@ const styles = StyleSheet.create({
   universityDivider: {
     width: 80,
     height: 2,
-    backgroundColor: '#FF9500',
+    backgroundColor: '#1E3A8A',
     borderRadius: 1,
     marginBottom: 6,
     opacity: 0.8,

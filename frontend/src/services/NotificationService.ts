@@ -27,6 +27,9 @@ const STORAGE_KEYS = {
   LAST_TODAY_EVENT_CHECK: 'notification_last_today_event_check',
   LAST_UPCOMING_EVENT_CHECK: 'notification_last_upcoming_event_check',
   NOTIFICATIONS_ENABLED: 'notifications_enabled',
+  NOTIFIED_POST_IDS: 'notification_notified_post_ids',
+  NOTIFIED_EVENT_IDS: 'notification_notified_event_ids',
+  NOTIFIED_TODAY_EVENTS_DATE: 'notification_notified_today_events_date',
 };
 
 // Helper function to get Philippines timezone date key
@@ -133,6 +136,97 @@ class NotificationService {
   }
 
   /**
+   * Get notified post IDs
+   */
+  private async getNotifiedPostIds(): Promise<Set<string>> {
+    try {
+      const idsJson = await AsyncStorage.getItem(STORAGE_KEYS.NOTIFIED_POST_IDS);
+      if (idsJson) {
+        const ids = JSON.parse(idsJson);
+        return new Set(ids);
+      }
+      return new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  }
+
+  /**
+   * Add post ID to notified list
+   */
+  private async addNotifiedPostId(postId: string): Promise<void> {
+    try {
+      const ids = await this.getNotifiedPostIds();
+      ids.add(postId);
+      // Keep only last 1000 notified posts to avoid storage bloat
+      const idsArray = Array.from(ids);
+      if (idsArray.length > 1000) {
+        idsArray.splice(0, idsArray.length - 1000);
+      }
+      await AsyncStorage.setItem(STORAGE_KEYS.NOTIFIED_POST_IDS, JSON.stringify(idsArray));
+    } catch (error) {
+      console.error('Error adding notified post ID:', error);
+    }
+  }
+
+  /**
+   * Get notified event IDs
+   */
+  private async getNotifiedEventIds(): Promise<Set<string>> {
+    try {
+      const idsJson = await AsyncStorage.getItem(STORAGE_KEYS.NOTIFIED_EVENT_IDS);
+      if (idsJson) {
+        const ids = JSON.parse(idsJson);
+        return new Set(ids);
+      }
+      return new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  }
+
+  /**
+   * Add event ID to notified list
+   */
+  private async addNotifiedEventId(eventId: string): Promise<void> {
+    try {
+      const ids = await this.getNotifiedEventIds();
+      ids.add(eventId);
+      // Keep only last 1000 notified events to avoid storage bloat
+      const idsArray = Array.from(ids);
+      if (idsArray.length > 1000) {
+        idsArray.splice(0, idsArray.length - 1000);
+      }
+      await AsyncStorage.setItem(STORAGE_KEYS.NOTIFIED_EVENT_IDS, JSON.stringify(idsArray));
+    } catch (error) {
+      console.error('Error adding notified event ID:', error);
+    }
+  }
+
+  /**
+   * Get last notified today events date
+   */
+  private async getNotifiedTodayEventsDate(): Promise<number | null> {
+    try {
+      const dateStr = await AsyncStorage.getItem(STORAGE_KEYS.NOTIFIED_TODAY_EVENTS_DATE);
+      return dateStr ? parseInt(dateStr, 10) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Set last notified today events date
+   */
+  private async setNotifiedTodayEventsDate(dateKey: number): Promise<void> {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.NOTIFIED_TODAY_EVENTS_DATE, String(dateKey));
+    } catch (error) {
+      console.error('Error setting notified today events date:', error);
+    }
+  }
+
+  /**
    * Schedule a notification
    */
   private async scheduleNotification(
@@ -176,19 +270,25 @@ class NotificationService {
 
       const lastCheck = await this.getLastCheck(STORAGE_KEYS.LAST_POST_CHECK);
       const now = Date.now();
+      const notifiedPostIds = await this.getNotifiedPostIds();
 
       // Fetch posts
       const posts = await AdminDataService.getPosts();
       
-      // Filter for new posts (created after last check)
+      // Filter for new posts that haven't been notified yet
       const newPosts = posts.filter((post: Post) => {
-        if (!post.date) return false;
+        if (!post.date || !post.id) return false;
         const postDate = new Date(post.date).getTime();
-        return postDate > lastCheck;
+        // Only notify if:
+        // 1. Post is created after last check AND
+        // 2. Post ID hasn't been notified before
+        return postDate > lastCheck && !notifiedPostIds.has(post.id);
       });
 
       // Send notifications for new posts
       for (const post of newPosts) {
+        if (!post.id) continue;
+        
         await this.scheduleNotification(
           '📢 New Post Added',
           post.title || 'A new post has been added',
@@ -198,6 +298,9 @@ class NotificationService {
             category: post.category,
           }
         );
+        
+        // Mark this post as notified
+        await this.addNotifiedPostId(post.id);
       }
 
       // Update last check time
@@ -219,19 +322,13 @@ class NotificationService {
         return;
       }
 
-      const lastCheck = await this.getLastCheck(STORAGE_KEYS.LAST_TODAY_EVENT_CHECK);
       const todayKey = getPHDateKey(new Date());
       const now = Date.now();
+      const notifiedTodayDate = await this.getNotifiedTodayEventsDate();
 
-      // Only check once per day (after midnight)
-      const lastCheckDate = new Date(lastCheck);
-      const today = new Date();
-      if (
-        lastCheckDate.getDate() === today.getDate() &&
-        lastCheckDate.getMonth() === today.getMonth() &&
-        lastCheckDate.getFullYear() === today.getFullYear()
-      ) {
-        return; // Already checked today
+      // Only notify once per day (if already notified for today's date, skip)
+      if (notifiedTodayDate === todayKey) {
+        return; // Already notified for today
       }
 
       // Fetch events for today
@@ -253,7 +350,7 @@ class NotificationService {
         return eventKey === todayKey;
       });
 
-      // Send notification for today's events
+      // Send notification for today's events (only if there are events and we haven't notified today)
       if (todaysEvents.length > 0) {
         const eventCount = todaysEvents.length;
         const eventText = eventCount === 1 
@@ -269,6 +366,9 @@ class NotificationService {
             events: todaysEvents.map(e => ({ id: e._id, title: e.title })),
           }
         );
+        
+        // Mark today's date as notified
+        await this.setNotifiedTodayEventsDate(todayKey);
       }
 
       // Update last check time
@@ -291,6 +391,7 @@ class NotificationService {
       const lastCheck = await this.getLastCheck(STORAGE_KEYS.LAST_UPCOMING_EVENT_CHECK);
       const now = Date.now();
       const todayKey = getPHDateKey(new Date());
+      const notifiedEventIds = await this.getNotifiedEventIds();
 
       // Check for upcoming events (next 7 days, starting from tomorrow)
       const startDate = new Date();
@@ -316,11 +417,15 @@ class NotificationService {
         return eventKey > todayKey && eventDate > now;
       });
 
-      // Only notify if there are new upcoming events since last check
+      // Filter for new upcoming events that haven't been notified yet
       const newUpcomingEvents = upcomingEvents.filter((event: CalendarEvent) => {
-        if (!event.date) return false;
+        if (!event.date || !event._id) return false;
         const eventDate = new Date(event.date).getTime();
-        return eventDate > lastCheck;
+        const eventId = event._id.toString();
+        // Only notify if:
+        // 1. Event is created/updated after last check AND
+        // 2. Event ID hasn't been notified before
+        return eventDate > lastCheck && !notifiedEventIds.has(eventId);
       });
 
       // Send notification for upcoming events
@@ -343,6 +448,13 @@ class NotificationService {
             })),
           }
         );
+        
+        // Mark these events as notified
+        for (const event of newUpcomingEvents) {
+          if (event._id) {
+            await this.addNotifiedEventId(event._id.toString());
+          }
+        }
       }
 
       // Update last check time

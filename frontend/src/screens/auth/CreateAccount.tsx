@@ -251,7 +251,7 @@ const CreateAccount = () => {
           />
           <View style={styles.logoTextContainer}>
             <Text style={styles.logoTitle}>DOrSU CONNECT</Text>
-            <Text style={styles.logoSubtitle}>Official University Portal</Text>
+            <Text style={styles.logoSubtitle}>AI-Powered Academic Assistant</Text>
           </View>
         </View>
 
@@ -588,7 +588,7 @@ const CreateAccount = () => {
           resizeMode="cover"
         />
         <LinearGradient
-          colors={['rgba(101, 67, 33, 0.2)', 'rgba(139, 90, 43, 0.5)', 'rgba(101, 67, 33, 0.7)']}
+          colors={['rgba(59, 130, 246, 0.2)', 'rgba(37, 99, 235, 0.5)', 'rgba(29, 78, 216, 0.7)']}
           style={styles.gradientOverlay}
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 1 }}
@@ -728,7 +728,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF2F2',
     padding: 8,
     borderRadius: 8,
-    marginBottom: 6,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: '#FCA5A5',
     minHeight: 40,
@@ -755,6 +755,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
+    marginTop: 8,
     marginBottom: 8,
     shadowColor: '#2563EB',
     shadowOffset: { width: 0, height: 4 },

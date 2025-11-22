@@ -18,7 +18,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'TermsOfUse'
 
 const TermsOfUseScreen = () => {
   const insets = useSafeAreaInsets();
-  const { theme, isDarkMode } = useTheme();
+  const { isDarkMode } = useTheme();
   const navigation = useNavigation<NavigationProp>();
 
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -40,7 +40,7 @@ const TermsOfUseScreen = () => {
     );
     animation.start();
     return () => animation.stop();
-  }, [floatAnim1]);
+  }, []);
 
   const sections = [
     {

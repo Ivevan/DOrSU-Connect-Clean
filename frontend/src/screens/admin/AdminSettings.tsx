@@ -275,16 +275,19 @@ const AdminSettings = () => {
         marginLeft: insets.left,
         marginRight: insets.right,
       }]}>
-        <View style={styles.headerLeft}>
+        <View style={styles.headerLeft} pointerEvents="box-none">
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={styles.backButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={0.7}
             accessibilityLabel="Go back"
+            accessibilityRole="button"
           >
             <Ionicons name="chevron-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
           </TouchableOpacity>
         </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Settings</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]} pointerEvents="none">Settings</Text>
         <View style={styles.headerRight} />
       </View>
 
@@ -500,6 +503,7 @@ const styles = StyleSheet.create({
   },
   headerLeft: {
     width: 44,
+    zIndex: 11,
   },
   backButton: {
     width: 44,
@@ -507,6 +511,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 12,
   },
   headerTitle: {
     fontSize: 17,

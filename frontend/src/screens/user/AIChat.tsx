@@ -6,7 +6,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Image, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Animated, BackHandler, Image, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
@@ -101,6 +101,65 @@ const AIChat = () => {
       loadBackendUserData();
     }, [])
   );
+
+  // Prevent back navigation to GetStarted when logged in
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = async () => {
+        // Check if user is logged in
+        try {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const userToken = await AsyncStorage.getItem('userToken');
+          const userEmail = await AsyncStorage.getItem('userEmail');
+          
+          // If logged in, prevent navigation to GetStarted
+          if (userToken && userEmail) {
+            // On Android, exit app instead of going back
+            if (Platform.OS === 'android') {
+              BackHandler.exitApp();
+              return true;
+            }
+            // On iOS, prevent the back action
+            return true;
+          }
+        } catch (error) {
+          console.error('Error checking auth status:', error);
+        }
+        return false; // Allow default back behavior if not logged in
+      };
+
+      if (Platform.OS === 'android') {
+        const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+        return () => subscription.remove();
+      }
+    }, [])
+  );
+
+  // Handle navigation back button and iOS swipe back gesture
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', async (e) => {
+      // Check if user is logged in
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const userToken = await AsyncStorage.getItem('userToken');
+        const userEmail = await AsyncStorage.getItem('userEmail');
+        
+        // If logged in, prevent navigation to GetStarted
+        if (userToken && userEmail) {
+          e.preventDefault();
+          // On Android, exit app
+          if (Platform.OS === 'android') {
+            BackHandler.exitApp();
+          }
+          // On iOS, do nothing (prevent navigation)
+        }
+      } catch (error) {
+        console.error('Error checking auth status:', error);
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation]);
   
   // Get user display name, email, and photo (memoized) - Check backend first, then Firebase
   const userName = useMemo(() => {

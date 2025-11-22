@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Animated, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,7 +18,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'HelpCenter'
 
 const HelpCenterScreen = () => {
   const insets = useSafeAreaInsets();
-  const { theme, isDarkMode } = useTheme();
+  const { isDarkMode } = useTheme();
   const navigation = useNavigation<NavigationProp>();
 
   // Animated floating background orb (Copilot-style)
@@ -42,7 +42,7 @@ const HelpCenterScreen = () => {
     );
     animation.start();
     return () => animation.stop();
-  }, [floatAnim1]);
+  }, []);
 
   const faqItems = [
     {

@@ -18,7 +18,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'Licenses'>;
 
 const LicensesScreen = () => {
   const insets = useSafeAreaInsets();
-  const { theme, isDarkMode } = useTheme();
+  const { isDarkMode } = useTheme();
   const navigation = useNavigation<NavigationProp>();
 
   // Animated floating background orb (Copilot-style)
@@ -42,7 +42,7 @@ const LicensesScreen = () => {
     );
     animation.start();
     return () => animation.stop();
-  }, [floatAnim1]);
+  }, []);
 
   const licenses = [
     {

@@ -20,6 +20,14 @@ const LicensesScreen = () => {
   const { isDarkMode, theme: t } = useThemeValues();
   const navigation = useNavigation<NavigationProp>();
 
+  // Helper function to convert hex to rgba
+  const hexToRgba = (hex: string, alpha: number) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
   // Animated floating background orb (Copilot-style)
   const floatAnim1 = useRef(new Animated.Value(0)).current;
 
@@ -192,7 +200,7 @@ const LicensesScreen = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[t.colors.orbColors.orange1, t.colors.orbColors.orange2, t.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -277,7 +285,11 @@ const LicensesScreen = () => {
                     {license.description}
                   </Text>
                   <View style={styles.licenseFooter}>
-                    <View style={[styles.licenseBadge, { backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.15)' : 'rgba(255, 149, 0, 0.1)' }]}>
+                    <View style={[styles.licenseBadge, { 
+                      backgroundColor: isDarkMode 
+                        ? hexToRgba(t.colors.accent, 0.15) 
+                        : hexToRgba(t.colors.accent, 0.1)
+                    }]}>
                       <Text style={[styles.licenseType, { color: t.colors.accent, fontSize: t.fontSize.scaleSize(11) }]}>
                         {license.license}
                       </Text>

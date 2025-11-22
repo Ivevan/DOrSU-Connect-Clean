@@ -74,6 +74,24 @@ const getPHDateKey = (d: Date | string) => {
 const AdminDashboard = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
+  
+  // Get header gradient colors based on theme
+  const getHeaderGradientColors = (): [string, string, string] => {
+    // DOrSU theme (Royal Blue)
+    if (theme.colors.accent === '#2563EB') {
+      return ['#93C5FD', '#60A5FA', '#2563EB'];
+    }
+    // Facet theme (Orange)
+    if (theme.colors.accent === '#FF9500') {
+      return ['#FFCC80', '#FFA726', '#FF9500'];
+    }
+    // Default: use theme colors
+    return [
+      theme.colors.accentLight || '#93C5FD',
+      theme.colors.accent || '#2563EB',
+      theme.colors.accentDark || '#1E3A8A'
+    ] as [string, string, string];
+  };
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const scrollRef = useRef<ScrollView>(null);
   
@@ -468,7 +486,6 @@ const AdminDashboard = () => {
         end={{ x: 0, y: 1 }}
         pointerEvents="none"
       />
-        
       {/* Blur overlay on entire background - very subtle */}
       <BlurView
         intensity={Platform.OS === 'ios' ? 5 : 3}
@@ -479,7 +496,7 @@ const AdminDashboard = () => {
 
       {/* Animated Floating Background Orb (Copilot-style) */}
       <View style={styles.floatingBgContainer} pointerEvents="none" collapsable={false}>
-        {/* Orb 1 - Soft Orange Glow (Center area) */}
+        {/* Orb 1 - Soft Blue Glow (Center area) */}
         <Animated.View
           style={[
             styles.floatingOrbWrapper,
@@ -512,7 +529,7 @@ const AdminDashboard = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[theme.colors.orbColors.orange1, theme.colors.orbColors.orange2, theme.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -526,12 +543,12 @@ const AdminDashboard = () => {
         </Animated.View>
       </View>
 
-      {/* Orange Header Area with Profile Section */}
+      {/* Blue Header Area with Profile Section */}
       <LinearGradient
-        colors={['#FFD699', '#FFB84D', '#FF9500']}
+        colors={getHeaderGradientColors()}
         start={{ x: 1, y: 0 }}
         end={{ x: 0, y: 1 }}
-        style={[styles.orangeHeader, { 
+        style={[styles.blueHeader, { 
           paddingTop: safeInsets.top + 12,
           paddingLeft: Math.max(safeInsets.left, 20),
           paddingRight: Math.max(safeInsets.right, 20),
@@ -567,7 +584,7 @@ const AdminDashboard = () => {
           </TouchableOpacity>
         </View>
         
-        {/* Welcome Section inside Orange Header */}
+        {/* Welcome Section inside Blue Header */}
         <View style={styles.welcomeSectionInHeader}>
           <View style={styles.welcomeContent}>
             {backendUserPhoto ? (
@@ -577,7 +594,7 @@ const AdminDashboard = () => {
               />
             ) : (
               <View style={[styles.welcomeProfileIconCircle, { backgroundColor: '#FFF' }]}>
-                <Text style={[styles.welcomeProfileInitials, { fontSize: theme.fontSize.scaleSize(20) }]}>{getUserInitials()}</Text>
+                <Text style={[styles.welcomeProfileInitials, { color: theme.colors.accent, fontSize: theme.fontSize.scaleSize(20) }]}>{getUserInitials()}</Text>
               </View>
             )}
             <View style={styles.welcomeText}>
@@ -597,34 +614,6 @@ const AdminDashboard = () => {
 
       {/* Main Content - Scrollable with Curved Top */}
       <View style={styles.contentWrapper}>
-        {/* Orange Gradient Background */}
-        <LinearGradient
-          colors={
-            isDarkMode
-              ? ['rgba(255, 237, 213, 0.08)', 'rgba(255, 237, 213, 0.03)', 'rgba(255, 237, 213, 0.01)']
-              : ['rgba(255, 237, 213, 0.4)', 'rgba(255, 237, 213, 0.25)', 'rgba(255, 237, 213, 0.1)']
-          }
-          style={styles.orangeGradientBackground}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          pointerEvents="none"
-        />
-        
-        {/* Curved Top of Body - Creates transition from header */}
-        <View style={styles.bodyCurveContainer}>
-          <View style={styles.bodyCurve}>
-            <LinearGradient
-              colors={
-                isDarkMode
-                  ? ['rgba(255, 237, 213, 0.08)', 'rgba(255, 237, 213, 0.08)']
-                  : ['rgba(255, 237, 213, 0.4)', 'rgba(255, 237, 213, 0.4)']
-              }
-              style={styles.bodyCurvePath}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-            />
-          </View>
-        </View>
         
         <ScrollView
           ref={scrollRef}
@@ -733,22 +722,46 @@ const AdminDashboard = () => {
           {/* Time Filter Pills */}
           <View style={[styles.filtersContainer, { flexShrink: 0, marginBottom: 12 }]} collapsable={false}>
             <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'all' && styles.filterPillActive]}
+              style={[
+                styles.filterPill, 
+                { borderColor: theme.colors.border }, 
+                timeFilter === 'all' && {
+                  backgroundColor: theme.colors.accent,
+                  borderColor: theme.colors.accent,
+                  shadowColor: theme.colors.accent,
+                }
+              ]}
               onPress={() => setTimeFilter('all')}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'all' && styles.filterPillTextActive]}>All</Text>
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'all' && { color: '#FFF' }]}>All</Text>
             </Pressable>
             <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'upcoming' && styles.filterPillActive]}
+              style={[
+                styles.filterPill, 
+                { borderColor: theme.colors.border }, 
+                timeFilter === 'upcoming' && {
+                  backgroundColor: theme.colors.accent,
+                  borderColor: theme.colors.accent,
+                  shadowColor: theme.colors.accent,
+                }
+              ]}
               onPress={() => setTimeFilter('upcoming')}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'upcoming' && styles.filterPillTextActive]}>Upcoming</Text>
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'upcoming' && { color: '#FFF' }]}>Upcoming</Text>
             </Pressable>
             <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'recent' && styles.filterPillActive]}
+              style={[
+                styles.filterPill, 
+                { borderColor: theme.colors.border }, 
+                timeFilter === 'recent' && {
+                  backgroundColor: theme.colors.accent,
+                  borderColor: theme.colors.accent,
+                  shadowColor: theme.colors.accent,
+                }
+              ]}
               onPress={() => setTimeFilter('recent')}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'recent' && styles.filterPillTextActive]}>Recent</Text>
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'recent' && { color: '#FFF' }]}>Recent</Text>
             </Pressable>
           </View>
           
@@ -856,22 +869,6 @@ const AdminDashboard = () => {
           </View>
         </View>
         </ScrollView>
-        
-        {/* Curved Bottom of Body */}
-        <View style={styles.bodyCurveBottomContainer}>
-          <View style={styles.bodyCurveBottom}>
-            <LinearGradient
-              colors={
-                isDarkMode
-                  ? ['rgba(255, 237, 213, 0.01)', 'rgba(255, 237, 213, 0.01)']
-                  : ['rgba(255, 237, 213, 0.1)', 'rgba(255, 237, 213, 0.1)']
-              }
-              style={styles.bodyCurveBottomPath}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-            />
-          </View>
-        </View>
       </View>
 
       {/* Floating Plus Icon Button - Bottom Right */}
@@ -885,7 +882,7 @@ const AdminDashboard = () => {
         }}
         activeOpacity={0.8}
       >
-        <View style={[styles.floatingAddButtonIcon, { backgroundColor: '#FF9500' }]}>
+        <View style={[styles.floatingAddButtonIcon, { backgroundColor: theme.colors.accent }]}>
           <Ionicons name="add" size={28} color="#FFFFFF" />
         </View>
       </TouchableOpacity>
@@ -1000,7 +997,7 @@ const styles = StyleSheet.create({
     borderRadius: 250,
     overflow: 'hidden',
   },
-  orangeHeader: {
+  blueHeader: {
     paddingBottom: 20,
     paddingHorizontal: 20,
     zIndex: 10,
@@ -1125,7 +1122,7 @@ const styles = StyleSheet.create({
     marginTop: -20,
     paddingTop: 20,
   },
-  orangeGradientBackground: {
+  blueGradientBackground: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 0,
   },
@@ -1272,7 +1269,7 @@ const styles = StyleSheet.create({
   welcomeProfileInitials: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#FF9500',
+    color: 'transparent', // Will be set dynamically via theme
     letterSpacing: -0.3,
   },
   floatingAddButton: {
@@ -1357,7 +1354,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#FF9500',
+    shadowColor: 'transparent', // Will be set dynamically via theme
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
@@ -1456,9 +1453,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   filterPillActive: {
-    backgroundColor: '#FF9500',
-    borderColor: '#FF9500',
-    shadowColor: '#FF9500',
+    backgroundColor: 'transparent', // Will be set dynamically via theme
+    borderColor: 'transparent', // Will be set dynamically via theme
+    shadowColor: 'transparent', // Will be set dynamically via theme
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,

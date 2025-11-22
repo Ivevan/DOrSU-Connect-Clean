@@ -341,6 +341,47 @@ const EventCard = memo(({ update, onPress, theme }: { update: any; onPress: () =
 const SchoolUpdates = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
+  
+  // Get header gradient colors based on theme
+  const getHeaderGradientColors = (): [string, string, string] => {
+    // DOrSU theme (Royal Blue)
+    if (theme.colors.accent === '#2563EB') {
+      return ['#DBEAFE', '#93C5FD', '#2563EB'];
+    }
+    // Facet theme (Orange)
+    if (theme.colors.accent === '#FF9500') {
+      return ['#FFE0B2', '#FFCC80', '#FF9500'];
+    }
+    // Default: use theme colors
+    return [
+      theme.colors.accentLight || '#DBEAFE',
+      theme.colors.accent || '#2563EB',
+      theme.colors.accentDark || '#1E3A8A'
+    ] as [string, string, string];
+  };
+  
+  // Get content gradient overlay colors based on theme
+  const getContentGradientColors = (): [string, string, string] => {
+    // DOrSU theme (Royal Blue)
+    if (theme.colors.accent === '#2563EB') {
+      return isDarkMode
+        ? ['rgba(59, 130, 246, 0.08)', 'rgba(37, 99, 235, 0.03)', 'rgba(29, 78, 216, 0.01)']
+        : ['rgba(59, 130, 246, 0.1)', 'rgba(37, 99, 235, 0.05)', 'rgba(29, 78, 216, 0.02)'];
+    }
+    // Facet theme (Orange)
+    if (theme.colors.accent === '#FF9500') {
+      return isDarkMode
+        ? ['rgba(255, 204, 128, 0.08)', 'rgba(255, 167, 38, 0.03)', 'rgba(255, 149, 0, 0.01)']
+        : ['rgba(255, 204, 128, 0.1)', 'rgba(255, 167, 38, 0.05)', 'rgba(255, 149, 0, 0.02)'];
+    }
+    // Default: use theme colors with opacity
+    const lightColor = theme.colors.accentLight || '#93C5FD';
+    const mainColor = theme.colors.accent || '#2563EB';
+    const darkColor = theme.colors.accentDark || '#1E3A8A';
+    return isDarkMode
+      ? [`${lightColor}14`, `${mainColor}08`, `${darkColor}03`]
+      : [`${lightColor}1A`, `${mainColor}0D`, `${darkColor}05`] as [string, string, string];
+  };
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [query, setQuery] = useState('');
   const [isSearchVisible, setIsSearchVisible] = useState(false);
@@ -1037,7 +1078,7 @@ const SchoolUpdates = () => {
   
       {/* Animated Floating Background Orb (Copilot-style) */}
       <View style={styles.floatingBgContainer} pointerEvents="none" collapsable={false}>
-        {/* Orb 1 - Soft Orange Glow (Center area) */}
+        {/* Orb 1 - Soft Blue Glow (Center area) */}
         <Animated.View
           style={[
             styles.floatingOrbWrapper,
@@ -1070,7 +1111,7 @@ const SchoolUpdates = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[theme.colors.orbColors.orange1, theme.colors.orbColors.orange2, theme.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -1084,9 +1125,9 @@ const SchoolUpdates = () => {
         </Animated.View>
       </View>
 
-      {/* Orange Header Area with Profile Section */}
+      {/* Blue Header Area with Profile Section */}
       <LinearGradient
-        colors={['#FFD699', '#FFB84D', '#FF9500']}
+        colors={getHeaderGradientColors()}
         start={{ x: 1, y: 0 }}
         end={{ x: 0, y: 1 }}
         style={[styles.orangeHeader, { 
@@ -1125,7 +1166,7 @@ const SchoolUpdates = () => {
           </TouchableOpacity>
         </View>
         
-        {/* Welcome Section inside Orange Header */}
+        {/* Welcome Section inside Blue Header */}
         <View style={styles.welcomeSectionInHeader}>
           <View style={styles.welcomeContent}>
             {backendUserPhoto ? (
@@ -1135,7 +1176,7 @@ const SchoolUpdates = () => {
               />
             ) : (
               <View style={[styles.welcomeProfileIconCircle, { backgroundColor: '#FFF' }]}>
-                <Text style={[styles.welcomeProfileInitials, { fontSize: theme.fontSize.scaleSize(20) }]}>{getUserInitials()}</Text>
+                <Text style={[styles.welcomeProfileInitials, { color: theme.colors.accent, fontSize: theme.fontSize.scaleSize(20) }]}>{getUserInitials()}</Text>
               </View>
             )}
             <View style={styles.welcomeText}>
@@ -1155,13 +1196,9 @@ const SchoolUpdates = () => {
 
       {/* Main Content - Scrollable with Curved Top */}
       <View style={styles.contentWrapper}>
-        {/* Orange Gradient Background */}
+        {/* Blue Gradient Background */}
         <LinearGradient
-          colors={
-            isDarkMode
-              ? ['rgba(255, 237, 213, 0.08)', 'rgba(255, 237, 213, 0.03)', 'rgba(255, 237, 213, 0.01)']
-              : ['rgba(255, 237, 213, 0.4)', 'rgba(255, 237, 213, 0.25)', 'rgba(255, 237, 213, 0.1)']
-          }
+          colors={getContentGradientColors()}
           style={styles.orangeGradientBackground}
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 1 }}
@@ -1310,22 +1347,46 @@ const SchoolUpdates = () => {
           {/* Time Filter Pills */}
           <View style={[styles.filtersContainer, { flexShrink: 0, marginBottom: 12 }]} collapsable={false}>
             <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'all' && styles.filterPillActive]}
+              style={[
+                styles.filterPill, 
+                { borderColor: theme.colors.border }, 
+                timeFilter === 'all' && {
+                  backgroundColor: theme.colors.accent,
+                  borderColor: theme.colors.accent,
+                  shadowColor: theme.colors.accent,
+                }
+              ]}
               onPress={() => setTimeFilter('all')}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'all' && styles.filterPillTextActive]}>All</Text>
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'all' && { color: '#FFF' }]}>All</Text>
             </Pressable>
             <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'upcoming' && styles.filterPillActive]}
+              style={[
+                styles.filterPill, 
+                { borderColor: theme.colors.border }, 
+                timeFilter === 'upcoming' && {
+                  backgroundColor: theme.colors.accent,
+                  borderColor: theme.colors.accent,
+                  shadowColor: theme.colors.accent,
+                }
+              ]}
               onPress={() => setTimeFilter('upcoming')}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'upcoming' && styles.filterPillTextActive]}>Upcoming</Text>
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'upcoming' && { color: '#FFF' }]}>Upcoming</Text>
             </Pressable>
             <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'recent' && styles.filterPillActive]}
+              style={[
+                styles.filterPill, 
+                { borderColor: theme.colors.border }, 
+                timeFilter === 'recent' && {
+                  backgroundColor: theme.colors.accent,
+                  borderColor: theme.colors.accent,
+                  shadowColor: theme.colors.accent,
+                }
+              ]}
               onPress={() => setTimeFilter('recent')}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'recent' && styles.filterPillTextActive]}>Recent</Text>
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'recent' && { color: '#FFF' }]}>Recent</Text>
             </Pressable>
           </View>
           
@@ -1626,7 +1687,7 @@ const styles = StyleSheet.create({
   welcomeProfileInitials: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#FF9500',
+    color: 'transparent', // Will be set dynamically via theme
     letterSpacing: -0.3,
   },
   contentWrapper: {
@@ -1725,9 +1786,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   filterPillActive: {
-    backgroundColor: '#FF9500',
-    borderColor: '#FF9500',
-    shadowColor: '#FF9500',
+    backgroundColor: 'transparent', // Will be set dynamically via theme
+    borderColor: 'transparent', // Will be set dynamically via theme
+    shadowColor: 'transparent', // Will be set dynamically via theme
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,

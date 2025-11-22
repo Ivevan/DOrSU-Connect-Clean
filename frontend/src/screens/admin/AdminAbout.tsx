@@ -107,7 +107,7 @@ const AdminAbout = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[t.colors.orbColors.orange1, t.colors.orbColors.orange2, t.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -162,7 +162,7 @@ const AdminAbout = () => {
             >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="help-circle-outline" size={20} color="#FF9500" />
+                  <Ionicons name="help-circle-outline" size={20} color={t.colors.accent} />
                 </View>
                 <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Help Center</Text>
               </View>
@@ -175,7 +175,7 @@ const AdminAbout = () => {
             >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="document-text-outline" size={20} color="#FF9500" />
+                  <Ionicons name="document-text-outline" size={20} color={t.colors.accent} />
                 </View>
                 <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Terms of Use</Text>
               </View>
@@ -188,7 +188,7 @@ const AdminAbout = () => {
             >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="shield-checkmark-outline" size={20} color="#FF9500" />
+                  <Ionicons name="shield-checkmark-outline" size={20} color={t.colors.accent} />
                 </View>
                 <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Privacy Policy</Text>
               </View>
@@ -201,7 +201,7 @@ const AdminAbout = () => {
             >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="document-outline" size={20} color="#FF9500" />
+                  <Ionicons name="document-outline" size={20} color={t.colors.accent} />
                 </View>
                 <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Licenses</Text>
               </View>
@@ -211,7 +211,7 @@ const AdminAbout = () => {
             <View style={styles.settingItemLast}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="information-circle-outline" size={20} color="#FF9500" />
+                  <Ionicons name="information-circle-outline" size={20} color={t.colors.accent} />
                 </View>
                 <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>DOrSU Connect</Text>
               </View>

@@ -120,7 +120,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
           styles.sidebar,
           {
             transform: [{ translateX: sidebarAnim }],
-            backgroundColor: isDarkMode ? '#1F2937' : '#F5F2ED',
+            backgroundColor: isDarkMode ? '#1F2937' : '#F9FAFB',
             paddingTop: insets.top,
           },
         ]}
@@ -128,7 +128,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
         {/* Sidebar Header */}
         <View style={styles.sidebarHeader}>
           <View style={styles.sidebarLogoSection}>
-            <View style={styles.sidebarLogo}>
+            <View style={[styles.sidebarLogo, { backgroundColor: t.colors.accent }]}>
               <Ionicons name="school" size={28} color="#FFFFFF" />
             </View>
             <Text style={[styles.sidebarTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(20) }]}>
@@ -187,10 +187,10 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
             <Ionicons 
               name={currentScreen === 'AIChat' ? 'home' : 'home-outline'} 
               size={24} 
-              color={currentScreen === 'AIChat' ? '#FF9500' : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              color={currentScreen === 'AIChat' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />
             <Text style={[styles.sidebarMenuText, { 
-              color: currentScreen === 'AIChat' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              color: currentScreen === 'AIChat' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
               fontWeight: currentScreen === 'AIChat' ? '600' : '500',
               fontSize: t.fontSize.scaleSize(16)
             }]}>
@@ -208,10 +208,10 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
             <Ionicons 
               name={currentScreen === 'SchoolUpdates' ? 'newspaper' : 'newspaper-outline'} 
               size={24} 
-              color={currentScreen === 'SchoolUpdates' ? '#FF9500' : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              color={currentScreen === 'SchoolUpdates' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />
             <Text style={[styles.sidebarMenuText, { 
-              color: currentScreen === 'SchoolUpdates' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              color: currentScreen === 'SchoolUpdates' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
               fontWeight: currentScreen === 'SchoolUpdates' ? '600' : '500',
               fontSize: t.fontSize.scaleSize(16)
             }]}>
@@ -229,10 +229,10 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
             <Ionicons 
               name={currentScreen === 'Calendar' ? 'copy' : 'copy-outline'} 
               size={24} 
-              color={currentScreen === 'Calendar' ? '#FF9500' : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              color={currentScreen === 'Calendar' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />
             <Text style={[styles.sidebarMenuText, { 
-              color: currentScreen === 'Calendar' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              color: currentScreen === 'Calendar' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
               fontWeight: currentScreen === 'Calendar' ? '600' : '500',
               fontSize: t.fontSize.scaleSize(16)
             }]}>
@@ -293,7 +293,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
                     {chat.userType && (
                       <View style={[
                         styles.historyAccent,
-                        { backgroundColor: chat.userType === 'student' ? '#10B981' : '#2563EB' }
+                        { backgroundColor: chat.userType === 'student' ? t.colors.accent : '#FBBF24' }
                       ]} />
                     )}
                     <View style={styles.historyItemContent}>
@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#FF9500',
+    backgroundColor: 'transparent', // Will be set dynamically via theme
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -402,7 +402,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: '#FF9500',
+    backgroundColor: 'transparent', // Will be set dynamically via theme
     alignItems: 'center',
     justifyContent: 'center',
   },

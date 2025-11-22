@@ -1082,16 +1082,16 @@ const AdminCalendar = () => {
           styles.calendarDay,
           { 
             backgroundColor: cellColor || theme.colors.card,
-            // Selected day: orange border around entire cell (2px)
+            // Selected day: blue border around entire cell (2px)
             // Non-selected: normal grid borders (hairline)
             borderTopWidth: isSelected ? 2 : 0,
-            borderTopColor: isSelected ? '#FF9500' : 'transparent',
+            borderTopColor: isSelected ? theme.colors.accent : 'transparent',
             borderLeftWidth: isSelected ? 2 : 0,
-            borderLeftColor: isSelected ? '#FF9500' : 'transparent',
+            borderLeftColor: isSelected ? theme.colors.accent : 'transparent',
             borderRightWidth: isLastColumn ? (isSelected ? 2 : 0) : (isSelected ? 2 : StyleSheet.hairlineWidth),
-            borderRightColor: isSelected ? '#FF9500' : theme.colors.border,
+            borderRightColor: isSelected ? theme.colors.accent : theme.colors.border,
             borderBottomWidth: isSelected ? 2 : StyleSheet.hairlineWidth,
-            borderBottomColor: isSelected ? '#FF9500' : theme.colors.border,
+            borderBottomColor: isSelected ? theme.colors.accent : theme.colors.border,
             opacity: cellColor ? 0.85 : 1,
           }
         ]}
@@ -1103,7 +1103,7 @@ const AdminCalendar = () => {
           <View style={[
             styles.dayNumberContainer,
             isCurrentDay && styles.todayContainer,
-            isCurrentDay && { backgroundColor: '#FF9500' }, // Always orange for current day
+            isCurrentDay && { backgroundColor: theme.colors.accent }, // Theme color for current day
             !isCurrentDay && cellColor && { backgroundColor: cellColor }, // Only apply cell color if not current day
           ]}>
             <Text
@@ -1113,7 +1113,7 @@ const AdminCalendar = () => {
               style={[
                 styles.dayNumber,
                 { fontSize: theme.fontSize.scaleSize(12) },
-                isCurrentDay && { color: '#FFFFFF', fontWeight: '700' }, // White text for current day (orange background)
+                isCurrentDay && { color: '#FFFFFF', fontWeight: '700' }, // White text for current day (blue background)
                 !isCurrentDay && { color: cellColor ? '#FFFFFF' : theme.colors.text }, // White if cell has color, otherwise theme text
                 isCurrentDay && styles.todayText,
                 !isCurrentDay && cellColor && { color: '#FFFFFF', fontWeight: '700' } // White text for colored cells (non-current day)
@@ -1169,8 +1169,14 @@ const AdminCalendar = () => {
 
       {/* Background Gradient - Soft beige (Copilot-style) */}
       <LinearGradient
-        colors={isDarkMode ? ['#1F1F1F', '#2A2A2A', '#1A1A1A'] : ['#FBF8F3', '#F8F5F0', '#F5F2ED']}
+        colors={[
+          isDarkMode ? '#0B1220' : '#FBF8F3',
+          isDarkMode ? '#111827' : '#F8F5F0',
+          isDarkMode ? '#1F2937' : '#F5F2ED'
+        ]}
         style={styles.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
       />
       <BlurView
         intensity={Platform.OS === 'ios' ? 5 : 3}
@@ -1180,7 +1186,7 @@ const AdminCalendar = () => {
 
       {/* Animated Floating Background Orb (Copilot-style) */}
       <View style={styles.floatingBgContainer} pointerEvents="none">
-        {/* Orb 1 - Soft Orange Glow (Center area) */}
+        {/* Orb 1 - Soft Blue Glow (Center area) */}
         <Animated.View
           style={[
             styles.floatingOrbWrapper,
@@ -1213,7 +1219,7 @@ const AdminCalendar = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[theme.colors.orbColors.orange1, theme.colors.orbColors.orange2, theme.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -1253,7 +1259,7 @@ const AdminCalendar = () => {
             onPress={() => navigation.navigate('AdminSettings')} 
             accessibilityLabel="Admin profile - Go to settings"
           >
-            <View style={[styles.profileIconCircle, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
+            <View style={[styles.profileIconCircle, { backgroundColor: t.colors.accent }]}>
               <Text style={[styles.profileInitials, { fontSize: t.fontSize.scaleSize(13) }]}>AD</Text>
             </View>
           </TouchableOpacity>
@@ -1518,11 +1524,11 @@ const AdminCalendar = () => {
                 </View>
                 <View style={styles.eventTypeToggleContainer}>
                   <TouchableOpacity
-                    style={[
+                      style={[
                       styles.eventTypeToggleButton,
                       {
-                        backgroundColor: selectedEventType === 'institutional' ? '#2563EB' : 'transparent',
-                        borderColor: selectedEventType === 'institutional' ? '#2563EB' : t.colors.border,
+                        backgroundColor: selectedEventType === 'institutional' ? t.colors.accent : 'transparent',
+                        borderColor: selectedEventType === 'institutional' ? t.colors.accent : t.colors.border,
                       }
                     ]}
                     onPress={() => {
@@ -1874,7 +1880,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FF9500',
+    backgroundColor: 'transparent', // Will be set dynamically via theme
   },
   profileInitials: {
     fontSize: 13,
@@ -1994,7 +2000,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
   },
   todayContainer: {
-    backgroundColor: '#FF9500', // Orange for current day
+    backgroundColor: 'transparent', // Will be set dynamically via theme // Blue for current day
   },
   todayText: {
     color: '#fff',
@@ -2729,7 +2735,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#DC2626',
   },
   drawerEditButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: 'transparent', // Will be set dynamically via theme
   },
   drawerSaveButton: {
     backgroundColor: '#10B981',

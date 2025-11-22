@@ -533,16 +533,16 @@ const CalendarScreen = () => {
           styles.calendarDay,
           { 
             backgroundColor: cellColor || theme.colors.card,
-            // Selected day: orange border around entire cell (2px)
+            // Selected day: blue border around entire cell (2px)
             // Non-selected: normal grid borders (hairline)
             borderTopWidth: isSelected ? 2 : 0,
-            borderTopColor: isSelected ? '#FF9500' : 'transparent',
+            borderTopColor: isSelected ? theme.colors.accent : 'transparent',
             borderLeftWidth: isSelected ? 2 : 0,
-            borderLeftColor: isSelected ? '#FF9500' : 'transparent',
+            borderLeftColor: isSelected ? theme.colors.accent : 'transparent',
             borderRightWidth: isLastColumn ? (isSelected ? 2 : 0) : (isSelected ? 2 : StyleSheet.hairlineWidth),
-            borderRightColor: isSelected ? '#FF9500' : theme.colors.border,
+            borderRightColor: isSelected ? theme.colors.accent : theme.colors.border,
             borderBottomWidth: isSelected ? 2 : StyleSheet.hairlineWidth,
-            borderBottomColor: isSelected ? '#FF9500' : theme.colors.border,
+            borderBottomColor: isSelected ? theme.colors.accent : theme.colors.border,
             opacity: cellColor ? 0.85 : 1,
           }
         ]}
@@ -553,7 +553,7 @@ const CalendarScreen = () => {
           <View style={[
             styles.dayNumberContainer,
             isCurrentDay && styles.todayContainer,
-            isCurrentDay && { backgroundColor: '#FF9500' }, // Always orange for current day
+            isCurrentDay && { backgroundColor: theme.colors.accent }, // Theme color for current day
             !isCurrentDay && cellColor && { backgroundColor: cellColor }, // Only apply cell color if not current day
           ]}>
             <Text
@@ -563,7 +563,7 @@ const CalendarScreen = () => {
               style={[
                 styles.dayNumber,
                 { fontSize: theme.fontSize.scaleSize(12) },
-                isCurrentDay && { color: '#FFFFFF', fontWeight: '700' }, // White text for current day (orange background)
+                isCurrentDay && { color: '#FFFFFF', fontWeight: '700' }, // White text for current day (blue background)
                 !isCurrentDay && { color: cellColor ? '#FFFFFF' : theme.colors.text }, // White if cell has color, otherwise theme text
                 isCurrentDay && styles.todayText,
                 !isCurrentDay && cellColor && { color: '#FFFFFF', fontWeight: '700' } // White text for colored cells (non-current day)
@@ -874,8 +874,14 @@ const CalendarScreen = () => {
       />
 
       <LinearGradient
-        colors={isDarkMode ? [t.colors.background, t.colors.surface, t.colors.background] : [t.colors.background, t.colors.surface, t.colors.background]}
+        colors={[
+          isDarkMode ? '#0B1220' : '#FBF8F3',
+          isDarkMode ? '#111827' : '#F8F5F0',
+          isDarkMode ? '#1F2937' : '#F5F2ED'
+        ]}
         style={styles.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
       />
       <BlurView
         intensity={Platform.OS === 'ios' ? 5 : 3}
@@ -916,7 +922,7 @@ const CalendarScreen = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[t.colors.orbColors.orange1, t.colors.orbColors.orange2, t.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -961,7 +967,7 @@ const CalendarScreen = () => {
                 style={styles.profileImage}
               />
             ) : (
-              <View style={[styles.profileIconCircle, { backgroundColor: '#FF9500' }]}>
+              <View style={[styles.profileIconCircle, { backgroundColor: t.colors.accent }]}>
                 <Text style={[styles.profileInitials, { fontSize: t.fontSize.scaleSize(13) }]}>{getUserInitials()}</Text>
               </View>
             )}
@@ -1160,11 +1166,11 @@ const CalendarScreen = () => {
                 </View>
                 <View style={styles.eventTypeToggleContainer}>
                   <TouchableOpacity
-                    style={[
+                      style={[
                       styles.eventTypeToggleButton,
                       {
-                        backgroundColor: selectedEventType === 'institutional' ? '#2563EB' : 'transparent',
-                        borderColor: selectedEventType === 'institutional' ? '#2563EB' : t.colors.border,
+                        backgroundColor: selectedEventType === 'institutional' ? t.colors.accent : 'transparent',
+                        borderColor: selectedEventType === 'institutional' ? t.colors.accent : t.colors.border,
                       }
                     ]}
                     onPress={() => {

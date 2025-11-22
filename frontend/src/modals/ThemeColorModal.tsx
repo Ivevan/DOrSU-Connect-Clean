@@ -67,6 +67,7 @@ const ThemeColorModal: React.FC<ThemeColorModalProps> = ({ visible, onClose }) =
           <View style={styles.themeGrid}>
             {colorThemes.map((theme) => {
               const isSelected = colorTheme === theme.id;
+              const isDefault = theme.id === 'dorsu';
               
               return (
                 <TouchableOpacity
@@ -76,7 +77,15 @@ const ThemeColorModal: React.FC<ThemeColorModalProps> = ({ visible, onClose }) =
                     { 
                       backgroundColor: theme.color,
                       opacity: isSelected ? 1 : 0.85,
-                    }
+                      borderWidth: isSelected ? 3 : (isDefault ? 2 : 0),
+                      borderColor: isSelected 
+                        ? '#FFFFFF' 
+                        : (isDefault ? '#FBBF24' : 'transparent'),
+                      shadowOpacity: isSelected ? 0.3 : 0.1,
+                      shadowRadius: isSelected ? 8 : 4,
+                      elevation: isSelected ? 6 : 3,
+                    },
+                    isSelected && styles.selectedCard,
                   ]}
                   onPress={() => handleSelectTheme(theme.id)}
                   activeOpacity={0.9}
@@ -84,6 +93,16 @@ const ThemeColorModal: React.FC<ThemeColorModalProps> = ({ visible, onClose }) =
                   <Text style={styles.themeCardText}>
                     {theme.name}
                   </Text>
+                  {isSelected && (
+                    <View style={styles.selectedBadge}>
+                      <Ionicons name="checkmark-circle" size={24} color="#FFFFFF" />
+                    </View>
+                  )}
+                  {isDefault && !isSelected && (
+                    <View style={styles.defaultBadge}>
+                      <Text style={styles.defaultBadgeText}>Default</Text>
+                    </View>
+                  )}
                 </TouchableOpacity>
               );
             })}
@@ -175,6 +194,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    position: 'relative',
+    overflow: 'visible',
+  },
+  selectedCard: {
+    transform: [{ scale: 1.05 }],
   },
   themeCardText: {
     fontSize: 14,
@@ -196,6 +220,38 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     flex: 1,
+  },
+  selectedBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  defaultBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: '#FBBF24',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  defaultBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#1F2937',
+    letterSpacing: 0.3,
   },
 });
 

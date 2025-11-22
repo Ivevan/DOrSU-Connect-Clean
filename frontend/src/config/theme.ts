@@ -1,5 +1,5 @@
 export type ThemeMode = 'light' | 'dark';
-export type ColorTheme = 'facet' | 'fnahs' | 'fals';
+export type ColorTheme = 'dorsu' | 'facet';
 export type FontSizeScale = 'small' | 'medium' | 'large' | 'extraLarge';
 
 // Font size multipliers
@@ -12,6 +12,29 @@ export const fontSizeScales: Record<FontSizeScale, number> = {
 
 // Color Palettes - Each faculty/department can have its own color scheme
 export const colorPalettes = {
+  dorsu: {
+    primary: '#2563EB',        // Royal Blue - Main accent color (Represents excellence, spirituality, and competence)
+    primaryLight: '#3B82F6',   // Lighter royal blue for hover states
+    primaryDark: '#1E3A8A',   // University Blue - Darker variant
+    secondary: '#FBBF24',     // Golden Yellow - Secondary color (Represents commitment and integrity)
+    success: '#10B981',        // Green - Success states
+    error: '#EF4444',          // Red - Error states
+    warning: '#F59E0B',        // Amber - Warning states
+    // Gradient backgrounds
+    gradientLight: ['#FBF8F3', '#F8F5F0', '#F5F2ED'],  // Soft beige gradient (light mode)
+    gradientDark: ['#0B1220', '#111827', '#1F2937'],   // Dark gradient
+    // Floating orb colors - Royal Blue gradients
+    orbColors: {
+      orange1: 'rgba(59, 130, 246, 0.2)',
+      orange2: 'rgba(37, 99, 235, 0.4)',
+      orange3: 'rgba(29, 78, 216, 0.6)',
+      orange4: 'rgba(37, 99, 235, 0.3)',
+      orange5: 'rgba(59, 130, 246, 0.4)',
+      beige1: 'rgba(219, 234, 254, 0.35)',
+      beige2: 'rgba(191, 219, 254, 0.18)',
+      beige3: 'rgba(147, 197, 253, 0.08)',
+    },
+  },
   facet: {
     primary: '#FF9500',        // Orange - Main accent color
     primaryLight: '#FFA726',   // Lighter orange for hover states
@@ -35,52 +58,10 @@ export const colorPalettes = {
       beige3: 'rgba(255, 230, 200, 0.08)',
     },
   },
-  fnahs: {
-    primary: '#F59E0B',        // Golden Yellow
-    primaryLight: '#FBBF24',   // Lighter golden yellow
-    primaryDark: '#D97706',    // Darker golden yellow
-    secondary: '#FF9500',      // Orange
-    success: '#10B981',
-    error: '#EF4444',
-    warning: '#F59E0B',
-    gradientLight: ['#FFFBEB', '#FEF3C7', '#FDE68A'],  // Light yellow gradient
-    gradientDark: ['#0B1220', '#111827', '#1F2937'],
-    orbColors: {
-      orange1: 'rgba(245, 158, 11, 0.3)',
-      orange2: 'rgba(245, 158, 11, 0.2)',
-      orange3: 'rgba(251, 191, 36, 0.45)',
-      orange4: 'rgba(252, 211, 77, 0.18)',
-      orange5: 'rgba(253, 224, 71, 0.4)',
-      beige1: 'rgba(254, 243, 199, 0.35)',
-      beige2: 'rgba(253, 230, 138, 0.18)',
-      beige3: 'rgba(255, 251, 235, 0.08)',
-    },
-  },
-  fals: {
-    primary: '#047857',        // Dark Green
-    primaryLight: '#059669',   // Lighter dark green
-    primaryDark: '#065F46',    // Darker green
-    secondary: '#10B981',      // Emerald
-    success: '#10B981',
-    error: '#EF4444',
-    warning: '#F59E0B',
-    gradientLight: ['#ECFDF5', '#D1FAE5', '#A7F3D0'],  // Light green gradient
-    gradientDark: ['#0B1220', '#111827', '#1F2937'],
-    orbColors: {
-      orange1: 'rgba(4, 120, 87, 0.3)',
-      orange2: 'rgba(4, 120, 87, 0.2)',
-      orange3: 'rgba(5, 150, 105, 0.45)',
-      orange4: 'rgba(16, 185, 129, 0.18)',
-      orange5: 'rgba(52, 211, 153, 0.4)',
-      beige1: 'rgba(209, 250, 229, 0.35)',
-      beige2: 'rgba(167, 243, 208, 0.18)',
-      beige3: 'rgba(236, 253, 245, 0.08)',
-    },
-  },
 };
 
 // Function to get theme with color palette applied
-const createTheme = (isDark: boolean, colorTheme: ColorTheme = 'facet', fontSizeScale: FontSizeScale = 'medium') => {
+const createTheme = (isDark: boolean, colorTheme: ColorTheme = 'dorsu', fontSizeScale: FontSizeScale = 'medium') => {
   const palette = colorPalettes[colorTheme];
   const fontSizeMultiplier = fontSizeScales[fontSizeScale];
   
@@ -207,9 +188,9 @@ const createTheme = (isDark: boolean, colorTheme: ColorTheme = 'facet', fontSize
   };
 };
 
-// Backward compatibility - default themes with 'facet' palette and 'medium' font size
-export const lightTheme = createTheme(false, 'facet', 'medium');
-export const darkTheme = createTheme(true, 'facet', 'medium');
+// Backward compatibility - default themes with 'dorsu' palette and 'medium' font size
+export const lightTheme = createTheme(false, 'dorsu', 'medium');
+export const darkTheme = createTheme(true, 'dorsu', 'medium');
 
 // Default theme (light)
 export const theme = lightTheme;
@@ -220,7 +201,7 @@ export type Theme = typeof lightTheme;
 const themeCache = new Map<string, Theme>();
 
 // Helper function to get theme based on mode and color theme - returns cached objects
-export const getTheme = (isDark: boolean, colorTheme: ColorTheme = 'facet', fontSizeScale: FontSizeScale = 'medium'): Theme => {
+export const getTheme = (isDark: boolean, colorTheme: ColorTheme = 'dorsu', fontSizeScale: FontSizeScale = 'medium'): Theme => {
   const cacheKey = `${isDark ? 'dark' : 'light'}-${colorTheme}-${fontSizeScale}`;
   
   if (!themeCache.has(cacheKey)) {
@@ -232,9 +213,8 @@ export const getTheme = (isDark: boolean, colorTheme: ColorTheme = 'facet', font
 
 // Get available color themes with their display names
 export const getColorThemes = (): Array<{ id: ColorTheme; name: string; color: string }> => [
+  { id: 'dorsu', name: 'DOrSU', color: colorPalettes.dorsu.primary },
   { id: 'facet', name: 'Facet', color: colorPalettes.facet.primary },
-  { id: 'fnahs', name: 'FNAHS', color: colorPalettes.fnahs.primary },
-  { id: 'fals', name: 'FALS', color: colorPalettes.fals.primary },
 ];
 
 

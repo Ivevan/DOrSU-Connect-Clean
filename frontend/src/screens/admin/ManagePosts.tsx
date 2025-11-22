@@ -462,8 +462,14 @@ const ManagePosts: React.FC = () => {
       
       {/* Warm Gradient Background */}
       <LinearGradient
-        colors={isDarkMode ? ['#1F1F1F', '#2A2A2A', '#1A1A1A'] : ['#FBF8F3', '#F8F5F0', '#F5F2ED']}
+        colors={[
+          isDarkMode ? '#0B1220' : '#FBF8F3',
+          isDarkMode ? '#111827' : '#F8F5F0',
+          isDarkMode ? '#1F2937' : '#F5F2ED'
+        ]}
         style={styles.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
       />
       
       {/* Simplified Animated Background */}
@@ -481,7 +487,7 @@ const ManagePosts: React.FC = () => {
           ]}
         >
           <LinearGradient
-            colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.2)', 'transparent']}
+            colors={[theme.colors.orbColors.orange5, theme.colors.orbColors.orange2, 'transparent']}
             style={StyleSheet.absoluteFillObject}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -500,7 +506,7 @@ const ManagePosts: React.FC = () => {
           ]}
         >
           <LinearGradient
-            colors={['transparent', 'rgba(255, 180, 130, 0.3)', 'rgba(255, 200, 160, 0.15)']}
+            colors={['transparent', theme.colors.orbColors.orange4, theme.colors.orbColors.orange1]}
             style={StyleSheet.absoluteFillObject}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}

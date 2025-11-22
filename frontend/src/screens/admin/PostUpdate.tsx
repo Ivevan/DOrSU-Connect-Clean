@@ -746,8 +746,14 @@ const PostUpdate: React.FC = () => {
       
       {/* Warm Gradient Background */}
       <LinearGradient
-        colors={isDarkMode ? ['#1F1F1F', '#2A2A2A', '#1A1A1A'] : ['#FBF8F3', '#F8F5F0', '#F5F2ED']}
+        colors={[
+          isDarkMode ? '#0B1220' : '#FBF8F3',
+          isDarkMode ? '#111827' : '#F8F5F0',
+          isDarkMode ? '#1F2937' : '#F5F2ED'
+        ]}
         style={styles.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
       />
       
       {/* Simplified Animated Background */}
@@ -765,7 +771,7 @@ const PostUpdate: React.FC = () => {
           ]}
         >
           <LinearGradient
-            colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.2)', 'transparent']}
+            colors={[theme.colors.orbColors.orange5, theme.colors.orbColors.orange2, 'transparent']}
             style={StyleSheet.absoluteFillObject}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -784,7 +790,7 @@ const PostUpdate: React.FC = () => {
           ]}
         >
           <LinearGradient
-            colors={['transparent', 'rgba(255, 180, 130, 0.3)', 'rgba(255, 200, 160, 0.15)']}
+            colors={['transparent', theme.colors.orbColors.orange4, theme.colors.orbColors.orange1]}
             style={StyleSheet.absoluteFillObject}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -1052,13 +1058,13 @@ const PostUpdate: React.FC = () => {
                       { 
                         backgroundColor: theme.colors.card,
                         borderTopWidth: isSelectedDay ? 2 : 0,
-                        borderTopColor: isSelectedDay ? '#FF9500' : 'transparent',
+                        borderTopColor: isSelectedDay ? '#2563EB' : 'transparent',
                         borderLeftWidth: isSelectedDay ? 2 : 0,
-                        borderLeftColor: isSelectedDay ? '#FF9500' : 'transparent',
+                        borderLeftColor: isSelectedDay ? '#2563EB' : 'transparent',
                         borderRightWidth: isLastColumn ? (isSelectedDay ? 2 : 0) : (isSelectedDay ? 2 : StyleSheet.hairlineWidth),
-                        borderRightColor: isSelectedDay ? '#FF9500' : theme.colors.border,
+                        borderRightColor: isSelectedDay ? '#2563EB' : theme.colors.border,
                         borderBottomWidth: isSelectedDay ? 2 : StyleSheet.hairlineWidth,
-                        borderBottomColor: isSelectedDay ? '#FF9500' : theme.colors.border,
+                        borderBottomColor: isSelectedDay ? '#2563EB' : theme.colors.border,
                       }
                     ]}
                     onPress={() => setTmpDay(day)}
@@ -1067,7 +1073,7 @@ const PostUpdate: React.FC = () => {
                     <View style={styles.calendarDayContent}>
                       <View style={[
                         styles.calendarDayNumberContainer,
-                        isCurrentDay && { backgroundColor: '#FF9500' },
+                        isCurrentDay && { backgroundColor: '#2563EB' },
                       ]}>
                         <Text
                           style={[

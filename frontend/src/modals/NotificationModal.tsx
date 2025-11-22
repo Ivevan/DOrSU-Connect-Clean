@@ -312,13 +312,13 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
   const getNotificationColor = (type: string) => {
     switch (type) {
       case 'new_post':
-        return '#3B82F6'; // Blue
+        return '#2563EB'; // Royal Blue
       case 'todays_event':
-        return '#10B981'; // Green
+        return '#10B981'; // Green (for today's events)
       case 'upcoming_event':
-        return '#F59E0B'; // Amber
+        return '#FBBF24'; // Golden Yellow
       default:
-        return theme.colors.accent;
+        return '#2563EB';
     }
   };
 
@@ -336,8 +336,8 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <View style={[styles.headerIcon, { backgroundColor: theme.colors.accent + '20' }]}>
-              <Ionicons name="notifications" size={24} color={theme.colors.accent} />
+            <View style={[styles.headerIcon, { backgroundColor: '#2563EB' + '20' }]}>
+              <Ionicons name="notifications" size={24} color="#2563EB" />
             </View>
             <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Notifications</Text>
           </View>
@@ -353,15 +353,15 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
-              tintColor={theme.colors.accent}
-              colors={[theme.colors.accent]}
+              tintColor="#2563EB"
+              colors={['#2563EB']}
             />
           }
         >
           {/* Permission Status */}
           {!hasPermission && (
             <View style={[styles.permissionCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <Ionicons name="alert-circle-outline" size={20} color="#F59E0B" />
+              <Ionicons name="alert-circle-outline" size={20} color="#FBBF24" />
               <View style={styles.permissionContent}>
                 <Text style={[styles.permissionTitle, { color: theme.colors.text }]}>Enable Notifications</Text>
                 <Text style={[styles.permissionMessage, { color: theme.colors.textMuted }]}>
@@ -369,7 +369,7 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
                 </Text>
               </View>
               <TouchableOpacity
-                style={[styles.permissionButton, { backgroundColor: theme.colors.accent }]}
+                style={[styles.permissionButton, { backgroundColor: '#2563EB' }]}
                 onPress={handleRequestPermissions}
               >
                 <Text style={styles.permissionButtonText}>Enable</Text>
@@ -381,13 +381,13 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
           <View style={[styles.settingsCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <View style={styles.settingsRow}>
               <View style={styles.settingsLeft}>
-                <Ionicons name="notifications-outline" size={20} color={theme.colors.accent} />
+                <Ionicons name="notifications-outline" size={20} color="#2563EB" />
                 <Text style={[styles.settingsLabel, { color: theme.colors.text }]}>Notifications</Text>
               </View>
               <Switch
                 value={notificationsEnabled}
                 onValueChange={handleToggleNotifications}
-                trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
+                trackColor={{ false: theme.colors.border, true: '#2563EB' }}
                 thumbColor={theme.colors.surface}
                 ios_backgroundColor={theme.colors.border}
               />
@@ -403,15 +403,15 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
               style={[styles.markAllReadButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
               onPress={markAllAsRead}
             >
-              <Ionicons name="checkmark-done" size={18} color={theme.colors.accent} />
-              <Text style={[styles.markAllReadText, { color: theme.colors.accent }]}>Mark all as read</Text>
+              <Ionicons name="checkmark-done" size={18} color="#2563EB" />
+              <Text style={[styles.markAllReadText, { color: '#2563EB' }]}>Mark all as read</Text>
             </TouchableOpacity>
           )}
 
           {/* Notification Items */}
           {isLoading ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={theme.colors.accent} />
+              <ActivityIndicator size="large" color="#2563EB" />
               <Text style={[styles.loadingText, { color: theme.colors.textMuted }]}>Loading notifications...</Text>
             </View>
           ) : notificationItems.length === 0 ? (
@@ -442,7 +442,7 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
                     activeOpacity={0.7}
                   >
                     {!isRead && (
-                      <View style={[styles.unreadIndicator, { backgroundColor: theme.colors.accent }]} />
+                      <View style={[styles.unreadIndicator, { backgroundColor: '#2563EB' }]} />
                     )}
                     <View style={[styles.notificationIcon, { backgroundColor: iconColor + '20' }]}>
                       <Ionicons name={getNotificationIcon(item.type) as any} size={24} color={iconColor} />
@@ -456,7 +456,7 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
                             style={styles.markReadButton}
                             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                           >
-                            <Ionicons name="checkmark-circle-outline" size={20} color={theme.colors.accent} />
+                            <Ionicons name="checkmark-circle-outline" size={20} color="#2563EB" />
                           </TouchableOpacity>
                         )}
                       </View>
@@ -487,7 +487,7 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
 
           {/* Manual Check Button */}
           <TouchableOpacity
-            style={[styles.checkButton, { backgroundColor: theme.colors.accent }]}
+            style={[styles.checkButton, { backgroundColor: '#2563EB' }]}
             onPress={handleRefresh}
             disabled={isRefreshing}
           >

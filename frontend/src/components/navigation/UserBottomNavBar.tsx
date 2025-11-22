@@ -56,7 +56,7 @@ const Bar: React.FC<BarProps> = ({
             <Ionicons 
               name={activeTab === 'home' ? 'home' : 'home-outline'} 
               size={28} 
-              color={activeTab === 'home' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
+              color={activeTab === 'home' ? t.colors.accent : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
 
@@ -64,7 +64,7 @@ const Bar: React.FC<BarProps> = ({
             <Ionicons 
               name={activeTab === 'discovery' ? 'newspaper' : 'newspaper-outline'} 
               size={28} 
-              color={activeTab === 'discovery' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
+              color={activeTab === 'discovery' ? t.colors.accent : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
 
@@ -72,7 +72,7 @@ const Bar: React.FC<BarProps> = ({
             <Ionicons 
               name={activeTab === 'calendar' ? 'copy' : 'copy-outline'} 
               size={28} 
-              color={activeTab === 'calendar' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
+              color={activeTab === 'calendar' ? t.colors.accent : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
         </View>

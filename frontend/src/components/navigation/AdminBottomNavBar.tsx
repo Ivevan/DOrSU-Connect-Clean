@@ -2,7 +2,7 @@ import React from 'react';
 import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import { BlurView } from 'expo-blur';
 
 interface AdminBottomNavBarProps {
@@ -19,7 +19,7 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
   activeTab = 'chat',
 }) => {
   const insets = useSafeAreaInsets();
-  const { isDarkMode } = useTheme();
+  const { isDarkMode, theme: t } = useThemeValues();
 
   return (
     <View style={[
@@ -40,7 +40,7 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
             <Ionicons 
               name={activeTab === 'chat' ? 'home' : 'home-outline'} 
               size={28} 
-              color={activeTab === 'chat' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
+              color={activeTab === 'chat' ? t.colors.accent : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
 
@@ -48,7 +48,7 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
             <Ionicons 
               name={activeTab === 'dashboard' ? 'newspaper' : 'newspaper-outline'} 
               size={28} 
-              color={activeTab === 'dashboard' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
+              color={activeTab === 'dashboard' ? t.colors.accent : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
 
@@ -56,7 +56,7 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
             <Ionicons 
               name={activeTab === 'calendar' ? 'calendar' : 'calendar-outline'} 
               size={28} 
-              color={activeTab === 'calendar' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
+              color={activeTab === 'calendar' ? t.colors.accent : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
         </View>

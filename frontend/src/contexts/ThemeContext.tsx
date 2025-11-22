@@ -59,8 +59,8 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const [userPreference, setUserPreference] = useState<null | 'light' | 'dark'>(null);
   const [isLoadingTheme, setIsLoadingTheme] = useState(true);
   
-  // Color theme preference - default to 'facet'
-  const [selectedColorTheme, setSelectedColorTheme] = useState<ColorTheme>('facet');
+  // Color theme preference - default to 'dorsu' (Royal Blue)
+  const [selectedColorTheme, setSelectedColorTheme] = useState<ColorTheme>('dorsu');
   
   // Font size scale preference - default to 'medium'
   const [fontSizeScale, setFontSizeScaleState] = useState<FontSizeScale>('medium');
@@ -79,7 +79,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
         
         // Load color theme preference
         const savedColorTheme = await AsyncStorage.getItem('colorTheme');
-        if (savedColorTheme && ['facet', 'fnahs', 'fals'].includes(savedColorTheme)) {
+        if (savedColorTheme && ['dorsu', 'facet'].includes(savedColorTheme)) {
           setSelectedColorTheme(savedColorTheme as ColorTheme);
         }
         

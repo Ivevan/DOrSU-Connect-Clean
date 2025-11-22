@@ -566,7 +566,7 @@ const AdminAIChat = () => {
 
       {/* Animated Floating Background Orb (Copilot-style) */}
       <View style={styles.floatingBgContainer} pointerEvents="none">
-        {/* Orb 1 - Soft Orange Glow (Center area) */}
+        {/* Orb 1 - Soft Blue Glow (Center area) */}
         <Animated.View
           style={[
             styles.floatingOrbWrapper,
@@ -599,7 +599,7 @@ const AdminAIChat = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[theme.colors.orbColors.orange1, theme.colors.orbColors.orange2, theme.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -635,7 +635,7 @@ const AdminAIChat = () => {
           <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]}>
             {messages.length > 0 ? 'Conversation' : 'New Conversation'}
           </Text>
-          <View style={[styles.userTypeLabel, { backgroundColor: selectedUserType === 'student' ? '#10B981' : '#2563EB' }]}>
+          <View style={[styles.userTypeLabel, { backgroundColor: selectedUserType === 'student' ? theme.colors.accent : '#FBBF24' }]}>
             <Text style={[styles.userTypeLabelText, { fontSize: theme.fontSize.scaleSize(9) }]}>
               {selectedUserType === 'faculty' ? 'Faculty' : 'Student'}
             </Text>
@@ -647,7 +647,7 @@ const AdminAIChat = () => {
             onPress={() => navigation.navigate('AdminSettings')} 
             accessibilityLabel="Admin profile - Go to settings"
           >
-              <View style={[styles.profileIconCircle, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
+              <View style={[styles.profileIconCircle, { backgroundColor: theme.colors.accent }]}>
                 <Text style={[styles.profileInitials, { fontSize: theme.fontSize.scaleSize(13) }]}>AD</Text>
               </View>
           </TouchableOpacity>
@@ -694,20 +694,20 @@ const AdminAIChat = () => {
         cards={[
           {
             icon: 'megaphone',
-            iconColor: '#0284C7',
-            iconBgColor: '#E0F2FE',
+            iconColor: theme.colors.accent,
+            iconBgColor: theme.colors.accent + '20',
             text: 'Draft announcements and events faster'
           },
           {
             icon: 'document-text',
-            iconColor: '#4F46E5',
-            iconBgColor: '#E0E7FF',
+            iconColor: theme.colors.accentDark,
+            iconBgColor: theme.colors.accent + '20',
             text: 'Summarize long updates into key points'
           },
           {
             icon: 'help-circle',
-            iconColor: '#059669',
-            iconBgColor: '#ECFDF5',
+            iconColor: theme.colors.accent,
+            iconBgColor: theme.colors.accent + '20',
             text: 'Answer common student questions'
           }
         ]}
@@ -748,7 +748,7 @@ const AdminAIChat = () => {
                 ]}
               >
                 {message.role === 'assistant' && (
-                  <View style={[styles.aiAvatar, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
+                  <View style={[styles.aiAvatar, { backgroundColor: theme.colors.accent }]}>
                     <MaterialIcons name="auto-awesome" size={14} color="#FFF" />
                   </View>
                 )}
@@ -757,7 +757,7 @@ const AdminAIChat = () => {
                     onLongPress={() => handleMessageLongPress(message)}
                     style={[
                       styles.messageBubble,
-                      { backgroundColor: isDarkMode ? '#2563EB' : '#2563EB' }
+                      { backgroundColor: theme.colors.accent }
                     ]}
                   >
                     <Text style={[styles.messageText, { color: '#FFFFFF', fontSize: theme.fontSize.scaleSize(15) }]}>
@@ -784,7 +784,7 @@ const AdminAIChat = () => {
             ))}
             {isLoading && (
               <View style={styles.assistantMessageRow}>
-                <View style={[styles.aiAvatar, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
+                <View style={[styles.aiAvatar, { backgroundColor: theme.colors.accent }]}>
                   <MaterialIcons name="auto-awesome" size={14} color="#FFF" />
                 </View>
                 <View style={[styles.typingBubbleContainer, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}>
@@ -910,8 +910,8 @@ const AdminAIChat = () => {
                           style={styles.promptCardBlur}
                         >
                           <View style={styles.promptCardContent}>
-                            <View style={[styles.promptIconWrap, { backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.15)' : 'rgba(255, 149, 0, 0.1)' }]}>
-                              <Ionicons name="reorder-three" size={16} color="#FF9500" />
+                            <View style={[styles.promptIconWrap, { backgroundColor: isDarkMode ? theme.colors.accent + '26' : theme.colors.accent + '1A' }]}>
+                              <Ionicons name="reorder-three" size={16} color={theme.colors.accent} />
                             </View>
                             <Text style={[styles.promptCardText, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(14) }]}>{txt}</Text>
                           </View>
@@ -935,7 +935,7 @@ const AdminAIChat = () => {
         {/* Student/Faculty Toggle - Perplexity style in input bar */}
         <View style={styles.userTypeToggleContainer}>
           <View 
-            style={[styles.userTypeToggle, { backgroundColor: selectedUserType === 'student' ? '#10B981' : '#2563EB' }]}
+            style={[styles.userTypeToggle, { backgroundColor: selectedUserType === 'student' ? theme.colors.accent : '#FBBF24' }]}
             onLayout={(e) => {
               segmentWidth.current = e.nativeEvent.layout.width;
               const targetX = selectedUserType === 'faculty' 
@@ -967,7 +967,7 @@ const AdminAIChat = () => {
               >
                 <Text style={[
                   styles.userTypeToggleText,
-                  { color: selectedUserType === 'student' ? '#10B981' : '#FFFFFF', fontSize: theme.fontSize.scaleSize(12) }
+                  { color: selectedUserType === 'student' ? theme.colors.accent : '#FFFFFF', fontSize: theme.fontSize.scaleSize(12) }
                 ]}>
                   Student
                 </Text>
@@ -982,7 +982,7 @@ const AdminAIChat = () => {
               >
                 <Text style={[
                   styles.userTypeToggleText,
-                  { color: selectedUserType === 'faculty' ? '#2563EB' : '#FFFFFF', fontSize: theme.fontSize.scaleSize(12) }
+                  { color: selectedUserType === 'faculty' ? '#FBBF24' : '#FFFFFF', fontSize: theme.fontSize.scaleSize(12) }
                 ]}>
                   Faculty
                 </Text>
@@ -1014,7 +1014,7 @@ const AdminAIChat = () => {
               <TouchableOpacity 
                 style={[
                   styles.sendBtn, 
-                  { backgroundColor: '#2563EB' },
+                  { backgroundColor: theme.colors.accent },
                   isLoading && styles.sendBtnDisabled
                 ]}
                 onPress={() => handleSendMessage()}
@@ -1352,7 +1352,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255, 149, 0, 0.15)',
+    borderColor: 'transparent', // Will be set dynamically via theme
   },
   promptCardBlur: {
     width: '100%',

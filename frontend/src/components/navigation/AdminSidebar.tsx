@@ -134,7 +134,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
         {/* Sidebar Header */}
         <View style={styles.sidebarHeader}>
           <View style={styles.sidebarLogoSection}>
-            <View style={styles.sidebarLogo}>
+            <View style={[styles.sidebarLogo, { backgroundColor: t.colors.accent }]}>
               <Ionicons name="shield-checkmark" size={28} color="#FFFFFF" />
             </View>
             <Text style={[styles.sidebarTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(20) }]}>
@@ -193,10 +193,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             <Ionicons 
               name={currentScreen === 'AdminAIChat' ? 'home' : 'home-outline'} 
               size={24} 
-              color={currentScreen === 'AdminAIChat' ? '#FF9500' : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              color={currentScreen === 'AdminAIChat' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />
             <Text style={[styles.sidebarMenuText, { 
-              color: currentScreen === 'AdminAIChat' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              color: currentScreen === 'AdminAIChat' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
               fontWeight: currentScreen === 'AdminAIChat' ? '600' : '500',
               fontSize: t.fontSize.scaleSize(16)
             }]}>
@@ -214,10 +214,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             <Ionicons 
               name={currentScreen === 'AdminDashboard' ? 'newspaper' : 'newspaper-outline'} 
               size={24} 
-              color={currentScreen === 'AdminDashboard' ? '#FF9500' : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              color={currentScreen === 'AdminDashboard' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />
             <Text style={[styles.sidebarMenuText, { 
-              color: currentScreen === 'AdminDashboard' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              color: currentScreen === 'AdminDashboard' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
               fontWeight: currentScreen === 'AdminDashboard' ? '600' : '500',
               fontSize: t.fontSize.scaleSize(16)
             }]}>
@@ -235,10 +235,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             <Ionicons 
               name={currentScreen === 'AdminCalendar' ? 'copy' : 'copy-outline'} 
               size={24} 
-              color={currentScreen === 'AdminCalendar' ? '#FF9500' : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              color={currentScreen === 'AdminCalendar' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />
             <Text style={[styles.sidebarMenuText, { 
-              color: currentScreen === 'AdminCalendar' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              color: currentScreen === 'AdminCalendar' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
               fontWeight: currentScreen === 'AdminCalendar' ? '600' : '500',
               fontSize: t.fontSize.scaleSize(16)
             }]}>
@@ -256,10 +256,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             <Ionicons 
               name={currentScreen === 'PostUpdate' ? 'create' : 'create-outline'} 
               size={24} 
-              color={currentScreen === 'PostUpdate' ? '#FF9500' : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              color={currentScreen === 'PostUpdate' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />
             <Text style={[styles.sidebarMenuText, { 
-              color: currentScreen === 'PostUpdate' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              color: currentScreen === 'PostUpdate' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
               fontWeight: currentScreen === 'PostUpdate' ? '600' : '500',
               fontSize: t.fontSize.scaleSize(16)
             }]}>
@@ -277,10 +277,10 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             <Ionicons 
               name={currentScreen === 'ManagePosts' ? 'list' : 'list-outline'} 
               size={24} 
-              color={currentScreen === 'ManagePosts' ? '#FF9500' : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              color={currentScreen === 'ManagePosts' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />
             <Text style={[styles.sidebarMenuText, { 
-              color: currentScreen === 'ManagePosts' ? '#FF9500' : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              color: currentScreen === 'ManagePosts' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
               fontWeight: currentScreen === 'ManagePosts' ? '600' : '500',
               fontSize: t.fontSize.scaleSize(16)
             }]}>
@@ -341,7 +341,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
                     {chat.userType && (
                       <View style={[
                         styles.historyAccent,
-                        { backgroundColor: chat.userType === 'student' ? '#10B981' : '#2563EB' }
+                        { backgroundColor: chat.userType === 'student' ? t.colors.accent : '#FBBF24' }
                       ]} />
                     )}
                     <View style={styles.historyItemContent}>
@@ -428,7 +428,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#FF9500',
+    backgroundColor: 'transparent', // Will be set dynamically via theme
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -450,7 +450,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: '#FF9500',
+    backgroundColor: 'transparent', // Will be set dynamically via theme
     alignItems: 'center',
     justifyContent: 'center',
   },

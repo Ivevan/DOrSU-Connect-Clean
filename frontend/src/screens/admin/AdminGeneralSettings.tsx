@@ -134,7 +134,7 @@ const AdminGeneralSettings = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[t.colors.orbColors.orange1, t.colors.orbColors.orange2, t.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -192,7 +192,7 @@ const AdminGeneralSettings = () => {
             >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="color-palette-outline" size={20} color="#FF9500" />
+                  <Ionicons name="color-palette-outline" size={20} color={t.colors.accent} />
                 </View>
                 <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Theme Color</Text>
               </View>
@@ -204,7 +204,7 @@ const AdminGeneralSettings = () => {
             <View style={[styles.settingItem, { borderBottomColor: 'rgba(255, 255, 255, 0.1)' }]}>
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="moon-outline" size={20} color="#FF9500" />
+                  <Ionicons name="moon-outline" size={20} color={t.colors.accent} />
                 </View>
                 <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Dark Mode</Text>
               </View>
@@ -214,7 +214,7 @@ const AdminGeneralSettings = () => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   toggleTheme();
                 }}
-                trackColor={{ false: t.colors.border, true: '#FF9500' }}
+                trackColor={{ false: t.colors.border, true: t.colors.accent }}
                 thumbColor={t.colors.surface}
                 ios_backgroundColor={t.colors.border}
               />
@@ -229,7 +229,7 @@ const AdminGeneralSettings = () => {
             >
               <View style={styles.settingLeft}>
                 <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                  <Ionicons name="text-outline" size={20} color="#FF9500" />
+                  <Ionicons name="text-outline" size={20} color={t.colors.accent} />
                 </View>
                 <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Font Size</Text>
               </View>

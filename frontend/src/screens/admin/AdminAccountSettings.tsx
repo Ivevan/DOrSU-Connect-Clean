@@ -245,7 +245,7 @@ const AdminAccountSettings = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[t.colors.orbColors.orange1, t.colors.orbColors.orange2, t.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -291,7 +291,7 @@ const AdminAccountSettings = () => {
           >
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                <Ionicons name="person-outline" size={20} color="#FF9500" />
+                <Ionicons name="person-outline" size={20} color={t.colors.accent} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Name</Text>
@@ -313,7 +313,7 @@ const AdminAccountSettings = () => {
                         <Text style={[styles.cancelText, { fontSize: t.fontSize.scaleSize(13) }]}>Cancel</Text>
                       </TouchableOpacity>
                       <TouchableOpacity 
-                        style={[styles.actionButton, styles.saveButton]}
+                        style={[styles.actionButton, styles.saveButton, { backgroundColor: t.colors.accent }]}
                         onPress={handleSaveName}
                       >
                         <Text style={[styles.saveText, { fontSize: t.fontSize.scaleSize(13) }]}>Save</Text>
@@ -331,7 +331,7 @@ const AdminAccountSettings = () => {
           <TouchableOpacity style={styles.settingItemLast}>
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                <Ionicons name="shield-checkmark-outline" size={20} color="#FF9500" />
+                <Ionicons name="shield-checkmark-outline" size={20} color={t.colors.accent} />
               </View>
               <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Admin Status</Text>
             </View>
@@ -591,7 +591,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(107, 114, 128, 0.2)',
   },
   saveButton: {
-    backgroundColor: '#FF9500',
+    backgroundColor: 'transparent', // Will be set dynamically via theme
   },
   cancelText: {
     fontSize: 13,

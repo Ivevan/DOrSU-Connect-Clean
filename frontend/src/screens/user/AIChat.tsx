@@ -129,7 +129,13 @@ const AIChat = () => {
       };
 
       if (Platform.OS === 'android') {
-        const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+        const onBackPressWrapper = () => {
+          // onBackPress returns a Promise<boolean>, but hardwareBackPress expects sync return
+          // So we call async and handle result, but always return true to prevent default behavior
+          onBackPress();
+          return true;
+        };
+        const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPressWrapper);
         return () => subscription.remove();
       }
     }, [])
@@ -719,7 +725,7 @@ const AIChat = () => {
 
       {/* Animated Floating Background Orb (Copilot-style) */}
       <View style={styles.floatingBgContainer} pointerEvents="none">
-        {/* Orb 1 - Soft Orange Glow (Center area) */}
+        {/* Orb 1 - Soft Blue Glow (Center area) */}
         <Animated.View
           style={[
             styles.floatingOrbWrapper,
@@ -752,7 +758,7 @@ const AIChat = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[t.colors.orbColors.orange1, t.colors.orbColors.orange2, t.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -789,7 +795,7 @@ const AIChat = () => {
           <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}>
             {messages.length > 0 ? 'Conversation' : 'New Conversation'}
           </Text>
-          <View style={[styles.userTypeLabel, { backgroundColor: selectedUserType === 'student' ? '#10B981' : '#2563EB' }]}>
+          <View style={[styles.userTypeLabel, { backgroundColor: selectedUserType === 'student' ? t.colors.accent : '#FBBF24' }]}>
             <Text style={[styles.userTypeLabelText, { fontSize: t.fontSize.scaleSize(9) }]}>
               {selectedUserType === 'faculty' ? 'Faculty' : 'Student'}
             </Text>
@@ -807,7 +813,7 @@ const AIChat = () => {
                 style={styles.profileImage}
               />
             ) : (
-              <View style={[styles.profileIconCircle, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
+              <View style={[styles.profileIconCircle, { backgroundColor: t.colors.accent }]}>
                 <Text style={[styles.profileInitials, { fontSize: t.fontSize.scaleSize(13) }]}>{getUserInitials()}</Text>
               </View>
             )}
@@ -934,7 +940,7 @@ const AIChat = () => {
                 ]}
               >
                 {message.role === 'assistant' && (
-                  <View style={[styles.aiAvatar, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
+                  <View style={[styles.aiAvatar, { backgroundColor: t.colors.accent }]}>
                     <MaterialIcons name="auto-awesome" size={14} color="#FFF" />
                   </View>
                 )}
@@ -943,7 +949,7 @@ const AIChat = () => {
                     onLongPress={() => handleMessageLongPress(message)}
                     style={[
                       styles.messageBubble,
-                      { backgroundColor: isDarkMode ? '#2563EB' : '#2563EB' }
+                      { backgroundColor: t.colors.accent }
                     ]}
                   >
                     <Text style={[styles.messageText, { color: '#FFFFFF', fontSize: t.fontSize.scaleSize(15) }]}>
@@ -972,7 +978,7 @@ const AIChat = () => {
             ))}
             {isLoading && (
               <View style={styles.assistantMessageRow}>
-                <View style={[styles.aiAvatar, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
+                <View style={[styles.aiAvatar, { backgroundColor: t.colors.accent }]}>
                   <MaterialIcons name="auto-awesome" size={14} color="#FFF" />
                 </View>
                 <View style={[styles.typingBubbleContainer, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}>
@@ -1098,8 +1104,8 @@ const AIChat = () => {
                           style={styles.promptCardBlur}
                         >
                           <View style={styles.promptCardContent}>
-                            <View style={[styles.promptIconWrap, { backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.15)' : 'rgba(255, 149, 0, 0.1)' }]}>
-                              <Ionicons name="reorder-three" size={16} color="#FF9500" />
+                            <View style={[styles.promptIconWrap, { backgroundColor: isDarkMode ? t.colors.accent + '26' : t.colors.accent + '1A' }]}>
+                              <Ionicons name="reorder-three" size={16} color={t.colors.accent} />
                             </View>
                             <Text style={[styles.promptCardText, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(14) }]}>{txt}</Text>
                           </View>
@@ -1123,7 +1129,7 @@ const AIChat = () => {
         {/* Student/Faculty Toggle - Perplexity style in input bar */}
         <View style={styles.userTypeToggleContainer}>
           <View 
-            style={[styles.userTypeToggle, { backgroundColor: selectedUserType === 'student' ? '#10B981' : '#2563EB' }]}
+            style={[styles.userTypeToggle, { backgroundColor: selectedUserType === 'student' ? t.colors.accent : '#FBBF24' }]}
             onLayout={(e) => {
               segmentWidth.current = e.nativeEvent.layout.width;
               const targetX = selectedUserType === 'faculty' 
@@ -1170,7 +1176,7 @@ const AIChat = () => {
               >
                 <Text style={[
                   styles.userTypeToggleText,
-                  { color: selectedUserType === 'faculty' ? '#2563EB' : '#FFFFFF', fontSize: t.fontSize.scaleSize(12) }
+                  { color: selectedUserType === 'faculty' ? t.colors.accent : '#FFFFFF', fontSize: t.fontSize.scaleSize(12) }
                 ]}>
                   Faculty
                 </Text>
@@ -1202,7 +1208,7 @@ const AIChat = () => {
               <TouchableOpacity 
                 style={[
                   styles.sendBtn, 
-                  { backgroundColor: '#2563EB' },
+                  { backgroundColor: t.colors.accent },
                   isLoading && styles.sendBtnDisabled
                 ]}
                 onPress={() => handleSendMessage()}

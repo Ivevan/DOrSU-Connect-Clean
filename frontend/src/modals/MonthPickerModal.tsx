@@ -26,7 +26,7 @@ const MonthItem = memo(({ month, index, isSelected, onSelect, theme }: { month: 
     style={[
       styles.monthPickerCard,
       { backgroundColor: theme.colors.surface, borderColor: theme.colors.border },
-      isSelected && [styles.monthPickerCardSelected, { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }]
+      isSelected && [styles.monthPickerCardSelected, { backgroundColor: theme.colors.accent, borderColor: theme.colors.accent }]
     ]}
     onPress={() => onSelect(index)}
   >
@@ -261,8 +261,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   monthPickerCardSelected: {
-    backgroundColor: '#2563EB',
-    borderColor: '#2563EB',
+    backgroundColor: 'transparent', // Will be set dynamically via theme
+    borderColor: 'transparent', // Will be set dynamically via theme
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,

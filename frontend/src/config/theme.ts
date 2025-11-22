@@ -71,6 +71,7 @@ const createTheme = (isDark: boolean, colorTheme: ColorTheme = 'dorsu', fontSize
       accent: palette.primary,           // Use color theme primary
       accentLight: palette.primaryLight,
       accentDark: palette.primaryDark,
+      secondary: palette.secondary,     // Secondary color from palette
       surface: '#1F2937',
       surfaceAlt: '#111827',
       border: 'rgba(255,255,255,0.1)',
@@ -131,6 +132,7 @@ const createTheme = (isDark: boolean, colorTheme: ColorTheme = 'dorsu', fontSize
       accent: palette.primary,           // Use color theme primary
       accentLight: palette.primaryLight,
       accentDark: palette.primaryDark,
+      secondary: palette.secondary,     // Secondary color from palette
       surface: '#FFFFFF',
       surfaceAlt: '#F8FAFC',
       border: 'rgba(0,0,0,0.06)',

@@ -849,9 +849,13 @@ const AdminCalendar = () => {
     
     let count = 0;
     
-    // Count events from posts (AdminDataService)
+    // Count events from posts (AdminDataService) - filtered by selected content types
     count += posts
-      .filter(p => p.source !== 'CSV Upload')
+      .filter(p => {
+        if (p.source === 'CSV Upload') return false;
+        const postType = String(p.category || 'Announcement').toLowerCase();
+        return selectedContentTypes.includes(postType);
+      })
       .reduce((acc, p) => {
         const key = parseAnyDateToKey(p.isoDate || p.date);
         if (!key) return acc;
@@ -859,10 +863,14 @@ const AdminCalendar = () => {
         return acc + ((Number(yy) === y && Number(mm) === m) ? 1 : 0);
       }, 0);
     
-    // Count events from calendarEvents (CalendarService)
+    // Count events from calendarEvents (CalendarService) - filtered by selected content types
     // For date ranges, count if any date in range falls in the month
     // For week/month-only events, count if the month matches
     count += calendarEvents.reduce((acc, event) => {
+      // Apply content type filter
+      const eventType = String(event.category || 'Announcement').toLowerCase();
+      if (!selectedContentTypes.includes(eventType)) return acc;
+      
       // Skip week/month-only events for calendar grid count
       if (event.dateType === 'week' || event.dateType === 'month') {
         // Only count if month matches
@@ -1291,7 +1299,12 @@ const AdminCalendar = () => {
             style={[styles.filterCard, { backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)' }]}
           >
             <View style={styles.filterContainer}>
-              <Text style={[styles.filterLabel, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(11) }]}>FILTER BY TYPE</Text>
+              <View style={styles.filterHeaderRow}>
+                <Text style={[styles.filterLabel, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(11) }]}>FILTER BY TYPE</Text>
+                <Text style={[styles.eventCountText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(11) }]}>
+                  {getMonthEventCount(currentMonth)} {getMonthEventCount(currentMonth) === 1 ? 'event' : 'events'} this month
+                </Text>
+              </View>
               <View ref={filterButtonRef}>
                 <TouchableOpacity
                   style={[styles.filterDropdownButton, {
@@ -1928,6 +1941,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     flex: 1,
+  },
+  filterHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  eventCountText: {
+    fontSize: 11,
+    fontWeight: '500',
+    fontStyle: 'italic',
+    opacity: 0.7,
   },
   calendarCard: {
     borderRadius: 16,

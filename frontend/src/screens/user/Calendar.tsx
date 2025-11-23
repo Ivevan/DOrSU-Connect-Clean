@@ -132,61 +132,48 @@ const CalendarScreen = () => {
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
   const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
 
-  // Load posts on mount
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        setIsLoadingPosts(true);
-        const data = await AdminDataService.getPosts();
-        if (!cancelled) setPosts(Array.isArray(data) ? data : []);
-        if (!cancelled) setIsLoadingPosts(false);
-      } catch {
-        if (!cancelled) setPosts([]);
-        if (!cancelled) setIsLoadingPosts(false);
-      }
-    };
-    // Use requestAnimationFrame to defer to next frame, allowing screen to render immediately
-    const rafId = requestAnimationFrame(() => {
-      load();
-    });
-    return () => { 
-      cancelled = true;
-      cancelAnimationFrame(rafId);
-    };
-  }, []);
-
-  // Load calendar events from backend
+  // Load calendar events and posts from backend
   // Refresh when screen comes into focus to show newly created posts/events
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      const loadEvents = async () => {
+      const loadData = async () => {
         try {
           setIsLoadingEvents(true);
+          setIsLoadingPosts(true);
           // Load events for a wide range (2020-2030) to cover all possible dates
           // This ensures we get all events regardless of year
           const startDate = new Date(2020, 0, 1).toISOString(); // January 1, 2020
           const endDate = new Date(2030, 11, 31).toISOString(); // December 31, 2030
           
-          const events = await CalendarService.getEvents({
-            startDate,
-            endDate,
-            limit: 2000, // Increased limit to get more events
-          });
+          const [events, postsData] = await Promise.all([
+            CalendarService.getEvents({
+              startDate,
+              endDate,
+              limit: 2000, // Increased limit to get more events
+            }),
+            AdminDataService.getPosts(),
+          ]);
           
           if (!cancelled) {
             setCalendarEvents(Array.isArray(events) ? events : []);
+            setPosts(Array.isArray(postsData) ? postsData : []);
           }
-          if (!cancelled) setIsLoadingEvents(false);
         } catch (error) {
-          console.error('Failed to load calendar events:', error);
-          if (!cancelled) setCalendarEvents([]);
-          if (!cancelled) setIsLoadingEvents(false);
+          console.error('Failed to load calendar data:', error);
+          if (!cancelled) {
+            setCalendarEvents([]);
+            setPosts([]);
+          }
+        } finally {
+          if (!cancelled) {
+            setIsLoadingEvents(false);
+            setIsLoadingPosts(false);
+          }
         }
       };
       
-      loadEvents();
+      loadData();
       return () => {
         cancelled = true;
       };
@@ -277,10 +264,28 @@ const CalendarScreen = () => {
     
     let count = 0;
     
-    // Count events from calendarEvents (CalendarService)
+    // Count events from posts (AdminDataService) - filtered by selected content types
+    count += posts
+      .filter(p => {
+        if (p.source === 'CSV Upload') return false;
+        const postType = String(p.category || 'Announcement').toLowerCase();
+        return selectedContentTypes.includes(postType);
+      })
+      .reduce((acc, p) => {
+        const key = parseAnyDateToKey(p.isoDate || p.date);
+        if (!key) return acc;
+        const [yy, mm] = key.split('-');
+        return acc + ((Number(yy) === y && Number(mm) === m) ? 1 : 0);
+      }, 0);
+    
+    // Count events from calendarEvents (CalendarService) - filtered by selected content types
     // For date ranges, count if any date in range falls in the month
     // For week/month-only events, count if the month matches
     count += calendarEvents.reduce((acc, event) => {
+      // Apply content type filter
+      const eventType = String(event.category || 'Announcement').toLowerCase();
+      if (!selectedContentTypes.includes(eventType)) return acc;
+      
       // Skip week/month-only events for calendar grid count
       if (event.dateType === 'week' || event.dateType === 'month') {
         // Only count if month matches
@@ -326,6 +331,35 @@ const CalendarScreen = () => {
   const getEventsForDate = useCallback((date: Date) => {
     const key = formatDateKey(date);
     const events: any[] = [];
+    
+    // Add posts/announcements from AdminDataService
+    if (Array.isArray(posts)) {
+      posts.forEach(p => {
+        // Only include posts that are NOT from CSV uploads (to avoid duplicates)
+        if (p.source !== 'CSV Upload') {
+          // Apply content type filter
+          const postType = String(p.category || 'Announcement').toLowerCase();
+          if (!selectedContentTypes.includes(postType)) return;
+          
+          const eventDateKey = parseAnyDateToKey(p.isoDate || p.date);
+          if (eventDateKey === key) {
+            events.push({
+              id: p.id,
+              title: p.title,
+              dateKey: eventDateKey,
+              time: p.time || '',
+              type: p.category || 'Announcement',
+              color: categoryToColors(p.category).dot,
+              chip: categoryToColors(p.category),
+              description: p.description,
+              isPinned: p.isPinned,
+              isUrgent: p.isUrgent,
+              source: 'post', // Mark as post to distinguish from calendar events
+            });
+          }
+        }
+      });
+    }
     
     // Add events from CalendarService (backend calendar events)
     if (Array.isArray(calendarEvents)) {
@@ -390,7 +424,7 @@ const CalendarScreen = () => {
     }
     
     return events;
-  }, [calendarEvents, selectedContentTypes]);
+  }, [posts, calendarEvents, selectedContentTypes]);
 
   // Robust PH date-key comparison (avoids off-by-one no matter device tz)
   const getPHDateKey = (d: Date) => {
@@ -456,18 +490,26 @@ const CalendarScreen = () => {
     setSelectedDate(date);
     const events = getEventsForDate(date);
     if (events && events.length > 0) {
-      // Get the first event and find its full data from calendarEvents
+      // Get the first event and find its full data from calendarEvents or posts
       const firstEvent = events[0];
-      const fullEvent = calendarEvents.find((e: CalendarEvent) => {
-        // Try to match by _id first
-        if (e._id === firstEvent.id) return true;
-        // Try to match by constructed ID
-        if (`calendar-${e.isoDate}-${e.title}` === firstEvent.id) return true;
-        // Try to match by date and title
-        const eventDateKey = parseAnyDateToKey(e.isoDate || e.date);
-        const checkDateKey = formatDateKey(date);
-        return eventDateKey === checkDateKey && e.title === firstEvent.title;
-      });
+      
+      // Check if it's a post (from AdminDataService)
+      let fullEvent = null;
+      if (firstEvent.source === 'post') {
+        fullEvent = posts.find((p: any) => p.id === firstEvent.id) || firstEvent;
+      } else {
+        // It's a calendar event (from CalendarService)
+        fullEvent = calendarEvents.find((e: CalendarEvent) => {
+          // Try to match by _id first
+          if (e._id === firstEvent.id) return true;
+          // Try to match by constructed ID
+          if (`calendar-${e.isoDate}-${e.title}` === firstEvent.id) return true;
+          // Try to match by date and title
+          const eventDateKey = parseAnyDateToKey(e.isoDate || e.date);
+          const checkDateKey = formatDateKey(date);
+          return eventDateKey === checkDateKey && e.title === firstEvent.title;
+        }) || firstEvent;
+      }
       
       const eventData = fullEvent || firstEvent;
       
@@ -495,19 +537,25 @@ const CalendarScreen = () => {
     } else {
       Haptics.selectionAsync();
     }
-  }, [getEventsForDate, calendarEvents]);
+  }, [getEventsForDate, calendarEvents, posts]);
 
   // Open event modal
   const openEventDrawer = useCallback((event: any) => {
-    // Find the matching CalendarEvent from calendarEvents
-    const matchingEvent = calendarEvents.find((e: CalendarEvent) => {
-      return e._id === event.id || 
-             `calendar-${e.isoDate}-${e.title}` === event.id ||
-             (e.title === event.title && parseAnyDateToKey(e.isoDate || e.date) === event.dateKey);
-    });
+    // Check if it's a post (from AdminDataService)
+    let matchingEvent = null;
+    if (event.source === 'post') {
+      matchingEvent = posts.find((p: any) => p.id === event.id) || event;
+    } else {
+      // It's a calendar event (from CalendarService)
+      matchingEvent = calendarEvents.find((e: CalendarEvent) => {
+        return e._id === event.id || 
+               `calendar-${e.isoDate}-${e.title}` === event.id ||
+               (e.title === event.title && parseAnyDateToKey(e.isoDate || e.date) === event.dateKey);
+      }) || event;
+    }
     
     if (matchingEvent) {
-      setSelectedEvent(matchingEvent);
+      setSelectedEvent(matchingEvent as CalendarEvent);
       // Get all events for the same date
       const dateKey = event.dateKey || parseAnyDateToKey(matchingEvent.isoDate || matchingEvent.date);
       const dateForDrawer = new Date(dateKey);
@@ -530,7 +578,7 @@ const CalendarScreen = () => {
       
       Haptics.selectionAsync();
     }
-  }, [calendarEvents, getEventsForDate]);
+  }, [calendarEvents, posts, getEventsForDate]);
   
   // Close event modal
   const closeEventDrawer = useCallback(() => {
@@ -1002,7 +1050,12 @@ const CalendarScreen = () => {
             style={[styles.filterCard, { backgroundColor: isDarkMode ? t.colors.surface + '80' : t.colors.card + '4D' }]}
           >
             <View style={styles.filterContainer}>
-              <Text style={[styles.filterLabel, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(11) }]}>FILTER BY TYPE</Text>
+              <View style={styles.filterHeaderRow}>
+                <Text style={[styles.filterLabel, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(11) }]}>FILTER BY TYPE</Text>
+                <Text style={[styles.eventCountText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(11) }]}>
+                  {getMonthEventCount(currentMonth)} {getMonthEventCount(currentMonth) === 1 ? 'event' : 'events'} this month
+                </Text>
+              </View>
               <View ref={filterButtonRef}>
                 <TouchableOpacity
                   style={[styles.filterDropdownButton, {
@@ -1494,6 +1547,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     flex: 1,
+  },
+  filterHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  eventCountText: {
+    fontSize: 11,
+    fontWeight: '500',
+    fontStyle: 'italic',
+    opacity: 0.7,
   },
   calendarCard: {
     borderRadius: 16,

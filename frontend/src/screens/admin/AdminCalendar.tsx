@@ -9,7 +9,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
@@ -55,21 +55,45 @@ const formatEventTitle = (raw?: string) => {
 const getCellColor = (events: any[]): string | null => {
   if (!events || events.length === 0) return null;
   
-  // Check for Institutional events (blue)
+  // Priority order: Institutional > Academic > Event > News > Announcement
   const hasInstitutional = events.some(e => {
     const type = String(e.type || e.category || '').toLowerCase();
     return type === 'institutional';
   });
   
-  // Check for Academic events (green)
   const hasAcademic = events.some(e => {
     const type = String(e.type || e.category || '').toLowerCase();
     return type === 'academic';
   });
   
-  // Priority: Institutional (blue) > Academic (green)
+  const hasEvent = events.some(e => {
+    const type = String(e.type || e.category || '').toLowerCase();
+    return type === 'event';
+  });
+  
+  const hasNews = events.some(e => {
+    const type = String(e.type || e.category || '').toLowerCase();
+    return type === 'news';
+  });
+  
+  const hasAnnouncement = events.some(e => {
+    const type = String(e.type || e.category || '').toLowerCase();
+    return type === 'announcement';
+  });
+  
+  // Return color based on priority
   if (hasInstitutional) return '#2563EB'; // Blue
   if (hasAcademic) return '#10B981'; // Green
+  if (hasEvent) return '#D97706'; // Orange
+  if (hasNews) return '#8B5CF6'; // Purple
+  if (hasAnnouncement) return '#1A3E7A'; // Dark Blue
+  
+  // Fallback: use first event's category color
+  const firstEvent = events[0];
+  if (firstEvent) {
+    const colors = categoryToColors(firstEvent.type || firstEvent.category);
+    return colors.cellColor || null;
+  }
   
   return null;
 };
@@ -147,12 +171,11 @@ const AdminCalendar = () => {
   const deleteAllModalSlideAnim = useRef(new Animated.Value(0)).current;
   const deleteAllModalBackdropOpacity = useRef(new Animated.Value(0)).current;
   
-  // Event type filter - single selection: 'institutional' or 'academic'
-  const [selectedEventType, setSelectedEventType] = useState<'institutional' | 'academic'>('institutional');
-  
-  // Event time range filter - 'allYear' or 'byMonth'
-  const [eventTimeRange, setEventTimeRange] = useState<'allYear' | 'byMonth'>('byMonth');
-  const [showTimeRangeDropdown, setShowTimeRangeDropdown] = useState(false);
+  // Content type filter - multiple selection: 'academic', 'institutional', 'event', 'announcement', 'news'
+  const [selectedContentTypes, setSelectedContentTypes] = useState<string[]>(['academic', 'institutional', 'event', 'announcement', 'news']);
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const filterButtonRef = useRef<View>(null);
+  const [filterButtonLayout, setFilterButtonLayout] = useState({ x: 16, y: 100, width: 200, height: 44 });
   
   // Animation values
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
@@ -160,9 +183,19 @@ const AdminCalendar = () => {
   const listAnim = useRef(new Animated.Value(0)).current;
   const dotScale = useRef(new Animated.Value(0.8)).current;
   
-  // Derived filter states for compatibility with existing code
-  const showInstitutional = selectedEventType === 'institutional';
-  const showAcademic = selectedEventType === 'academic';
+  // Toggle content type filter
+  const toggleContentType = useCallback((type: string) => {
+    setSelectedContentTypes(prev => {
+      if (prev.includes(type)) {
+        // Don't allow deselecting all - at least one must be selected
+        if (prev.length === 1) return prev;
+        return prev.filter(t => t !== type);
+      } else {
+        return [...prev, type];
+      }
+    });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
 
   const getUserInitials = () => {
     if (!currentUser?.displayName) return '?';
@@ -480,6 +513,10 @@ const AdminCalendar = () => {
       posts.forEach(p => {
         // Only include posts that are NOT from CSV uploads (to avoid duplicates)
         if (p.source !== 'CSV Upload') {
+          // Apply content type filter
+          const postType = String(p.category || 'Announcement').toLowerCase();
+          if (!selectedContentTypes.includes(postType)) return;
+          
           const eventDateKey = parseAnyDateToKey(p.isoDate || p.date);
           if (eventDateKey === key) {
             events.push({
@@ -507,6 +544,10 @@ const AdminCalendar = () => {
         if (event.dateType === 'week' || event.dateType === 'month') {
           return;
         }
+        
+        // Apply content type filter
+        const eventType = String(event.category || 'Announcement').toLowerCase();
+        if (!selectedContentTypes.includes(eventType)) return;
         
         // Handle date ranges - check if date falls within range
         if (event.dateType === 'date_range' && event.startDate && event.endDate) {
@@ -559,7 +600,7 @@ const AdminCalendar = () => {
     }
     
     return events;
-  }, [posts, calendarEvents]); // Only recompute when posts or calendarEvents change
+  }, [posts, calendarEvents, selectedContentTypes]); // Only recompute when posts, calendarEvents, or selectedContentTypes change
 
   const isToday = (date: Date) => {
     return getPHDateKey(date, PH_TZ) === getPHDateKey(new Date(), PH_TZ);
@@ -689,17 +730,8 @@ const AdminCalendar = () => {
         if (post.source !== 'CSV Upload') {
           const eventType = String(post.category || 'Announcement').toLowerCase();
           
-          // Apply filters (posts don't have institutional/academic categories typically, but check anyway)
-          if (!showInstitutional && eventType === 'institutional') return;
-          if (!showAcademic && eventType === 'academic') return;
-          
-          // Filter by current month (only if byMonth mode is selected)
-          if (eventTimeRange === 'byMonth') {
-            const postDate = new Date(post.isoDate || post.date);
-            const isInCurrentMonth = postDate.getUTCFullYear() === currentYear && 
-                                     postDate.getUTCMonth() + 1 === currentMonthIndex;
-            if (!isInCurrentMonth) return;
-          }
+          // Apply content type filter
+          if (!selectedContentTypes.includes(eventType)) return;
           
           const eventDateKey = parseAnyDateToKey(post.isoDate || post.date);
           if (eventDateKey) {
@@ -730,36 +762,8 @@ const AdminCalendar = () => {
       calendarEvents.forEach(event => {
         const eventType = String(event.category || 'Announcement').toLowerCase();
         
-        // Apply filters
-        if (!showInstitutional && eventType === 'institutional') return;
-        if (!showAcademic && eventType === 'academic') return;
-        
-        // Filter by current month (only if byMonth mode is selected)
-        if (eventTimeRange === 'byMonth') {
-          let isInCurrentMonth = false;
-          
-          if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-            // Check if date range overlaps with current month
-            const startDate = new Date(event.startDate);
-            const endDate = new Date(event.endDate);
-            const monthStart = new Date(Date.UTC(currentYear, currentMonthIndex - 1, 1));
-            const monthEnd = new Date(Date.UTC(currentYear, currentMonthIndex, 0, 23, 59, 59));
-            
-            // Check if range overlaps with current month (compare UTC timestamps)
-            isInCurrentMonth = (startDate.getTime() <= monthEnd.getTime() && endDate.getTime() >= monthStart.getTime());
-          } else if (event.dateType === 'week' || event.dateType === 'month') {
-            // For week/month events, check if month and year match
-            isInCurrentMonth = event.month === currentMonthIndex && event.year === currentYear;
-          } else {
-            // Single date events - check if date is in current month
-            const eventDate = new Date(event.isoDate || event.date);
-            isInCurrentMonth = eventDate.getUTCFullYear() === currentYear && 
-                              eventDate.getUTCMonth() + 1 === currentMonthIndex;
-          }
-          
-          // Skip events not in current month
-          if (!isInCurrentMonth) return;
-        }
+        // Apply content type filter
+        if (!selectedContentTypes.includes(eventType)) return;
         
         // For date ranges, use start date as the key and avoid duplicates
         let eventDateKey: string | null = null;
@@ -837,9 +841,7 @@ const AdminCalendar = () => {
       });
     
     return result;
-  }, [calendarEvents, posts, showInstitutional, showAcademic, currentMonth, eventTimeRange]); // Only recompute when calendarEvents, posts, filters, currentMonth, or eventTimeRange change
-  
-  const groupedEvents = React.useMemo(() => getAllEventsGrouped(), [getAllEventsGrouped]);
+  }, [calendarEvents, posts, selectedContentTypes, currentMonth]); // Only recompute when calendarEvents, posts, filters, or currentMonth change
 
   const getMonthEventCount = (dateRef: Date) => {
     const y = dateRef.getFullYear();
@@ -1281,6 +1283,161 @@ const AdminCalendar = () => {
         bounces={true}
         scrollEventThrottle={16}
       >
+        {/* Content Type Filters - Dropdown */}
+        <View style={styles.filterDropdownWrapper}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.filterCard, { backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)' }]}
+          >
+            <View style={styles.filterContainer}>
+              <Text style={[styles.filterLabel, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(11) }]}>FILTER BY TYPE</Text>
+              <View ref={filterButtonRef}>
+                <TouchableOpacity
+                  style={[styles.filterDropdownButton, {
+                    backgroundColor: t.colors.surface,
+                    borderColor: t.colors.border,
+                  }]}
+                  onPress={() => {
+                    if (filterButtonRef.current) {
+                      filterButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
+                        if (typeof pageX === 'number' && typeof pageY === 'number' && 
+                            typeof width === 'number' && typeof height === 'number' &&
+                            !isNaN(pageX) && !isNaN(pageY) && !isNaN(width) && !isNaN(height)) {
+                          setFilterButtonLayout({ x: pageX, y: pageY, width, height });
+                        } else {
+                          // Fallback to default values if measurement fails
+                          setFilterButtonLayout({ x: 16, y: 100, width: 200, height: 44 });
+                        }
+                        setShowFilterDropdown(!showFilterDropdown);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      });
+                    } else {
+                      setShowFilterDropdown(!showFilterDropdown);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                <View style={styles.filterDropdownButtonContent}>
+                  <View style={styles.filterDropdownSelectedChips}>
+                    {selectedContentTypes.length === 5 ? (
+                      <Text style={[styles.filterDropdownButtonText, { color: t.colors.text, fontSize: t.fontSize.scaleSize(12) }]}>All Types</Text>
+                    ) : (
+                      <View style={styles.filterChipsRow}>
+                        {selectedContentTypes.slice(0, 2).map((type) => {
+                          const typeName = type.charAt(0).toUpperCase() + type.slice(1);
+                          const getTypeColor = (typeStr: string) => {
+                            switch (typeStr.toLowerCase()) {
+                              case 'academic': return '#10B981';
+                              case 'institutional': return t.colors.accent;
+                              case 'event': return '#F59E0B';
+                              case 'announcement': return '#3B82F6';
+                              case 'news': return '#8B5CF6';
+                              default: return t.colors.accent;
+                            }
+                          };
+                          const typeColor = getTypeColor(type);
+                          return (
+                            <View key={type} style={[styles.filterChip, { backgroundColor: typeColor + '20', borderColor: typeColor }]}>
+                              <Text style={[styles.filterChipText, { color: typeColor, fontSize: t.fontSize.scaleSize(9) }]}>{typeName}</Text>
+                            </View>
+                          );
+                        })}
+                        {selectedContentTypes.length > 2 && (
+                          <Text style={[styles.filterDropdownButtonText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }]}>
+                            +{selectedContentTypes.length - 2} more
+                          </Text>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                  <Ionicons 
+                    name={showFilterDropdown ? 'chevron-up' : 'chevron-down'} 
+                    size={16} 
+                    color={t.colors.textMuted} 
+                  />
+                </View>
+              </TouchableOpacity>
+              </View>
+              
+              {/* Dropdown Options - Modal Overlay */}
+              <Modal
+                visible={showFilterDropdown}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowFilterDropdown(false)}
+              >
+                <Pressable 
+                  style={styles.modalOverlay}
+                  onPress={() => setShowFilterDropdown(false)}
+                >
+                  <View 
+                    style={[
+                      styles.filterDropdownOptionsModal,
+                      {
+                        top: (isNaN(filterButtonLayout.y) || isNaN(filterButtonLayout.height)) ? 100 : filterButtonLayout.y + filterButtonLayout.height + 8,
+                        left: isNaN(filterButtonLayout.x) ? 16 : Math.max(0, filterButtonLayout.x),
+                        width: isNaN(filterButtonLayout.width) || filterButtonLayout.width <= 0 ? '90%' : Math.max(200, filterButtonLayout.width),
+                        backgroundColor: t.colors.surface,
+                        borderColor: t.colors.border,
+                      }
+                    ]}
+                    onStartShouldSetResponder={() => true}
+                  >
+                    {['Academic', 'Institutional', 'Event', 'Announcement', 'News'].map((type) => {
+                      const typeLower = type.toLowerCase();
+                      const isSelected = selectedContentTypes.includes(typeLower);
+                      const getTypeColor = (typeStr: string) => {
+                        switch (typeStr.toLowerCase()) {
+                          case 'academic': return '#10B981';
+                          case 'institutional': return t.colors.accent;
+                          case 'event': return '#F59E0B';
+                          case 'announcement': return '#3B82F6';
+                          case 'news': return '#8B5CF6';
+                          default: return t.colors.accent;
+                        }
+                      };
+                      const typeColor = getTypeColor(type);
+                      
+                      return (
+                        <TouchableOpacity
+                          key={type}
+                          style={[
+                            styles.filterDropdownOption,
+                            { borderBottomColor: t.colors.border },
+                            isSelected && { backgroundColor: t.colors.surfaceAlt }
+                          ]}
+                          onPress={() => toggleContentType(typeLower)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.filterDropdownOptionContent}>
+                            <View style={[styles.filterDropdownCheckbox, {
+                              backgroundColor: isSelected ? typeColor : 'transparent',
+                              borderColor: isSelected ? typeColor : t.colors.border,
+                            }]}>
+                              <View style={styles.checkboxInner}>
+                                {isSelected && (
+                                  <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                                )}
+                              </View>
+                            </View>
+                            <Text style={[styles.filterDropdownOptionText, { 
+                              color: t.colors.text, 
+                              fontSize: t.fontSize.scaleSize(12) 
+                            }]}>
+                              {type}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </Pressable>
+              </Modal>
+            </View>
+          </BlurView>
+        </View>
 
         {/* Calendar Card - Fixed below header */}
         {/* Animation wrapper removed for debugging */}
@@ -1363,6 +1520,67 @@ const AdminCalendar = () => {
           </BlurView>
         </View>
 
+        {/* Admin Actions Section - Info Icon, Upload CSV & Delete All */}
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 50 : 40}
+          tint={isDarkMode ? 'dark' : 'light'}
+          style={[styles.adminActionsCard, { backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)' }]}
+        >
+          <View style={styles.adminActionsRow}>
+            <TouchableOpacity
+              style={[styles.helpButton, { 
+                backgroundColor: t.colors.surface,
+                borderColor: t.colors.border,
+              }]}
+              onPress={() => {
+                navigation.navigate('CalendarHelp');
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="information-circle-outline" size={16} color={t.colors.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.csvUploadButton, { 
+                backgroundColor: t.colors.surface,
+                borderColor: t.colors.border,
+                opacity: isUploadingCSV ? 0.6 : 1
+              }]}
+              onPress={handleCSVUpload}
+              disabled={isUploadingCSV}
+              activeOpacity={0.7}
+            >
+              {isUploadingCSV ? (
+                <ActivityIndicator size="small" color={t.colors.accent} />
+              ) : (
+                <>
+                  <Ionicons name="cloud-upload-outline" size={14} color={t.colors.accent} />
+                  <Text style={[styles.csvUploadText, { color: t.colors.accent, fontSize: t.fontSize.scaleSize(11) }]}>Upload CSV</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.deleteAllButton, { 
+                backgroundColor: t.colors.surface,
+                borderColor: '#DC2626',
+                opacity: isDeletingAll ? 0.6 : 1
+              }]}
+              onPress={openDeleteAllModal}
+              disabled={isDeletingAll || calendarEvents.length === 0}
+              activeOpacity={0.7}
+            >
+              {isDeletingAll ? (
+                <ActivityIndicator size="small" color="#DC2626" />
+              ) : (
+                <>
+                  <Ionicons name="trash-outline" size={14} color="#DC2626" />
+                  <Text style={[styles.deleteAllText, { color: '#DC2626', fontSize: t.fontSize.scaleSize(11) }]}>Delete All</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </BlurView>
+
         {/* Month Picker Modal */}
         <MonthPickerModal
           visible={showMonthPicker}
@@ -1374,348 +1592,6 @@ const AdminCalendar = () => {
           minYear={eventYearRange.min}
           maxYear={eventYearRange.max}
         />
-
-
-        {/* Day Summary removed by request (Events section already shows count) */}
-
-        {/* Events Section - Glassmorphic */}
-        <BlurView
-          intensity={Platform.OS === 'ios' ? 50 : 40}
-          tint={isDarkMode ? 'dark' : 'light'}
-          style={[
-            styles.eventsSection,
-            {
-              backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)'
-            }
-          ]}
-        >
-          <View style={styles.eventsHeader}>
-            {/* Top Row: Events title with help icon | Upload CSV | Delete All */}
-            <View style={styles.eventsHeaderTopRow}>
-              <View style={styles.eventsTitleRow}>
-                <View style={[styles.eventsIconWrap, { borderColor: t.colors.border }]}>
-                  <Ionicons name="calendar-outline" size={14} color={t.colors.accent} />
-                </View>
-                <Text style={[styles.eventsTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(18) }]}>Events</Text>
-                <TouchableOpacity 
-                  style={styles.infoIconButton}
-                  onPress={() => {
-                    navigation.navigate('CalendarHelp');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                  accessibilityLabel="Calendar help and information"
-                  activeOpacity={0.7}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Ionicons name="information-circle-outline" size={18} color={t.colors.textMuted} />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.eventsHeaderTopRight}>
-                <TouchableOpacity
-                  style={[styles.csvUploadButton, { 
-                    backgroundColor: t.colors.surface,
-                    borderColor: t.colors.border,
-                    opacity: isUploadingCSV ? 0.6 : 1
-                  }]}
-                  onPress={handleCSVUpload}
-                  disabled={isUploadingCSV}
-                  activeOpacity={0.7}
-                >
-                  {isUploadingCSV ? (
-                    <ActivityIndicator size="small" color={t.colors.accent} />
-                  ) : (
-                    <>
-                      <Ionicons name="cloud-upload-outline" size={14} color={t.colors.accent} />
-                      <Text style={[styles.csvUploadText, { color: t.colors.accent, fontSize: t.fontSize.scaleSize(11) }]}>Upload CSV</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.deleteAllButton, { 
-                    backgroundColor: t.colors.surface,
-                    borderColor: '#DC2626',
-                    opacity: isDeletingAll ? 0.6 : 1
-                  }]}
-                  onPress={openDeleteAllModal}
-                  disabled={isDeletingAll || calendarEvents.length === 0}
-                  activeOpacity={0.7}
-                >
-                  {isDeletingAll ? (
-                    <ActivityIndicator size="small" color="#DC2626" />
-                  ) : (
-                    <>
-                      <Ionicons name="trash-outline" size={14} color="#DC2626" />
-                      <Text style={[styles.deleteAllText, { color: '#DC2626', fontSize: t.fontSize.scaleSize(11) }]}>Delete All</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-            {/* Bottom Row: Yearly/Monthly Dropdown | Institutional | Academic */}
-            <View style={styles.eventsHeaderBottomRow}>
-              <View style={styles.eventFilterContainer}>
-                <View style={styles.timeRangeDropdownWrapper}>
-                  <TouchableOpacity
-                    style={[
-                      styles.timeRangeDropdownButton,
-                      {
-                        backgroundColor: t.colors.surface,
-                        borderColor: t.colors.border,
-                      }
-                    ]}
-                    onPress={() => {
-                      setShowTimeRangeDropdown(!showTimeRangeDropdown);
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[
-                      styles.timeRangeDropdownText,
-                      { color: t.colors.text, fontSize: t.fontSize.scaleSize(11) }
-                    ]}>
-                      {eventTimeRange === 'allYear' ? 'Yearly' : 'Monthly'}
-                    </Text>
-                    <Ionicons 
-                      name={showTimeRangeDropdown ? 'chevron-up' : 'chevron-down'} 
-                      size={16} 
-                      color={t.colors.textMuted} 
-                    />
-                  </TouchableOpacity>
-                  
-                  {/* Dropdown Options */}
-                  {showTimeRangeDropdown && (
-                    <View style={[styles.timeRangeDropdownOptions, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
-                        <TouchableOpacity
-                          style={[
-                            styles.timeRangeDropdownOption,
-                            { borderBottomColor: t.colors.border },
-                            eventTimeRange === 'allYear' && { backgroundColor: t.colors.surfaceAlt }
-                          ]}
-                          onPress={() => {
-                            setEventTimeRange('allYear');
-                            setShowTimeRangeDropdown(false);
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.timeRangeDropdownOptionText, { color: t.colors.text, fontSize: t.fontSize.scaleSize(11) }]}>Yearly</Text>
-                          {eventTimeRange === 'allYear' && (
-                            <Ionicons name="checkmark" size={16} color="#8B5CF6" />
-                          )}
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[
-                            styles.timeRangeDropdownOption,
-                            eventTimeRange === 'byMonth' && { backgroundColor: t.colors.surfaceAlt }
-                          ]}
-                          onPress={() => {
-                            setEventTimeRange('byMonth');
-                            setShowTimeRangeDropdown(false);
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.timeRangeDropdownOptionText, { color: t.colors.text, fontSize: t.fontSize.scaleSize(11) }]}>Monthly</Text>
-                          {eventTimeRange === 'byMonth' && (
-                            <Ionicons name="checkmark" size={16} color="#8B5CF6" />
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                  )}
-                </View>
-                <View style={styles.eventTypeToggleContainer}>
-                  <TouchableOpacity
-                      style={[
-                      styles.eventTypeToggleButton,
-                      {
-                        backgroundColor: selectedEventType === 'institutional' ? t.colors.accent : 'transparent',
-                        borderColor: selectedEventType === 'institutional' ? t.colors.accent : t.colors.border,
-                      }
-                    ]}
-                    onPress={() => {
-                      setSelectedEventType('institutional');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[
-                      styles.eventTypeToggleText,
-                      { 
-                        color: selectedEventType === 'institutional' ? '#FFFFFF' : t.colors.textMuted,
-                        fontSize: t.fontSize.scaleSize(11)
-                      }
-                    ]}>
-                      Institutional
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.eventTypeToggleButton,
-                      {
-                        backgroundColor: selectedEventType === 'academic' ? '#10B981' : 'transparent',
-                        borderColor: selectedEventType === 'academic' ? '#10B981' : t.colors.border,
-                      }
-                    ]}
-                    onPress={() => {
-                      setSelectedEventType('academic');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[
-                      styles.eventTypeToggleText,
-                      { 
-                        color: selectedEventType === 'academic' ? '#FFFFFF' : t.colors.textMuted,
-                        fontSize: t.fontSize.scaleSize(11)
-                      }
-                    ]}>
-                      Academic
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </View>
-          
-          <View style={styles.eventsSubtitleRowEnhanced}>
-            <Text style={[styles.eventsSubtitle, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }]} numberOfLines={1}>
-              {(() => {
-                const eventCount = groupedEvents.reduce((sum, yearGroup) => 
-                  sum + yearGroup.dates.reduce((dateSum, dateGroup) => dateSum + dateGroup.items.length, 0), 0
-                );
-                if (eventTimeRange === 'byMonth') {
-                  return `${getMonthName(currentMonth)} ${currentMonth.getFullYear()} — ${eventCount} ${eventCount === 1 ? 'event' : 'events'}`;
-                } else {
-                  return `Year ${currentMonth.getFullYear()} — ${eventCount} ${eventCount === 1 ? 'event' : 'events'}`;
-                }
-              })()}
-            </Text>
-          </View>
-          <LinearGradient colors={[t.colors.border, 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ height: 1, marginBottom: 10 }} />
-
-          {(() => {
-            const monthEventCount = groupedEvents.reduce((sum, yearGroup) => 
-              sum + yearGroup.dates.reduce((dateSum, dateGroup) => dateSum + dateGroup.items.length, 0), 0
-            );
-            return monthEventCount === 0 && !isLoadingEvents;
-          })() && (
-            <View style={[styles.emptyStateCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
-              <View style={[styles.emptyStateIconWrap, { backgroundColor: t.colors.surfaceAlt }]}>
-                <Ionicons name="calendar-outline" size={20} color={t.colors.accent} />
-              </View>
-              <Text style={[styles.emptyStateTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>No events yet</Text>
-              <Text style={[styles.emptyStateSubtitle, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }]}>
-                {!showInstitutional && !showAcademic
-                  ? 'Please enable at least one event type filter.'
-                  : 'Upload a CSV file to add calendar events.'}
-              </Text>
-              <TouchableOpacity 
-                style={[
-                  styles.emptyStateBtn, 
-                  { 
-                    borderColor: t.colors.border,
-                    backgroundColor: t.colors.surface,
-                  }
-                ]} 
-                onPress={() => navigation.navigate('PostUpdate')}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="add" size={14} color={t.colors.accent} />
-                <Text style={[styles.emptyStateBtnText, { color: t.colors.accent, fontSize: t.fontSize.scaleSize(12) }]}>Add Event</Text>
-          </TouchableOpacity>
-            </View>
-          )}
-
-          {isLoadingEvents ? (
-            <View style={[styles.emptyStateCard, { paddingVertical: 16, overflow: 'hidden', backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
-              <LinearGradient colors={[t.colors.surfaceAlt, t.colors.surface]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ ...StyleSheet.absoluteFillObject, opacity: 0.6 }} />
-              <Text style={{ color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }}>Loading…</Text>
-            </View>
-          ) : (
-            /* All Events List - Flat list with dates inside cards */
-            <View>
-              {Array.isArray(groupedEvents) && groupedEvents.length > 0 && groupedEvents.flatMap((yearGroup) => 
-                Array.isArray(yearGroup.dates) ? yearGroup.dates.flatMap((dateGroup) => 
-                  Array.isArray(dateGroup.items) ? dateGroup.items.map((event) => (
-                    <TouchableOpacity
-                      key={event.id}
-                      style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
-                      onPress={() => {
-                        // Find the full event from calendarEvents or posts
-                        let fullEvent = null;
-                        if (event.source === 'post') {
-                          fullEvent = posts.find((p: any) => p.id === event.id) || event;
-                        } else {
-                          fullEvent = calendarEvents.find((e: any) => e._id === event.id || `calendar-${e.isoDate}-${e.title}` === event.id) || event;
-                        }
-                        const eventData = fullEvent || event;
-                        setSelectedEvent(eventData);
-                        setEditTitle(eventData?.title || '');
-                        setEditDescription(eventData?.description || '');
-                        
-                        // Set date and time for editing
-                        if (eventData?.isoDate || eventData?.date) {
-                          const eventDate = new Date(eventData.isoDate || eventData.date);
-                          setSelectedDateObj(eventDate);
-                          setEditDate(formatDate(eventDate));
-                        } else {
-                          setSelectedDateObj(null);
-                          setEditDate('');
-                        }
-                        setEditTime(eventData?.time || '');
-                        
-                        setIsEditing(false);
-                        setShowEventDrawer(true);
-                        
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Open event ${event.title}`}
-                      accessibilityHint="Opens the event to view or edit"
-                      activeOpacity={0.7}
-                    >
-                      <View style={[styles.eventAccent, { backgroundColor: event.color }]} />
-                      <View style={styles.eventContent}>
-                        {/* Date inside the card */}
-                        <View style={styles.eventDateRow}>
-                          <Text style={[styles.eventDateText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(11) }]}>
-                            {formatCalendarDate(new Date(dateGroup.key))}
-                          </Text>
-                        </View>
-                        <Text style={[styles.eventTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]} numberOfLines={2}>
-                          {event.title}
-                        </Text>
-                        <View style={styles.eventInnerDivider} />
-                        <View style={styles.eventTimeRow}>
-                          <Ionicons name="time-outline" size={12} color={t.colors.textMuted} />
-                          <Text style={[styles.eventTimeText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }]}>
-                            {event.dateType === 'date_range' && event.startDate && event.endDate
-                              ? `${formatDate(new Date(event.startDate))} - ${formatDate(new Date(event.endDate))}`
-                              : event.dateType === 'week' && event.weekOfMonth && event.month
-                              ? `Week ${event.weekOfMonth} of ${new Date(2000, event.month - 1, 1).toLocaleString('default', { month: 'long' })}`
-                              : event.dateType === 'month' && event.month
-                              ? new Date(2000, event.month - 1, 1).toLocaleString('default', { month: 'long' })
-                              : event.time || 'All Day'}
-                          </Text>
-                        </View>
-                        <View style={styles.statusInline}>
-                          {!!event.type && (
-                            <View style={styles.statusItem}>
-                              <Ionicons name="pricetag-outline" size={12} color={event.color} />
-                              <Text style={[styles.statusText, { color: event.color, fontSize: t.fontSize.scaleSize(11) }]}>
-                                {String(event.type || '').charAt(0).toUpperCase() + String(event.type || '').slice(1)}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  )) : []
-                ) : []
-              )}
-            </View>
-          )}
-        </BlurView>
       </ScrollView>
 
       {/* View Event Modal */}
@@ -1914,6 +1790,144 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 998,
+  },
+  adminActionsCard: {
+    borderRadius: 16,
+    marginBottom: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 12,
+  },
+  adminActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  filterDropdownWrapper: {
+    position: 'relative',
+    zIndex: 2000,
+    marginBottom: 12,
+    elevation: 20,
+  },
+  filterCard: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 12,
+  },
+  filterContainer: {
+    gap: 8,
+  },
+  filterLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  filterDropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    minHeight: 44,
+  },
+  filterDropdownButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flex: 1,
+    gap: 8,
+  },
+  filterDropdownSelectedChips: {
+    flex: 1,
+  },
+  filterChipsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  filterChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  filterChipText: {
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  filterDropdownButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  filterDropdownOptionsModal: {
+    position: 'absolute',
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 20,
+  },
+  filterDropdownOptions: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    marginTop: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    zIndex: 2001,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 20,
+  },
+  filterDropdownOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  filterDropdownOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  filterDropdownCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 20,
+    minHeight: 20,
+  },
+  checkboxInner: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterDropdownOptionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
   },
   calendarCard: {
     borderRadius: 16,
@@ -2483,6 +2497,14 @@ const styles = StyleSheet.create({
   deleteAllText: {
     fontSize: 11,
     fontWeight: '600',
+  },
+  helpButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   segmentedControlContainer: {
     marginBottom: 12,

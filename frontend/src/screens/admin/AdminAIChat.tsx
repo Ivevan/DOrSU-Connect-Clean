@@ -66,6 +66,7 @@ const AdminAIChat = () => {
   const isRestoringRef = useRef<boolean>(false);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const appWasInBackground = useRef<boolean>(false);
+  const isLoggedInRef = useRef<boolean>(false);
 
   // Segmented control animation and width tracking
   const segmentAnim = useRef(new Animated.Value(0)).current;
@@ -79,28 +80,37 @@ const AdminAIChat = () => {
   const typingDot2 = useRef(new Animated.Value(0)).current;
   const typingDot3 = useRef(new Animated.Value(0)).current;
 
+  // Update auth state ref on mount and focus
+  useFocusEffect(
+    useCallback(() => {
+      const updateAuthState = async () => {
+        try {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const [userToken, userEmail] = await Promise.all([
+            AsyncStorage.getItem('userToken'),
+            AsyncStorage.getItem('userEmail'),
+          ]);
+          isLoggedInRef.current = !!(userToken && userEmail);
+        } catch (error) {
+          console.error('Error checking auth status:', error);
+          isLoggedInRef.current = false;
+        }
+      };
+      updateAuthState();
+    }, [])
+  );
+
   // Prevent back navigation to GetStarted when logged in
   useFocusEffect(
     useCallback(() => {
-      const onBackPress = async () => {
-        // Check if user is logged in
-        try {
-          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-          const userToken = await AsyncStorage.getItem('userToken');
-          const userEmail = await AsyncStorage.getItem('userEmail');
-          
-          // If logged in, prevent navigation to GetStarted
-          if (userToken && userEmail) {
-            // On Android, exit app instead of going back
-            if (Platform.OS === 'android') {
-              BackHandler.exitApp();
-              return true;
-            }
-            // On iOS, prevent the back action
-            return true;
+      const onBackPress = () => {
+        // Check if user is logged in using ref (synchronous check)
+        if (isLoggedInRef.current) {
+          // On Android, exit app instead of going back
+          if (Platform.OS === 'android') {
+            BackHandler.exitApp();
           }
-        } catch (error) {
-          console.error('Error checking auth status:', error);
+          return true; // Prevent default back behavior
         }
         return false; // Allow default back behavior if not logged in
       };

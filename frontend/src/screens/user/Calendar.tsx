@@ -123,7 +123,7 @@ const CalendarScreen = () => {
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
   const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
 
-  // Defer data loading until after screen is visible to prevent navigation delay
+  // Load posts on mount
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -131,15 +131,15 @@ const CalendarScreen = () => {
         setIsLoadingPosts(true);
         const data = await AdminDataService.getPosts();
         if (!cancelled) setPosts(Array.isArray(data) ? data : []);
+        if (!cancelled) setIsLoadingPosts(false);
       } catch {
         if (!cancelled) setPosts([]);
-      } finally {
         if (!cancelled) setIsLoadingPosts(false);
       }
     };
     // Use requestAnimationFrame to defer to next frame, allowing screen to render immediately
     const rafId = requestAnimationFrame(() => {
-    load();
+      load();
     });
     return () => { 
       cancelled = true;
@@ -147,7 +147,7 @@ const CalendarScreen = () => {
     };
   }, []);
 
-  // Load calendar events from backend - load all events (or wide range)
+  // Load calendar events from backend
   // Refresh when screen comes into focus to show newly created posts/events
   useFocusEffect(
     useCallback(() => {
@@ -169,10 +169,10 @@ const CalendarScreen = () => {
           if (!cancelled) {
             setCalendarEvents(Array.isArray(events) ? events : []);
           }
+          if (!cancelled) setIsLoadingEvents(false);
         } catch (error) {
           console.error('Failed to load calendar events:', error);
           if (!cancelled) setCalendarEvents([]);
-        } finally {
           if (!cancelled) setIsLoadingEvents(false);
         }
       };

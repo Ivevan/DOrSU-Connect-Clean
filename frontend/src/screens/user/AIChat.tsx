@@ -249,17 +249,16 @@ const AIChat = () => {
   };
 
   // Refresh auth status and load chat history on component mount
-  // This ensures we have the latest token, especially after Google sign-in
+  // Use preloaded data if available, otherwise fetch
   useEffect(() => {
     const initializeChat = async () => {
       try {
         // Refresh auth status to ensure we have the latest token
         await checkAuthStatus();
-        // Then load chat history and top queries
-        await Promise.all([
-          loadChatHistory(),
-          loadTopQueries()
-        ]);
+        
+        // Load chat history and top queries
+        await loadChatHistory();
+        await loadTopQueries();
       } catch (error) {
         console.error('Failed to initialize chat:', error);
       }
@@ -282,7 +281,7 @@ const AIChat = () => {
         });
       }, 50);
       
-      // Reload top queries when screen is focused to get latest data
+      // Refresh top queries
       loadTopQueries();
       
       return () => {

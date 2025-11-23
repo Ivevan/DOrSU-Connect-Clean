@@ -310,7 +310,7 @@ const AdminCalendar = () => {
     }
   }, []);
 
-  // Load calendar events and posts from backend - load all events (or wide range)
+  // Load calendar events and posts from backend
   // Refresh when screen comes into focus to show newly created posts/events
   useFocusEffect(
     useCallback(() => {
@@ -318,6 +318,7 @@ const AdminCalendar = () => {
       const loadData = async () => {
         try {
           setIsLoadingEvents(true);
+          setIsLoadingPosts(true);
           // Load events for a wide range (2020-2030) to cover all possible dates
           // This ensures we get all events regardless of year
           const startDate = new Date(2020, 0, 1).toISOString(); // January 1, 2020

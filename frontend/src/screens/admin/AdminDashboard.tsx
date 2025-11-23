@@ -300,10 +300,9 @@ const AdminDashboard = () => {
   }, []);
 
   // Fetch calendar events for current month
-  // Fetch calendar events on mount only
   useEffect(() => {
-    refreshCalendarEvents(true); // Force refresh on mount
-  }, []); // Empty deps - only run on mount
+    refreshCalendarEvents(true);
+  }, []);
   
   
   // Open event modal

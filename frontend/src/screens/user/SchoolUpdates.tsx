@@ -593,11 +593,13 @@ const SchoolUpdates = () => {
     }
   }, []);
 
-  // Fetch updates on mount only
+  // Fetch updates on mount
   useEffect(() => {
-    fetchUpdates(true); // Force refresh on mount
-    
-    // Request notification permissions and check notifications on mount
+    fetchUpdates(true);
+  }, []);
+
+  // Request notification permissions and check notifications on mount
+  useEffect(() => {
     const setupNotifications = async () => {
       try {
         await NotificationService.requestPermissions();

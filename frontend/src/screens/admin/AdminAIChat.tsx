@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, AppStateStatus } from 'react-native';
-import { ActivityIndicator, Animated, BackHandler, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Animated, BackHandler, Image, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
@@ -64,6 +64,8 @@ const AdminAIChat = () => {
   const sessionId = useRef<string>('');
   const hasRestoredConversation = useRef<boolean>(false);
   const isRestoringRef = useRef<boolean>(false);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const appWasInBackground = useRef<boolean>(false);
 
   // Segmented control animation and width tracking
   const segmentAnim = useRef(new Animated.Value(0)).current;
@@ -310,6 +312,9 @@ const AdminAIChat = () => {
           selectedUserType,
         };
         await AsyncStorage.setItem('adminCurrentConversation', JSON.stringify(conversationData));
+        // Save timestamp to detect app close
+        lastSaveTime.current = Date.now();
+        await AsyncStorage.setItem('adminConversationLastSaveTime', lastSaveTime.current.toString());
       }
     } catch (error) {
       console.error('Failed to save current conversation:', error);
@@ -357,11 +362,52 @@ const AdminAIChat = () => {
   const clearCurrentConversation = useCallback(async () => {
     try {
       await AsyncStorage.removeItem('adminCurrentConversation');
+      await AsyncStorage.removeItem('adminConversationLastSaveTime');
       hasRestoredConversation.current = false; // Reset flag to allow future restoration
+      lastSaveTime.current = 0;
     } catch (error) {
       console.error('Failed to clear current conversation:', error);
     }
   }, []);
+
+  // Track app lifecycle to detect actual app close (not just navigation)
+  const appStartTime = useRef<number>(Date.now());
+  const lastSaveTime = useRef<number>(0);
+  
+  // Clear conversation only on actual app start (not on navigation)
+  useEffect(() => {
+    const checkIfAppWasClosed = async () => {
+      try {
+        // Check when conversation was last saved
+        const lastSave = await AsyncStorage.getItem('adminConversationLastSaveTime');
+        const currentTime = Date.now();
+        
+        // If last save was more than 3 seconds ago, assume app was closed
+        // This handles the case where app was closed and reopened
+        if (lastSave) {
+          const lastSaveTimestamp = parseInt(lastSave, 10);
+          const timeSinceLastSave = currentTime - lastSaveTimestamp;
+          
+          // If more than 3 seconds passed, app was likely closed
+          if (timeSinceLastSave > 3000) {
+            await clearCurrentConversation();
+            hasRestoredConversation.current = false;
+          }
+        } else {
+          // No previous save, this is a fresh start
+          await clearCurrentConversation();
+          hasRestoredConversation.current = false;
+        }
+      } catch (error) {
+        console.error('Failed to check app state:', error);
+      }
+    };
+    
+    // Only check on very first mount (app start)
+    if (Date.now() - appStartTime.current < 1000) {
+      checkIfAppWasClosed();
+    }
+  }, [clearCurrentConversation]);
 
   // Save chat when messages change (only if there are messages)
   useEffect(() => {
@@ -392,7 +438,7 @@ const AdminAIChat = () => {
           saveCurrentConversation();
         }
       };
-    }, [selectedUserType, restoreCurrentConversation, saveCurrentConversation])
+    }, [selectedUserType, restoreCurrentConversation, saveCurrentConversation, messages.length])
   );
 
   // Reload top queries when userType changes
@@ -400,13 +446,21 @@ const AdminAIChat = () => {
     loadTopQueries();
   }, [selectedUserType]);
 
-  // Save conversation when app goes to background
+  // Track app state changes and save conversation when app goes to background
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'background' || nextAppState === 'inactive') {
+      const previousState = appStateRef.current;
+      appStateRef.current = nextAppState;
+
+      if (previousState === 'active' && (nextAppState === 'background' || nextAppState === 'inactive')) {
+        // App is going to background - mark it and save conversation
+        appWasInBackground.current = true;
         if (messages.length > 0 && sessionId.current) {
           saveCurrentConversation();
         }
+      } else if (previousState === 'background' && nextAppState === 'active') {
+        // App is returning from background - keep conversation (don't clear)
+        // Conversation will be restored by useFocusEffect if needed
       }
     });
 
@@ -497,6 +551,11 @@ const AdminAIChat = () => {
 
       // Add assistant message to chat
       setMessages(prev => [...prev, assistantMessage]);
+      
+      // Scroll to bottom to show new message
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
     } catch (error: any) {
       // Show appropriate error message based on error type
       let errorContent = 'Sorry, I encountered an error. Please try again.';
@@ -863,8 +922,12 @@ const AdminAIChat = () => {
                 ]}
               >
                 {message.role === 'assistant' && (
-                  <View style={[styles.aiAvatar, { backgroundColor: theme.colors.accent }]}>
-                    <MaterialIcons name="auto-awesome" size={14} color="#FFF" />
+                  <View style={styles.aiAvatar}>
+                    <Image 
+                      source={require('../../../../assets/DOrSU.png')} 
+                      style={styles.aiAvatarImage}
+                      resizeMode="cover"
+                    />
                   </View>
                 )}
                 {message.role === 'user' ? (
@@ -899,8 +962,12 @@ const AdminAIChat = () => {
             ))}
             {isLoading && (
               <View style={styles.assistantMessageRow}>
-                <View style={[styles.aiAvatar, { backgroundColor: theme.colors.accent }]}>
-                  <MaterialIcons name="auto-awesome" size={14} color="#FFF" />
+                <View style={styles.aiAvatar}>
+                  <Image 
+                    source={require('../../../../assets/DOrSU.png')} 
+                    style={styles.aiAvatarImage}
+                    resizeMode="cover"
+                  />
                 </View>
                 <View style={[styles.typingBubbleContainer, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}>
                   <BlurView
@@ -1551,6 +1618,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 4,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+  },
+  aiAvatarImage: {
+    width: '100%',
+    height: '100%',
   },
   messageBubble: {
     maxWidth: '75%',

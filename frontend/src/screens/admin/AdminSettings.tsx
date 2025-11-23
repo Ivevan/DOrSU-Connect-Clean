@@ -115,6 +115,9 @@ const AdminSettings = () => {
 
   const confirmLogout = useCallback(async () => {
     try {
+      // Clear conversation data from AsyncStorage
+      await AsyncStorage.multiRemove(['adminCurrentConversation', 'adminConversationLastSaveTime']);
+      
       // Clear all admin and user data from AsyncStorage
       await AsyncStorage.multiRemove([
         'userToken', 

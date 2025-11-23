@@ -158,6 +158,9 @@ const UserSettings = () => {
 
   const confirmLogout = useCallback(async () => {
     try {
+      // Clear conversation data from AsyncStorage
+      await AsyncStorage.multiRemove(['currentConversation', 'conversationLastSaveTime']);
+      
       // Clear backend auth data from AsyncStorage
       await AsyncStorage.multiRemove(['userToken', 'userEmail', 'userName', 'userId', 'userPhoto', 'authProvider']);
       

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Animated, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeValues } from '../../contexts/ThemeContext';
@@ -56,6 +56,15 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
   // Determine current active screen
   const currentScreen = route.name as keyof RootStackParamList;
 
+  // Sort chat history by timestamp (newest first)
+  const sortedChatHistory = useMemo(() => {
+    return [...chatHistory].sort((a, b) => {
+      const timeA = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp).getTime();
+      const timeB = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp).getTime();
+      return timeB - timeA; // Descending order (newest first)
+    });
+  }, [chatHistory]);
+
   // User state
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
@@ -85,6 +94,26 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
       return (names[0][0] + names[1][0]).toUpperCase();
     }
     return currentUser.displayName.substring(0, 2).toUpperCase();
+  };
+
+  // Format time helper
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Format date helper
+  const formatDate = (date: Date) => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (date.toDateString() === today.toDateString()) {
+      return 'Today';
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday';
+    } else {
+      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    }
   };
 
   // Animate sidebar when opening/closing
@@ -142,16 +171,6 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             </Text>
           </View>
           <View style={styles.sidebarHeaderButtons}>
-            <TouchableOpacity
-              style={styles.sidebarIconButton}
-              onPress={() => {
-                onClose();
-                navigation.navigate('AdminSettings');
-              }}
-              accessibilityLabel="Admin settings"
-            >
-              <Ionicons name="person-circle-outline" size={26} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
-            </TouchableOpacity>
             <TouchableOpacity
               style={styles.sidebarIconButton}
               onPress={() => {
@@ -287,86 +306,117 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
               Manage Posts
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.sidebarMenuItem}
+            onPress={() => {
+              onClose();
+              navigation.navigate('AdminSettings');
+            }}
+          >
+            <Ionicons 
+              name={currentScreen === 'AdminSettings' ? 'person-circle' : 'person-circle-outline'} 
+              size={24} 
+              color={currentScreen === 'AdminSettings' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+            />
+            <Text style={[styles.sidebarMenuText, { 
+              color: currentScreen === 'AdminSettings' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              fontWeight: currentScreen === 'AdminSettings' ? '600' : '500',
+              fontSize: t.fontSize.scaleSize(16)
+            }]}>
+              Profile Settings
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Chat History Section */}
-        <View style={styles.sidebarHistorySection}>
-          <View style={styles.sidebarSectionHeader}>
-            <Text style={[styles.sidebarSectionTitle, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(12) }]}>
-              Recent Chats
-            </Text>
-            {chatHistory.length > 0 && onDeleteAllChats && (
-              <TouchableOpacity
-                style={styles.clearAllButton}
-                onPress={async () => {
-                  try {
-                    await onDeleteAllChats();
-                  } catch (error) {
-                    console.error('Failed to delete all chats:', error);
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.clearAllText, { color: isDarkMode ? '#EF4444' : '#DC2626', fontSize: t.fontSize.scaleSize(12) }]}>
-                  Clear All
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          <ScrollView style={styles.sidebarContent} showsVerticalScrollIndicator={false}>
-            {chatHistory.length === 0 ? (
-              <View style={styles.emptyHistoryContainer}>
-                <Ionicons name="chatbubbles-outline" size={40} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
-                <Text style={[styles.emptyHistoryText, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(14) }]}>
-                  No chat history yet
-                </Text>
-              </View>
-            ) : (
-              chatHistory.map((chat, idx) => (
-                <View key={`${chat.id}:${idx}`} style={styles.historyItem}>
-                  <TouchableOpacity
-                    style={[
-                      styles.historyItemButton,
-                      { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)' },
-                    ]}
-                    onPress={() => {
-                      if (onChatSelect) {
-                        onChatSelect(chat.id);
-                      }
-                      onClose();
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    {/* Color accent bar - similar to event cards */}
-                    {chat.userType && (
-                      <View style={[
-                        styles.historyAccent,
-                        { backgroundColor: chat.userType === 'student' ? t.colors.accent : '#FBBF24' }
-                      ]} />
-                    )}
-                    <View style={styles.historyItemContent}>
-                      <View style={styles.historyItemTextContainer}>
-                        <Text style={[styles.historyTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(14) }]} numberOfLines={1}>
-                          {chat.title}
-                        </Text>
-                        <Text style={[styles.historyPreview, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(13) }]} numberOfLines={1}>
-                          {chat.preview}
-                        </Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.deleteHistoryBtn}
-                    onPress={() => handleDeleteChat(chat.id)}
-                    accessibilityLabel="Delete chat"
-                  >
-                    <Ionicons name="trash-outline" size={16} color={isDarkMode ? '#9CA3AF' : '#6B7280'} />
-                  </TouchableOpacity>
+        {/* Chat History Section - Only show on AdminAIChat screen */}
+        {currentScreen === 'AdminAIChat' && (
+          <View style={styles.sidebarHistorySection}>
+            <View style={styles.sidebarSectionHeader}>
+              <Text style={[styles.sidebarSectionTitle, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(12) }]}>
+                Recent Chats
+              </Text>
+              {sortedChatHistory.length > 0 && onDeleteAllChats && (
+                <TouchableOpacity
+                  style={styles.clearAllButton}
+                  onPress={async () => {
+                    try {
+                      await onDeleteAllChats();
+                    } catch (error) {
+                      console.error('Failed to delete all chats:', error);
+                    }
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.clearAllText, { color: isDarkMode ? '#EF4444' : '#DC2626', fontSize: t.fontSize.scaleSize(12) }]}>
+                    Clear All
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            <ScrollView style={styles.sidebarContent} showsVerticalScrollIndicator={false}>
+              {sortedChatHistory.length === 0 ? (
+                <View style={styles.emptyHistoryContainer}>
+                  <Ionicons name="chatbubbles-outline" size={40} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
+                  <Text style={[styles.emptyHistoryText, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(14) }]}>
+                    No chat history yet
+                  </Text>
                 </View>
-              ))
-            )}
-          </ScrollView>
-        </View>
+              ) : (
+                sortedChatHistory.map((chat, idx) => (
+                  <View key={`${chat.id}:${idx}`} style={styles.historyItem}>
+                    <TouchableOpacity
+                      style={[
+                        styles.historyItemButton,
+                        { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)' },
+                      ]}
+                      onPress={() => {
+                        if (onChatSelect) {
+                          onChatSelect(chat.id);
+                        }
+                        onClose();
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      {/* Color accent bar - similar to event cards */}
+                      {chat.userType && (
+                        <View style={[
+                          styles.historyAccent,
+                          { backgroundColor: chat.userType === 'student' ? t.colors.accent : '#FBBF24' }
+                        ]} />
+                      )}
+                      <View style={styles.historyItemContent}>
+                        <View style={styles.historyItemTextContainer}>
+                          <Text style={[styles.historyTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(14) }]} numberOfLines={1}>
+                            {chat.title}
+                          </Text>
+                          <Text style={[styles.historyPreview, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(13) }]} numberOfLines={1}>
+                            {chat.preview}
+                          </Text>
+                          {chat.timestamp && (
+                            <View style={styles.historyDateRow}>
+                              <Ionicons name="time-outline" size={10} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
+                              <Text style={[styles.historyDate, { color: isDarkMode ? '#6B7280' : '#9CA3AF', fontSize: t.fontSize.scaleSize(11) }]}>
+                                {formatDate(chat.timestamp instanceof Date ? chat.timestamp : new Date(chat.timestamp))} • {formatTime(chat.timestamp instanceof Date ? chat.timestamp : new Date(chat.timestamp))}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.deleteHistoryBtn}
+                      onPress={() => handleDeleteChat(chat.id)}
+                      accessibilityLabel="Delete chat"
+                    >
+                      <Ionicons name="trash-outline" size={16} color={isDarkMode ? '#9CA3AF' : '#6B7280'} />
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        )}
       </Animated.View>
 
       {/* Overlay for sidebar */}
@@ -573,6 +623,17 @@ const styles = StyleSheet.create({
   },
   historyPreview: {
     fontSize: 13,
+    marginBottom: 4,
+  },
+  historyDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  historyDate: {
+    fontSize: 11,
+    fontWeight: '500',
   },
   deleteHistoryBtn: {
     position: 'absolute',

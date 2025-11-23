@@ -6,6 +6,8 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState, AppStateStatus } from 'react-native';
 import { ActivityIndicator, Animated, BackHandler, Image, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -55,6 +57,8 @@ const AIChat = () => {
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const sessionId = useRef<string>('');
+  const hasRestoredConversation = useRef<boolean>(false);
+  const isRestoringRef = useRef<boolean>(false);
 
   // Segmented control animation and width tracking
   const segmentAnim = useRef(new Animated.Value(0)).current;
@@ -369,12 +373,106 @@ const AIChat = () => {
     }
   }, [isLoading, typingDot1, typingDot2, typingDot3]);
 
-  // Save chat when messages change (only if there are messages)
-  useEffect(() => {
-    if (messages.length > 0) {
-      saveChatHistory();
+  // Save current conversation to AsyncStorage for persistence
+  const saveCurrentConversation = useCallback(async () => {
+    try {
+      if (messages.length > 0 && sessionId.current) {
+        const conversationData = {
+          messages: messages.map(msg => ({
+            ...msg,
+            timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : msg.timestamp,
+          })),
+          sessionId: sessionId.current,
+          selectedUserType,
+        };
+        await AsyncStorage.setItem('currentConversation', JSON.stringify(conversationData));
+      }
+    } catch (error) {
+      console.error('Failed to save current conversation:', error);
     }
-  }, [messages]);
+  }, [messages, sessionId, selectedUserType]);
+
+  // Restore conversation from AsyncStorage
+  const restoreCurrentConversation = useCallback(async () => {
+    // Prevent multiple simultaneous restorations
+    if (isRestoringRef.current) return;
+    
+    // Only restore if there are no current messages (empty conversation)
+    if (messages.length > 0) return;
+    
+    // Only restore once per session
+    if (hasRestoredConversation.current) return;
+    
+    try {
+      isRestoringRef.current = true;
+      const conversationData = await AsyncStorage.getItem('currentConversation');
+      if (conversationData) {
+        const parsed = JSON.parse(conversationData);
+        if (parsed.messages && parsed.messages.length > 0 && parsed.sessionId) {
+          // Restore messages with proper Date objects
+          const restoredMessages = parsed.messages.map((msg: any) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp),
+          }));
+          setMessages(restoredMessages);
+          sessionId.current = parsed.sessionId;
+          if (parsed.selectedUserType) {
+            setSelectedUserType(parsed.selectedUserType);
+          }
+          hasRestoredConversation.current = true;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to restore current conversation:', error);
+    } finally {
+      isRestoringRef.current = false;
+    }
+  }, [messages.length]);
+
+  // Clear current conversation from AsyncStorage
+  const clearCurrentConversation = useCallback(async () => {
+    try {
+      await AsyncStorage.removeItem('currentConversation');
+      hasRestoredConversation.current = false; // Reset flag to allow future restoration
+    } catch (error) {
+      console.error('Failed to clear current conversation:', error);
+    }
+  }, []);
+
+
+  // Save conversation when app goes to background
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        if (messages.length > 0 && sessionId.current) {
+          saveCurrentConversation();
+        }
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [messages, sessionId, saveCurrentConversation]);
+
+  // Restore conversation when screen comes into focus, save when navigating away
+  useFocusEffect(
+    useCallback(() => {
+      // Restore conversation when screen comes into focus (only if no active conversation)
+      // Use a small delay to ensure state is stable
+      const restoreTimeout = setTimeout(() => {
+        restoreCurrentConversation();
+      }, 100);
+      
+      // Save conversation when navigating away (on blur)
+      return () => {
+        clearTimeout(restoreTimeout);
+        if (messages.length > 0 && sessionId.current) {
+          saveCurrentConversation();
+        }
+      };
+    }, [restoreCurrentConversation, saveCurrentConversation])
+  );
 
   const loadChatHistory = async () => {
     try {
@@ -441,6 +539,15 @@ const AIChat = () => {
     }
   };
 
+  // Save chat when messages change (only if there are messages)
+  useEffect(() => {
+    if (messages.length > 0) {
+      saveChatHistory();
+      // Also save to AsyncStorage for local persistence
+      saveCurrentConversation();
+    }
+  }, [messages, saveCurrentConversation]);
+
   const loadChatFromHistory = async (chatId: string) => {
     try {
       const token = await getUserToken();
@@ -450,6 +557,18 @@ const AIChat = () => {
       const chatMessages = await AIService.getChatSession(chatId, token);
       setMessages(chatMessages);
       sessionId.current = chatId; // Set the session ID to the loaded chat
+      // Save the loaded chat as current conversation
+      if (chatMessages.length > 0) {
+        const conversationData = {
+          messages: chatMessages.map(msg => ({
+            ...msg,
+            timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : msg.timestamp,
+          })),
+          sessionId: chatId,
+          selectedUserType,
+        };
+        await AsyncStorage.setItem('currentConversation', JSON.stringify(conversationData));
+      }
       setIsHistoryOpen(false);
     } catch (error) {
       console.error('Failed to load chat:', error);
@@ -829,6 +948,7 @@ const AIChat = () => {
         onNewConversation={() => {
           sessionId.current = '';
           setMessages([]);
+          clearCurrentConversation();
         }}
         getUserToken={getUserToken}
         sessionId={sessionId.current}

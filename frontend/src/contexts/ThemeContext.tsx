@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useRef, useCallback } from 'react';
 import { useColorScheme, Platform, Animated } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Theme, getTheme, ColorTheme, FontSizeScale, fontSizeScales } from '../config/theme';
@@ -65,32 +65,83 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   // Font size scale preference - default to 'medium'
   const [fontSizeScale, setFontSizeScaleState] = useState<FontSizeScale>('medium');
   
+  // Refs to track pending saves for debouncing
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingSavesRef = useRef<{
+    themePreference?: 'light' | 'dark';
+    colorTheme?: ColorTheme;
+    fontSizeScale?: FontSizeScale;
+  }>({});
+  
+  // Debounced batch save function - batches all AsyncStorage writes
+  const debouncedBatchSave = useCallback(() => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    
+    saveTimeoutRef.current = setTimeout(async () => {
+      const pending = pendingSavesRef.current;
+      if (Object.keys(pending).length === 0) return;
+      
+      try {
+        // Batch all AsyncStorage writes together for better performance
+        const updates: Array<[string, string]> = [];
+        
+        if (pending.themePreference !== undefined) {
+          updates.push(['themePreference', pending.themePreference]);
+        }
+        if (pending.colorTheme !== undefined) {
+          updates.push(['colorTheme', pending.colorTheme]);
+        }
+        if (pending.fontSizeScale !== undefined) {
+          updates.push(['fontSizeScale', pending.fontSizeScale]);
+        }
+        
+        // Use multiSet for better performance - all writes in one operation
+        if (updates.length > 0) {
+          await AsyncStorage.multiSet(updates);
+        }
+        
+        // Clear pending saves after successful write
+        pendingSavesRef.current = {};
+      } catch (error) {
+        console.error('Failed to save theme preferences:', error);
+      } finally {
+        saveTimeoutRef.current = null;
+      }
+    }, 300); // 300ms debounce delay - batches rapid changes
+  }, []);
+  
   // Load saved theme preference from AsyncStorage on mount
   useEffect(() => {
     const loadThemePreference = async () => {
       try {
-        const savedPreference = await AsyncStorage.getItem('themePreference');
+        // Use multiGet for better performance - load all preferences in one operation
+        const keys = ['themePreference', 'colorTheme', 'fontSizeScale'];
+        const values = await AsyncStorage.multiGet(keys);
+        const preferences = Object.fromEntries(values);
+        
+        // Set theme preference
+        const savedPreference = preferences.themePreference;
         if (savedPreference === 'light' || savedPreference === 'dark') {
           setUserPreference(savedPreference);
         } else {
-          // Default to 'light' if no preference is saved
           setUserPreference('light');
         }
         
-        // Load color theme preference
-        const savedColorTheme = await AsyncStorage.getItem('colorTheme');
+        // Set color theme preference
+        const savedColorTheme = preferences.colorTheme;
         if (savedColorTheme && ['dorsu', 'facet'].includes(savedColorTheme)) {
           setSelectedColorTheme(savedColorTheme as ColorTheme);
         }
         
-        // Load font size scale preference
-        const savedFontSizeScale = await AsyncStorage.getItem('fontSizeScale');
+        // Set font size scale preference
+        const savedFontSizeScale = preferences.fontSizeScale;
         if (savedFontSizeScale && ['small', 'medium', 'large', 'extraLarge'].includes(savedFontSizeScale)) {
           setFontSizeScaleState(savedFontSizeScale as FontSizeScale);
         }
       } catch (error) {
         console.error('Failed to load theme preference:', error);
-        // Default to 'light' on error
         setUserPreference('light');
       } finally {
         setIsLoadingTheme(false);
@@ -100,32 +151,33 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     loadThemePreference();
   }, []);
   
-  // Save theme preference to AsyncStorage whenever it changes
+  // Cleanup timeout on unmount
   useEffect(() => {
-    if (!isLoadingTheme && userPreference !== null) {
-      AsyncStorage.setItem('themePreference', userPreference).catch(error => {
-        console.error('Failed to save theme preference:', error);
-      });
-    }
-  }, [userPreference, isLoadingTheme]);
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
   
-  // Save color theme preference to AsyncStorage whenever it changes
+  // Batch save preferences with debouncing - watch for changes and save automatically
   useEffect(() => {
-    if (!isLoadingTheme) {
-      AsyncStorage.setItem('colorTheme', selectedColorTheme).catch(error => {
-        console.error('Failed to save color theme preference:', error);
-      });
-    }
-  }, [selectedColorTheme, isLoadingTheme]);
+    if (isLoadingTheme || userPreference === null) return;
+    pendingSavesRef.current.themePreference = userPreference;
+    debouncedBatchSave();
+  }, [userPreference, isLoadingTheme, debouncedBatchSave]);
   
-  // Save font size scale preference to AsyncStorage whenever it changes
   useEffect(() => {
-    if (!isLoadingTheme) {
-      AsyncStorage.setItem('fontSizeScale', fontSizeScale).catch(error => {
-        console.error('Failed to save font size scale preference:', error);
-      });
-    }
-  }, [fontSizeScale, isLoadingTheme]);
+    if (isLoadingTheme) return;
+    pendingSavesRef.current.colorTheme = selectedColorTheme;
+    debouncedBatchSave();
+  }, [selectedColorTheme, isLoadingTheme, debouncedBatchSave]);
+  
+  useEffect(() => {
+    if (isLoadingTheme) return;
+    pendingSavesRef.current.fontSizeScale = fontSizeScale;
+    debouncedBatchSave();
+  }, [fontSizeScale, isLoadingTheme, debouncedBatchSave]);
 
   // Animation for theme transition - use refs to avoid triggering re-renders
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -142,31 +194,31 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     return system === 'dark';
   }, [rnScheme, webScheme, userPreference, isLoadingTheme]);
 
-  // Removed animation trigger - no longer needed for instant theme switching
+  // Optimized toggleTheme - INSTANT theme switch, optimized state update
+  // Uses functional state update to avoid dependency on isDarkMode
+  const toggleTheme = useCallback(() => {
+    setUserPreference(prev => {
+      // If following system (null), check system preference and toggle from it
+      if (prev === null) {
+        const systemMode = Platform.OS === 'web' 
+          ? (webScheme === 'dark' ? 'dark' : 'light')
+          : (rnScheme === 'dark' ? 'dark' : 'light');
+        return systemMode === 'dark' ? 'light' : 'dark';
+      }
+      // Otherwise toggle between light and dark
+      return prev === 'dark' ? 'light' : 'dark';
+    });
+  }, [rnScheme, webScheme]);
 
-  // Optimized toggleTheme - INSTANT theme switch, no animation delays
-  const toggleTheme = React.useCallback(() => {
-    // Calculate the next theme state
-    const nextMode = userPreference 
-      ? (userPreference === 'dark' ? 'light' : 'dark')
-      : (isDarkMode ? 'light' : 'dark');
-    
-    // Update state IMMEDIATELY - no delays, no animation, no batching
-    // This triggers re-renders but should be instant
-    setUserPreference(nextMode);
-    
-    // No animation - instant switch
-  }, [userPreference, isDarkMode]);
-
-  const setTheme = React.useCallback((isDark: boolean) => {
+  const setTheme = useCallback((isDark: boolean) => {
     setUserPreference(isDark ? 'dark' : 'light');
   }, []);
   
-  const setColorTheme = React.useCallback((colorTheme: ColorTheme) => {
+  const setColorTheme = useCallback((colorTheme: ColorTheme) => {
     setSelectedColorTheme(colorTheme);
   }, []);
   
-  const setFontSizeScale = React.useCallback((scale: FontSizeScale) => {
+  const setFontSizeScale = useCallback((scale: FontSizeScale) => {
     setFontSizeScaleState(scale);
   }, []);
 

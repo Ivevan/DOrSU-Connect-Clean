@@ -305,18 +305,18 @@ const AdminDashboard = () => {
   }, []);
   
   
-  // Open event modal
+  // Open event modal - optimized for performance
   const openEventDrawer = useCallback((event: CalendarEvent, date?: Date) => {
-    setSelectedEvent(event);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    // Batch state updates for better performance
     if (date) {
-      setSelectedDateForDrawer(date);
-      // Find all events on this date
       const dateKey = formatDateKey(date);
       const eventsOnDate = calendarEvents.filter(e => {
         const eventDateKey = parseAnyDateToKey(e.isoDate || e.date);
         return eventDateKey === dateKey;
       });
-      setSelectedDateEvents(eventsOnDate.map(e => ({
+      const mappedEvents = eventsOnDate.map(e => ({
         id: e._id || `calendar-${e.isoDate}-${e.title}`,
         title: e.title,
         color: categoryToColors(e.category || 'Event').dot,
@@ -328,13 +328,20 @@ const AdminDashboard = () => {
         time: e.time,
         startDate: e.startDate,
         endDate: e.endDate,
-      })));
+      }));
+      
+      // Batch all state updates together
+      setSelectedEvent(event);
+      setSelectedDateForDrawer(date);
+      setSelectedDateEvents(mappedEvents);
+      setShowEventDrawer(true);
     } else {
+      // Batch all state updates together
+      setSelectedEvent(event);
       setSelectedDateForDrawer(null);
       setSelectedDateEvents([]);
+      setShowEventDrawer(true);
     }
-    setShowEventDrawer(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, [calendarEvents]);
   
   // Close event modal

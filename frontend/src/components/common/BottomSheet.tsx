@@ -1,4 +1,4 @@
-import React, { ReactNode } from 'react';
+import React, { ReactNode, useMemo } from 'react';
 import { Animated, Dimensions, Modal, StyleProp, StyleSheet, TouchableOpacity, View, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeValues } from '../../contexts/ThemeContext';
@@ -14,6 +14,8 @@ interface BottomSheetProps {
   overlayOpacity?: number;
   contentStyle?: StyleProp<ViewStyle>;
   enableBackdropClose?: boolean;
+  sheetPaddingBottom?: number;
+  autoSize?: boolean; // Automatically remove excess space by sizing to content
 }
 
 /**
@@ -44,16 +46,55 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
   overlayOpacity = 0.5,
   contentStyle,
   enableBackdropClose = true,
+  sheetPaddingBottom,
+  autoSize = false,
 }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useThemeValues();
   const defaultBackgroundColor = backgroundColor || theme.colors.surface;
   
-  // Calculate maxHeight in pixels if it's a percentage string
-  const screenHeight = Dimensions.get('window').height;
-  const calculatedMaxHeight = typeof maxHeight === 'string' && maxHeight.includes('%')
-    ? (screenHeight * parseFloat(maxHeight) / 100)
-    : (typeof maxHeight === 'number' ? maxHeight : screenHeight * 0.5);
+  // Memoize expensive calculations
+  const { calculatedMaxHeight, bottomPadding, sheetStyle, contentStyleArray } = useMemo(() => {
+    // Calculate maxHeight in pixels if it's a percentage string
+    const screenHeight = Dimensions.get('window').height;
+    const maxH = typeof maxHeight === 'string' && maxHeight.includes('%')
+      ? (screenHeight * parseFloat(maxHeight) / 100)
+      : (typeof maxHeight === 'number' ? maxHeight : screenHeight * 0.5);
+
+    // Use custom paddingBottom if provided, otherwise use default safe area padding
+    const bottomPad = sheetPaddingBottom !== undefined 
+      ? sheetPaddingBottom 
+      : Math.max(insets.bottom, 20);
+
+    // Auto-size: remove excess space by letting content determine height
+    const baseStyle = {
+      backgroundColor: defaultBackgroundColor,
+      transform: [{ translateY: sheetY }],
+      paddingBottom: bottomPad,
+      maxHeight: maxH,
+    };
+
+    const sheetSty = autoSize
+      ? baseStyle
+      : { ...baseStyle, height: maxH };
+
+    // Auto-size: adjust content style to not expand unnecessarily
+    const baseContentStyle = {
+      paddingLeft: Math.max(insets.left, 20),
+      paddingRight: Math.max(insets.right, 20),
+    };
+
+    const contentSty = autoSize
+      ? [baseContentStyle, { flex: 0 }, contentStyle]
+      : [baseContentStyle, contentStyle];
+
+    return {
+      calculatedMaxHeight: maxH,
+      bottomPadding: bottomPad,
+      sheetStyle: sheetSty,
+      contentStyleArray: contentSty,
+    };
+  }, [maxHeight, sheetPaddingBottom, insets.bottom, insets.left, insets.right, defaultBackgroundColor, sheetY, autoSize, contentStyle]);
 
   return (
     <Modal 
@@ -74,24 +115,14 @@ const BottomSheet: React.FC<BottomSheetProps> = ({
         <Animated.View
           style={[
             styles.modalSheet,
-            {
-              backgroundColor: defaultBackgroundColor,
-              transform: [{ translateY: sheetY }],
-              paddingBottom: Math.max(insets.bottom, 20),
-              maxHeight: calculatedMaxHeight,
-              height: calculatedMaxHeight,
-            },
+            sheetStyle,
           ]}
         >
           {showHandle && <View style={styles.modalHandle} />}
           <View 
             style={[
               styles.modalContent,
-              {
-                paddingLeft: Math.max(insets.left, 20),
-                paddingRight: Math.max(insets.right, 20),
-              },
-              contentStyle,
+              contentStyleArray,
             ]}
           >
             {children}

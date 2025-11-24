@@ -443,6 +443,8 @@ const AdminSettings = () => {
         onClose={closeKnowledgeBaseModal}
         sheetY={knowledgeBaseSheetY}
         backgroundColor={theme.colors.surface}
+        sheetPaddingBottom={0}
+        autoSize={true}
       >
         <View style={styles.modalHeader}>
           <View style={styles.uploadSectionHeader}>

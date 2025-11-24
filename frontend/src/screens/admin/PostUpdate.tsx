@@ -101,6 +101,7 @@ const PostUpdate: React.FC = () => {
   const [isPublishAlertOpen, setIsPublishAlertOpen] = useState(false);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
 
   // Animation values - DISABLED FOR PERFORMANCE DEBUGGING
   const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
@@ -518,60 +519,72 @@ const PostUpdate: React.FC = () => {
   }, [editingPostId]);
 
   const confirmPublish = useCallback(() => {
+    // Prevent double submission
+    if (isPublishing) {
+      return;
+    }
+
+    setIsPublishing(true);
+    
+    // Close modal immediately for better UX
     Animated.timing(publishAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
       InteractionManager.runAfterInteractions(() => {
         setIsPublishAlertOpen(false);
       });
     });
-    // Simulate publishing then go to ManagePosts
-    setTimeout(() => {
-      const now = new Date();
-      // Use ISO date string for backend consistency
-      const isoDate = selectedDateObj ? selectedDateObj.toISOString() : (date ? new Date(date).toISOString() : now.toISOString());
-      const displayDate = now.toLocaleString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
-      
-      // Prepare payload with proper date format
-      const payload: any = {
-        title: title || 'Untitled',
-        category,
-        date: isoDate, // Use ISO date string for backend
-        isoDate: isoDate, // Include isoDate for consistency
-        description,
-      };
 
-      // If new image is picked, include imageFile object for proper backend handling
-      if (pickedFile) {
-        payload.image = pickedFile.uri;
-        payload.images = [pickedFile.uri];
-        payload.imageFile = pickedFile; // Pass full file object for backend multipart upload
-        console.log('📸 Including imageFile in payload', { uri: pickedFile.uri.substring(0, 50) + '...', hasImageFile: !!pickedFile });
-      }
-      
-      console.log('📤 Calling AdminDataService', { 
-        isEdit: !!editingPostId, 
-        postId: editingPostId,
-        payload: { ...payload, imageFile: payload.imageFile ? 'present' : 'none' } 
+    // Prepare payload immediately (no delay)
+    const now = new Date();
+    const isoDate = selectedDateObj ? selectedDateObj.toISOString() : (date ? new Date(date).toISOString() : now.toISOString());
+    
+    const payload: any = {
+      title: title || 'Untitled',
+      category,
+      date: isoDate,
+      isoDate: isoDate,
+      description,
+    };
+
+    // If new image is picked, include imageFile object for proper backend handling
+    if (pickedFile) {
+      payload.image = pickedFile.uri;
+      payload.images = [pickedFile.uri];
+      payload.imageFile = pickedFile;
+      console.log('📸 Including imageFile in payload', { uri: pickedFile.uri.substring(0, 50) + '...', hasImageFile: !!pickedFile });
+    }
+    
+    console.log('📤 Calling AdminDataService', { 
+      isEdit: !!editingPostId, 
+      postId: editingPostId,
+      payload: { ...payload, imageFile: payload.imageFile ? 'present' : 'none' } 
+    });
+    
+    // Start the operation immediately
+    const op = editingPostId
+      ? AdminDataService.updatePost(editingPostId, payload)
+      : AdminDataService.createPost(payload);
+    
+    // Navigate optimistically (immediately) for better UX
+    // The upload will continue in the background
+    InteractionManager.runAfterInteractions(() => {
+      navigation.navigate('AdminDashboard');
+    });
+    
+    Promise.resolve(op)
+      .then((result) => {
+        console.log('✅ Post operation successful', { result: !!result });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      })
+      .catch((error) => {
+        console.error('❌ Post operation failed:', error);
+        // Show error but don't block navigation
+        Alert.alert('Error', error.message || 'Failed to save post');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      })
+      .finally(() => {
+        setIsPublishing(false);
       });
-      
-      const op = editingPostId
-        ? AdminDataService.updatePost(editingPostId, payload)
-        : AdminDataService.createPost(payload);
-      
-      Promise.resolve(op)
-        .then((result) => {
-          console.log('✅ Post operation successful', { result: !!result });
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        })
-        .catch((error) => {
-          console.error('❌ Post operation failed:', error);
-          Alert.alert('Error', error.message || 'Failed to save post');
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        })
-        .finally(() => {
-          navigation.navigate('AdminDashboard');
-        });
-    }, 500);
-  }, [title, category, date, description, pickedFile, editingPostId, navigation, selectedDateObj, publishAlertSheetY]);
+  }, [title, category, date, description, pickedFile, editingPostId, navigation, selectedDateObj, publishAlertSheetY, isPublishing]);
 
   const confirmCancel = useCallback(() => {
     Animated.timing(cancelAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
@@ -616,6 +629,7 @@ const PostUpdate: React.FC = () => {
         setIsAnimating(false);
         return;
       }
+      
       let cachedUri: string | null = null;
       try {
         const source = (asset.fileCopyUri || asset.uri) as string;
@@ -643,6 +657,7 @@ const PostUpdate: React.FC = () => {
       setIsAnimating(false);
     }
   }, [isAnimating]);
+
 
   const handleUpload = useCallback(async () => {
     // Prevent rapid tapping during animation
@@ -1179,7 +1194,7 @@ const PostUpdate: React.FC = () => {
               <View style={[styles.fileCard, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.3)' : 'rgba(249, 250, 251, 0.5)', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)' }]}>
                 <View style={styles.fileLeft}>
                   <View style={styles.fileIconWrap}>
-                    <Ionicons name="attach" size={14} color="#1976D2" />
+                    <Ionicons name="image" size={14} color="#1976D2" />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.fileName, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(12) }]} numberOfLines={1}>{pickedFile.name}</Text>
@@ -1188,7 +1203,10 @@ const PostUpdate: React.FC = () => {
                     )}
                   </View>
                 </View>
-                <TouchableOpacity onPress={() => setPickedFile(null)} style={[styles.removeBtn, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.6)' : 'rgba(255, 255, 255, 0.6)' }]}>
+                <TouchableOpacity 
+                  onPress={() => setPickedFile(null)} 
+                  style={[styles.removeBtn, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.6)' : 'rgba(255, 255, 255, 0.6)' }]}
+                >
                   <Ionicons name="close" size={16} color={theme.colors.textMuted} />
                 </TouchableOpacity>
               </View>
@@ -1246,26 +1264,26 @@ const PostUpdate: React.FC = () => {
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.actionBtn, {
-                backgroundColor: isFormValid ? '#2563EB' : (isDarkMode ? '#374151' : '#E5E7EB'),
+                backgroundColor: (isFormValid && !isPublishing) ? '#2563EB' : (isDarkMode ? '#374151' : '#E5E7EB'),
                 borderWidth: 0,
               }]} 
               onPress={handlePublish} 
-              activeOpacity={isFormValid ? 0.7 : 1}
-              disabled={!isFormValid}
+              activeOpacity={(isFormValid && !isPublishing) ? 0.7 : 1}
+              disabled={!isFormValid || isPublishing}
               accessibilityRole="button" 
-              accessibilityLabel="Publish" 
-              accessibilityHint={isFormValid ? "Publishes your update" : "Fill in title and description to enable publishing"}
+              accessibilityLabel={isPublishing ? "Publishing..." : "Publish"} 
+              accessibilityHint={(isFormValid && !isPublishing) ? "Publishes your update" : "Fill in title and description to enable publishing"}
             >
               <Ionicons 
-                name="checkmark-circle" 
+                name={isPublishing ? "hourglass" : "checkmark-circle"} 
                 size={18} 
-                color={isFormValid ? "#fff" : (isDarkMode ? '#6B7280' : '#9CA3AF')} 
+                color={(isFormValid && !isPublishing) ? "#fff" : (isDarkMode ? '#6B7280' : '#9CA3AF')} 
                 style={styles.actionIcon} 
               />
               <Text style={[styles.buttonText, {
-                color: isFormValid ? "#fff" : (isDarkMode ? '#6B7280' : '#9CA3AF'),
+                color: (isFormValid && !isPublishing) ? "#fff" : (isDarkMode ? '#6B7280' : '#9CA3AF'),
                 fontSize: theme.fontSize.scaleSize(14)
-              }]}>Publish</Text>
+              }]}>{isPublishing ? 'Publishing...' : 'Publish'}</Text>
             </TouchableOpacity>
           </View>
         </View>

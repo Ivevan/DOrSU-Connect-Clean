@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { Animated, Image, InteractionManager, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet from '../components/common/BottomSheet';
@@ -30,14 +30,15 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
   const deleteConfirmSheetY = useRef(new Animated.Value(300)).current;
 
-  // Animate sheet when visible changes
+  // Animate sheet when visible changes - optimized for performance
   React.useEffect(() => {
     if (visible) {
-      Animated.spring(sheetY, {
+      // Use timing instead of spring for faster, smoother animation
+      Animated.timing(sheetY, {
         toValue: 0,
+        duration: 250,
         useNativeDriver: true,
-        tension: 65,
-        friction: 11,
+        // Use easing for smoother feel
       }).start();
     } else {
       Animated.timing(sheetY, {
@@ -135,6 +136,17 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
   const eventsToShow = uniqueEvents;
   const primaryEvent = selectedEvent || eventsToShow[0] || null;
 
+  // Memoize expensive color calculations - MUST be called before any early returns
+  const eventColor = useMemo(() => {
+    if (!primaryEvent) return '#93C5FD'; // Default color
+    return primaryEvent.color || categoryToColors(primaryEvent.category || primaryEvent.type || 'Event').dot;
+  }, [primaryEvent?.color, primaryEvent?.category, primaryEvent?.type]);
+  
+  const eventCategory = useMemo(() => {
+    if (!primaryEvent) return 'Event'; // Default category
+    return primaryEvent.category || primaryEvent.type || 'Event';
+  }, [primaryEvent?.category, primaryEvent?.type]);
+
   // Early return after all hooks have been called
   if (!visible || (!selectedEvent && selectedDateEvents.length === 0)) {
     return null;
@@ -145,9 +157,6 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
     return null;
   }
 
-  const eventColor = primaryEvent.color || categoryToColors(primaryEvent.category || primaryEvent.type || 'Event').dot;
-  const eventCategory = primaryEvent.category || primaryEvent.type || 'Event';
-
   return (
     <BottomSheet
       visible={visible}
@@ -155,6 +164,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
       sheetY={sheetY}
       maxHeight="85%"
       backgroundColor={theme.colors.card}
+      autoSize={false}
     >
       <View style={styles.container}>
         {/* Header */}
@@ -172,6 +182,8 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
             styles.scrollContent,
             (onEdit || onDelete) && { paddingBottom: 12 }
           ]}
+          removeClippedSubviews={true}
+          scrollEventThrottle={16}
         >
           {/* Multiple Events List */}
           {eventsToShow.length > 1 && (
@@ -318,7 +330,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
         )}
       </View>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal - Only render when needed */}
       {showDeleteConfirm && (
         <View style={styles.deleteModalOverlay} pointerEvents="box-none">
           <TouchableOpacity 
@@ -335,6 +347,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
                 paddingBottom: Math.max(insets.bottom, 20),
               }
             ]}
+            removeClippedSubviews={true}
           >
             <View style={styles.deleteModalHandle} />
             <View style={styles.deleteModalHeader}>

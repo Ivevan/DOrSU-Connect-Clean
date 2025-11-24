@@ -997,17 +997,16 @@ const SchoolUpdates = () => {
     }
   }, [currentMonthEvents.length]); // Use length to avoid unnecessary re-renders
 
-  // Open event modal (view-only)
+  // Open event modal (view-only) - optimized for performance
   const openEventDrawer = useCallback((event: CalendarEvent, date?: Date) => {
-    setSelectedEvent(event);
+    // Batch state updates for better performance
     if (date) {
-      setSelectedDateForDrawer(date);
       // Find all events on this date
       const eventsOnDate = calendarEvents.filter(e => {
         const eventDate = new Date(e.isoDate || e.date);
         return eventDate.toDateString() === date.toDateString();
       });
-      setSelectedDateEvents(eventsOnDate.map(e => ({
+      const mappedEvents = eventsOnDate.map(e => ({
         id: e._id || `calendar-${e.isoDate}-${e.title}`,
         title: e.title,
         color: categoryToColors(e.category || 'Event').dot,
@@ -1019,12 +1018,20 @@ const SchoolUpdates = () => {
         time: e.time,
         startDate: e.startDate,
         endDate: e.endDate,
-      })));
+      }));
+      
+      // Batch all state updates together
+      setSelectedEvent(event);
+      setSelectedDateForDrawer(date);
+      setSelectedDateEvents(mappedEvents);
+      setShowEventDrawer(true);
     } else {
+      // Batch all state updates together
+      setSelectedEvent(event);
       setSelectedDateForDrawer(null);
       setSelectedDateEvents([]);
+      setShowEventDrawer(true);
     }
-    setShowEventDrawer(true);
   }, [calendarEvents]);
   
   // Close event modal

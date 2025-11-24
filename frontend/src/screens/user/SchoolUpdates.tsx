@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Easing, Image, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Dimensions, Easing, Image, Modal, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import UserSidebar from '../../components/navigation/UserSidebar';
@@ -392,6 +392,12 @@ const SchoolUpdates = () => {
   const searchRef = useRef<TextInput>(null);
   const calendarEventsScrollRef = useRef<ScrollView>(null);
   
+  // Content type filter - multiple selection: 'academic', 'institutional', 'event', 'announcement', 'news'
+  const [selectedContentTypes, setSelectedContentTypes] = useState<string[]>(['academic', 'institutional', 'event', 'announcement', 'news']);
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const filterButtonRef = useRef<View>(null);
+  const [filterButtonLayout, setFilterButtonLayout] = useState({ x: 16, y: 100, width: 200, height: 44 });
+  
   // Event Modal state (view-only) - used for both calendar events and updates
   const [showEventDrawer, setShowEventDrawer] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
@@ -668,10 +674,25 @@ const SchoolUpdates = () => {
     });
   }, [filtered]);
 
-  // Filtered by time (all, upcoming, or recent)
+  // Toggle content type filter
+  const toggleContentType = useCallback((type: string) => {
+    setSelectedContentTypes(prev => {
+      if (prev.includes(type)) {
+        // Don't allow deselecting all - at least one must be selected
+        if (prev.length === 1) return prev;
+        return prev.filter(t => t !== type);
+      } else {
+        return [...prev, type];
+      }
+    });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+
+  // Filtered by time (all, upcoming, or recent) and content type
   const displayedUpdates = useMemo(() => {
     console.log('🔍 Computing displayedUpdates:', {
       timeFilter,
+      selectedContentTypes,
       updatesCount: updates.length,
       filteredCount: filtered.length,
       upcomingCount: upcomingUpdates.length,
@@ -687,6 +708,12 @@ const SchoolUpdates = () => {
       // 'all' - show all posts, including those without dates
       result = [...filtered];
     }
+    
+    // Apply content type filter
+    result = result.filter(update => {
+      const updateType = String(update.tag || 'Announcement').toLowerCase();
+      return selectedContentTypes.includes(updateType);
+    });
     
     console.log('📋 Result before sorting:', result.length, 'items');
     
@@ -711,10 +738,11 @@ const SchoolUpdates = () => {
       console.log('📝 First update:', { id: result[0].id, title: result[0].title, isoDate: result[0].isoDate });
     }
     return result;
-  }, [timeFilter, upcomingUpdates, recentUpdates, filtered, updates.length]);
+  }, [timeFilter, selectedContentTypes, upcomingUpdates, recentUpdates, filtered, updates.length]);
 
   // Current month calendar events (separate from posts/announcements)
   // Sorted chronologically by date (day 1 to 31), then by time if same date
+  // Filtered by selectedContentTypes
   const currentMonthEvents = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -726,8 +754,14 @@ const SchoolUpdates = () => {
         const eventDate = event.isoDate || event.date;
         if (!eventDate) return false;
         const eventDateObj = new Date(eventDate);
-        return eventDateObj.getFullYear() === currentYear &&
-               eventDateObj.getMonth() === currentMonth;
+        const isCurrentMonth = eventDateObj.getFullYear() === currentYear &&
+                               eventDateObj.getMonth() === currentMonth;
+        
+        if (!isCurrentMonth) return false;
+        
+        // Apply content type filter
+        const eventType = String(event.category || 'Event').toLowerCase();
+        return selectedContentTypes.includes(eventType);
       })
       .map(event => ({
         id: event._id || `calendar-${event.isoDate}-${event.title}`,
@@ -788,7 +822,7 @@ const SchoolUpdates = () => {
     });
     
     return monthEvents;
-  }, [calendarEvents]);
+  }, [calendarEvents, selectedContentTypes]);
 
   // Calculate available height for scrollable cards section (after currentMonthEvents is defined)
   const cardsScrollViewHeight = useMemo(() => {
@@ -1255,6 +1289,152 @@ const SchoolUpdates = () => {
         }
       >
 
+        {/* Content Type Filter Dropdown - Compact (affects all sections) */}
+        <View style={styles.sectionContainer}>
+          <View ref={filterButtonRef} style={styles.filterDropdownWrapper}>
+            <TouchableOpacity
+              style={[styles.filterDropdownButton, {
+                backgroundColor: theme.colors.surface,
+                borderColor: theme.colors.border,
+              }]}
+              onPress={() => {
+                if (filterButtonRef.current) {
+                  filterButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
+                    if (typeof pageX === 'number' && typeof pageY === 'number' && 
+                        typeof width === 'number' && typeof height === 'number' &&
+                        !isNaN(pageX) && !isNaN(pageY) && !isNaN(width) && !isNaN(height)) {
+                      setFilterButtonLayout({ x: pageX, y: pageY, width, height });
+                    } else {
+                      setFilterButtonLayout({ x: 16, y: 100, width: 200, height: 44 });
+                    }
+                    setShowFilterDropdown(!showFilterDropdown);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  });
+                } else {
+                  setShowFilterDropdown(!showFilterDropdown);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={styles.filterDropdownButtonContent}>
+                <View style={styles.filterDropdownSelectedChips}>
+                  {selectedContentTypes.length === 5 ? (
+                    <Text style={[styles.filterDropdownButtonText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(12) }]}>All Types</Text>
+                  ) : (
+                    <View style={styles.filterChipsRow}>
+                      {selectedContentTypes.slice(0, 2).map((type) => {
+                        const typeName = type.charAt(0).toUpperCase() + type.slice(1);
+                        const getTypeColor = (typeStr: string) => {
+                          switch (typeStr.toLowerCase()) {
+                            case 'academic': return '#10B981';
+                            case 'institutional': return theme.colors.accent;
+                            case 'event': return '#F59E0B';
+                            case 'announcement': return '#3B82F6';
+                            case 'news': return '#8B5CF6';
+                            default: return theme.colors.accent;
+                          }
+                        };
+                        const typeColor = getTypeColor(type);
+                        return (
+                          <View key={type} style={[styles.filterChip, { backgroundColor: typeColor + '20', borderColor: typeColor }]}>
+                            <Text style={[styles.filterChipText, { color: typeColor, fontSize: theme.fontSize.scaleSize(9) }]}>{typeName}</Text>
+                          </View>
+                        );
+                      })}
+                      {selectedContentTypes.length > 2 && (
+                        <Text style={[styles.filterDropdownButtonText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }]}>
+                          +{selectedContentTypes.length - 2} more
+                        </Text>
+                      )}
+                    </View>
+                  )}
+                </View>
+                <Ionicons 
+                  name={showFilterDropdown ? 'chevron-up' : 'chevron-down'} 
+                  size={16} 
+                  color={theme.colors.textMuted} 
+                />
+              </View>
+            </TouchableOpacity>
+            
+            {/* Dropdown Options - Modal Overlay */}
+            <Modal
+              visible={showFilterDropdown}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setShowFilterDropdown(false)}
+            >
+              <Pressable 
+                style={styles.modalOverlay}
+                onPress={() => setShowFilterDropdown(false)}
+              >
+                <View 
+                  style={[
+                    styles.filterDropdownOptionsModal,
+                    {
+                      top: (isNaN(filterButtonLayout.y) || isNaN(filterButtonLayout.height)) ? 100 : filterButtonLayout.y + filterButtonLayout.height + 8,
+                      left: isNaN(filterButtonLayout.x) ? 16 : Math.max(0, filterButtonLayout.x),
+                      width: isNaN(filterButtonLayout.width) || filterButtonLayout.width <= 0 ? '90%' : Math.max(200, filterButtonLayout.width),
+                      backgroundColor: theme.colors.surface,
+                      borderColor: theme.colors.border,
+                    }
+                  ]}
+                  onStartShouldSetResponder={() => true}
+                >
+                  {['Academic', 'Institutional', 'Event', 'Announcement', 'News'].map((type) => {
+                    const typeLower = type.toLowerCase();
+                    const isSelected = selectedContentTypes.includes(typeLower);
+                    const getTypeColor = (typeStr: string) => {
+                      switch (typeStr.toLowerCase()) {
+                        case 'academic': return '#10B981';
+                        case 'institutional': return theme.colors.accent;
+                        case 'event': return '#F59E0B';
+                        case 'announcement': return '#3B82F6';
+                        case 'news': return '#8B5CF6';
+                        default: return theme.colors.accent;
+                      }
+                    };
+                    const typeColor = getTypeColor(type);
+                    
+                    return (
+                      <TouchableOpacity
+                        key={type}
+                        style={[
+                          styles.filterDropdownOption,
+                          { borderBottomColor: theme.colors.border },
+                          isSelected && { backgroundColor: theme.colors.surfaceAlt }
+                        ]}
+                        onPress={() => toggleContentType(typeLower)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.filterDropdownOptionContent}>
+                          <View style={[styles.filterDropdownCheckbox, {
+                            backgroundColor: isSelected ? typeColor : 'transparent',
+                            borderColor: isSelected ? typeColor : theme.colors.border,
+                          }]}>
+                            <View style={styles.checkboxInner}>
+                              {isSelected && (
+                                <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                              )}
+                            </View>
+                          </View>
+                          <Text style={[styles.filterDropdownOptionText, { 
+                            color: theme.colors.text, 
+                            fontSize: theme.fontSize.scaleSize(12) 
+                          }]}>
+                            {type}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </Pressable>
+            </Modal>
+          </View>
+        </View>
+
         {/* Events This Month Section */}
         {currentMonthEvents.length > 0 && (
           <View style={styles.sectionContainer}>
@@ -1346,6 +1526,8 @@ const SchoolUpdates = () => {
               <Text style={[styles.sectionDividerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>UPDATES</Text>
           </View>
           
+          {/* Time Filter Pills */}
+
           {/* Time Filter Pills */}
           <View style={[styles.filtersContainer, { flexShrink: 0, marginBottom: 12 }]} collapsable={false}>
             <Pressable
@@ -1799,6 +1981,98 @@ const styles = StyleSheet.create({
   },
   filterPillTextActive: {
     color: '#FFF',
+  },
+  filterDropdownWrapper: {
+    position: 'relative',
+    zIndex: 2000,
+    marginBottom: 8,
+    elevation: 20,
+  },
+  filterDropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    minHeight: 44,
+  },
+  filterDropdownButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flex: 1,
+    gap: 8,
+  },
+  filterDropdownSelectedChips: {
+    flex: 1,
+  },
+  filterChipsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  filterChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  filterChipText: {
+    fontSize: 9,
+    fontWeight: '600',
+  },
+  filterDropdownButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  filterDropdownOptionsModal: {
+    position: 'absolute',
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 20,
+  },
+  filterDropdownOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  filterDropdownOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  filterDropdownCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 20,
+    minHeight: 20,
+  },
+  checkboxInner: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterDropdownOptionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
   },
   statsGrid: {
     flexDirection: 'row',

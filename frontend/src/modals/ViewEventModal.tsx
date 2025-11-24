@@ -157,6 +157,132 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
     return null;
   }
 
+  // Check if there's an image to determine if we should auto-size
+  const hasImage = !!(primaryEvent?.images?.[0] || primaryEvent?.image);
+
+  // Shared content component to avoid duplication
+  const renderEventContent = () => (
+    <>
+      {/* Multiple Events List */}
+      {eventsToShow.length > 1 && (
+        <View style={styles.eventsListContainer}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>
+            {eventsToShow.length} {eventsToShow.length === 1 ? 'Event' : 'Events'} on this date
+          </Text>
+          {eventsToShow.map((event, index) => {
+            const eventColor = event.color || categoryToColors(event.category || event.type || 'Event').dot;
+            return (
+              <TouchableOpacity
+                key={event.id || index}
+                style={[styles.eventItem, { 
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                }]}
+              >
+                <View style={[styles.eventAccent, { backgroundColor: eventColor }]} />
+                <View style={styles.eventItemContent}>
+                  <Text style={[styles.eventItemTitle, { color: theme.colors.text }]} numberOfLines={2}>
+                    {event.title}
+                  </Text>
+                  <View style={styles.eventItemMeta}>
+                    <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
+                    <Text style={[styles.eventItemTime, { color: theme.colors.textMuted }]}>
+                      {event.time && event.time.trim() ? event.time : 'All Day'}
+                    </Text>
+                    <View style={[styles.eventItemCategory, { backgroundColor: eventColor + '20' }]}>
+                      <Text style={[styles.eventItemCategoryText, { color: eventColor }]}>
+                        {event.category || event.type || 'Event'}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+
+      {/* Single Event Details */}
+      {primaryEvent && (
+        <View style={styles.eventDetails}>
+          {/* Image (if available) */}
+          {(primaryEvent.images?.[0] || primaryEvent.image) && (
+            <Image
+              source={{ uri: primaryEvent.images?.[0] || primaryEvent.image }}
+              style={styles.eventImage}
+              resizeMode="cover"
+              onError={(error) => {
+                console.error('Image load error:', error.nativeEvent.error);
+              }}
+            />
+          )}
+
+          {/* Title */}
+          <Text style={[styles.eventTitle, { color: theme.colors.text }]}>
+            {primaryEvent.title || 'Untitled Event'}
+          </Text>
+
+          {/* Category Badge */}
+          <View style={[styles.categoryBadge, { backgroundColor: eventColor + '20', borderColor: eventColor + '40' }]}>
+            <Ionicons name="pricetag-outline" size={12} color={eventColor} />
+            <Text style={[styles.categoryBadgeText, { color: eventColor }]}>
+              {eventCategory}
+            </Text>
+          </View>
+
+          {/* Date and Time */}
+          <View style={styles.detailRow}>
+            <View style={styles.detailItem}>
+              <View style={styles.detailIconRow}>
+                <Ionicons name="calendar-outline" size={14} color={theme.colors.textMuted} />
+                <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Date</Text>
+              </View>
+              <Text style={[styles.detailValue, { color: theme.colors.text }]}>
+                {primaryEvent.isoDate || primaryEvent.date
+                  ? formatDate(new Date(primaryEvent.isoDate || primaryEvent.date))
+                  : 'Not specified'}
+              </Text>
+            </View>
+            <View style={styles.detailItem}>
+              <View style={styles.detailIconRow}>
+                <Ionicons name="time-outline" size={14} color={theme.colors.textMuted} />
+                <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Time</Text>
+              </View>
+              <Text style={[styles.detailValue, { color: theme.colors.text }]}>
+                {primaryEvent.time && primaryEvent.time.trim() ? primaryEvent.time : 'All Day'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Date Range (if applicable) */}
+          {primaryEvent.startDate && primaryEvent.endDate && (
+            <View style={styles.detailRow}>
+              <View style={styles.detailItem}>
+                <View style={styles.detailIconRow}>
+                  <Ionicons name="calendar-outline" size={14} color={theme.colors.textMuted} />
+                  <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Date Range</Text>
+                </View>
+                <Text style={[styles.detailValue, { color: theme.colors.text }]}>
+                  {formatDate(new Date(primaryEvent.startDate))} - {formatDate(new Date(primaryEvent.endDate))}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Description */}
+          {primaryEvent.description && (
+            <View style={styles.descriptionContainer}>
+              <Text style={[styles.descriptionLabel, { color: theme.colors.textMuted }]}>Description</Text>
+              <Text style={[styles.descriptionText, { color: theme.colors.text }]}>
+                {primaryEvent.description}
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+    </>
+  );
+  
   return (
     <BottomSheet
       visible={visible}
@@ -164,9 +290,10 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
       sheetY={sheetY}
       maxHeight="85%"
       backgroundColor={theme.colors.card}
-      autoSize={false}
+      autoSize={!hasImage}
+      sheetPaddingBottom={hasImage ? undefined : 0}
     >
-      <View style={styles.container}>
+      <View style={[styles.container, !hasImage && styles.containerAutoSize]}>
         {/* Header */}
         <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Event Details</Text>
@@ -175,134 +302,24 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
           </TouchableOpacity>
         </View>
 
-        <ScrollView 
-          style={styles.scrollView}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.scrollContent,
-            (onEdit || onDelete) && { paddingBottom: 12 }
-          ]}
-          removeClippedSubviews={true}
-          scrollEventThrottle={16}
-        >
-          {/* Multiple Events List */}
-          {eventsToShow.length > 1 && (
-            <View style={styles.eventsListContainer}>
-              <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>
-                {eventsToShow.length} {eventsToShow.length === 1 ? 'Event' : 'Events'} on this date
-              </Text>
-              {eventsToShow.map((event, index) => {
-                const eventColor = event.color || categoryToColors(event.category || event.type || 'Event').dot;
-                return (
-                  <TouchableOpacity
-                    key={event.id || index}
-                    style={[styles.eventItem, { 
-                      backgroundColor: theme.colors.surface,
-                      borderColor: theme.colors.border,
-                    }]}
-                  >
-                    <View style={[styles.eventAccent, { backgroundColor: eventColor }]} />
-                    <View style={styles.eventItemContent}>
-                      <Text style={[styles.eventItemTitle, { color: theme.colors.text }]} numberOfLines={2}>
-                        {event.title}
-                      </Text>
-                      <View style={styles.eventItemMeta}>
-                        <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-                        <Text style={[styles.eventItemTime, { color: theme.colors.textMuted }]}>
-                          {event.time && event.time.trim() ? event.time : 'All Day'}
-                        </Text>
-                        <View style={[styles.eventItemCategory, { backgroundColor: eventColor + '20' }]}>
-                          <Text style={[styles.eventItemCategoryText, { color: eventColor }]}>
-                            {event.category || event.type || 'Event'}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
-
-          {/* Single Event Details */}
-          {primaryEvent && (
-            <View style={styles.eventDetails}>
-              {/* Image (if available) */}
-              {(primaryEvent.images?.[0] || primaryEvent.image) && (
-                <Image
-                  source={{ uri: primaryEvent.images?.[0] || primaryEvent.image }}
-                  style={styles.eventImage}
-                  resizeMode="cover"
-                  onError={(error) => {
-                    console.error('Image load error:', error.nativeEvent.error);
-                  }}
-                />
-              )}
-
-              {/* Title */}
-              <Text style={[styles.eventTitle, { color: theme.colors.text }]}>
-                {primaryEvent.title || 'Untitled Event'}
-              </Text>
-
-              {/* Category Badge */}
-              <View style={[styles.categoryBadge, { backgroundColor: eventColor + '20', borderColor: eventColor + '40' }]}>
-                <Ionicons name="pricetag-outline" size={12} color={eventColor} />
-                <Text style={[styles.categoryBadgeText, { color: eventColor }]}>
-                  {eventCategory}
-                </Text>
-              </View>
-
-              {/* Date and Time */}
-              <View style={styles.detailRow}>
-                <View style={styles.detailItem}>
-                  <View style={styles.detailIconRow}>
-                    <Ionicons name="calendar-outline" size={14} color={theme.colors.textMuted} />
-                    <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Date</Text>
-                  </View>
-                  <Text style={[styles.detailValue, { color: theme.colors.text }]}>
-                    {primaryEvent.isoDate || primaryEvent.date
-                      ? formatDate(new Date(primaryEvent.isoDate || primaryEvent.date))
-                      : 'Not specified'}
-                  </Text>
-                </View>
-                <View style={styles.detailItem}>
-                  <View style={styles.detailIconRow}>
-                    <Ionicons name="time-outline" size={14} color={theme.colors.textMuted} />
-                    <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Time</Text>
-                  </View>
-                  <Text style={[styles.detailValue, { color: theme.colors.text }]}>
-                    {primaryEvent.time && primaryEvent.time.trim() ? primaryEvent.time : 'All Day'}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Date Range (if applicable) */}
-              {primaryEvent.startDate && primaryEvent.endDate && (
-                <View style={styles.detailRow}>
-                  <View style={styles.detailItem}>
-                    <View style={styles.detailIconRow}>
-                      <Ionicons name="calendar-outline" size={14} color={theme.colors.textMuted} />
-                      <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Date Range</Text>
-                    </View>
-                    <Text style={[styles.detailValue, { color: theme.colors.text }]}>
-                      {formatDate(new Date(primaryEvent.startDate))} - {formatDate(new Date(primaryEvent.endDate))}
-                    </Text>
-                  </View>
-                </View>
-              )}
-
-              {/* Description */}
-              {primaryEvent.description && (
-                <View style={styles.descriptionContainer}>
-                  <Text style={[styles.descriptionLabel, { color: theme.colors.textMuted }]}>Description</Text>
-                  <Text style={[styles.descriptionText, { color: theme.colors.text }]}>
-                    {primaryEvent.description}
-                  </Text>
-                </View>
-              )}
-            </View>
-          )}
-        </ScrollView>
+        {hasImage ? (
+          <ScrollView 
+            style={styles.scrollView}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={[
+              styles.scrollContent,
+              (onEdit || onDelete) && { paddingBottom: 12 }
+            ]}
+            removeClippedSubviews={true}
+            scrollEventThrottle={16}
+          >
+            {renderEventContent()}
+          </ScrollView>
+        ) : (
+          <View style={[styles.scrollContent, styles.contentContainer]}>
+            {renderEventContent()}
+          </View>
+        )}
 
         {/* Action Buttons - Outside ScrollView to prevent cutoff */}
         {(onEdit || onDelete) && (
@@ -390,6 +407,9 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 200,
   },
+  containerAutoSize: {
+    flex: 0,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -418,6 +438,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 8,
+  },
+  scrollContentAutoSize: {
+    paddingBottom: 12,
+  },
+  contentContainer: {
+    width: '100%',
   },
   eventsListContainer: {
     marginBottom: 16,

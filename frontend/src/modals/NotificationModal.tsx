@@ -81,6 +81,7 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
   const [notificationItems, setNotificationItems] = useState<NotificationItem[]>([]);
   const [hasPermission, setHasPermission] = useState(false);
   const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<'all' | 'new_post' | 'upcoming_event'>('all');
 
   // Load read notification IDs from AsyncStorage
   const loadReadNotifications = useCallback(async () => {
@@ -213,12 +214,14 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
 
       // Create individual notification for each new post
       recentPosts.forEach((post: Post, index: number) => {
+        // Use createdAt if available (actual creation time), otherwise use date
+        const postDate = (post as any).createdAt || post.date || post.isoDate;
         items.push({
           id: `new_post_${post.id || index}`,
           type: 'new_post',
           title: '📢 New Post',
           message: post.title || 'A new post has been added',
-          timestamp: new Date(post.date).getTime(),
+          timestamp: new Date(postDate).getTime(),
           data: { postId: post.id, post },
         });
       });
@@ -263,14 +266,23 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
         });
       });
 
-      // Sort by timestamp (newest first)
-      items.sort((a, b) => b.timestamp - a.timestamp);
-
       // Mark items as read based on stored read IDs
       const itemsWithReadStatus = items.map(item => ({
         ...item,
         read: currentReadIds.has(item.id),
       }));
+
+      // Sort by timestamp in DESCENDING order (latest created/uploaded first)
+      itemsWithReadStatus.sort((a, b) => {
+        // Primary sort: DESCENDING by timestamp (latest/newest first)
+        // b.timestamp - a.timestamp = descending (newest to oldest)
+        const timeDiff = b.timestamp - a.timestamp;
+        if (timeDiff !== 0) return timeDiff;
+        
+        // Secondary sort: by type (new_post first, then todays_event, then upcoming_event)
+        const typeOrder = { 'new_post': 0, 'todays_event': 1, 'upcoming_event': 2 };
+        return (typeOrder[a.type] || 3) - (typeOrder[b.type] || 3);
+      });
 
       setNotificationItems(itemsWithReadStatus);
     } catch (error) {
@@ -333,6 +345,26 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
         return theme.colors.accent || '#2563EB';
     }
   };
+
+  // Filter notifications based on selected filter, then sort by upload time (DESCENDING - latest first)
+  // This applies to: All Updates, Added Post, and Upcoming Updates filters
+  const filteredNotifications = notificationItems
+    .filter(item => {
+      if (filter === 'all') return true; // All Updates - shows all notification types
+      if (filter === 'new_post') return item.type === 'new_post'; // Added Post - only new posts
+      if (filter === 'upcoming_event') return item.type === 'upcoming_event' || item.type === 'todays_event'; // Upcoming Updates - events only
+      return true;
+    })
+    .sort((a, b) => {
+      // DESCENDING sort: Latest created/uploaded first (b.timestamp - a.timestamp)
+      // This ensures the most recently created post/event appears at the top
+      const timeDiff = b.timestamp - a.timestamp;
+      if (timeDiff !== 0) return timeDiff;
+      
+      // Secondary sort: by type for consistency when timestamps are equal
+      const typeOrder = { 'new_post': 0, 'todays_event': 1, 'upcoming_event': 2 };
+      return (typeOrder[a.type] || 3) - (typeOrder[b.type] || 3);
+    });
 
   if (!visible) return null;
 
@@ -409,8 +441,65 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
             </Text>
           </View>
 
+          {/* Filter Pills */}
+          {notificationItems.length > 0 && (
+            <View style={styles.filtersContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.filterPill,
+                  { borderColor: theme.colors.border },
+                  filter === 'all' && {
+                    backgroundColor: theme.colors.accent,
+                    borderColor: theme.colors.accent,
+                  }
+                ]}
+                onPress={() => setFilter('all')}
+              >
+                <Text style={[
+                  styles.filterPillText,
+                  { color: theme.colors.textMuted },
+                  filter === 'all' && { color: '#FFF' }
+                ]}>All Updates</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.filterPill,
+                  { borderColor: theme.colors.border },
+                  filter === 'new_post' && {
+                    backgroundColor: theme.colors.accent,
+                    borderColor: theme.colors.accent,
+                  }
+                ]}
+                onPress={() => setFilter('new_post')}
+              >
+                <Text style={[
+                  styles.filterPillText,
+                  { color: theme.colors.textMuted },
+                  filter === 'new_post' && { color: '#FFF' }
+                ]}>Added Post</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.filterPill,
+                  { borderColor: theme.colors.border },
+                  filter === 'upcoming_event' && {
+                    backgroundColor: theme.colors.accent,
+                    borderColor: theme.colors.accent,
+                  }
+                ]}
+                onPress={() => setFilter('upcoming_event')}
+              >
+                <Text style={[
+                  styles.filterPillText,
+                  { color: theme.colors.textMuted },
+                  filter === 'upcoming_event' && { color: '#FFF' }
+                ]}>Upcoming Updates</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Mark All as Read Button */}
-          {notificationItems.length > 0 && notificationItems.some(item => !item.read) && (
+          {filteredNotifications.length > 0 && filteredNotifications.some(item => !item.read) && (
             <TouchableOpacity
               style={[styles.markAllReadButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
               onPress={markAllAsRead}
@@ -426,17 +515,21 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
               <ActivityIndicator size="large" color={theme.colors.accent} />
               <Text style={[styles.loadingText, { color: theme.colors.textMuted }]}>Loading notifications...</Text>
             </View>
-          ) : notificationItems.length === 0 ? (
+          ) : filteredNotifications.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Ionicons name="notifications-off-outline" size={48} color={theme.colors.textMuted} style={{ opacity: 0.5 }} />
               <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>No Notifications</Text>
               <Text style={[styles.emptyMessage, { color: theme.colors.textMuted }]}>
-                All caught up! No new posts or events.
+                {filter === 'all' 
+                  ? 'All caught up! No new posts or events.'
+                  : filter === 'new_post'
+                  ? 'No new posts found.'
+                  : 'No upcoming events found.'}
               </Text>
             </View>
           ) : (
             <View style={styles.notificationsList}>
-              {notificationItems.map((item) => {
+              {filteredNotifications.map((item) => {
                 const iconColor = getNotificationColor(item.type);
                 const isRead = item.read || false;
                 return (
@@ -718,6 +811,23 @@ const styles = StyleSheet.create({
   checkButtonText: {
     color: '#FFF',
     fontSize: 13,
+    fontWeight: '700',
+  },
+  filtersContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+    flexWrap: 'wrap',
+  },
+  filterPill: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    backgroundColor: 'transparent',
+  },
+  filterPillText: {
+    fontSize: 12,
     fontWeight: '700',
   },
 });

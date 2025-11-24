@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useRef } from 'react';
-import { Animated, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Image, InteractionManager, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet from '../components/common/BottomSheet';
 import { useThemeValues } from '../contexts/ThemeContext';
@@ -27,6 +27,8 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
   const { theme } = useThemeValues();
   const insets = useSafeAreaInsets();
   const sheetY = useRef(new Animated.Value(500)).current;
+  const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+  const deleteConfirmSheetY = useRef(new Animated.Value(300)).current;
 
   // Animate sheet when visible changes
   React.useEffect(() => {
@@ -46,13 +48,65 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
     }
   }, [visible, sheetY]);
 
+  // Animate delete confirmation modal
+  React.useEffect(() => {
+    if (showDeleteConfirm) {
+      Animated.timing(deleteConfirmSheetY, {
+        toValue: 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(deleteConfirmSheetY, {
+        toValue: 300,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [showDeleteConfirm, deleteConfirmSheetY]);
+
+  const handleDeletePress = useCallback(() => {
+    setShowDeleteConfirm(true);
+  }, []);
+
+  const handleDeleteCancel = useCallback(() => {
+    Animated.timing(deleteConfirmSheetY, {
+      toValue: 300,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      InteractionManager.runAfterInteractions(() => {
+        setShowDeleteConfirm(false);
+      });
+    });
+  }, [deleteConfirmSheetY]);
+
+  const handleDeleteConfirm = useCallback(() => {
+    if (onDelete) {
+      onDelete();
+    }
+    Animated.timing(deleteConfirmSheetY, {
+      toValue: 300,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      InteractionManager.runAfterInteractions(() => {
+        setShowDeleteConfirm(false);
+      });
+    });
+  }, [onDelete, deleteConfirmSheetY]);
+
   const handleClose = useCallback(() => {
     Animated.timing(sheetY, {
       toValue: 500,
       duration: 200,
       useNativeDriver: true,
     }).start(() => {
-      onClose();
+      // Defer state update to avoid React warning about scheduling updates during render
+      // Use InteractionManager to ensure update happens after interactions complete
+      InteractionManager.runAfterInteractions(() => {
+        onClose();
+      });
     });
   }, [sheetY, onClose]);
 
@@ -143,7 +197,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
                       <View style={styles.eventItemMeta}>
                         <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
                         <Text style={[styles.eventItemTime, { color: theme.colors.textMuted }]}>
-                          {event.time || 'All Day'}
+                          {event.time && event.time.trim() ? event.time : 'All Day'}
                         </Text>
                         <View style={[styles.eventItemCategory, { backgroundColor: eventColor + '20' }]}>
                           <Text style={[styles.eventItemCategoryText, { color: eventColor }]}>
@@ -205,7 +259,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
                     <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Time</Text>
                   </View>
                   <Text style={[styles.detailValue, { color: theme.colors.text }]}>
-                    {primaryEvent.time || 'All Day'}
+                    {primaryEvent.time && primaryEvent.time.trim() ? primaryEvent.time : 'All Day'}
                   </Text>
                 </View>
               </View>
@@ -253,7 +307,8 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
             {onDelete && (
               <TouchableOpacity
                 style={[styles.actionButton, styles.deleteButton, { backgroundColor: '#DC2626' }]}
-                onPress={onDelete}
+                onPress={handleDeletePress}
+                activeOpacity={0.8}
               >
                 <Ionicons name="trash-outline" size={16} color="#fff" />
                 <Text style={styles.actionButtonText}>Delete</Text>
@@ -262,6 +317,57 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
           </View>
         )}
       </View>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <View style={styles.deleteModalOverlay} pointerEvents="box-none">
+          <TouchableOpacity 
+            style={styles.deleteModalBackdrop} 
+            activeOpacity={1} 
+            onPress={handleDeleteCancel}
+          />
+          <Animated.View 
+            style={[
+              styles.deleteModalSheet, 
+              { 
+                transform: [{ translateY: deleteConfirmSheetY }],
+                backgroundColor: theme.colors.card,
+                paddingBottom: Math.max(insets.bottom, 20),
+              }
+            ]}
+          >
+            <View style={styles.deleteModalHandle} />
+            <View style={styles.deleteModalHeader}>
+              <View style={[styles.deleteModalIconCircle, { backgroundColor: '#DC2626' + '20' }]}>
+                <Ionicons name="trash" size={24} color="#DC2626" />
+              </View>
+              <Text style={[styles.deleteModalTitle, { color: theme.colors.text }]}>Delete Post</Text>
+            </View>
+            <Text style={[styles.deleteModalMessage, { color: theme.colors.textMuted }]}>
+              Are you sure you want to delete "{primaryEvent?.title || 'this post'}"?
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                style={[styles.deleteModalButton, styles.deleteModalCancelButton, { 
+                  backgroundColor: theme.colors.surface,
+                  borderColor: theme.colors.border,
+                }]}
+                onPress={handleDeleteCancel}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.deleteModalCancelText, { color: theme.colors.text }]}>CANCEL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteModalButton, styles.deleteModalConfirmButton, { backgroundColor: '#DC2626' }]}
+                onPress={handleDeleteConfirm}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.deleteModalConfirmText}>DELETE</Text>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
+      )}
     </BottomSheet>
   );
 };
@@ -458,6 +564,99 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#fff',
+  },
+  // Delete Confirmation Modal Styles
+  deleteModalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'flex-end',
+    zIndex: 1000,
+  },
+  deleteModalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  deleteModalSheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  deleteModalHandle: {
+    alignSelf: 'center',
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+    marginBottom: 20,
+  },
+  deleteModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  deleteModalIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteModalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    flex: 1,
+  },
+  deleteModalMessage: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  deleteModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  deleteModalButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  deleteModalCancelButton: {
+    borderWidth: 1.5,
+  },
+  deleteModalCancelText: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  deleteModalConfirmButton: {
+    shadowColor: '#DC2626',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  deleteModalConfirmText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
 });
 

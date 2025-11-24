@@ -14,6 +14,7 @@ import {
   Pressable,
   Animated,
   Platform,
+  InteractionManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -88,7 +89,6 @@ const ManagePosts: React.FC = () => {
   // Action modals
   const [isPinConfirmOpen, setIsPinConfirmOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-  const [isDeleteSuccessOpen, setIsDeleteSuccessOpen] = useState(false);
   const [isRefreshSuccessOpen, setIsRefreshSuccessOpen] = useState(false);
   const [actionPost, setActionPost] = useState<Post | null>(null);
   
@@ -284,7 +284,9 @@ const ManagePosts: React.FC = () => {
 
   const closePinConfirm = () => {
     Animated.timing(pinSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setIsPinConfirmOpen(false);
+      InteractionManager.runAfterInteractions(() => {
+        setIsPinConfirmOpen(false);
+      });
     });
   };
 
@@ -919,11 +921,8 @@ const ManagePosts: React.FC = () => {
         onClose={closeDeleteConfirm}
         onConfirm={() => {
           if (actionPost) {
+            handleDeletePost(actionPost.id);
             closeDeleteConfirm();
-            setTimeout(() => {
-              handleDeletePost(actionPost.id);
-              setIsDeleteSuccessOpen(true);
-            }, 50);
           }
         }}
         title="Delete post?"
@@ -933,28 +932,6 @@ const ManagePosts: React.FC = () => {
         iconColor="#DC2626"
         confirmButtonColor="#DC2626"
         sheetY={deleteSheetY}
-      />
-
-      {/* Delete Success Modal */}
-      <InfoModal
-        visible={isDeleteSuccessOpen}
-        onClose={() => setIsDeleteSuccessOpen(false)}
-        title="Successfully Deleted!"
-        subtitle="The post has been removed from your posts list."
-        cards={[
-          {
-            icon: 'time-outline',
-            iconColor: '#059669',
-            iconBgColor: '#ECFDF5',
-            text: `Action completed at ${new Date().toLocaleTimeString()}`
-          },
-          {
-            icon: 'information-circle-outline',
-            iconColor: '#059669',
-            iconBgColor: '#ECFDF5',
-            text: 'You can create a new post anytime'
-          }
-        ]}
       />
 
       {/* Refresh Success Modal */}

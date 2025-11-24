@@ -14,6 +14,7 @@ import {
   Image,
   FlatList,
   Animated,
+  InteractionManager,
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -29,6 +30,7 @@ import { useThemeValues } from '../../contexts/ThemeContext';
 import PreviewModal from '../../modals/PreviewModal';
 import BottomSheet from '../../components/common/BottomSheet';
 import MonthPickerModal from '../../modals/MonthPickerModal';
+import { formatDate } from '../../utils/dateUtils';
 
 type RootStackParamList = {
   AdminDashboard: undefined;
@@ -60,7 +62,6 @@ const PostUpdate: React.FC = () => {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Announcement');
   const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
   const [description, setDescription] = useState('');
   // removed: scheduleForLater, pinToTop, markAsUrgent
 
@@ -78,14 +79,12 @@ const PostUpdate: React.FC = () => {
     title: string;
     category: string;
     date: string;
-    time: string;
     description: string;
     hasFile: boolean;
   }>({
     title: '',
     category: 'Announcement',
     date: '',
-    time: '',
     description: '',
     hasFile: false,
   });
@@ -96,12 +95,6 @@ const PostUpdate: React.FC = () => {
   const [selectedDateObj, setSelectedDateObj] = useState<Date | null>(null);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   
-  // Time picker state
-  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
-  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
-  const [tmpHour, setTmpHour] = useState<number>(9);
-  const [tmpMinute, setTmpMinute] = useState<number>(0);
-  const [tmpPeriod, setTmpPeriod] = useState<'AM' | 'PM'>('AM');
   
   // Custom Alert Modals
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
@@ -124,8 +117,6 @@ const PostUpdate: React.FC = () => {
   // Bottom sheet animation refs
   const categorySheetY = useRef(new Animated.Value(300)).current;
   const datePickerSheetY = useRef(new Animated.Value(300)).current;
-  const startTimePickerSheetY = useRef(new Animated.Value(300)).current;
-  const endTimePickerSheetY = useRef(new Animated.Value(300)).current;
   const cancelAlertSheetY = useRef(new Animated.Value(300)).current;
   const publishAlertSheetY = useRef(new Animated.Value(300)).current;
   
@@ -308,7 +299,9 @@ const PostUpdate: React.FC = () => {
         useNativeDriver: true,
       }),
     ]).start(() => {
-      setShowMonthPicker(false);
+      InteractionManager.runAfterInteractions(() => {
+        setShowMonthPicker(false);
+      });
     });
   }, [monthPickerScaleAnim, monthPickerOpacityAnim]);
 
@@ -346,7 +339,9 @@ const PostUpdate: React.FC = () => {
   }, [categorySheetY]);
   const closeCategoryMenu = useCallback(() => {
     Animated.timing(categorySheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setIsCategoryOpen(false);
+      InteractionManager.runAfterInteractions(() => {
+        setIsCategoryOpen(false);
+      });
     });
   }, [categorySheetY]);
   const selectCategory = useCallback((value: string) => {
@@ -371,76 +366,20 @@ const PostUpdate: React.FC = () => {
     setSelectedDateObj(next);
     setDate(formatDate(next));
     Animated.timing(datePickerSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setShowDatePicker(false);
+      InteractionManager.runAfterInteractions(() => {
+        setShowDatePicker(false);
+      });
     });
   }, [tmpDay, tmpYear, tmpMonth, datePickerSheetY]);
 
   const cancelTmpDate = useCallback(() => {
     Animated.timing(datePickerSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setShowDatePicker(false);
+      InteractionManager.runAfterInteractions(() => {
+        setShowDatePicker(false);
+      });
     });
   }, [datePickerSheetY]);
 
-  // Time picker functions
-  const onPressStartTime = useCallback(() => {
-    const startTime = time.split(' - ')[0] || '';
-    if (startTime) {
-      const match = startTime.match(/(\d+):(\d+)\s*(AM|PM)?/i);
-      if (match) {
-        setTmpHour(parseInt(match[1]));
-        setTmpMinute(parseInt(match[2]));
-        setTmpPeriod(match[3]?.toUpperCase() as 'AM' | 'PM' || 'AM');
-      }
-    }
-    setShowStartTimePicker(true);
-    setTimeout(() => {
-      Animated.timing(startTimePickerSheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
-    }, 0);
-  }, [time, startTimePickerSheetY]);
-
-  const onPressEndTime = useCallback(() => {
-    const endTime = time.split(' - ')[1] || '';
-    if (endTime) {
-      const match = endTime.match(/(\d+):(\d+)\s*(AM|PM)?/i);
-      if (match) {
-        setTmpHour(parseInt(match[1]));
-        setTmpMinute(parseInt(match[2]));
-        setTmpPeriod(match[3]?.toUpperCase() as 'AM' | 'PM' || 'AM');
-      }
-    }
-    setShowEndTimePicker(true);
-    setTimeout(() => {
-      Animated.timing(endTimePickerSheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
-    }, 0);
-  }, [time, endTimePickerSheetY]);
-
-  const confirmStartTime = useCallback(() => {
-    const formattedTime = `${tmpHour}:${String(tmpMinute).padStart(2, '0')} ${tmpPeriod}`;
-    const endTime = time.split(' - ')[1] || '';
-    setTime(endTime ? `${formattedTime} - ${endTime}` : formattedTime);
-    Animated.timing(startTimePickerSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setShowStartTimePicker(false);
-    });
-  }, [tmpHour, tmpMinute, tmpPeriod, time, startTimePickerSheetY]);
-
-  const confirmEndTime = useCallback(() => {
-    const formattedTime = `${tmpHour}:${String(tmpMinute).padStart(2, '0')} ${tmpPeriod}`;
-    const startTime = time.split(' - ')[0] || '';
-    setTime(startTime ? `${startTime} - ${formattedTime}` : formattedTime);
-    Animated.timing(endTimePickerSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setShowEndTimePicker(false);
-    });
-  }, [tmpHour, tmpMinute, tmpPeriod, time, endTimePickerSheetY]);
-
-  const cancelTimePicker = useCallback(() => {
-    Animated.parallel([
-      Animated.timing(startTimePickerSheetY, { toValue: 300, duration: 200, useNativeDriver: true }),
-      Animated.timing(endTimePickerSheetY, { toValue: 300, duration: 200, useNativeDriver: true }),
-    ]).start(() => {
-      setShowStartTimePicker(false);
-      setShowEndTimePicker(false);
-    });
-  }, [startTimePickerSheetY, endTimePickerSheetY]);
 
   const handlePublish = useCallback(() => {
     // Prevent rapid tapping during animation
@@ -476,7 +415,6 @@ const PostUpdate: React.FC = () => {
       title.trim() !== originalValues.title.trim() ||
       description.trim() !== originalValues.description.trim() ||
       date !== originalValues.date ||
-      time !== originalValues.time ||
       category !== originalValues.category ||
       pickedFile !== null; // New file always counts as a change
     
@@ -498,7 +436,7 @@ const PostUpdate: React.FC = () => {
     }, 0);
     // Reset animation state after a short delay
     setTimeout(() => setIsAnimating(false), 300);
-  }, [isAnimating, cancelAlertSheetY, title, description, date, time, category, pickedFile, originalValues, navigation]);
+  }, [isAnimating, cancelAlertSheetY, title, description, date, category, pickedFile, originalValues, navigation]);
 
   const handleShowPreview = useCallback(() => {
     // Prevent rapid tapping during animation
@@ -549,7 +487,6 @@ const PostUpdate: React.FC = () => {
           title: '',
           category: 'Announcement',
           date: '',
-          time: '',
           description: '',
           hasFile: false,
         });
@@ -560,13 +497,11 @@ const PostUpdate: React.FC = () => {
       const loadedTitle = post.title || '';
       const loadedCategory = post.category || 'Announcement';
       const loadedDate = post.date || '';
-      const loadedTime = post.time || '';
       const loadedDescription = post.description || '';
       
       setTitle(loadedTitle);
       setCategory(loadedCategory);
       setDate(loadedDate);
-      setTime(loadedTime);
       setDescription(loadedDescription);
       
       // Store original values for change detection
@@ -574,7 +509,6 @@ const PostUpdate: React.FC = () => {
         title: loadedTitle,
         category: loadedCategory,
         date: loadedDate,
-        time: loadedTime,
         description: loadedDescription,
         hasFile: false, // We don't track file changes from existing posts
       });
@@ -585,7 +519,9 @@ const PostUpdate: React.FC = () => {
 
   const confirmPublish = useCallback(() => {
     Animated.timing(publishAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setIsPublishAlertOpen(false);
+      InteractionManager.runAfterInteractions(() => {
+        setIsPublishAlertOpen(false);
+      });
     });
     // Simulate publishing then go to ManagePosts
     setTimeout(() => {
@@ -600,7 +536,6 @@ const PostUpdate: React.FC = () => {
         category,
         date: isoDate, // Use ISO date string for backend
         isoDate: isoDate, // Include isoDate for consistency
-        time: time || '',
         description,
       };
 
@@ -636,16 +571,18 @@ const PostUpdate: React.FC = () => {
           navigation.navigate('AdminDashboard');
         });
     }, 500);
-  }, [title, category, date, time, description, pickedFile, editingPostId, navigation, selectedDateObj, publishAlertSheetY]);
+  }, [title, category, date, description, pickedFile, editingPostId, navigation, selectedDateObj, publishAlertSheetY]);
 
   const confirmCancel = useCallback(() => {
     Animated.timing(cancelAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setIsCancelAlertOpen(false);
-      if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
-        navigation.goBack();
-      } else {
-        (navigation as any).navigate('AdminDashboard');
-      }
+      InteractionManager.runAfterInteractions(() => {
+        setIsCancelAlertOpen(false);
+        if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
+          navigation.goBack();
+        } else {
+          (navigation as any).navigate('AdminDashboard');
+        }
+      });
     });
   }, [navigation, cancelAlertSheetY]);
 
@@ -915,34 +852,6 @@ const PostUpdate: React.FC = () => {
           </View>
         </BlurView>
 
-        {/* Event Time Available */}
-        <BlurView
-          intensity={Platform.OS === 'ios' ? 50 : 40}
-          tint={isDarkMode ? 'dark' : 'light'}
-          style={[styles.cardContainer, {
-            backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.6)',
-            borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-          }]}
-        >
-          <View style={styles.inputContainer}>
-          <Text style={[styles.label, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }]}>Event Time Available</Text>
-          <View style={styles.timeRangeContainer}>
-            <TouchableOpacity style={[styles.timeInputWrapper, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)' }]} onPress={onPressStartTime}>
-              <Text style={[styles.timeText, { color: time.split(' - ')[0] ? theme.colors.text : theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(14) }]}>
-                {time.split(' - ')[0] || 'Start Time'}
-              </Text>
-              <Ionicons name="time-outline" size={18} color={theme.colors.textMuted} />
-            </TouchableOpacity>
-            <Text style={[styles.timeSeparator, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(16) }]}>-</Text>
-            <TouchableOpacity style={[styles.timeInputWrapper, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)' }]} onPress={onPressEndTime}>
-              <Text style={[styles.timeText, { color: time.split(' - ')[1] ? theme.colors.text : theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(14) }]}>
-                {time.split(' - ')[1] || 'End Time'}
-              </Text>
-              <Ionicons name="time-outline" size={18} color={theme.colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-        </View>
-        </BlurView>
 
         {/* Category Menu (enhanced) */}
         <BottomSheet
@@ -1118,120 +1027,15 @@ const PostUpdate: React.FC = () => {
           maxYear={new Date().getFullYear() + 3}
         />
 
-        {/* Time Picker Modal - Start Time */}
-        <BottomSheet
-          visible={showStartTimePicker}
-          onClose={cancelTimePicker}
-          sheetY={startTimePickerSheetY}
-          backgroundColor={theme.colors.card}
-          maxHeight="60%"
-        >
-          <Text style={[styles.dateModalTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Select Start Time</Text>
-          <View style={styles.datePickersRow}>
-            {/* Hour */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>Hour</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
-                  <TouchableOpacity key={h} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpHour === h && styles.datePickerItemActive]} onPress={() => setTmpHour(h)}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }, tmpHour === h && styles.datePickerTextActive]}>{h}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-            {/* Minute */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>Minute</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {Array.from({ length: 60 }, (_, i) => i).map((m) => (
-                  <TouchableOpacity key={m} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpMinute === m && styles.datePickerItemActive]} onPress={() => setTmpMinute(m)}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }, tmpMinute === m && styles.datePickerTextActive]}>{String(m).padStart(2, '0')}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-            {/* AM/PM */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>Period</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {['AM', 'PM'].map((p) => (
-                  <TouchableOpacity key={p} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpPeriod === p && styles.datePickerItemActive]} onPress={() => setTmpPeriod(p as 'AM' | 'PM')}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }, tmpPeriod === p && styles.datePickerTextActive]}>{p}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-          <View style={styles.dateModalActions}>
-            <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={cancelTimePicker}>
-              <Text style={[styles.cancelText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.publishBtn, { backgroundColor: theme.colors.primary }]} onPress={confirmStartTime}>
-              <Text style={[styles.publishText, { color: '#fff', fontSize: theme.fontSize.scaleSize(14) }]}>Done</Text>
-            </TouchableOpacity>
-          </View>
-        </BottomSheet>
-
-        {/* Time Picker Modal - End Time */}
-        <BottomSheet
-          visible={showEndTimePicker}
-          onClose={cancelTimePicker}
-          sheetY={endTimePickerSheetY}
-          backgroundColor={theme.colors.card}
-          maxHeight="60%"
-        >
-          <Text style={[styles.dateModalTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Select End Time</Text>
-          <View style={styles.datePickersRow}>
-            {/* Hour */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>Hour</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
-                  <TouchableOpacity key={h} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpHour === h && styles.datePickerItemActive]} onPress={() => setTmpHour(h)}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }, tmpHour === h && styles.datePickerTextActive]}>{h}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-            {/* Minute */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>Minute</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {Array.from({ length: 60 }, (_, i) => i).map((m) => (
-                  <TouchableOpacity key={m} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpMinute === m && styles.datePickerItemActive]} onPress={() => setTmpMinute(m)}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }, tmpMinute === m && styles.datePickerTextActive]}>{String(m).padStart(2, '0')}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-            {/* AM/PM */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>Period</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {['AM', 'PM'].map((p) => (
-                  <TouchableOpacity key={p} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpPeriod === p && styles.datePickerItemActive]} onPress={() => setTmpPeriod(p as 'AM' | 'PM')}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }, tmpPeriod === p && styles.datePickerTextActive]}>{p}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-          <View style={styles.dateModalActions}>
-            <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={cancelTimePicker}>
-              <Text style={[styles.cancelText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.publishBtn, { backgroundColor: theme.colors.primary }]} onPress={confirmEndTime}>
-              <Text style={[styles.publishText, { color: '#fff', fontSize: theme.fontSize.scaleSize(14) }]}>Done</Text>
-            </TouchableOpacity>
-          </View>
-        </BottomSheet>
 
         {/* Cancel Alert Modal */}
         <BottomSheet
           visible={isCancelAlertOpen}
           onClose={() => {
             Animated.timing(cancelAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-              setIsCancelAlertOpen(false);
+              InteractionManager.runAfterInteractions(() => {
+                setIsCancelAlertOpen(false);
+              });
             });
           }}
           sheetY={cancelAlertSheetY}
@@ -1247,7 +1051,9 @@ const PostUpdate: React.FC = () => {
           <View style={styles.alertActionsRow}>
             <TouchableOpacity style={[styles.alertCancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={() => {
               Animated.timing(cancelAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-                setIsCancelAlertOpen(false);
+                InteractionManager.runAfterInteractions(() => {
+                  setIsCancelAlertOpen(false);
+                });
               });
             }}>
               <Text style={[styles.alertCancelText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>Keep Editing</Text>
@@ -1263,7 +1069,9 @@ const PostUpdate: React.FC = () => {
           visible={isPublishAlertOpen}
           onClose={() => {
             Animated.timing(publishAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-              setIsPublishAlertOpen(false);
+              InteractionManager.runAfterInteractions(() => {
+                setIsPublishAlertOpen(false);
+              });
             });
           }}
           sheetY={publishAlertSheetY}
@@ -1288,7 +1096,9 @@ const PostUpdate: React.FC = () => {
           <View style={styles.alertActionsRow}>
             <TouchableOpacity style={[styles.alertCancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={() => {
               Animated.timing(publishAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-                setIsPublishAlertOpen(false);
+                InteractionManager.runAfterInteractions(() => {
+                  setIsPublishAlertOpen(false);
+                });
               });
             }}>
               <Text style={[styles.alertCancelText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>Review</Text>
@@ -1307,7 +1117,6 @@ const PostUpdate: React.FC = () => {
             title: title || 'Your post title will appear here',
             date: date || new Date().toLocaleDateString(),
             tag: category,
-            time: time,
             description: description,
             images: previewImages,
           }}

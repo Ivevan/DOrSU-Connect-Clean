@@ -214,7 +214,6 @@ export class PostService {
         updatedAt: new Date(),
         createdBy: auth.userId || 'admin',
       };
-
       // Insert into MongoDB posts collection
       const postsCollection = this.mongoService.getCollection('posts');
       const result = await postsCollection.insertOne(event);

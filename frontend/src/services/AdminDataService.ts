@@ -696,7 +696,6 @@ const AdminDataService = {
           category: updates.category,
           date: updates.date,
           isoDate: updates.isoDate,
-          time: updates.time,
           images: updates.images,
           image: updates.image,
           isPinned: updates.isPinned,

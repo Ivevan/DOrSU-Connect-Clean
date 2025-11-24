@@ -705,6 +705,8 @@ export class ScheduleService {
         updatedAt: new Date(),
         createdBy: auth.userId || 'admin',
       };
+      
+      Logger.info(`🕐 Event object before insert - has time: ${!!event.time}, time value: "${event.time}"`);
 
       // Generate embedding for semantic search
       Logger.info(`🔍 Generating embedding for schedule event: ${title}`);

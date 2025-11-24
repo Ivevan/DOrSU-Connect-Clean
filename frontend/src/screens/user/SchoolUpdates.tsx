@@ -324,13 +324,6 @@ const EventCard = memo(({ update, onPress, theme }: { update: any; onPress: () =
           <View style={styles.eventDateTimeRow}>
             <Ionicons name="calendar-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
             <Text style={[styles.eventDateOverlay, { fontSize: theme.fontSize.scaleSize(14) }]}>{update.date}</Text>
-            {update.time && (
-              <>
-                <Text style={[styles.eventTimeSeparator, { fontSize: theme.fontSize.scaleSize(14) }]}>•</Text>
-                <Ionicons name="time-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                <Text style={[styles.eventDateOverlay, { fontSize: theme.fontSize.scaleSize(14) }]}>{update.time}</Text>
-              </>
-            )}
           </View>
         </View>
       </LinearGradient>
@@ -1451,7 +1444,6 @@ const SchoolUpdates = () => {
                       category: update.tag,
                       date: update.isoDate || update.date,
                       isoDate: update.isoDate || update.date,
-                      time: 'All Day', // Updates don't have specific time
                       image: update.image,
                       images: update.images,
                     };
@@ -1467,7 +1459,7 @@ const SchoolUpdates = () => {
                       description: update.description,
                       isoDate: update.isoDate || update.date,
                       date: update.isoDate || update.date,
-                      time: 'All Day',
+                      time: update.time || undefined, // Pass through time if available
                       image: update.image,
                       images: update.images,
                     }]);
@@ -1489,22 +1481,20 @@ const SchoolUpdates = () => {
                       />
                     )}
                     <View style={styles.updateTextContent}>
-                      <Text style={[styles.updateTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]} numberOfLines={2}>{update.title}</Text>
-                      <View style={styles.updateDateRow}>
-                        <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-                        <Text style={[styles.updateDate, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]}>{update.date}</Text>
+                      <View style={styles.updateTitleRow}>
+                        <Text style={[styles.updateTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]} numberOfLines={2}>{update.title}</Text>
+                        <View style={[styles.updateCategoryBadge, { backgroundColor: accentColor + '20' }]}>
+                          <Text style={[styles.updateCategoryText, { color: accentColor, fontSize: theme.fontSize.scaleSize(10) }]}>{update.tag}</Text>
+                        </View>
                       </View>
+                      <Text style={[styles.updateSubtitle, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>
+                        {update.date}
+                      </Text>
                       {update.description && (
                         <Text style={[styles.updateDescription, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]} numberOfLines={2}>
                           {update.description}
                         </Text>
                       )}
-                      <View style={styles.updateTagRow}>
-                        <View style={styles.statusItem}>
-                          <Ionicons name="pricetag-outline" size={12} color={accentColor} />
-                          <Text style={[styles.updateTagText, { color: accentColor, fontSize: theme.fontSize.scaleSize(11) }]}>{update.tag}</Text>
-                        </View>
-                      </View>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -1986,12 +1976,38 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 10,
   },
+  updateTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 4,
+  },
   updateTitle: {
     fontSize: 14,
     fontWeight: '700',
-    marginBottom: 6,
     lineHeight: 18,
     letterSpacing: -0.2,
+    flex: 1,
+  },
+  updateCategoryBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    flexShrink: 0,
+  },
+  updateCategoryText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  updateSubtitle: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginBottom: 6,
+    opacity: 0.8,
   },
   updateDateRow: {
     flexDirection: 'row',

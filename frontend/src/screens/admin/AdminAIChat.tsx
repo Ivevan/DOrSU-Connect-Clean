@@ -67,6 +67,7 @@ const AdminAIChat = () => {
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
   const appWasInBackground = useRef<boolean>(false);
   const isLoggedInRef = useRef<boolean>(false);
+  const hasInitialized = useRef<boolean>(false);
 
   // Segmented control animation and width tracking
   const segmentAnim = useRef(new Animated.Value(0)).current;
@@ -250,8 +251,8 @@ const AdminAIChat = () => {
     }
   }, [selectedUserType, segmentAnim]);
 
-  // Load top queries from backend
-  const loadTopQueries = async () => {
+  // Load top queries from backend with retry logic
+  const loadTopQueries = async (retryCount = 0, maxRetries = 3) => {
     try {
       setIsLoadingTopQueries(true);
       const token = await getUserToken();
@@ -268,8 +269,17 @@ const AdminAIChat = () => {
         // No default suggestions - leave empty
         setTopQueries([]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load top queries:', error);
+      // Retry on 404 errors (service not ready yet) with exponential backoff
+      if (error?.message?.includes('404') && retryCount < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Max 5 seconds
+        console.log(`Retrying top queries load in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+        setTimeout(() => {
+          loadTopQueries(retryCount + 1, maxRetries);
+        }, delay);
+        return;
+      }
       // No default suggestions - leave empty
       setTopQueries([]);
     } finally {
@@ -277,23 +287,67 @@ const AdminAIChat = () => {
     }
   };
 
-  // Load chat history on component mount
-  useEffect(() => {
-    loadChatHistory();
-    loadTopQueries();
-  }, []);
-
-  const loadChatHistory = async () => {
+  const loadChatHistory = async (retryCount = 0, maxRetries = 3) => {
     try {
       const token = await getUserToken();
       if (token) {
         const history = await AIService.getChatHistory(token);
         setChatHistory(history);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load chat history:', error);
+      // Retry on 404 errors (service not ready yet) with exponential backoff
+      if (error?.message?.includes('404') && retryCount < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Max 5 seconds
+        console.log(`Retrying chat history load in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+        setTimeout(() => {
+          loadChatHistory(retryCount + 1, maxRetries);
+        }, delay);
+        return;
+      }
     }
   };
+
+  // Initialize chat data when screen is focused (ensures backend services are ready)
+  // This runs on first focus and handles the initial load
+  useFocusEffect(
+    useCallback(() => {
+      // Only initialize once on first focus
+      if (hasInitialized.current) {
+        return;
+      }
+
+      const initializeChat = async () => {
+        try {
+          // Wait a bit to ensure backend services are initialized
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          // Wait for auth token to be ready
+          let attempts = 0;
+          while (attempts < 10) {
+            const token = await getUserToken();
+            if (token) {
+              break;
+            }
+            await new Promise(resolve => setTimeout(resolve, 200));
+            attempts++;
+          }
+          
+          // Load chat history and top queries with retry logic
+          loadChatHistory();
+          loadTopQueries();
+          
+          hasInitialized.current = true;
+        } catch (error) {
+          console.error('Failed to initialize chat:', error);
+          // Mark as initialized even on error to prevent infinite retries
+          hasInitialized.current = true;
+        }
+      };
+      
+      initializeChat();
+    }, [getUserToken])
+  );
 
   const saveChatHistory = async () => {
     try {
@@ -429,6 +483,7 @@ const AdminAIChat = () => {
   }, [messages, saveCurrentConversation]);
 
   // Reload top queries when screen is focused and restore conversation
+  // This runs every time the screen is focused (after initial load)
   useFocusEffect(
     useCallback(() => {
       // Restore conversation when screen comes into focus (only if no active conversation)
@@ -437,8 +492,10 @@ const AdminAIChat = () => {
         restoreCurrentConversation();
       }, 100);
       
-      // Reload top queries when screen is focused to get latest data
-      loadTopQueries();
+      // Reload top queries when screen is focused (but only if already initialized)
+      if (hasInitialized.current) {
+        loadTopQueries();
+      }
       
       // Save conversation when navigating away (on blur)
       return () => {

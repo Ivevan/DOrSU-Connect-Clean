@@ -177,6 +177,12 @@ class AIService {
       });
 
       if (!response.ok) {
+        // For 404 errors, throw so caller can retry (service might not be ready yet)
+        if (response.status === 404) {
+          const error = new Error(`HTTP error! status: ${response.status}`);
+          (error as any).status = 404;
+          throw error;
+        }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -190,7 +196,11 @@ class AIService {
       }
       
       return [];
-    } catch (error) {
+    } catch (error: any) {
+      // Re-throw 404 errors so caller can retry
+      if (error?.status === 404 || error?.message?.includes('404')) {
+        throw error;
+      }
       console.error('Failed to get chat history:', error);
       return [];
     }

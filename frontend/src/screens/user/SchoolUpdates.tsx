@@ -450,7 +450,11 @@ const SchoolUpdates = () => {
   // Auth state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
-  const userName = useMemo(() => currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User', [currentUser]);
+  const [backendUserName, setBackendUserName] = useState<string | null>(null);
+  const userName = useMemo(
+    () => backendUserName || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User',
+    [backendUserName, currentUser]
+  );
 
   // Animated floating background orb (Copilot-style)
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -495,7 +499,11 @@ const SchoolUpdates = () => {
         try {
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const userPhoto = await AsyncStorage.getItem('userPhoto');
+          const storedUserName = await AsyncStorage.getItem('userName');
           setBackendUserPhoto(userPhoto);
+          if (storedUserName) {
+            setBackendUserName(storedUserName);
+          }
         } catch (error) {
           console.error('Failed to load backend user data:', error);
         }

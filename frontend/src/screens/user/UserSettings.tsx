@@ -4,10 +4,11 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../config/theme';
 import { useThemeActions, useThemeValues } from '../../contexts/ThemeContext';
@@ -15,6 +16,7 @@ import LogoutModal from '../../modals/LogoutModal';
 import ConfirmationModal from '../../modals/ConfirmationModal';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import { useAuth } from '../../contexts/AuthContext';
+import ProfileService from '../../services/ProfileService';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -68,6 +70,7 @@ const UserSettings = () => {
   const [backendUserName, setBackendUserName] = useState<string | null>(null);
   const [backendUserEmail, setBackendUserEmail] = useState<string | null>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   
   // Load backend user data on mount and screen focus
   useFocusEffect(
@@ -155,6 +158,56 @@ const UserSettings = () => {
   }, [sheetY]);
 
   const handleLogout = useCallback(() => openLogout(), [openLogout]);
+
+  // Handle profile picture upload
+  const handleProfilePictureUpload = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'image/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) return;
+
+      const asset = Array.isArray((result as any).assets)
+        ? (result as any).assets[0]
+        : (result as any);
+
+      if (!asset || !asset.uri) {
+        Alert.alert('Error', 'Failed to select image');
+        return;
+      }
+
+      const mime = asset.mimeType || 'image/jpeg';
+      if (!mime.startsWith('image/')) {
+        Alert.alert('Invalid file', 'Please select a JPEG or PNG image.');
+        return;
+      }
+
+      setIsUploadingPhoto(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      const fileName = asset.name || `profile_${Date.now()}.jpg`;
+      const uploadResult = await ProfileService.uploadProfilePicture(
+        asset.uri,
+        fileName,
+        mime
+      );
+
+      // Update local state
+      setBackendUserPhoto(uploadResult.imageUrl);
+      
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Success', 'Profile picture updated successfully!');
+    } catch (error: any) {
+      console.error('Profile picture upload error:', error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Upload Failed', error.message || 'Failed to upload profile picture');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  }, []);
+
 
   const confirmLogout = useCallback(async () => {
     try {
@@ -331,26 +384,41 @@ const UserSettings = () => {
           ]}
         >
           <View style={styles.profileAvatarContainer}>
-            <View style={[styles.profileAvatar, { backgroundColor: t.colors.primary + '20' }]}>
-              {userPhoto ? (
-                <Image 
-                  source={{ uri: userPhoto }} 
-                  style={styles.profileAvatarImage}
-                  resizeMode="cover"
-                  // Prevent layout shift by loading image in background
-                  onLoadStart={() => {
-                    // Image is starting to load, but layout is already fixed
-                  }}
-                />
-              ) : (
-                <View style={styles.profileAvatarPlaceholder}>
-                  <Ionicons name="person" size={40} color={t.colors.primary} />
-                </View>
-              )}
-            </View>
-            <View style={[styles.profileBadge, { backgroundColor: '#10B981' }]}>
-              <Ionicons name="checkmark" size={12} color="#FFFFFF" />
-            </View>
+            <TouchableOpacity
+              onPress={handleProfilePictureUpload}
+              disabled={isUploadingPhoto}
+              activeOpacity={0.7}
+              style={styles.profileAvatarTouchable}
+            >
+              <View style={[styles.profileAvatar, { backgroundColor: t.colors.primary + '20' }]}>
+                {isUploadingPhoto ? (
+                  <View style={styles.profileAvatarPlaceholder}>
+                    <Ionicons name="hourglass-outline" size={40} color={t.colors.primary} />
+                  </View>
+                ) : userPhoto ? (
+                  <Image 
+                    source={{ uri: userPhoto }} 
+                    style={styles.profileAvatarImage}
+                    resizeMode="cover"
+                    // Prevent layout shift by loading image in background
+                    onLoadStart={() => {
+                      // Image is starting to load, but layout is already fixed
+                    }}
+                  />
+                ) : (
+                  <View style={styles.profileAvatarPlaceholder}>
+                    <Ionicons name="person" size={40} color={t.colors.primary} />
+                  </View>
+                )}
+              </View>
+              <View style={[styles.profileBadge, { backgroundColor: '#10B981' }]}>
+                {isUploadingPhoto ? (
+                  <Ionicons name="hourglass-outline" size={12} color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="camera" size={12} color="#FFFFFF" />
+                )}
+              </View>
+            </TouchableOpacity>
           </View>
           <View style={styles.profileInfo}>
             <Text 
@@ -517,6 +585,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'transparent',
   },
+  profileAvatarTouchable: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   profileAvatar: {
     width: 72,
     height: 72,
@@ -662,6 +735,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  inlineActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: theme.spacing(1.75),
+    gap: theme.spacing(1.5),
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  inlineActionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing(1.5),
+    flex: 1,
+  },
+  inlineActionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inlineActionTitle: {
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+  inlineActionSubtitle: {
+    marginTop: 2,
+    fontWeight: '400',
+    letterSpacing: 0.1,
   },
   settingValue: {
     fontSize: 14,

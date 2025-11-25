@@ -17,7 +17,8 @@ export const mongoConfig = {
       analytics: process.env.MONGODB_COLLECTION_ANALYTICS || 'query_analytics',
       conversations: 'conversations',
       feedback: 'user_feedback',
-      users: 'users'
+      users: 'users',
+      emailVerifications: 'email_verifications'
     },
     
     // Connection options

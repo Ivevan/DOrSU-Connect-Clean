@@ -5,7 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, BackHandler, Dimensions, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, BackHandler, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../config/api.config';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
@@ -22,6 +22,15 @@ type RootStackParamList = {
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'CreateAccount'>;
 
 const { width } = Dimensions.get('window');
+
+const TEMP_EMAIL_DOMAINS = [
+  'tempmail.com', 'guerrillamail.com', '10minutemail.com', 'throwaway.email',
+  'mailinator.com', 'maildrop.cc', 'temp-mail.org', 'yopmail.com',
+  'fakeinbox.com', 'trashmail.com', 'getnada.com', 'mailnesia.com',
+  'dispostable.com', 'throwawaymail.com', 'tempinbox.com', 'emailondeck.com',
+  'sharklasers.com', 'guerrillamail.info', 'grr.la', 'guerrillamail.biz',
+  'guerrillamail.de', 'spam4.me', 'mailtemp.com', 'tempsky.com'
+];
 
 const CreateAccount = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -43,6 +52,11 @@ const CreateAccount = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [isSendingVerification, setIsSendingVerification] = useState(false);
+  const [emailVerificationStatus, setEmailVerificationStatus] = useState<'idle' | 'pending' | 'verified'>('idle');
+  const [emailVerificationMessage, setEmailVerificationMessage] = useState('');
+  const [warningModalVisible, setWarningModalVisible] = useState(false);
+  const [warningModalMessage, setWarningModalMessage] = useState('');
   const [errors, setErrors] = useState({ username: '', email: '', password: '', confirmPassword: '', general: '' });
   
   // Input focus states
@@ -78,6 +92,13 @@ const CreateAccount = () => {
     return unsubscribe;
   }, [navigation]);
 
+  useEffect(() => {
+    if (!email.trim()) {
+      setEmailVerificationStatus('idle');
+      setEmailVerificationMessage('');
+    }
+  }, [email]);
+
   // Button press handler
   const handleButtonPress = (scaleRef: Animated.Value, callback: () => void) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -94,6 +115,143 @@ const CreateAccount = () => {
       }),
     ]).start(callback);
   };
+
+  const validateEmailField = (value: string) => {
+    if (!value.trim()) {
+      return 'Please enter your email address';
+    }
+    if (!/\S+@\S+\.\S+/.test(value)) {
+      return 'Please enter a valid email address';
+    }
+    const emailDomain = value.toLowerCase().split('@')[1];
+    if (!emailDomain?.includes('gmail.com')) {
+      return 'Only Gmail addresses are supported';
+    }
+    if (TEMP_EMAIL_DOMAINS.includes(emailDomain)) {
+      return 'Temporary emails not allowed';
+    }
+    return '';
+  };
+
+  const checkEmailVerificationStatus = useCallback(
+    async (options: { showErrors?: boolean } = {}) => {
+      if (!email.trim()) {
+        return false;
+      }
+
+      if (!isOnline) {
+        if (options.showErrors) {
+          setErrors(prev => ({
+            ...prev,
+            general: 'No internet connection. Please check your network and try again.',
+          }));
+        }
+        return false;
+      }
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/auth/email-verification-status?email=${encodeURIComponent(
+            email.trim().toLowerCase()
+          )}`
+        );
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Unable to check verification status');
+        }
+
+        const verified = Boolean(data.verified);
+        if (verified) {
+          setEmailVerificationStatus('verified');
+          setEmailVerificationMessage('Gmail confirmed. You are good to go.');
+        } else if (data?.requestedAt) {
+          setEmailVerificationStatus('pending');
+          setEmailVerificationMessage('Waiting for confirmation. Please tap the link we sent to your Gmail.');
+        } else {
+          setEmailVerificationStatus('idle');
+          setEmailVerificationMessage('');
+        }
+
+        if (!verified && options.showErrors) {
+          setErrors(prev => ({
+            ...prev,
+            general: data?.requestedAt
+              ? 'Please confirm your Gmail by opening the link we sent.'
+              : 'Send a confirmation link to your Gmail before creating an account.',
+          }));
+        }
+
+        return verified;
+      } catch (error) {
+        console.error('Email verification status error:', error);
+        if (options.showErrors) {
+          setErrors(prev => ({
+            ...prev,
+            general: 'Unable to check email verification status. Please try again.',
+          }));
+        }
+        return false;
+      }
+    },
+    [email, isOnline]
+  );
+
+  const handleSendVerificationLink = async () => {
+    if (!isOnline) {
+      setErrors(prev => ({
+        ...prev,
+        general: 'No internet connection. Please check your network and try again.',
+      }));
+      return;
+    }
+
+    const emailError = validateEmailField(email);
+    if (emailError) {
+      setErrors(prev => ({ ...prev, email: emailError }));
+      return;
+    }
+
+    setIsSendingVerification(true);
+    setErrors(prev => ({ ...prev, general: '' }));
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/request-email-verification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        if (data?.error === 'EMAIL_NOT_FOUND') {
+          setWarningModalMessage('The Gmail address you entered does not exist. Please double-check the spelling.');
+          setWarningModalVisible(true);
+          return;
+        }
+        throw new Error(data?.error || 'Failed to send confirmation link');
+      }
+
+      setEmailVerificationStatus('pending');
+      setEmailVerificationMessage('Confirmation link sent. Please open the link from your Gmail inbox.');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error: any) {
+      console.error('Failed to send verification link:', error);
+      setErrors(prev => ({
+        ...prev,
+        general: error?.message || 'Failed to send confirmation link. Please try again.',
+      }));
+    } finally {
+      setIsSendingVerification(false);
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      if (email && emailVerificationStatus === 'pending') {
+        checkEmailVerificationStatus();
+      }
+    }, [email, emailVerificationStatus, checkEmailVerificationStatus])
+  );
 
   const handleSignUp = async () => {
     // Check network status first
@@ -114,28 +272,10 @@ const CreateAccount = () => {
       hasErrors = true;
     }
     
-    if (!email.trim()) {
-      newErrors.email = 'Please enter your email address';
+    const emailValidationMessage = validateEmailField(email);
+    if (emailValidationMessage) {
+      newErrors.email = emailValidationMessage;
       hasErrors = true;
-    } else if (!/\S+@\S+\.\S+/.test(email)) {
-      newErrors.email = 'Please enter a valid email address';
-      hasErrors = true;
-    } else {
-      // Block temporary/disposable email services
-      const tempEmailDomains = [
-        'tempmail.com', 'guerrillamail.com', '10minutemail.com', 'throwaway.email',
-        'mailinator.com', 'maildrop.cc', 'temp-mail.org', 'yopmail.com',
-        'fakeinbox.com', 'trashmail.com', 'getnada.com', 'mailnesia.com',
-        'dispostable.com', 'throwawaymail.com', 'tempinbox.com', 'emailondeck.com',
-        'sharklasers.com', 'guerrillamail.info', 'grr.la', 'guerrillamail.biz',
-        'guerrillamail.de', 'spam4.me', 'mailtemp.com', 'tempsky.com'
-      ];
-      
-      const emailDomain = email.toLowerCase().split('@')[1];
-      if (tempEmailDomains.includes(emailDomain)) {
-        newErrors.email = 'Temporary emails not allowed';
-        hasErrors = true;
-      }
     }
     
     // Strong password validation
@@ -168,6 +308,11 @@ const CreateAccount = () => {
     
     if (hasErrors) {
       setErrors(newErrors);
+      return;
+    }
+
+    const isVerified = await checkEmailVerificationStatus({ showErrors: true });
+    if (!isVerified) {
       return;
     }
 
@@ -227,6 +372,8 @@ const CreateAccount = () => {
         setErrors({ username: '', email: 'This email is already registered', password: '', confirmPassword: '', general: '' });
       } else if (error.message.includes('Invalid')) {
         setErrors({ username: '', email: 'Invalid email or password format', password: '', confirmPassword: '', general: '' });
+      } else if (error.message.includes('Email not verified')) {
+        setErrors({ username: '', email: '', password: '', confirmPassword: '', general: 'Please confirm your Gmail before creating an account.' });
       } else {
         setErrors({ username: '', email: '', password: '', confirmPassword: '', general: error.message || errorMessage });
       }
@@ -372,6 +519,48 @@ const CreateAccount = () => {
                 <Text style={styles.errorText}>{errors.email}</Text>
               ) : null}
             </View>
+          <View style={styles.verificationActions}>
+            <TouchableOpacity
+              style={[
+                styles.verificationButton,
+                (isSendingVerification || !email.trim() || !isOnline) && styles.verificationButtonDisabled
+              ]}
+              onPress={handleSendVerificationLink}
+              disabled={isSendingVerification || !email.trim() || !isOnline}
+              accessibilityLabel="Send email confirmation link"
+            >
+              <Text style={styles.verificationButtonText}>
+                {isSendingVerification ? 'Sending...' : 'Send confirmation link'}
+              </Text>
+            </TouchableOpacity>
+            {emailVerificationStatus === 'pending' ? (
+              <TouchableOpacity
+                style={styles.verificationRefreshButton}
+                onPress={() => checkEmailVerificationStatus()}
+                disabled={isSendingVerification}
+                accessibilityLabel="Refresh email confirmation status"
+              >
+                <MaterialIcons name="refresh" size={16} color="#2563EB" style={{ marginRight: 4 }} />
+                <Text style={styles.verificationRefreshText}>I confirmed – Refresh</Text>
+              </TouchableOpacity>
+            ) : null}
+            {emailVerificationStatus === 'verified' ? (
+              <View style={styles.verificationBadge}>
+                <MaterialIcons name="check-circle" size={16} color="#10B981" style={{ marginRight: 4 }} />
+                <Text style={styles.verificationBadgeText}>Gmail verified</Text>
+              </View>
+            ) : null}
+          </View>
+          {emailVerificationMessage ? (
+            <Text
+              style={[
+                styles.verificationMessage,
+                emailVerificationStatus === 'verified' && styles.verificationMessageSuccess
+              ]}
+            >
+              {emailVerificationMessage}
+            </Text>
+          ) : null}
           </View>
 
           {/* Password Input */}
@@ -621,6 +810,30 @@ const CreateAccount = () => {
         icon="checkmark-circle"
         iconColor="#10B981"
       />
+
+      <Modal
+        visible={warningModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setWarningModalVisible(false)}
+      >
+        <View style={styles.warningModalOverlay}>
+          <View style={styles.warningModalCard}>
+            <MaterialIcons name="warning-amber" size={32} color="#F97316" style={styles.warningModalIcon} />
+            <Text style={styles.warningModalTitle}>Gmail not found</Text>
+            <Text style={styles.warningModalMessage}>
+              {warningModalMessage || 'We could not reach that Gmail address. Please use an existing Gmail account.'}
+            </Text>
+            <TouchableOpacity
+              style={styles.warningModalButton}
+              onPress={() => setWarningModalVisible(false)}
+              accessibilityLabel="Close warning modal"
+            >
+              <Text style={styles.warningModalButtonText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -721,6 +934,105 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     fontSize: 11,
     marginLeft: 4,
+  },
+  verificationActions: {
+    marginTop: 4,
+    alignItems: 'flex-start',
+  },
+  verificationButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2563EB',
+    backgroundColor: 'rgba(37, 99, 235, 0.08)',
+  },
+  verificationButtonDisabled: {
+    opacity: 0.5,
+  },
+  verificationButtonText: {
+    color: '#2563EB',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  verificationRefreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  verificationRefreshText: {
+    color: '#2563EB',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  verificationBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    backgroundColor: '#ECFDF5',
+  },
+  verificationBadgeText: {
+    color: '#065F46',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  verificationMessage: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#2563EB',
+    fontWeight: '500',
+  },
+  verificationMessageSuccess: {
+    color: '#059669',
+  },
+  warningModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  warningModalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  warningModalIcon: {
+    marginBottom: 12,
+  },
+  warningModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 8,
+  },
+  warningModalMessage: {
+    fontSize: 14,
+    color: '#4B5563',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  warningModalButton: {
+    backgroundColor: '#2563EB',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 32,
+  },
+  warningModalButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   generalErrorContainer: {
     flexDirection: 'row',

@@ -8,13 +8,14 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet from '../../components/common/BottomSheet';
 import { theme as themeConfig } from '../../config/theme';
 import { useThemeActions, useThemeValues } from '../../contexts/ThemeContext';
 import LogoutModal from '../../modals/LogoutModal';
 import AdminFileService from '../../services/AdminFileService';
+import ProfileService from '../../services/ProfileService';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -75,6 +76,8 @@ const AdminSettings = () => {
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isKnowledgeBaseModalOpen, setIsKnowledgeBaseModalOpen] = useState(false);
+  const [adminUserPhoto, setAdminUserPhoto] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   // Lock header height to prevent layout shifts
   const headerHeightRef = useRef<number>(64);
@@ -144,6 +147,68 @@ const AdminSettings = () => {
   const handlePrivacyPolicyPress = useCallback(() => navigation.navigate('PrivacyPolicy'), [navigation]);
   const handleLicensesPress = useCallback(() => navigation.navigate('Licenses'), [navigation]);
 
+  // Load admin profile photo on mount and screen focus
+  useEffect(() => {
+    const loadAdminPhoto = async () => {
+      try {
+        const userPhoto = await AsyncStorage.getItem('userPhoto');
+        setAdminUserPhoto(userPhoto);
+      } catch (error) {
+        console.error('Failed to load admin photo:', error);
+      }
+    };
+    loadAdminPhoto();
+  }, []);
+
+  // Handle profile picture upload
+  const handleProfilePictureUpload = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'image/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) return;
+
+      const asset = Array.isArray((result as any).assets)
+        ? (result as any).assets[0]
+        : (result as any);
+
+      if (!asset || !asset.uri) {
+        Alert.alert('Error', 'Failed to select image');
+        return;
+      }
+
+      const mime = asset.mimeType || 'image/jpeg';
+      if (!mime.startsWith('image/')) {
+        Alert.alert('Invalid file', 'Please select a JPEG or PNG image.');
+        return;
+      }
+
+      setIsUploadingPhoto(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      const fileName = asset.name || `profile_${Date.now()}.jpg`;
+      const uploadResult = await ProfileService.uploadProfilePicture(
+        asset.uri,
+        fileName,
+        mime
+      );
+
+      // Update local state
+      setAdminUserPhoto(uploadResult.imageUrl);
+      
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Success', 'Profile picture updated successfully!');
+    } catch (error: any) {
+      console.error('Profile picture upload error:', error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Upload Failed', error.message || 'Failed to upload profile picture');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  }, []);
+
   // File upload handler
   const handleFileUpload = useCallback(async () => {
     try {
@@ -188,6 +253,7 @@ const AdminSettings = () => {
       setIsUploadingFile(false);
     }
   }, [closeKnowledgeBaseModal]);
+
 
   return (
     <View style={[styles.container, {
@@ -320,14 +386,37 @@ const AdminSettings = () => {
           ]}
         >
           <View style={styles.profileAvatarContainer}>
-            <View style={[styles.profileAvatar, { backgroundColor: theme.colors.primary + '20' }]}>
-              <View style={styles.profileAvatarPlaceholder}>
-                <Ionicons name="person" size={40} color={theme.colors.primary} />
+            <TouchableOpacity
+              onPress={handleProfilePictureUpload}
+              disabled={isUploadingPhoto}
+              activeOpacity={0.7}
+              style={styles.profileAvatarTouchable}
+            >
+              <View style={[styles.profileAvatar, { backgroundColor: theme.colors.primary + '20' }]}>
+                {isUploadingPhoto ? (
+                  <View style={styles.profileAvatarPlaceholder}>
+                    <Ionicons name="hourglass-outline" size={40} color={theme.colors.primary} />
+                  </View>
+                ) : adminUserPhoto ? (
+                  <Image 
+                    source={{ uri: adminUserPhoto }} 
+                    style={styles.profileAvatarImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.profileAvatarPlaceholder}>
+                    <Ionicons name="person" size={40} color={theme.colors.primary} />
+                  </View>
+                )}
               </View>
-            </View>
-            <View style={[styles.profileBadge, { backgroundColor: '#10B981' }]}>
-              <Ionicons name="checkmark" size={12} color="#FFFFFF" />
-            </View>
+              <View style={[styles.profileBadge, { backgroundColor: '#10B981' }]}>
+                {isUploadingPhoto ? (
+                  <Ionicons name="hourglass-outline" size={12} color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="camera" size={12} color="#FFFFFF" />
+                )}
+              </View>
+            </TouchableOpacity>
           </View>
           <View style={styles.profileInfo}>
             <Text
@@ -557,6 +646,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'transparent',
   },
+  profileAvatarTouchable: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileAvatarImage: {
+    width: '100%',
+    height: '100%',
+  },
   profileAvatar: {
     width: 72,
     height: 72,
@@ -655,6 +753,37 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: themeConfig.spacing(2),
     marginBottom: 0,
+  },
+  inlineActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: themeConfig.spacing(1.75),
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    gap: themeConfig.spacing(1.5),
+  },
+  inlineActionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: themeConfig.spacing(1.5),
+    flex: 1,
+  },
+  inlineActionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inlineActionTitle: {
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+  inlineActionSubtitle: {
+    marginTop: 2,
+    fontWeight: '400',
+    letterSpacing: 0.1,
   },
   settingItem: {
     flexDirection: 'row',

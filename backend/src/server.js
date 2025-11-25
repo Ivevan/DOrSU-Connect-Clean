@@ -23,6 +23,7 @@ import { Logger } from './utils/logger.js';
 import { parseMultipartFormData } from './utils/multipart-parser.js';
 import QueryAnalyzer from './utils/query-analyzer.js';
 import ResponseCleaner from './utils/response-cleaner.js';
+import { EmailService } from './services/email.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,6 +43,7 @@ let newsScraperService = null;
 let authService = null;
 let chatHistoryService = null;
 let scheduleService = null;
+let emailService = null;
 
 // ===== FALLBACK CONTEXT =====
 const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
@@ -61,7 +63,8 @@ async function initializeServices() {
     Logger.success('GridFS service initialized');
     
     // Initialize authentication service
-    authService = new AuthService(mongoService);
+    emailService = new EmailService();
+    authService = new AuthService(mongoService, emailService);
     Logger.success('Auth service initialized');
     
     // Initialize chat history service
@@ -113,6 +116,11 @@ function sendJson(res, status, body) {
   const json = JSON.stringify(body);
   res.writeHead(status, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(json) });
   res.end(json);
+}
+
+function sendHtml(res, status, html) {
+  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(html);
 }
 
 function serveStatic(req, res) {
@@ -177,6 +185,126 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ===== AUTHENTICATION ENDPOINTS =====
+
+  // Request email verification link
+  if (method === 'POST' && url === '/api/auth/request-email-verification') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        if (!authService) {
+          sendJson(res, 503, { error: 'Authentication service not available' });
+          return;
+        }
+
+        const { email } = JSON.parse(body || '{}');
+        if (!email) {
+          sendJson(res, 400, { error: 'Email is required' });
+          return;
+        }
+
+        const result = await authService.requestEmailVerification(email);
+        sendJson(res, 200, result);
+      } catch (error) {
+        Logger.error('Email verification request error:', error.message);
+        if (error.message === 'EMAIL_NOT_FOUND') {
+          sendJson(res, 400, { error: 'EMAIL_NOT_FOUND', message: 'The Gmail address does not exist.' });
+          return;
+        }
+        sendJson(res, 400, { error: error.message || 'Failed to send confirmation link' });
+      }
+    });
+    return;
+  }
+
+  if (method === 'GET' && url === '/api/auth/confirm-email') {
+    try {
+      if (!authService) {
+        sendHtml(res, 503, '<h1>Service unavailable</h1>');
+        return;
+      }
+
+      const requestUrl = new URL(
+        req.url || '/api/auth/confirm-email',
+        `http://${req.headers.host || 'localhost'}`
+      );
+      const token = requestUrl.searchParams.get('token');
+
+      if (!token) {
+        sendHtml(res, 400, '<h1>Verification token missing.</h1>');
+        return;
+      }
+
+      const result = await authService.confirmEmailToken(token);
+      const deepLink = emailService?.buildDeepLink(result.email, token) || '';
+
+      const successHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>Email Confirmed</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 32px; background: #F9FAFB; color: #111827; }
+              .card { max-width: 520px; margin: 0 auto; background: #fff; border-radius: 16px; padding: 32px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); }
+              .badge { display: inline-block; padding: 6px 12px; background: #D1FAE5; color: #065F46; border-radius: 999px; font-size: 13px; font-weight: 600; }
+              a { color: #2563EB; }
+            </style>
+            ${deepLink ? `<meta http-equiv="refresh" content="2;url=${deepLink}">` : ''}
+          </head>
+          <body>
+            <div class="card">
+              <div class="badge">Email Verified</div>
+              <h1>Thanks! Your Gmail is confirmed.</h1>
+              <p>We successfully verified <strong>${result.email}</strong>. You can go back to the DOrSU Connect app and finish creating your account.</p>
+              ${
+                deepLink
+                  ? `<p>If the app does not open automatically, <a href="${deepLink}">tap here to open it</a>.</p>`
+                  : ''
+              }
+            </div>
+          </body>
+        </html>
+      `;
+
+      sendHtml(res, 200, successHtml);
+    } catch (error) {
+      Logger.error('Email confirmation error:', error.message);
+      sendHtml(
+        res,
+        400,
+        `<h1>Verification failed</h1><p>${error.message || 'Invalid or expired token.'}</p>`
+      );
+    }
+    return;
+  }
+
+  if (method === 'GET' && url === '/api/auth/email-verification-status') {
+    try {
+      if (!authService) {
+        sendJson(res, 503, { error: 'Authentication service not available' });
+        return;
+      }
+
+      const requestUrl = new URL(
+        req.url || '/api/auth/email-verification-status',
+        `http://${req.headers.host || 'localhost'}`
+      );
+      const email = requestUrl.searchParams.get('email');
+
+      if (!email) {
+        sendJson(res, 400, { error: 'Email is required' });
+        return;
+      }
+
+      const status = await authService.getEmailVerificationStatus(email);
+      sendJson(res, 200, status);
+    } catch (error) {
+      Logger.error('Email verification status error:', error.message);
+      sendJson(res, 400, { error: error.message || 'Unable to check verification status' });
+    }
+    return;
+  }
 
   // User Registration
   if (method === 'POST' && url === '/api/auth/register') {
@@ -455,6 +583,125 @@ const server = http.createServer(async (req, res) => {
       Logger.error('Get user error:', error.message);
       sendJson(res, 500, { error: error.message });
     }
+    return;
+  }
+
+  // Upload profile picture
+  if (method === 'POST' && url === '/api/auth/profile-picture') {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+
+    try {
+      const contentType = req.headers['content-type'] || '';
+      if (!contentType.includes('multipart/form-data')) {
+        sendJson(res, 400, { error: 'Content-Type must be multipart/form-data' });
+        return;
+      }
+
+      const boundary = contentType.split('boundary=')[1];
+      if (!boundary) {
+        sendJson(res, 400, { error: 'Missing boundary in Content-Type' });
+        return;
+      }
+
+      const parts = await parseMultipartFormData(req, boundary);
+      const filePart = parts.find(p => p.filename);
+      
+      if (!filePart) {
+        sendJson(res, 400, { error: 'No file uploaded' });
+        return;
+      }
+
+      // Validate file type (images only)
+      const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+      const mimeType = filePart.contentType || 'image/jpeg';
+      
+      if (!allowedMimeTypes.includes(mimeType.toLowerCase())) {
+        sendJson(res, 400, { 
+          error: `File type not allowed. Allowed types: ${allowedMimeTypes.join(', ')}` 
+        });
+        return;
+      }
+
+      // Validate file size (max 5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (filePart.data.length > maxSize) {
+        sendJson(res, 400, { error: 'File size exceeds 5MB limit' });
+        return;
+      }
+
+      Logger.info(`📤 Processing profile picture upload for user: ${auth.userId} (${(filePart.data.length / 1024).toFixed(2)} KB)`);
+
+      // Upload to GridFS
+      const gridFSService = getGridFSService();
+      const fileName = filePart.filename || `profile_${Date.now()}.jpg`;
+      const imageFileId = await gridFSService.uploadImage(
+        Buffer.from(filePart.data),
+        fileName,
+        mimeType,
+        { userId: auth.userId, type: 'profile-picture' }
+      );
+
+      // Build image URL
+      const baseUrl = process.env.PUBLIC_BACKEND_URL || `http://localhost:${port}`;
+      const imageUrl = `${baseUrl}/api/images/${imageFileId}`;
+
+      // Update user profile picture in database
+      await mongoService.updateUserProfilePicture(auth.userId, imageFileId, imageUrl);
+
+      Logger.success(`✅ Profile picture uploaded: ${imageFileId}`);
+
+      sendJson(res, 200, {
+        success: true,
+        message: 'Profile picture uploaded successfully',
+        imageFileId,
+        imageUrl
+      });
+    } catch (error) {
+      Logger.error('Profile picture upload error:', error);
+      sendJson(res, 500, { error: error.message || 'Failed to upload profile picture' });
+    }
+    return;
+  }
+
+  // Change password
+  if (method === 'POST' && url === '/api/auth/change-password') {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+
+    if (auth.isAdmin) {
+      sendJson(res, 400, { error: 'Password changes are not supported for admin tokens' });
+      return;
+    }
+
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { currentPassword, newPassword } = JSON.parse(body || '{}');
+        const result = await authService.changePassword(auth.userId, currentPassword, newPassword);
+        sendJson(res, 200, result);
+      } catch (error) {
+        Logger.error('Change password error:', error.message || error);
+        sendJson(res, 400, { error: error.message || 'Failed to change password' });
+      }
+    });
     return;
   }
 

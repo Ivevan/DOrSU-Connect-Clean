@@ -876,6 +876,37 @@ class MongoDBService {
   }
 
   /**
+   * Update user password
+   */
+  async updateUserPassword(userId, hashedPassword) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.users || 'users');
+      const { ObjectId } = await import('mongodb');
+
+      const result = await collection.updateOne(
+        { _id: new ObjectId(userId) },
+        {
+          $set: {
+            password: hashedPassword,
+            passwordUpdatedAt: new Date(),
+            updatedAt: new Date()
+          }
+        }
+      );
+
+      if (result.matchedCount === 0) {
+        throw new Error('User not found');
+      }
+
+      Logger.success(`✅ Updated password for user: ${userId}`);
+      return { success: true };
+    } catch (error) {
+      Logger.error('Failed to update user password:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Update user's last login timestamp
    */
   async updateUserLastLogin(email) {
@@ -915,6 +946,37 @@ class MongoDBService {
   }
 
   /**
+   * Update user profile picture
+   */
+  async updateUserProfilePicture(userId, imageFileId, imageUrl) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.users || 'users');
+      const { ObjectId } = await import('mongodb');
+      
+      const result = await collection.updateOne(
+        { _id: new ObjectId(userId) },
+        {
+          $set: {
+            profilePictureFileId: imageFileId,
+            profilePicture: imageUrl,
+            updatedAt: new Date()
+          }
+        }
+      );
+      
+      if (result.matchedCount === 0) {
+        throw new Error('User not found');
+      }
+      
+      Logger.success(`✅ Profile picture updated for user: ${userId}`);
+      return { success: true };
+    } catch (error) {
+      Logger.error('Failed to update profile picture:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get user count
    */
   async getUserCount() {
@@ -924,6 +986,88 @@ class MongoDBService {
     } catch (error) {
       Logger.error('Failed to get user count:', error);
       return 0;
+    }
+  }
+
+  // ===== EMAIL VERIFICATION METHODS =====
+
+  /**
+   * Create a new email verification request
+   */
+  async createEmailVerificationRequest(email, token, expiresAt) {
+    try {
+      const collection = this.getCollection(
+        mongoConfig.collections.emailVerifications || 'email_verifications'
+      );
+      await collection.insertOne({
+        email: email.toLowerCase(),
+        token,
+        expiresAt,
+        verified: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    } catch (error) {
+      Logger.error('Failed to create email verification request:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get verification record by token
+   */
+  async getEmailVerificationByToken(token) {
+    try {
+      const collection = this.getCollection(
+        mongoConfig.collections.emailVerifications || 'email_verifications'
+      );
+      return await collection.findOne({ token });
+    } catch (error) {
+      Logger.error('Failed to get email verification by token:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get latest verification status for an email
+   */
+  async getLatestEmailVerification(email) {
+    try {
+      const collection = this.getCollection(
+        mongoConfig.collections.emailVerifications || 'email_verifications'
+      );
+      return await collection
+        .find({ email: email.toLowerCase() })
+        .sort({ createdAt: -1 })
+        .limit(1)
+        .next();
+    } catch (error) {
+      Logger.error('Failed to get email verification status:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Mark verification token as used/verified
+   */
+  async markEmailVerificationVerified(token) {
+    try {
+      const collection = this.getCollection(
+        mongoConfig.collections.emailVerifications || 'email_verifications'
+      );
+      await collection.updateOne(
+        { token },
+        {
+          $set: {
+            verified: true,
+            verifiedAt: new Date(),
+            updatedAt: new Date(),
+          },
+        }
+      );
+    } catch (error) {
+      Logger.error('Failed to update email verification token:', error);
+      throw error;
     }
   }
 

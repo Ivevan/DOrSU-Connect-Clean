@@ -12,6 +12,7 @@ import { useThemeValues } from '../../contexts/ThemeContext';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRoute } from '@react-navigation/native';
+import ChangePasswordModal from '../../modals/ChangePasswordModal';
 
 type RootStackParamList = {
   AdminSettings: undefined;
@@ -43,6 +44,7 @@ const AdminAccountSettings = () => {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleteStatus, setDeleteStatus] = useState<'idle' | 'wrong' | 'success' | 'error'>('idle');
   const [deleteErrorMessage, setDeleteErrorMessage] = useState('');
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -328,7 +330,7 @@ const AdminAccountSettings = () => {
             {!isEditingName && <Ionicons name="pencil" size={18} color={t.colors.textMuted} />}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.settingItemLast}>
+          <TouchableOpacity style={[styles.settingItem, { borderBottomColor: t.colors.border }]}>
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
                 <Ionicons name="shield-checkmark-outline" size={20} color={t.colors.accent} />
@@ -338,6 +340,22 @@ const AdminAccountSettings = () => {
             <View style={styles.badgeContainer}>
               <Text style={[styles.badgeText, { fontSize: t.fontSize.scaleSize(12) }]}>Active</Text>
             </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.settingItemLast}
+            onPress={() => setIsChangePasswordOpen(true)}
+          >
+            <View style={styles.settingLeft}>
+              <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
+                <Ionicons name="key-outline" size={20} color={t.colors.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Change password</Text>
+                <Text style={[styles.settingValue, { color: t.colors.textMuted, marginTop: 4, fontSize: t.fontSize.scaleSize(13) }]}>Update admin credentials</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={t.colors.textMuted} />
           </TouchableOpacity>
         </BlurView>
 
@@ -454,6 +472,12 @@ const AdminAccountSettings = () => {
           )}
         </View>
       )}
+
+      <ChangePasswordModal
+        visible={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+        title="Change Admin Password"
+      />
     </View>
   );
 };

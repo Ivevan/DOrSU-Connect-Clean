@@ -53,6 +53,7 @@ const AdminAIChat = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
   const [topQueries, setTopQueries] = useState<string[]>([]);
   const [isLoadingTopQueries, setIsLoadingTopQueries] = useState(false);
@@ -68,6 +69,8 @@ const AdminAIChat = () => {
   const appWasInBackground = useRef<boolean>(false);
   const isLoggedInRef = useRef<boolean>(false);
   const hasInitialized = useRef<boolean>(false);
+  const isEditingRef = useRef<boolean>(false);
+  const originalMessagesRef = useRef<Message[]>([]);
 
   // Segmented control animation and width tracking
   const segmentAnim = useRef(new Animated.Value(0)).current;
@@ -587,7 +590,11 @@ const AdminAIChat = () => {
       sessionId.current = Date.now().toString();
     }
 
-    // Create user message
+    // Capture current messages before adding the new one (for conversation history)
+    // This is the state after removing the edited message and subsequent messages
+    const currentMessages = messages;
+
+    // Create user message (this replaces the edited message)
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -595,15 +602,33 @@ const AdminAIChat = () => {
       timestamp: new Date(),
     };
 
-    // Add user message to chat
+    // Add user message to chat (replaces the old one that was removed during edit)
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
+    // Clear edit mode after sending
+    isEditingRef.current = false;
+    setIsEditing(false);
+    originalMessagesRef.current = [];
     setIsLoading(true);
 
     try {
       // Call AI service with selected userType
       const token = await getUserToken();
-      const response = await AIService.sendMessage(textToSend, token || undefined, selectedUserType);
+      
+      // If there are previous messages, include conversation history in the prompt
+      // This ensures the AI can regenerate properly when a message is edited
+      // When editing, we want to regenerate based on the conversation up to the edited point
+      let promptToSend = textToSend;
+      if (currentMessages.length > 0) {
+        // Build conversation history from existing messages (before the new/edited one)
+        const conversationHistory = currentMessages
+          .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+          .join('\n\n');
+        // Include the new/edited message in the context
+        promptToSend = `${conversationHistory}\n\nUser: ${textToSend}`;
+      }
+      
+      const response = await AIService.sendMessage(promptToSend, token || undefined, selectedUserType);
 
       // Format the AI response with enhanced markdown formatting
       const formattedContent = formatAIResponse(response.reply);
@@ -634,11 +659,22 @@ const AdminAIChat = () => {
         const queuedMessage = textToSend;
         const queuedUserType = selectedUserType;
         const queuedUserMessage = userMessage;
+        const queuedMessages = currentMessages; // Store messages before the new one for context
         
         ReconnectionService.queueRequest({
           execute: async () => {
             const token = await getUserToken();
-            const response = await AIService.sendMessage(queuedMessage, token || undefined, queuedUserType);
+            
+            // Include conversation history if there are previous messages
+            let promptToSend = queuedMessage;
+            if (queuedMessages.length > 0) {
+              const conversationHistory = queuedMessages
+                .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+                .join('\n\n');
+              promptToSend = `${conversationHistory}\n\nUser: ${queuedMessage}`;
+            }
+            
+            const response = await AIService.sendMessage(promptToSend, token || undefined, queuedUserType);
             
             // Format the AI response
             const formattedContent = formatAIResponse(response.reply);
@@ -732,7 +768,13 @@ const AdminAIChat = () => {
     // Remove the message and its response from the messages list
     const messageIndex = messages.findIndex(msg => msg.id === messageId);
     if (messageIndex !== -1) {
+      // Store original messages state for cancel functionality (full conversation before edit)
+      originalMessagesRef.current = [...messages];
+      isEditingRef.current = true;
+      setIsEditing(true);
+      
       // Remove the user message and any assistant response that follows it
+      // This allows the user to edit and regenerate from this point
       const newMessages = messages.slice(0, messageIndex);
       setMessages(newMessages);
       
@@ -743,6 +785,18 @@ const AdminAIChat = () => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   };
+
+  // Cancel edit and restore original conversation
+  const cancelEdit = useCallback(() => {
+    if (isEditingRef.current && originalMessagesRef.current.length > 0) {
+      setMessages(originalMessagesRef.current);
+      setInputText('');
+      isEditingRef.current = false;
+      setIsEditing(false);
+      originalMessagesRef.current = [];
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  }, []);
 
   // Show action menu for messages
   const handleMessageLongPress = (message: Message) => {
@@ -1240,6 +1294,30 @@ const AdminAIChat = () => {
           </View>
         </View>
 
+        {/* Editing Message Indicator */}
+        {isEditing && (
+          <View style={[styles.editingIndicator, {
+            backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
+          }]}>
+            <View style={styles.editingIndicatorContent}>
+              <Ionicons name="create-outline" size={16} color={theme.colors.accent} />
+              <Text style={[styles.editingIndicatorText, { 
+                color: isDarkMode ? '#F9FAFB' : '#1F2937',
+                fontSize: theme.fontSize.scaleSize(13)
+              }]}>
+                Editing message
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={cancelEdit}
+              style={styles.editingCancelButton}
+              accessibilityLabel="Cancel edit"
+            >
+              <Ionicons name="close" size={18} color={theme.colors.accent} />
+            </TouchableOpacity>
+          </View>
+        )}
+
         <View style={[styles.inputBarOuter, {
           borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
         }]}>
@@ -1630,6 +1708,28 @@ const styles = StyleSheet.create({
   inputBarContainer: {
     paddingHorizontal: 16,
     paddingVertical: 12,
+  },
+  editingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  editingIndicatorContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  editingIndicatorText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  editingCancelButton: {
+    padding: 4,
+    borderRadius: 12,
   },
   inputBarOuter: {
     borderRadius: 30,

@@ -174,6 +174,9 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
                 onClose();
               }}
               accessibilityLabel="New conversation"
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
             >
               <Ionicons name="create-outline" size={26} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
             </TouchableOpacity>
@@ -181,6 +184,9 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
               onPress={onClose}
               style={styles.sidebarIconButton}
               accessibilityLabel="Close sidebar"
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
             >
               <View style={styles.customHamburger} pointerEvents="none">
                 <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
@@ -405,6 +411,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 12,
+    position: 'relative',
   },
   sidebarLogoSection: {
     flexDirection: 'row',
@@ -471,8 +478,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sidebarIconButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
+    minWidth: 44,
+    minHeight: 44,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',

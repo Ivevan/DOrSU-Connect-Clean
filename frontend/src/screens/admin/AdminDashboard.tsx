@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Image, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Image, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // import AddPostDrawer from '../../components/dashboard/AddPostDrawer'; // Replaced with PostUpdate screen navigation
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
@@ -70,10 +70,40 @@ const getPHDateKey = (d: Date | string) => {
   }
 };
 
+type LegendItem = {
+  type: string;
+  key: string;
+  color: string;
+};
+
+const legendItemsData: LegendItem[] = [
+  { type: 'Academic', key: 'academic', color: '#10B981' },
+  { type: 'Institutional', key: 'institutional', color: '#2563EB' },
+  { type: 'News', key: 'news', color: '#8B5CF6' },
+  { type: 'Event', key: 'event', color: '#F59E0B' },
+  { type: 'Announcement', key: 'announcement', color: '#3B82F6' },
+];
+
 
 const AdminDashboard = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
+  const resolvedLegendItems = useMemo<LegendItem[]>(() => (
+    legendItemsData.map(item => {
+      if (item.key === 'institutional') {
+        return { ...item, color: theme.colors.accent };
+      }
+      return item;
+    })
+  ), [theme.colors.accent]);
+  const legendRows = useMemo<(LegendItem | null)[][]>(() => {
+    const firstRow: (LegendItem | null)[] = resolvedLegendItems.slice(0, 3);
+    const secondRow: (LegendItem | null)[] = resolvedLegendItems.slice(3, 5);
+    while (secondRow.length < 3) {
+      secondRow.push(null);
+    }
+    return [firstRow, secondRow];
+  }, [resolvedLegendItems]);
   
   // Get header gradient colors based on theme
   const getHeaderGradientColors = (): [string, string, string] => {
@@ -121,11 +151,18 @@ const AdminDashboard = () => {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [isLoadingCalendarEvents, setIsLoadingCalendarEvents] = useState(false);
   
-  // Content type filter - multiple selection: 'academic', 'institutional', 'event', 'announcement', 'news'
-  const [selectedContentTypes, setSelectedContentTypes] = useState<string[]>(['academic', 'institutional', 'event', 'announcement', 'news']);
-  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
-  const filterButtonRef = useRef<View>(null);
-  const [filterButtonLayout, setFilterButtonLayout] = useState({ x: 16, y: 100, width: 200, height: 44 });
+  // Search state
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  
+  // Content type legend filter - matches AdminCalendar behavior (single select, null = show all)
+  const [selectedLegendType, setSelectedLegendType] = useState<string | null>(null);
+  const selectedContentTypes = useMemo(() => (
+    selectedLegendType ? [selectedLegendType] : ['academic', 'institutional', 'event', 'announcement', 'news']
+  ), [selectedLegendType]);
+  const selectedContentTypesSet = useMemo(
+    () => new Set(selectedContentTypes.map(type => type.toLowerCase())),
+    [selectedContentTypes]
+  );
   
   // Event modal state
   const [showEventDrawer, setShowEventDrawer] = useState(false);
@@ -160,21 +197,7 @@ const AdminDashboard = () => {
     });
   }, [allUpdates]);
 
-  // Toggle content type filter
-  const toggleContentType = useCallback((type: string) => {
-    setSelectedContentTypes(prev => {
-      if (prev.includes(type)) {
-        // Don't allow deselecting all - at least one must be selected
-        if (prev.length === 1) return prev;
-        return prev.filter(t => t !== type);
-      } else {
-        return [...prev, type];
-      }
-    });
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, []);
-
-  // Filtered updates based on selected time filter and content type
+  // Filtered updates based on selected time filter, content type, and search query
   const displayedUpdates = useMemo(() => {
     let result;
     if (timeFilter === 'upcoming') {
@@ -188,20 +211,34 @@ const AdminDashboard = () => {
     // Apply content type filter
     result = result.filter(update => {
       const updateType = String(update.tag || 'Announcement').toLowerCase();
-      return selectedContentTypes.includes(updateType);
+      return selectedContentTypesSet.has(updateType);
     });
     
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter(update => {
+        const title = (update.title || '').toLowerCase();
+        const description = (update.description || '').toLowerCase();
+        const tag = (update.tag || '').toLowerCase();
+        return title.includes(query) || description.includes(query) || tag.includes(query);
+      });
+    }
+    
     return result;
-  }, [timeFilter, selectedContentTypes, upcomingUpdates, recentUpdates, allUpdates]);
+  }, [timeFilter, selectedContentTypesSet, searchQuery, upcomingUpdates, recentUpdates, allUpdates]);
 
-  // Current month calendar events (separate from posts/announcements)
-  // Filtered by selectedContentTypes
+  // Current month events - combines calendar events and posts/updates
+  // Filtered by selectedContentTypes and search query
   const currentMonthEvents = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
     
-    return calendarEvents
+    const events: any[] = [];
+    
+    // Add calendar events for current month
+    calendarEvents
       .filter(event => {
         const eventDate = event.isoDate || event.date;
         if (!eventDate) return false;
@@ -213,25 +250,72 @@ const AdminDashboard = () => {
         
         // Apply content type filter
         const eventType = String(event.category || 'Event').toLowerCase();
-        return selectedContentTypes.includes(eventType);
+        return selectedContentTypesSet.has(eventType);
       })
-      .map(event => ({
-        id: event._id || `calendar-${event.isoDate}-${event.title}`,
-        title: event.title,
-        date: new Date(event.isoDate || event.date).toLocaleDateString(),
-        tag: event.category || 'Event',
-        description: event.description || '',
-        image: undefined,
-        images: undefined,
-        pinned: false,
-        isoDate: event.isoDate || event.date,
-      }))
-      .sort((a, b) => {
-        const dateA = new Date(a.isoDate || a.date).getTime();
-        const dateB = new Date(b.isoDate || b.date).getTime();
-        return dateA - dateB; // Sort ascending (earliest first)
+      .forEach(event => {
+        events.push({
+          id: event._id || `calendar-${event.isoDate}-${event.title}`,
+          title: event.title,
+          date: new Date(event.isoDate || event.date).toLocaleDateString(),
+          tag: event.category || 'Event',
+          description: event.description || '',
+          image: undefined,
+          images: undefined,
+          pinned: false,
+          isoDate: event.isoDate || event.date,
+          source: 'calendar', // Mark as calendar event
+          _id: event._id,
+        });
       });
-  }, [calendarEvents, selectedContentTypes]);
+    
+    // Add posts/updates for current month
+    allUpdates
+      .filter(update => {
+        if (!update.isoDate) return false;
+        const updateDate = new Date(update.isoDate);
+        const isCurrentMonth = updateDate.getFullYear() === currentYear &&
+                              updateDate.getMonth() === currentMonth;
+        
+        if (!isCurrentMonth) return false;
+        
+        // Apply content type filter
+        const updateType = String(update.tag || 'Announcement').toLowerCase();
+        return selectedContentTypesSet.has(updateType);
+      })
+      .forEach(update => {
+        events.push({
+          id: update.id,
+          title: update.title,
+          date: new Date(update.isoDate || update.date).toLocaleDateString(),
+          tag: update.tag || 'Announcement',
+          description: update.description || '',
+          image: update.image,
+          images: update.images,
+          pinned: update.pinned || false,
+          isoDate: update.isoDate || update.date,
+          source: 'post', // Mark as post/update
+        });
+      });
+    
+    // Apply search filter if search query exists
+    let filteredEvents = events;
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filteredEvents = events.filter(event => {
+        const title = (event.title || '').toLowerCase();
+        const description = (event.description || '').toLowerCase();
+        const tag = (event.tag || '').toLowerCase();
+        return title.includes(query) || description.includes(query) || tag.includes(query);
+      });
+    }
+    
+    // Sort by date (earliest first)
+    return filteredEvents.sort((a, b) => {
+      const dateA = new Date(a.isoDate || a.date).getTime();
+      const dateB = new Date(b.isoDate || b.date).getTime();
+      return dateA - dateB;
+    });
+  }, [calendarEvents, allUpdates, selectedContentTypesSet, searchQuery]);
 
   // Load current user and subscribe to auth changes
   useEffect(() => {
@@ -674,158 +758,138 @@ const AdminDashboard = () => {
           scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled"
         >
-        {/* Content Type Filter Dropdown - Compact (affects all sections) */}
+        {/* Search Bar */}
         <View style={styles.sectionContainer}>
-          <View ref={filterButtonRef} style={styles.filterDropdownWrapper}>
-            <TouchableOpacity
-              style={[styles.filterDropdownButton, {
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.border,
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.searchBarContainer, {
+              backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+            }]}
+          >
+            <Ionicons name="search-outline" size={20} color={theme.colors.textMuted} style={styles.searchIcon} />
+            <TextInput
+              style={[styles.searchInput, {
+                color: theme.colors.text,
+                fontSize: theme.fontSize.scaleSize(14),
               }]}
-              onPress={() => {
-                if (filterButtonRef.current) {
-                  filterButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
-                    if (typeof pageX === 'number' && typeof pageY === 'number' && 
-                        typeof width === 'number' && typeof height === 'number' &&
-                        !isNaN(pageX) && !isNaN(pageY) && !isNaN(width) && !isNaN(height)) {
-                      setFilterButtonLayout({ x: pageX, y: pageY, width, height });
-                    } else {
-                      setFilterButtonLayout({ x: 16, y: 100, width: 200, height: 44 });
-                    }
-                    setShowFilterDropdown(!showFilterDropdown);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  });
-                } else {
-                  setShowFilterDropdown(!showFilterDropdown);
+              placeholder="Search updates..."
+              placeholderTextColor={theme.colors.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={() => {
+                  setSearchQuery('');
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }
-              }}
-              activeOpacity={0.7}
-            >
-              <View style={styles.filterDropdownButtonContent}>
-                <View style={styles.filterDropdownSelectedChips}>
-                  {selectedContentTypes.length === 5 ? (
-                    <Text style={[styles.filterDropdownButtonText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(12) }]}>All Types</Text>
-                  ) : (
-                    <View style={styles.filterChipsRow}>
-                      {selectedContentTypes.slice(0, 2).map((type) => {
-                        const typeName = type.charAt(0).toUpperCase() + type.slice(1);
-                        const getTypeColor = (typeStr: string) => {
-                          switch (typeStr.toLowerCase()) {
-                            case 'academic': return '#10B981';
-                            case 'institutional': return theme.colors.accent;
-                            case 'event': return '#F59E0B';
-                            case 'announcement': return '#3B82F6';
-                            case 'news': return '#8B5CF6';
-                            default: return theme.colors.accent;
-                          }
-                        };
-                        const typeColor = getTypeColor(type);
-                        return (
-                          <View key={type} style={[styles.filterChip, { backgroundColor: typeColor + '20', borderColor: typeColor }]}>
-                            <Text style={[styles.filterChipText, { color: typeColor, fontSize: theme.fontSize.scaleSize(9) }]}>{typeName}</Text>
-                          </View>
-                        );
-                      })}
-                      {selectedContentTypes.length > 2 && (
-                        <Text style={[styles.filterDropdownButtonText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }]}>
-                          +{selectedContentTypes.length - 2} more
-                        </Text>
-                      )}
-                    </View>
-                  )}
-                </View>
-                <Ionicons 
-                  name={showFilterDropdown ? 'chevron-up' : 'chevron-down'} 
-                  size={16} 
-                  color={theme.colors.textMuted} 
-                />
-              </View>
-            </TouchableOpacity>
-            
-            {/* Dropdown Options - Modal Overlay */}
-            <Modal
-              visible={showFilterDropdown}
-              transparent
-              animationType="fade"
-              onRequestClose={() => setShowFilterDropdown(false)}
-            >
-              <Pressable 
-                style={styles.modalOverlay}
-                onPress={() => setShowFilterDropdown(false)}
+                }}
+                style={styles.searchClearButton}
+                activeOpacity={0.7}
               >
-                <View 
+                <Ionicons name="close-circle" size={20} color={theme.colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </BlurView>
+        </View>
+
+        {/* Events This Month Section */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionDivider}>
+            <Text style={[styles.sectionDividerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>EVENTS THIS MONTH</Text>
+          </View>
+
+          {/* Event Type Legend (merged into Events section) */}
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.legendContainer, {
+              backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+            }]}
+          >
+            <View style={styles.legendHeaderRow}>
+              <Text style={[styles.eventCountText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>
+                {currentMonthEvents.length} {currentMonthEvents.length === 1 ? 'event' : 'events'} this month
+              </Text>
+            </View>
+            <View style={styles.legendItems}>
+              {legendRows.map((rowItems, rowIndex) => (
+                <View
+                  key={`legend-row-${rowIndex}`}
                   style={[
-                    styles.filterDropdownOptionsModal,
-                    {
-                      top: (isNaN(filterButtonLayout.y) || isNaN(filterButtonLayout.height)) ? 100 : filterButtonLayout.y + filterButtonLayout.height + 8,
-                      left: isNaN(filterButtonLayout.x) ? 16 : Math.max(0, filterButtonLayout.x),
-                      width: isNaN(filterButtonLayout.width) || filterButtonLayout.width <= 0 ? '90%' : Math.max(200, filterButtonLayout.width),
-                      backgroundColor: theme.colors.surface,
-                      borderColor: theme.colors.border,
-                    }
+                    styles.legendRow,
+                    rowIndex === 0 ? styles.legendRowThree : styles.legendRowTwo,
                   ]}
-                  onStartShouldSetResponder={() => true}
                 >
-                  {['Academic', 'Institutional', 'Event', 'Announcement', 'News'].map((type) => {
-                    const typeLower = type.toLowerCase();
-                    const isSelected = selectedContentTypes.includes(typeLower);
-                    const getTypeColor = (typeStr: string) => {
-                      switch (typeStr.toLowerCase()) {
-                        case 'academic': return '#10B981';
-                        case 'institutional': return theme.colors.accent;
-                        case 'event': return '#F59E0B';
-                        case 'announcement': return '#3B82F6';
-                        case 'news': return '#8B5CF6';
-                        default: return theme.colors.accent;
-                      }
-                    };
-                    const typeColor = getTypeColor(type);
-                    
+                  {rowItems.map((item, colIndex) => {
+                    if (!item) {
+                      return (
+                        <View
+                          key={`legend-placeholder-${rowIndex}-${colIndex}`}
+                          style={[
+                            styles.legendItem,
+                            styles.legendItemThird,
+                            styles.legendItemPlaceholder,
+                          ]}
+                        />
+                      );
+                    }
+                    const isSelected = selectedLegendType === item.key;
                     return (
                       <TouchableOpacity
-                        key={type}
+                        key={`${item.type}-${rowIndex}-${colIndex}`}
                         style={[
-                          styles.filterDropdownOption,
-                          { borderBottomColor: theme.colors.border },
-                          isSelected && { backgroundColor: theme.colors.surfaceAlt }
+                          styles.legendItem,
+                          styles.legendItemThird,
+                          isSelected && styles.legendItemSelected,
+                          isSelected && { 
+                            backgroundColor: item.color + '20',
+                            borderColor: item.color
+                          }
                         ]}
-                        onPress={() => toggleContentType(typeLower)}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setSelectedLegendType(isSelected ? null : item.key);
+                        }}
                         activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${item.type} event type - ${isSelected ? 'selected, tap to show all' : 'tap to filter'}`}
                       >
-                        <View style={styles.filterDropdownOptionContent}>
-                          <View style={[styles.filterDropdownCheckbox, {
-                            backgroundColor: isSelected ? typeColor : 'transparent',
-                            borderColor: isSelected ? typeColor : theme.colors.border,
-                          }]}>
-                            <View style={styles.checkboxInner}>
-                              {isSelected && (
-                                <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                              )}
-                            </View>
-                          </View>
-                          <Text style={[styles.filterDropdownOptionText, { 
-                            color: theme.colors.text, 
-                            fontSize: theme.fontSize.scaleSize(12) 
-                          }]}>
-                            {type}
-                          </Text>
-                        </View>
+                        <View style={[
+                          styles.legendColorDot,
+                          { backgroundColor: item.color },
+                          isSelected && styles.legendColorDotSelected
+                        ]} />
+                        <Text
+                          style={[
+                            styles.legendItemText,
+                            { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(11) },
+                            isSelected && { fontWeight: '700', color: item.color }
+                          ]}
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                        >
+                          {item.type}
+                        </Text>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
-              </Pressable>
-            </Modal>
-          </View>
-        </View>
-
-        {/* Events This Month Section */}
-        {currentMonthEvents.length > 0 && (
-          <View style={styles.sectionContainer}>
-            <View style={styles.sectionDivider}>
-              <Text style={[styles.sectionDividerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>EVENTS THIS MONTH</Text>
+              ))}
             </View>
+          </BlurView>
+          {isLoadingCalendarEvents ? (
+            <View style={[styles.eventsLoadingContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <ActivityIndicator size="small" color={theme.colors.accent} />
+              <Text style={[styles.eventsLoadingText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }]}>
+                Loading events...
+              </Text>
+            </View>
+          ) : currentMonthEvents.length > 0 ? (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -845,11 +909,28 @@ const AdminDashboard = () => {
                   accentColor = colors.dot || '#93C5FD';
                 }
                 
-                // Find the full CalendarEvent object
-                const fullEvent = calendarEvents.find(e => 
-                  e._id === event.id || 
-                  `calendar-${e.isoDate}-${e.title}` === event.id
-                ) || null;
+                // Find the full event object (calendar event or post)
+                let fullEvent: any = null;
+                if (event.source === 'calendar') {
+                  // Calendar event
+                  fullEvent = calendarEvents.find(e => 
+                    e._id === event.id || 
+                    `calendar-${e.isoDate}-${e.title}` === event.id
+                  ) || null;
+                } else if (event.source === 'post') {
+                  // Post/Update - create event data format
+                  fullEvent = {
+                    id: event.id,
+                    title: event.title,
+                    description: event.description,
+                    category: event.tag,
+                    type: event.tag,
+                    date: event.isoDate || event.date,
+                    isoDate: event.isoDate || event.date,
+                    image: event.image,
+                    images: event.images,
+                  };
+                }
                 
                 // Create a subtle background color based on accent color
                 const cardBackgroundColor = isDarkMode 
@@ -868,10 +949,19 @@ const AdminDashboard = () => {
                     delayPressIn={0}
                     onPress={() => {
                       if (fullEvent) {
-                        const eventDate = fullEvent.isoDate || fullEvent.date 
-                          ? new Date(fullEvent.isoDate || fullEvent.date)
-                          : new Date();
-                        openEventDrawer(fullEvent, eventDate);
+                        if (event.source === 'calendar') {
+                          // Calendar event
+                          const eventDate = fullEvent.isoDate || fullEvent.date 
+                            ? new Date(fullEvent.isoDate || fullEvent.date)
+                            : new Date();
+                          openEventDrawer(fullEvent, eventDate);
+                        } else if (event.source === 'post') {
+                          // Post/Update - use ViewEventModal format
+                          setSelectedEvent(fullEvent);
+                          setSelectedDateEvents([fullEvent]);
+                          setShowEventDrawer(true);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }
                       }
                     }}
                   >
@@ -879,7 +969,11 @@ const AdminDashboard = () => {
                     <View style={styles.calendarEventContent} collapsable={false}>
                       <View style={styles.calendarEventHeader}>
                         <View style={[styles.calendarEventIconWrapper, { backgroundColor: accentColor + '20' }]}>
-                          <Ionicons name="calendar" size={16} color={accentColor} />
+                          <Ionicons 
+                            name={event.source === 'post' ? 'document-text' : 'calendar'} 
+                            size={16} 
+                            color={accentColor} 
+                          />
                         </View>
                         <Text style={[styles.calendarEventTag, { color: accentColor, fontSize: theme.fontSize.scaleSize(9) }]}>{event.tag}</Text>
                       </View>
@@ -902,8 +996,15 @@ const AdminDashboard = () => {
                 );
               })}
             </ScrollView>
-          </View>
-        )}
+          ) : (
+            <View style={[styles.emptyEventsContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <Ionicons name="calendar-outline" size={24} color={theme.colors.textMuted} />
+              <Text style={[styles.emptyEventsText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }]}>
+                No events match your filters this month
+              </Text>
+            </View>
+          )}
+        </View>
 
         {/* Updates Section */}
         <View style={styles.sectionContainer}>
@@ -1702,97 +1803,29 @@ const styles = StyleSheet.create({
   filterPillTextActive: {
     color: '#FFF',
   },
-  filterDropdownWrapper: {
-    position: 'relative',
-    zIndex: 2000,
-    marginBottom: 8,
-    elevation: 20,
-  },
-  filterDropdownButton: {
+  searchBarContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 16,
     borderWidth: 1,
-    minHeight: 44,
-  },
-  filterDropdownButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flex: 1,
-    gap: 8,
-  },
-  filterDropdownSelectedChips: {
-    flex: 1,
-  },
-  filterChipsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  filterChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  filterChipText: {
-    fontSize: 9,
-    fontWeight: '600',
-  },
-  filterDropdownButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
-  },
-  filterDropdownOptionsModal: {
-    position: 'absolute',
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 20,
-  },
-  filterDropdownOption: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  filterDropdownOptionContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  filterDropdownCheckbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 20,
-    minHeight: 20,
-  },
-  checkboxInner: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    marginBottom: 12,
+    minHeight: 52,
     width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  filterDropdownOptionText: {
-    fontSize: 12,
-    fontWeight: '600',
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
     flex: 1,
+    padding: 0,
+    fontSize: 14,
+  },
+  searchClearButton: {
+    padding: 4,
+    marginLeft: 8,
   },
   calendarEventCard: {
     flexDirection: 'row',
@@ -1850,6 +1883,110 @@ const styles = StyleSheet.create({
     fontSize: 10,
     lineHeight: 14,
     opacity: 0.8,
+  },
+  calendarEventImage: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
+    marginBottom: 8,
+    resizeMode: 'cover',
+  },
+  emptyEventsContainer: {
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyEventsText: {
+    fontWeight: '600',
+  },
+  eventsLoadingContainer: {
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  eventsLoadingText: {
+    fontWeight: '600',
+  },
+  legendContainer: {
+    gap: 8,
+    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  legendHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  legendItems: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 8,
+  },
+  legendRowThree: {
+    justifyContent: 'space-between',
+  },
+  legendRowTwo: {
+    justifyContent: 'space-between',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    minWidth: 0,
+  },
+  legendItemThird: {
+    flex: 1,
+  },
+  legendItemPlaceholder: {
+    opacity: 0,
+  },
+  legendItemSelected: {
+    borderWidth: 1,
+  },
+  legendColorDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  legendColorDotSelected: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  legendItemText: {
+    fontSize: 12,
+    fontWeight: '600',
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  eventCountText: {
+    fontSize: 11,
+    fontWeight: '500',
+    fontStyle: 'italic',
+    opacity: 0.7,
   },
 });
 

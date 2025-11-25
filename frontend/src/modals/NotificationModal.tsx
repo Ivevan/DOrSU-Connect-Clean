@@ -132,47 +132,6 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
     );
   }, [notificationItems, saveReadNotifications]);
 
-  // Animate sheet when visible changes
-  useEffect(() => {
-    if (visible) {
-      Animated.spring(sheetY, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 11,
-      }).start();
-      loadNotifications();
-      checkPermissions();
-    } else {
-      Animated.timing(sheetY, {
-        toValue: 600,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [visible, sheetY, loadNotifications]);
-
-  const handleClose = useCallback(() => {
-    Animated.timing(sheetY, {
-      toValue: 600,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      onClose();
-    });
-  }, [sheetY, onClose]);
-
-  const checkPermissions = async () => {
-    try {
-      const { status } = await Notifications.getPermissionsAsync();
-      setHasPermission(status === 'granted');
-      const enabled = await NotificationService.areNotificationsEnabled();
-      setNotificationsEnabled(enabled);
-    } catch (error) {
-      console.error('Error checking permissions:', error);
-    }
-  };
-
   const loadNotifications = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -291,6 +250,47 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
       setIsLoading(false);
     }
   }, [readNotificationIds]);
+
+  // Animate sheet when visible changes
+  useEffect(() => {
+    if (visible) {
+      Animated.spring(sheetY, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 11,
+      }).start();
+      loadNotifications();
+      checkPermissions();
+    } else {
+      Animated.timing(sheetY, {
+        toValue: 600,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [visible, sheetY, loadNotifications]);
+
+  const handleClose = useCallback(() => {
+    Animated.timing(sheetY, {
+      toValue: 600,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      onClose();
+    });
+  }, [sheetY, onClose]);
+
+  const checkPermissions = async () => {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      setHasPermission(status === 'granted');
+      const enabled = await NotificationService.areNotificationsEnabled();
+      setNotificationsEnabled(enabled);
+    } catch (error) {
+      console.error('Error checking permissions:', error);
+    }
+  };
 
   const handleRefresh = async () => {
     setIsRefreshing(true);

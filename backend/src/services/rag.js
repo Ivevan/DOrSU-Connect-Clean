@@ -948,7 +948,7 @@ export class OptimizedRAGService {
           
           Logger.logDataFetch('ragExamQueryNoResults', query, {
             method: 'exam_filter_removed',
-            examType,
+            examTypes: examTypesStr,
             remainingEvents: relevantData.filter(item => item.section === 'schedule_events').length,
             totalRelevantData: relevantData.length
           });

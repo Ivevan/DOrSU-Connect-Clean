@@ -428,6 +428,7 @@ export class QueryAnalyzer {
     let detectedTopics = [];
     let detectedIntents = [];
     let ragMultiplier = 1.0;
+    const wordCount = lowerQuery.split(/\s+/).filter(word => word.length > 0).length;
     
     // Detect topics
     Object.entries(topicCategories).forEach(([category, keywords]) => {
@@ -463,6 +464,20 @@ export class QueryAnalyzer {
         }
       }
     });
+
+    // Additional safeguard: treat pronoun matches as follow-ups only when query truly
+    // depends on previous context (i.e., short question without explicit subject).
+    if (isFollowUpQuery) {
+      const explicitSubjectPattern = /\b(programs?|courses?|faculties?|deans?|students?|campus|campuses|university|dorsu|office|offices|department|departments|schedule|schedules|calendar|event|events|exam|exams|requirements?|admission|tuition|history|mission|vision|values?|outcomes?|organization|usc|sidlakan|catalyst|leadership|president|vice\s+president)\b/i;
+      const hasExplicitSubject = explicitSubjectPattern.test(lowerQuery);
+      const isShortPronounQuery = wordCount <= 8;
+      if (hasExplicitSubject && !isShortPronounQuery) {
+        // Remove follow-up intent to avoid unnecessary pronoun resolution
+        detectedIntents = detectedIntents.filter(intent => intent !== 'followUp');
+        isFollowUpQuery = false;
+        ragMultiplier = Math.max(1.0, ragMultiplier - 0.5);
+      }
+    }
     
     // Check for plural nouns (indicates multiple items needed)
     const pluralKeywords = [

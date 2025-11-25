@@ -1866,8 +1866,9 @@ export class VectorSearchService {
           const scoredResults = mongoResults.map(chunk => {
             let relevanceScore = 0;
             const content = (chunk.content || chunk.text || '').toLowerCase();
-            const metadataField = (chunk.metadata?.field || '').toLowerCase();
-            const metadataFaculty = (chunk.metadata?.faculty || '').toLowerCase();
+          const metadataField = (chunk.metadata?.field || '').toLowerCase();
+          const metadataFaculty = (chunk.metadata?.faculty || '').toLowerCase();
+          const section = (chunk.section || '').toLowerCase();
             
             // Prioritize deans field (leadership.deans or organizationalStructure/DOrSUOfficials2025.deans)
             if (metadataField.includes('leadership.deans') || metadataField.includes('organizationalstructure/dorsuofficials2025.deans') || (metadataField.includes('deans') && section.includes('organizationalstructure'))) {
@@ -1880,7 +1881,6 @@ export class VectorSearchService {
             }
             
             // Prioritize leadership section or organizationalStructure section with deans
-            const section = (chunk.section || '').toLowerCase();
             if (section === 'leadership' || (section.includes('organizationalstructure') && metadataField.includes('deans'))) {
               relevanceScore += 250;
             }

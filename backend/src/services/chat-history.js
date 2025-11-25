@@ -32,8 +32,9 @@ export class ChatHistoryService {
       return await this.handleDeleteAllChatHistory(req, res);
     }
 
-    // Get top frequently asked questions for a user
-    if (method === 'GET' && url === '/api/top-queries') {
+    // Get top frequently asked questions for a user (support legacy typo route)
+    const topQueriesPaths = ['/api/top-queries', '/api/top-qqueries'];
+    if (method === 'GET' && topQueriesPaths.includes(url)) {
       return await this.handleGetTopQueries(req, res);
     }
 

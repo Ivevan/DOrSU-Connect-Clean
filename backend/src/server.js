@@ -49,8 +49,7 @@ const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
 **Vision:** A university of excellence, innovation and inclusion
 **President:** Dr. Roy G. Ponce`;
 
-// ===== SERVICE INITIALIZATION =====
-(async () => {
+async function initializeServices() {
   try {
     mongoService = getMongoDBService();
     await mongoService.connect();
@@ -85,22 +84,27 @@ const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
     newsScraperService = getNewsScraperService(mongoService);
     newsScraperService.startAutoScraping();
     Logger.success('News scraper service started');
+    
+    // Initialize RAG service now that MongoDB is connected
+    if (!ragService) {
+      ragService = new OptimizedRAGService(mongoService);
+      Logger.success('RAG service initialized');
+      setTimeout(() => ragService?.syncWithMongoDB(), 2000);
+    }
   } catch (error) {
     Logger.error('MongoDB init failed:', error.message);
   }
-})();
+}
 
-// ===== DATA & RAG INITIALIZATION =====
+// Kick off initialization (async but awaited internally)
+initializeServices();
+
+// ===== DATA INITIALIZATION =====
 try {
   dorsuData = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
   dorsuContext = fallbackContext;
-  ragService = new OptimizedRAGService(mongoService);
-  
-  setTimeout(() => ragService?.syncWithMongoDB(), 2000);
-  
-  Logger.success('RAG service initialized');
 } catch (e) {
-  Logger.error('RAG init failed:', e.message);
+  Logger.error('Data init failed:', e.message);
 }
 
 // ===== UTILITY FUNCTIONS =====

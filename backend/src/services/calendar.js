@@ -8,6 +8,18 @@ import { parseMultipartFormData } from '../utils/multipart-parser.js';
 import { authMiddleware } from './auth.js';
 import { getFileProcessorService } from './file-processor.js';
 
+const DEFAULT_TIMEZONE = process.env.CALENDAR_TIMEZONE || 'Asia/Manila';
+
+function formatDateInTimezone(date, options = {}) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    return null;
+  }
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: DEFAULT_TIMEZONE,
+    ...options,
+  }).format(date);
+}
+
 export class CalendarService {
   constructor(mongoService, authService) {
     this.mongoService = mongoService;
@@ -342,11 +354,8 @@ export class CalendarService {
    * Format date to readable string
    */
   formatDate(date) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const month = months[date.getMonth()];
-    const day = date.getDate();
-    const year = date.getFullYear();
-    return `${month} ${day}, ${year}`;
+    const formatted = formatDateInTimezone(date, { month: 'short', day: 'numeric', year: 'numeric' });
+    return formatted || '';
   }
 
   /**

@@ -508,7 +508,7 @@ export class QueryAnalyzer {
     }
     
     // STEP 2: Detect vague queries that need clarification
-    const vagueQueryAnalysis = this.detectVagueQuery(query, detectedTopics, detectedIntents, isFollowUpQuery);
+    const vagueQueryAnalysis = this.detectVagueQuery(query, detectedTopics, detectedIntents, isFollowUpQuery, intentClassification);
     
     // IMPROVED: Boost multiplier for structured entity queries
     if (extractedEntities.officeAcronyms.length > 0) {
@@ -549,13 +549,23 @@ export class QueryAnalyzer {
    * @param {Array} detectedTopics - Topics detected in query
    * @param {Array} detectedIntents - Intents detected in query
    * @param {boolean} isFollowUp - Whether this is a follow-up query
+   * @param {Object} intentClassification - Intent classification result (optional)
    * @returns {Object} - { isVague: boolean, reason: string, needsClarification: boolean }
    */
-  static detectVagueQuery(query, detectedTopics, detectedIntents, isFollowUp) {
+  static detectVagueQuery(query, detectedTopics, detectedIntents, isFollowUp, intentClassification = null) {
     const lowerQuery = query.toLowerCase().trim();
     const queryWords = lowerQuery.split(/\s+/).filter(w => w.length > 0);
     const queryLength = query.length;
     const wordCount = queryWords.length;
+    
+    // Skip vague detection for greetings - let the AI respond naturally
+    if (intentClassification && intentClassification.conversationalIntent === 'greeting') {
+      return {
+        isVague: false,
+        reason: null,
+        needsClarification: false
+      };
+    }
     
     // Vague query patterns that need clarification
     const vaguePatterns = {

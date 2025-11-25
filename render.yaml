@@ -16,6 +16,8 @@ services:
         value: llama-3.3-70b-versatile
       - key: MONGODB_URI
         sync: false
+      - key: CALENDAR_TIMEZONE
+        value: Asia/Manila
       - key: PORT
         value: 10000
     healthCheckPath: /health

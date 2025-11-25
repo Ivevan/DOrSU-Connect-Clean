@@ -11,6 +11,18 @@ import { getEmbeddingService } from './embedding.js';
 import { getFileProcessorService } from './file-processor.js';
 import { getGridFSService } from './gridfs.js';
 
+const DEFAULT_TIMEZONE = process.env.CALENDAR_TIMEZONE || 'Asia/Manila';
+
+function formatDateInTimezone(date, options = {}) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    return null;
+  }
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: DEFAULT_TIMEZONE,
+    ...options,
+  }).format(date);
+}
+
 export class ScheduleService {
   constructor(mongoService, authService) {
     this.mongoService = mongoService;
@@ -89,12 +101,14 @@ export class ScheduleService {
       const eventDate = new Date(event.isoDate || event.date);
       if (!isNaN(eventDate.getTime())) {
         const dateFormats = [
-          eventDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-          eventDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
-          eventDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' }),
-          eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        ];
-        text += `Date: ${dateFormats.join(', ')}. `;
+          formatDateInTimezone(eventDate, { year: 'numeric', month: 'long', day: 'numeric' }),
+          formatDateInTimezone(eventDate, { year: 'numeric', month: 'short', day: 'numeric' }),
+          formatDateInTimezone(eventDate, { month: 'long', day: 'numeric' }),
+          formatDateInTimezone(eventDate, { month: 'short', day: 'numeric' })
+        ].filter(Boolean);
+        if (dateFormats.length > 0) {
+          text += `Date: ${dateFormats.join(', ')}. `;
+        }
       }
     }
     
@@ -103,9 +117,11 @@ export class ScheduleService {
       const start = new Date(event.startDate);
       const end = new Date(event.endDate);
       if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
-        const startStr = start.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-        const endStr = end.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-        text += `Date Range: ${startStr} to ${endStr}. `;
+        const startStr = formatDateInTimezone(start, { year: 'numeric', month: 'long', day: 'numeric' });
+        const endStr = formatDateInTimezone(end, { year: 'numeric', month: 'long', day: 'numeric' });
+        if (startStr && endStr) {
+          text += `Date Range: ${startStr} to ${endStr}. `;
+        }
       }
     }
     
@@ -853,11 +869,8 @@ export class ScheduleService {
    * Format date to readable string
    */
   formatDate(date) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const month = months[date.getMonth()];
-    const day = date.getDate();
-    const year = date.getFullYear();
-    return `${month} ${day}, ${year}`;
+    const formatted = formatDateInTimezone(date, { month: 'short', day: 'numeric', year: 'numeric' });
+    return formatted || '';
   }
 
   /**
@@ -1741,11 +1754,10 @@ export class ScheduleService {
         const eventsForLogging = events.map(event => {
           // Format event date
           const eventDate = event.isoDate || event.date;
-          const dateStr = eventDate ? new Date(eventDate).toLocaleDateString('en-US', { 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-          }) : 'Date TBD';
+          const dateStr = eventDate ? formatDateInTimezone(
+            new Date(eventDate),
+            { year: 'numeric', month: 'long', day: 'numeric' }
+          ) || 'Date TBD' : 'Date TBD';
           
           // Create formatted text content similar to RAG format
           let eventText = `${event.title || 'Untitled Event'}. `;
@@ -1765,9 +1777,11 @@ export class ScheduleService {
           
           // Include date range if applicable
           if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-            const start = new Date(event.startDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-            const end = new Date(event.endDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-            eventText += `Date Range: ${start} to ${end}. `;
+            const start = formatDateInTimezone(new Date(event.startDate), { year: 'numeric', month: 'long', day: 'numeric' });
+            const end = formatDateInTimezone(new Date(event.endDate), { year: 'numeric', month: 'long', day: 'numeric' });
+            if (start && end) {
+              eventText += `Date Range: ${start} to ${end}. `;
+            }
           }
           
           return {

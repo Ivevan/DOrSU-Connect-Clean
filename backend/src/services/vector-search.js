@@ -9,6 +9,18 @@ import { TypoCorrector } from '../utils/query-analyzer.js';
 import { getEmbeddingService } from './embedding.js';
 import { getMongoDBService } from './mongodb.js';
 
+const DEFAULT_TIMEZONE = process.env.CALENDAR_TIMEZONE || 'Asia/Manila';
+
+function formatDateInTimezone(date, options = {}) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    return null;
+  }
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: DEFAULT_TIMEZONE,
+    ...options,
+  }).format(date);
+}
+
 /**
  * VectorSearchService - Handles all data retrieval/search operations
  */
@@ -3398,11 +3410,10 @@ export class VectorSearchService {
         results = vectorResults.map(event => {
           // Format event text similar to how rag.js formats schedule events
           const eventDate = event.isoDate || event.date;
-          const dateStr = eventDate ? new Date(eventDate).toLocaleDateString('en-US', { 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-          }) : 'Date TBD';
+          const dateStr = eventDate ? formatDateInTimezone(
+            new Date(eventDate),
+            { year: 'numeric', month: 'long', day: 'numeric' }
+          ) || 'Date TBD' : 'Date TBD';
           
           let eventText = `${event.title || 'Untitled Event'}. `;
           if (event.description) eventText += `${event.description}. `;
@@ -3421,9 +3432,11 @@ export class VectorSearchService {
           
           // Include date range if applicable
           if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-            const start = new Date(event.startDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-            const end = new Date(event.endDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-            eventText += `Date Range: ${start} to ${end}. `;
+            const start = formatDateInTimezone(new Date(event.startDate), { year: 'numeric', month: 'long', day: 'numeric' });
+            const end = formatDateInTimezone(new Date(event.endDate), { year: 'numeric', month: 'long', day: 'numeric' });
+            if (start && end) {
+              eventText += `Date Range: ${start} to ${end}. `;
+            }
           }
           
           // Boost score for exam type matches - support multiple exam types with OR logic
@@ -3687,11 +3700,10 @@ export class VectorSearchService {
           const eventId = `schedule-${event._id}`;
           if (!results.find(r => r.id === eventId)) {
             const eventDate = event.isoDate || event.date;
-            const dateStr = eventDate ? new Date(eventDate).toLocaleDateString('en-US', { 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            }) : 'Date TBD';
+            const dateStr = eventDate ? formatDateInTimezone(
+              new Date(eventDate),
+              { year: 'numeric', month: 'long', day: 'numeric' }
+            ) || 'Date TBD' : 'Date TBD';
             
             let eventText = `${event.title || 'Untitled Event'}. `;
             if (event.description) eventText += `${event.description}. `;

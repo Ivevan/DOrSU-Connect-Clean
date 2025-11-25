@@ -9,6 +9,18 @@ import { VectorSearchService } from './vector-search.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const DEFAULT_TIMEZONE = process.env.CALENDAR_TIMEZONE || 'Asia/Manila';
+
+function formatDateInTimezone(date, options = {}) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    return null;
+  }
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: DEFAULT_TIMEZONE,
+    ...options,
+  }).format(date);
+}
+
 export class OptimizedRAGService {
   constructor(mongoService = null) {
     this.faissOptimizedData = null;
@@ -195,14 +207,16 @@ export class OptimizedRAGService {
           const date = chunk.metadata.date || chunk.metadata.startDate;
           try {
             const dateObj = new Date(date);
-            // Add multiple date formats to improve matching
+            // Add multiple date formats to improve matching (using timezone-aware formatting)
             const dateFormats = [
-              dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-              dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
-              dateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric' }),
-              dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-            ];
-            text = `${text} ${dateFormats.join(' ')}`;
+              formatDateInTimezone(dateObj, { year: 'numeric', month: 'long', day: 'numeric' }),
+              formatDateInTimezone(dateObj, { year: 'numeric', month: 'short', day: 'numeric' }),
+              formatDateInTimezone(dateObj, { month: 'long', day: 'numeric' }),
+              formatDateInTimezone(dateObj, { month: 'short', day: 'numeric' })
+            ].filter(Boolean);
+            if (dateFormats.length > 0) {
+              text = `${text} ${dateFormats.join(' ')}`;
+            }
           } catch (e) {
             // Date parsing failed, continue with original text
           }
@@ -793,11 +807,10 @@ export class OptimizedRAGService {
           // Convert schedule events to RAG format chunks
           scheduleEventsData = filteredEvents.map((event, idx) => {
             const eventDate = event.isoDate || event.date;
-            const dateStr = eventDate ? new Date(eventDate).toLocaleDateString('en-US', { 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            }) : 'Date TBD';
+            const dateStr = eventDate ? formatDateInTimezone(
+              new Date(eventDate),
+              { year: 'numeric', month: 'long', day: 'numeric' }
+            ) || 'Date TBD' : 'Date TBD';
             
             // Create searchable text from event
             let eventText = `${event.title || 'Untitled Event'}. `;
@@ -814,9 +827,11 @@ export class OptimizedRAGService {
               eventText += `Semester: ${semesterText}. `;
             }
             if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-              const start = new Date(event.startDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-              const end = new Date(event.endDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-              eventText += `Date Range: ${start} to ${end}. `;
+              const start = formatDateInTimezone(new Date(event.startDate), { year: 'numeric', month: 'long', day: 'numeric' });
+              const end = formatDateInTimezone(new Date(event.endDate), { year: 'numeric', month: 'long', day: 'numeric' });
+              if (start && end) {
+                eventText += `Date Range: ${start} to ${end}. `;
+              }
             }
             
             // Extract keywords from event
@@ -1005,9 +1020,9 @@ export class OptimizedRAGService {
       const formatDateConcise = (date) => {
         if (!date) return 'Date TBD';
         const d = new Date(date);
-        const month = d.toLocaleDateString('en-US', { month: 'short' });
-        const day = d.getDate();
-        return `${month} ${day}`;
+        const month = formatDateInTimezone(d, { month: 'short' });
+        const day = formatDateInTimezone(d, { day: 'numeric' });
+        return month && day ? `${month} ${day}` : 'Date TBD';
       };
       
       // Group events by title to avoid redundancy

@@ -227,7 +227,7 @@ class NotificationService {
   }
 
   /**
-   * Schedule a notification
+   * Schedule a notification (for immediate display, use presentNotificationAsync)
    */
   private async scheduleNotification(
     title: string,
@@ -237,20 +237,27 @@ class NotificationService {
     try {
       const enabled = await this.areNotificationsEnabled();
       if (!enabled) {
+        console.log('Notifications are disabled');
         return null;
       }
 
-      const identifier = await Notifications.scheduleNotificationAsync({
-        content: {
-          title,
-          body,
-          data: data || {},
-          sound: true,
-          priority: Notifications.AndroidNotificationPriority.HIGH,
-        },
-        trigger: null, // Show immediately
+      // Check permissions first
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted') {
+        console.warn('Notification permissions not granted');
+        return null;
+      }
+
+      // Use presentNotificationAsync for immediate notifications
+      const identifier = await Notifications.presentNotificationAsync({
+        title,
+        body,
+        data: data || {},
+        sound: true,
+        priority: Notifications.AndroidNotificationPriority.HIGH,
       });
 
+      console.log('Notification sent:', { title, body, identifier });
       return identifier;
     } catch (error) {
       console.error('Error scheduling notification:', error);
@@ -265,6 +272,7 @@ class NotificationService {
     try {
       const enabled = await this.areNotificationsEnabled();
       if (!enabled) {
+        console.log('Notifications are disabled, skipping new posts check');
         return;
       }
 
@@ -272,8 +280,11 @@ class NotificationService {
       const now = Date.now();
       const notifiedPostIds = await this.getNotifiedPostIds();
 
+      console.log('Checking for new posts...', { lastCheck, now, notifiedCount: notifiedPostIds.size });
+
       // Fetch posts
       const posts = await AdminDataService.getPosts();
+      console.log(`Fetched ${posts.length} posts`);
       
       // Filter for new posts that haven't been notified yet
       const newPosts = posts.filter((post: Post) => {
@@ -282,14 +293,17 @@ class NotificationService {
         // Only notify if:
         // 1. Post is created after last check AND
         // 2. Post ID hasn't been notified before
-        return postDate > lastCheck && !notifiedPostIds.has(post.id);
+        const isNew = postDate > lastCheck && !notifiedPostIds.has(post.id);
+        return isNew;
       });
+
+      console.log(`Found ${newPosts.length} new posts to notify`);
 
       // Send notifications for new posts
       for (const post of newPosts) {
         if (!post.id) continue;
         
-        await this.scheduleNotification(
+        const notificationId = await this.scheduleNotification(
           '📢 New Post Added',
           post.title || 'A new post has been added',
           {
@@ -298,6 +312,12 @@ class NotificationService {
             category: post.category,
           }
         );
+        
+        if (notificationId) {
+          console.log('Notification sent for post:', post.id, post.title);
+        } else {
+          console.warn('Failed to send notification for post:', post.id);
+        }
         
         // Mark this post as notified
         await this.addNotifiedPostId(post.id);
@@ -319,6 +339,7 @@ class NotificationService {
     try {
       const enabled = await this.areNotificationsEnabled();
       if (!enabled) {
+        console.log('Notifications are disabled, skipping today\'s events check');
         return;
       }
 
@@ -326,8 +347,11 @@ class NotificationService {
       const now = Date.now();
       const notifiedTodayDate = await this.getNotifiedTodayEventsDate();
 
+      console.log('Checking for today\'s events...', { todayKey, notifiedTodayDate });
+
       // Only notify once per day (if already notified for today's date, skip)
       if (notifiedTodayDate === todayKey) {
+        console.log('Already notified for today, skipping');
         return; // Already notified for today
       }
 
@@ -357,7 +381,8 @@ class NotificationService {
           ? `"${todaysEvents[0].title}"` 
           : `${eventCount} events`;
 
-        await this.scheduleNotification(
+        console.log(`Found ${eventCount} event(s) for today, sending notification...`);
+        const notificationId = await this.scheduleNotification(
           '📅 Today\'s Events',
           `You have ${eventText} scheduled for today`,
           {
@@ -367,8 +392,16 @@ class NotificationService {
           }
         );
         
+        if (notificationId) {
+          console.log('Notification sent for today\'s events');
+        } else {
+          console.warn('Failed to send notification for today\'s events');
+        }
+        
         // Mark today's date as notified
         await this.setNotifiedTodayEventsDate(todayKey);
+      } else {
+        console.log('No events found for today');
       }
 
       // Update last check time
@@ -471,17 +504,23 @@ class NotificationService {
    */
   async checkAllNotifications(): Promise<void> {
     try {
+      console.log('Starting notification check...');
       const hasPermission = await this.requestPermissions();
       if (!hasPermission) {
+        console.warn('Notification permissions not granted, skipping checks');
         return;
       }
 
+      console.log('Notification permissions granted, running checks...');
+      
       // Run all checks in parallel
       await Promise.all([
-        this.checkNewPosts(),
-        this.checkTodaysEvents(),
-        this.checkUpcomingEvents(),
+        this.checkNewPosts().catch(err => console.error('Error in checkNewPosts:', err)),
+        this.checkTodaysEvents().catch(err => console.error('Error in checkTodaysEvents:', err)),
+        this.checkUpcomingEvents().catch(err => console.error('Error in checkUpcomingEvents:', err)),
       ]);
+      
+      console.log('Notification checks completed');
     } catch (error) {
       console.error('Error checking all notifications:', error);
     }

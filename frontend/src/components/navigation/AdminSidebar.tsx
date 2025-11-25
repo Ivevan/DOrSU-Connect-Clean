@@ -252,7 +252,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             }}
           >
             <Ionicons 
-              name={currentScreen === 'AdminCalendar' ? 'copy' : 'copy-outline'} 
+              name={currentScreen === 'AdminCalendar' ? 'calendar' : 'calendar-outline'} 
               size={24} 
               color={currentScreen === 'AdminCalendar' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />

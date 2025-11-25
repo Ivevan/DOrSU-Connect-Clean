@@ -246,7 +246,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
             }}
           >
             <Ionicons 
-              name={currentScreen === 'Calendar' ? 'copy' : 'copy-outline'} 
+              name={currentScreen === 'Calendar' ? 'calendar' : 'calendar-outline'} 
               size={24} 
               color={currentScreen === 'Calendar' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />

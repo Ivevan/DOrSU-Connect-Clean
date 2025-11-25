@@ -70,7 +70,7 @@ const Bar: React.FC<BarProps> = ({
 
           <TouchableOpacity style={styles.tab} onPress={onCalendarPress}>
             <Ionicons 
-              name={activeTab === 'calendar' ? 'copy' : 'copy-outline'} 
+              name={activeTab === 'calendar' ? 'calendar' : 'calendar-outline'} 
               size={28} 
               color={activeTab === 'calendar' ? t.colors.accent : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />

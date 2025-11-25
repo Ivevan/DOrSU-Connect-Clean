@@ -117,7 +117,7 @@ const SplashScreen = () => {
               style={[
                 styles.loadingBar,
                 {
-                  backgroundColor: '#FF9500',
+                  backgroundColor: '#2563EB',
                   width: loadingBarWidth.interpolate({
                     inputRange: [0, 1],
                     outputRange: ['0%', '100%'],

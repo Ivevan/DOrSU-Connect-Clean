@@ -1254,7 +1254,10 @@ const AdminCalendar = () => {
           <TouchableOpacity 
             onPress={() => setIsSidebarOpen(true)} 
             style={styles.menuButton}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             accessibilityLabel="Open sidebar"
+            accessibilityRole="button"
           >
             <View style={styles.customHamburger} pointerEvents="none">
               <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
@@ -1263,14 +1266,22 @@ const AdminCalendar = () => {
             </View>
           </TouchableOpacity>
         </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}>DOrSU Calendar</Text>
+        <Text 
+          style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}
+          pointerEvents="none"
+        >
+          DOrSU Calendar
+        </Text>
         <View style={styles.headerRight}>
           <TouchableOpacity 
             style={styles.profileButton} 
             onPress={() => navigation.navigate('AdminSettings')} 
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             accessibilityLabel="Admin profile - Go to settings"
+            accessibilityRole="button"
           >
-            <View style={[styles.profileIconCircle, { backgroundColor: t.colors.accent }]}>
+            <View style={[styles.profileIconCircle, { backgroundColor: t.colors.accent }]} pointerEvents="none">
               <Text style={[styles.profileInitials, { fontSize: t.fontSize.scaleSize(13) }]}>AD</Text>
             </View>
           </TouchableOpacity>
@@ -1728,16 +1739,21 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     backgroundColor: 'transparent',
     zIndex: 10,
+    position: 'relative',
   },
   headerLeft: {
     width: 44,
+    zIndex: 11,
   },
   menuButton: {
     width: 44,
     height: 44,
+    minWidth: 44,
+    minHeight: 44,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 12,
   },
   customHamburger: {
     width: 24,
@@ -1756,8 +1772,13 @@ const styles = StyleSheet.create({
     width: 24,
   },
   profileButton: {
-    width: 32,
-    height: 32,
+    width: 44,
+    height: 44,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 12,
   },
   profileImage: {
     width: 32,
@@ -1771,6 +1792,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent', // Will be set dynamically via theme
+    pointerEvents: 'none',
   },
   profileInitials: {
     fontSize: 13,
@@ -1789,10 +1811,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     textAlign: 'center',
+    zIndex: 1,
+    pointerEvents: 'none',
   },
   headerRight: {
     width: 44,
     alignItems: 'flex-end',
+    zIndex: 11,
   },
   scrollContent: {
     paddingHorizontal: 20,

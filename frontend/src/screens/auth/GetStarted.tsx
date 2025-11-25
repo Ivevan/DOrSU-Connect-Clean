@@ -5,7 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../config/api.config';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
@@ -21,8 +21,6 @@ type RootStackParamList = {
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'GetStarted'>;
-
-const { width } = Dimensions.get('window');
 
 const GetStarted = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -205,9 +203,7 @@ const GetStarted = () => {
   const KeyboardWrapper = Platform.OS === 'ios' ? KeyboardAvoidingView : View;
   const keyboardProps = Platform.OS === 'ios' ? { behavior: 'padding' as const, keyboardVerticalOffset: 0 } : {};
 
-  const isMobile = width < 768;
-
-  // Render content (shared between mobile and desktop)
+  // Render content
   const renderContent = () => {
     return (
       <>
@@ -308,7 +304,7 @@ const GetStarted = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={styles.mainContainer}>
       <StatusBar
         backgroundColor="transparent"
         barStyle="light-content"
@@ -316,86 +312,37 @@ const GetStarted = () => {
         animated={true}
       />
       
-      {/* Split Screen Layout - Desktop/Tablet, Stacked - Mobile */}
-      {isMobile ? (
-        // Mobile Layout - Full screen form with background
-        <View style={styles.mobileContainer}>
-          <Image 
-            source={require('../../../../assets/DOrSU_STATUE.png')} 
-            style={styles.mobileBackgroundImage}
-            resizeMode="cover"
-          />
-          <LinearGradient
-            colors={['rgba(59, 130, 246, 0.2)', 'rgba(37, 99, 235, 0.5)', 'rgba(29, 78, 216, 0.7)']}
-            style={styles.gradientOverlay}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-          />
-          <View style={[styles.mobileOverlay, { paddingTop: insets.top }]}>
-            <KeyboardWrapper 
-              style={styles.keyboardAvoidingView}
-              {...keyboardProps}
+      {/* Full screen form with background */}
+      <View style={styles.container}>
+        <Image 
+          source={require('../../../../assets/DOrSU_STATUE.png')} 
+          style={styles.backgroundImage}
+          resizeMode="cover"
+        />
+        <LinearGradient
+          colors={['rgba(59, 130, 246, 0.2)', 'rgba(37, 99, 235, 0.5)', 'rgba(29, 78, 216, 0.7)']}
+          style={styles.gradientOverlay}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+        />
+        <View style={[styles.overlay, { paddingTop: insets.top }]}>
+          <KeyboardWrapper 
+            style={styles.keyboardAvoidingView}
+            {...keyboardProps}
+          >
+            <ScrollView 
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={Platform.OS === 'ios'}
             >
-              <ScrollView 
-                contentContainerStyle={styles.scrollContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-                bounces={Platform.OS === 'ios'}
-              >
-                <View style={styles.mobileFormCard}>
-                  {renderContent()}
-                </View>
-              </ScrollView>
-            </KeyboardWrapper>
-          </View>
-        </View>
-      ) : (
-        // Desktop/Tablet Layout - Split Screen
-        <View style={styles.splitContainer}>
-          {/* Left Panel - Background Image with University Name */}
-          <View style={styles.leftPanel}>
-            <Image 
-              source={require('../../../../assets/DOrSU_STATUE.png')} 
-              style={styles.backgroundImage}
-              resizeMode="cover"
-            />
-            <LinearGradient
-              colors={['rgba(59, 130, 246, 0.15)', 'rgba(37, 99, 235, 0.4)', 'rgba(29, 78, 216, 0.6)']}
-              style={styles.gradientOverlay}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-            />
-            <View style={styles.overlay}>
-              <View style={styles.universityTextContainer}>
-                <Text style={styles.universityText}>DAVAO ORIENTAL STATE</Text>
-                <Text style={styles.universityText}>UNIVERSITY</Text>
+              <View style={styles.formCard}>
+                {renderContent()}
               </View>
-              <View style={styles.portalBanner}>
-                <Text style={styles.portalText}>-STUDENT PORTAL-</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Right Panel - Content */}
-          <View style={styles.rightPanel}>
-            <KeyboardWrapper 
-              style={styles.keyboardAvoidingView}
-              {...keyboardProps}
-            >
-              <ScrollView 
-                contentContainerStyle={styles.scrollContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-                bounces={Platform.OS === 'ios'}
-              >
-                <View style={styles.formCard}>
-                  {renderContent()}
-                </View>
-              </ScrollView>
-            </KeyboardWrapper>
-          </View>
+            </ScrollView>
+          </KeyboardWrapper>
         </View>
-      )}
+      </View>
 
       {/* Error Modal */}
       <Modal
@@ -437,23 +384,13 @@ const GetStarted = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
+  mainContainer: {
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-  splitContainer: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  // Left Panel Styles
-  leftPanel: {
+  container: {
     flex: 1,
     position: 'relative',
-    ...Platform.select({
-      web: {
-        minWidth: width * 0.5,
-      },
-    }),
   },
   backgroundImage: {
     width: '100%',
@@ -470,48 +407,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 40,
     zIndex: 2,
-  },
-  universityTextContainer: {
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  universityText: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    letterSpacing: 2,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
-  portalBanner: {
-    backgroundColor: '#FFD700',
-    paddingHorizontal: 30,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  portalText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
-    letterSpacing: 1,
-  },
-  // Right Panel Styles
-  rightPanel: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-    ...Platform.select({
-      web: {
-        minWidth: width * 0.5,
-      },
-    }),
   },
   keyboardAvoidingView: {
     flex: 1,
@@ -523,24 +419,16 @@ const styles = StyleSheet.create({
   },
   formCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    marginHorizontal: 40,
-    marginVertical: 20,
+    margin: 16,
     borderRadius: 16,
-    padding: 20,
+    padding: 18,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.2,
     shadowRadius: 12,
     elevation: 8,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.3)',
-    ...Platform.select({
-      web: {
-        maxWidth: 500,
-        alignSelf: 'center',
-        width: '100%',
-      },
-    }),
   },
   // Logo Section
   logoSection: {
@@ -673,33 +561,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-  },
-  // Mobile Styles
-  mobileContainer: {
-    flex: 1,
-    position: 'relative',
-  },
-  mobileBackgroundImage: {
-    width: '100%',
-    height: '100%',
-    position: 'absolute',
-  },
-  mobileOverlay: {
-    flex: 1,
-    zIndex: 2,
-  },
-  mobileFormCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    margin: 16,
-    borderRadius: 16,
-    padding: 18,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   // Error Modal
   modalOverlay: {

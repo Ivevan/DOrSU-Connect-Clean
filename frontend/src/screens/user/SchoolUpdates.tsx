@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Easing, Image, Modal, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Dimensions, Easing, Image, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import UserSidebar from '../../components/navigation/UserSidebar';
@@ -293,6 +293,20 @@ const getTagTextColor = (tag: string) => {
   }
 };
 
+type LegendItem = {
+  type: string;
+  key: string;
+  color: string;
+};
+
+const legendItemsData: LegendItem[] = [
+  { type: 'Academic', key: 'academic', color: '#10B981' },
+  { type: 'Institutional', key: 'institutional', color: '#2563EB' },
+  { type: 'News', key: 'news', color: '#8B5CF6' },
+  { type: 'Event', key: 'event', color: '#F59E0B' },
+  { type: 'Announcement', key: 'announcement', color: '#3B82F6' },
+];
+
 // Note: UpdateCard component is no longer used - cards are rendered inline to match AdminDashboard design
 
 // Event Card with Image Preview (Horizontal Scrollable)
@@ -334,6 +348,22 @@ const EventCard = memo(({ update, onPress, theme }: { update: any; onPress: () =
 const SchoolUpdates = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
+  const resolvedLegendItems = useMemo<LegendItem[]>(() => (
+    legendItemsData.map(item => {
+      if (item.key === 'institutional') {
+        return { ...item, color: theme.colors.accent };
+      }
+      return item;
+    })
+  ), [theme.colors.accent]);
+  const legendRows = useMemo<(LegendItem | null)[][]>(() => {
+    const firstRow: (LegendItem | null)[] = resolvedLegendItems.slice(0, 3);
+    const secondRow: (LegendItem | null)[] = resolvedLegendItems.slice(3, 5);
+    while (secondRow.length < 3) {
+      secondRow.push(null);
+    }
+    return [firstRow, secondRow];
+  }, [resolvedLegendItems]);
   
   // Get header gradient colors based on theme
   const getHeaderGradientColors = (): [string, string, string] => {
@@ -376,8 +406,7 @@ const SchoolUpdates = () => {
       : [`${lightColor}1A`, `${mainColor}0D`, `${darkColor}05`] as [string, string, string];
   };
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [query, setQuery] = useState('');
-  const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [updates, setUpdates] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -389,14 +418,13 @@ const SchoolUpdates = () => {
   const [retryCount, setRetryCount] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
-  const searchRef = useRef<TextInput>(null);
   const calendarEventsScrollRef = useRef<ScrollView>(null);
   
   // Content type filter - multiple selection: 'academic', 'institutional', 'event', 'announcement', 'news'
-  const [selectedContentTypes, setSelectedContentTypes] = useState<string[]>(['academic', 'institutional', 'event', 'announcement', 'news']);
-  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
-  const filterButtonRef = useRef<View>(null);
-  const [filterButtonLayout, setFilterButtonLayout] = useState({ x: 16, y: 100, width: 200, height: 44 });
+  const [selectedLegendType, setSelectedLegendType] = useState<string | null>(null);
+  const selectedContentTypes = useMemo(() => (
+    selectedLegendType ? [selectedLegendType] : ['academic', 'institutional', 'event', 'announcement', 'news']
+  ), [selectedLegendType]);
   
   // Event Modal state (view-only) - used for both calendar events and updates
   const [showEventDrawer, setShowEventDrawer] = useState(false);
@@ -502,15 +530,6 @@ const SchoolUpdates = () => {
       ])
     ).start();
   }, [floatAnim1]);
-
-  const handleSearchPress = useCallback(() => {
-    setIsSearchVisible(prev => {
-      if (prev) {
-        setQuery(''); // Clear search when closing
-      }
-      return !prev;
-    });
-  }, []);
 
   const handleNotificationsPress = useCallback(() => {
     setShowNotificationModal(true);
@@ -627,32 +646,21 @@ const SchoolUpdates = () => {
     }, [fetchUpdates])
   );
 
-  // Debounce search query
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-  
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(query);
-    }, 300); // 300ms debounce
-
-    return () => clearTimeout(timer);
-  }, [query]);
-
   const filtered = useMemo(() => {
     const result = updates.filter(u => {
-      const q = debouncedQuery.trim().toLowerCase();
+      const q = searchQuery.trim().toLowerCase();
       const byQuery = q.length === 0 || u.title.toLowerCase().includes(q) || (u.body && u.body.toLowerCase().includes(q));
       return byQuery;
     });
     if (__DEV__) {
       console.log('🔍 Filtered updates:', { 
         total: updates.length, 
-        query: debouncedQuery.trim(), 
+        query: searchQuery.trim(), 
         filtered: result.length 
       });
     }
     return result;
-  }, [updates, debouncedQuery]);
+  }, [updates, searchQuery]);
 
   // Upcoming updates (future dates)
   const upcomingUpdates = useMemo(() => {
@@ -673,20 +681,6 @@ const SchoolUpdates = () => {
       return eventKey <= todayKey;
     });
   }, [filtered]);
-
-  // Toggle content type filter
-  const toggleContentType = useCallback((type: string) => {
-    setSelectedContentTypes(prev => {
-      if (prev.includes(type)) {
-        // Don't allow deselecting all - at least one must be selected
-        if (prev.length === 1) return prev;
-        return prev.filter(t => t !== type);
-      } else {
-        return [...prev, type];
-      }
-    });
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, []);
 
   // Filtered by time (all, upcoming, or recent) and content type
   const displayedUpdates = useMemo(() => {
@@ -1289,158 +1283,154 @@ const SchoolUpdates = () => {
         }
       >
 
-        {/* Content Type Filter Dropdown - Compact (affects all sections) */}
+        {/* Search Bar */}
         <View style={styles.sectionContainer}>
-          <View ref={filterButtonRef} style={styles.filterDropdownWrapper}>
-            <TouchableOpacity
-              style={[styles.filterDropdownButton, {
-                backgroundColor: theme.colors.surface,
-                borderColor: theme.colors.border,
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.searchBarContainer, {
+              backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+            }]}
+          >
+            <Ionicons name="search-outline" size={20} color={theme.colors.textMuted} style={styles.searchIcon} />
+            <TextInput
+              style={[styles.searchInput, {
+                color: theme.colors.text,
+                fontSize: theme.fontSize.scaleSize(14),
               }]}
-              onPress={() => {
-                if (filterButtonRef.current) {
-                  filterButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
-                    if (typeof pageX === 'number' && typeof pageY === 'number' && 
-                        typeof width === 'number' && typeof height === 'number' &&
-                        !isNaN(pageX) && !isNaN(pageY) && !isNaN(width) && !isNaN(height)) {
-                      setFilterButtonLayout({ x: pageX, y: pageY, width, height });
-                    } else {
-                      setFilterButtonLayout({ x: 16, y: 100, width: 200, height: 44 });
-                    }
-                    setShowFilterDropdown(!showFilterDropdown);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  });
-                } else {
-                  setShowFilterDropdown(!showFilterDropdown);
+              placeholder="Search updates..."
+              placeholderTextColor={theme.colors.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={() => {
+                  setSearchQuery('');
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }
-              }}
-              activeOpacity={0.7}
-            >
-              <View style={styles.filterDropdownButtonContent}>
-                <View style={styles.filterDropdownSelectedChips}>
-                  {selectedContentTypes.length === 5 ? (
-                    <Text style={[styles.filterDropdownButtonText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(12) }]}>All Types</Text>
-                  ) : (
-                    <View style={styles.filterChipsRow}>
-                      {selectedContentTypes.slice(0, 2).map((type) => {
-                        const typeName = type.charAt(0).toUpperCase() + type.slice(1);
-                        const getTypeColor = (typeStr: string) => {
-                          switch (typeStr.toLowerCase()) {
-                            case 'academic': return '#10B981';
-                            case 'institutional': return theme.colors.accent;
-                            case 'event': return '#F59E0B';
-                            case 'announcement': return '#3B82F6';
-                            case 'news': return '#8B5CF6';
-                            default: return theme.colors.accent;
-                          }
-                        };
-                        const typeColor = getTypeColor(type);
-                        return (
-                          <View key={type} style={[styles.filterChip, { backgroundColor: typeColor + '20', borderColor: typeColor }]}>
-                            <Text style={[styles.filterChipText, { color: typeColor, fontSize: theme.fontSize.scaleSize(9) }]}>{typeName}</Text>
-                          </View>
-                        );
-                      })}
-                      {selectedContentTypes.length > 2 && (
-                        <Text style={[styles.filterDropdownButtonText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }]}>
-                          +{selectedContentTypes.length - 2} more
-                        </Text>
-                      )}
-                    </View>
-                  )}
-                </View>
-                <Ionicons 
-                  name={showFilterDropdown ? 'chevron-up' : 'chevron-down'} 
-                  size={16} 
-                  color={theme.colors.textMuted} 
-                />
-              </View>
-            </TouchableOpacity>
-            
-            {/* Dropdown Options - Modal Overlay */}
-            <Modal
-              visible={showFilterDropdown}
-              transparent
-              animationType="fade"
-              onRequestClose={() => setShowFilterDropdown(false)}
-            >
-              <Pressable 
-                style={styles.modalOverlay}
-                onPress={() => setShowFilterDropdown(false)}
+                }}
+                style={styles.searchClearButton}
+                activeOpacity={0.7}
               >
-                <View 
+                <Ionicons name="close-circle" size={20} color={theme.colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </BlurView>
+        </View>
+
+        {/* Events This Month Section */}
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionDivider}>
+            <Text style={[styles.sectionDividerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>EVENTS THIS MONTH</Text>
+          </View>
+
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.legendContainer, {
+              backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+            }]}
+          >
+            <View style={styles.legendHeaderRow}>
+              <Text style={[styles.eventCountText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>
+                {currentMonthEvents.length} {currentMonthEvents.length === 1 ? 'event' : 'events'} this month
+              </Text>
+            </View>
+            <View style={styles.legendItems}>
+              {legendRows.map((rowItems, rowIndex) => (
+                <View
+                  key={`legend-row-${rowIndex}`}
                   style={[
-                    styles.filterDropdownOptionsModal,
-                    {
-                      top: (isNaN(filterButtonLayout.y) || isNaN(filterButtonLayout.height)) ? 100 : filterButtonLayout.y + filterButtonLayout.height + 8,
-                      left: isNaN(filterButtonLayout.x) ? 16 : Math.max(0, filterButtonLayout.x),
-                      width: isNaN(filterButtonLayout.width) || filterButtonLayout.width <= 0 ? '90%' : Math.max(200, filterButtonLayout.width),
-                      backgroundColor: theme.colors.surface,
-                      borderColor: theme.colors.border,
-                    }
+                    styles.legendRow,
+                    rowIndex === 0 ? styles.legendRowThree : styles.legendRowTwo,
                   ]}
-                  onStartShouldSetResponder={() => true}
                 >
-                  {['Academic', 'Institutional', 'Event', 'Announcement', 'News'].map((type) => {
-                    const typeLower = type.toLowerCase();
-                    const isSelected = selectedContentTypes.includes(typeLower);
-                    const getTypeColor = (typeStr: string) => {
-                      switch (typeStr.toLowerCase()) {
-                        case 'academic': return '#10B981';
-                        case 'institutional': return theme.colors.accent;
-                        case 'event': return '#F59E0B';
-                        case 'announcement': return '#3B82F6';
-                        case 'news': return '#8B5CF6';
-                        default: return theme.colors.accent;
-                      }
-                    };
-                    const typeColor = getTypeColor(type);
-                    
+                  {rowItems.map((item, colIndex) => {
+                    if (!item) {
+                      return (
+                        <View
+                          key={`legend-placeholder-${rowIndex}-${colIndex}`}
+                          style={[
+                            styles.legendItem,
+                            styles.legendItemThird,
+                            styles.legendItemPlaceholder,
+                          ]}
+                        />
+                      );
+                    }
+                    const isSelected = selectedLegendType === item.key;
                     return (
                       <TouchableOpacity
-                        key={type}
+                        key={`${item.type}-${rowIndex}-${colIndex}`}
                         style={[
-                          styles.filterDropdownOption,
-                          { borderBottomColor: theme.colors.border },
-                          isSelected && { backgroundColor: theme.colors.surfaceAlt }
+                          styles.legendItem,
+                          styles.legendItemThird,
+                          isSelected && styles.legendItemSelected,
+                          isSelected && { 
+                            backgroundColor: item.color + '20',
+                            borderColor: item.color
+                          }
                         ]}
-                        onPress={() => toggleContentType(typeLower)}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setSelectedLegendType(isSelected ? null : item.key);
+                        }}
                         activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${item.type} event type - ${isSelected ? 'selected, tap to hide' : 'tap to show'}`}
                       >
-                        <View style={styles.filterDropdownOptionContent}>
-                          <View style={[styles.filterDropdownCheckbox, {
-                            backgroundColor: isSelected ? typeColor : 'transparent',
-                            borderColor: isSelected ? typeColor : theme.colors.border,
-                          }]}>
-                            <View style={styles.checkboxInner}>
-                              {isSelected && (
-                                <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                              )}
-                            </View>
-                          </View>
-                          <Text style={[styles.filterDropdownOptionText, { 
-                            color: theme.colors.text, 
-                            fontSize: theme.fontSize.scaleSize(12) 
-                          }]}>
-                            {type}
-                          </Text>
-                        </View>
+                        <View style={[
+                          styles.legendColorDot,
+                          { backgroundColor: item.color },
+                          isSelected && styles.legendColorDotSelected
+                        ]} />
+                        <Text
+                          style={[
+                            styles.legendItemText,
+                            { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(11) },
+                            isSelected && { fontWeight: '700', color: item.color }
+                          ]}
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                        >
+                          {item.type}
+                        </Text>
                       </TouchableOpacity>
                     );
                   })}
                 </View>
-              </Pressable>
-            </Modal>
-          </View>
-        </View>
-
-        {/* Events This Month Section */}
-        {currentMonthEvents.length > 0 && (
-          <View style={styles.sectionContainer}>
-            <View style={styles.sectionDivider}>
-              <Text style={[styles.sectionDividerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>EVENTS THIS MONTH</Text>
+              ))}
             </View>
+          </BlurView>
+
+          {isLoadingCalendarEvents ? (
+            <View style={[styles.eventsLoadingContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <ActivityIndicator size="small" color={theme.colors.accent} />
+              <Text style={[styles.eventsLoadingText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }]}>
+                Loading events...
+              </Text>
+            </View>
+          ) : calendarEventsError ? (
+            <View style={[styles.eventsErrorContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <Ionicons name="alert-circle-outline" size={20} color="#DC2626" />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.eventsErrorText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(12) }]}>
+                  {calendarEventsError}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => refreshCalendarEvents()}
+                  style={[styles.eventsRetryButton, { backgroundColor: theme.colors.accent }]}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.eventsRetryText, { fontSize: theme.fontSize.scaleSize(11) }]}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : currentMonthEvents.length > 0 ? (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -1517,8 +1507,15 @@ const SchoolUpdates = () => {
                 );
               })}
             </ScrollView>
-          </View>
-        )}
+          ) : (
+            <View style={[styles.emptyEventsContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <Ionicons name="calendar-outline" size={24} color={theme.colors.textMuted} />
+              <Text style={[styles.emptyEventsText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }]}>
+                No events match your filters this month
+              </Text>
+            </View>
+          )}
+        </View>
 
         {/* Updates Section */}
         <View style={styles.sectionContainer}>
@@ -1982,97 +1979,29 @@ const styles = StyleSheet.create({
   filterPillTextActive: {
     color: '#FFF',
   },
-  filterDropdownWrapper: {
-    position: 'relative',
-    zIndex: 2000,
-    marginBottom: 8,
-    elevation: 20,
-  },
-  filterDropdownButton: {
+  searchBarContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 16,
     borderWidth: 1,
-    minHeight: 44,
-  },
-  filterDropdownButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flex: 1,
-    gap: 8,
-  },
-  filterDropdownSelectedChips: {
-    flex: 1,
-  },
-  filterChipsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  filterChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  filterChipText: {
-    fontSize: 9,
-    fontWeight: '600',
-  },
-  filterDropdownButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
-  },
-  filterDropdownOptionsModal: {
-    position: 'absolute',
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 20,
-  },
-  filterDropdownOption: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  filterDropdownOptionContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  filterDropdownCheckbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 20,
-    minHeight: 20,
-  },
-  checkboxInner: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    marginBottom: 12,
+    minHeight: 52,
     width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  filterDropdownOptionText: {
-    fontSize: 12,
-    fontWeight: '600',
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
     flex: 1,
+    padding: 0,
+    fontSize: 14,
+  },
+  searchClearButton: {
+    padding: 4,
+    marginLeft: 8,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -2182,6 +2111,130 @@ const styles = StyleSheet.create({
     fontSize: 10,
     lineHeight: 14,
     opacity: 0.8,
+  },
+  legendContainer: {
+    gap: 8,
+    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  legendHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  legendItems: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 8,
+  },
+  legendRowThree: {
+    justifyContent: 'space-between',
+  },
+  legendRowTwo: {
+    justifyContent: 'space-between',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    minWidth: 0,
+    borderWidth: 0,
+  },
+  legendItemThird: {
+    flex: 1,
+  },
+  legendItemPlaceholder: {
+    opacity: 0,
+  },
+  legendItemSelected: {
+    borderWidth: 1,
+  },
+  legendColorDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  legendColorDotSelected: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  legendItemText: {
+    fontSize: 12,
+    fontWeight: '600',
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  eventCountText: {
+    fontSize: 11,
+    fontWeight: '500',
+    fontStyle: 'italic',
+    opacity: 0.7,
+  },
+  emptyEventsContainer: {
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyEventsText: {
+    fontWeight: '600',
+  },
+  eventsLoadingContainer: {
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  eventsLoadingText: {
+    fontWeight: '600',
+  },
+  eventsErrorContainer: {
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+  eventsErrorText: {
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  eventsRetryButton: {
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  eventsRetryText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   calendarErrorContainer: {
     alignItems: 'center',
@@ -2319,29 +2372,6 @@ const styles = StyleSheet.create({
   updateTagText: {
     fontSize: 11,
     fontWeight: '700',
-  },
-  searchContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-  },
-  searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-  },
-  clearButton: {
-    padding: 4,
   },
   noEventsContainer: {
     borderWidth: 1,

@@ -85,11 +85,23 @@ const CalendarScreen = () => {
   const [selectedDateEvents, setSelectedDateEvents] = useState<any[]>([]);
   const [selectedDateForDrawer, setSelectedDateForDrawer] = useState<Date | null>(null);
   
-  // Content type filter - multiple selection: 'academic', 'institutional', 'event', 'announcement', 'news'
-  const [selectedContentTypes, setSelectedContentTypes] = useState<string[]>(['academic', 'institutional', 'event', 'announcement', 'news']);
-  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
-  const filterButtonRef = useRef<View>(null);
-  const [filterButtonLayout, setFilterButtonLayout] = useState({ x: 16, y: 100, width: 200, height: 44 });
+  // Legend filter state - null means show all types, otherwise show only selected type
+  const [selectedLegendType, setSelectedLegendType] = useState<string | null>(null);
+  
+  // Get selected content types based on legend selection - memoized as Set for fast lookups
+  const selectedContentTypesSet = React.useMemo(() => {
+    const types = selectedLegendType 
+      ? [selectedLegendType] 
+      : ['academic', 'institutional', 'event', 'announcement', 'news'];
+    return new Set(types.map(t => t.toLowerCase()));
+  }, [selectedLegendType]);
+  
+  // Keep array version for backward compatibility with existing code
+  const selectedContentTypes = React.useMemo(() => {
+    return selectedLegendType 
+      ? [selectedLegendType] 
+      : ['academic', 'institutional', 'event', 'announcement', 'news'];
+  }, [selectedLegendType]);
   
   // Animation values
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
@@ -100,20 +112,6 @@ const CalendarScreen = () => {
   // Drawer animation values
   const drawerSlideAnim = useRef(new Animated.Value(0)).current;
   const drawerBackdropOpacity = useRef(new Animated.Value(0)).current;
-  
-  // Toggle content type filter
-  const toggleContentType = useCallback((type: string) => {
-    setSelectedContentTypes(prev => {
-      if (prev.includes(type)) {
-        // Don't allow deselecting all - at least one must be selected
-        if (prev.length === 1) return prev;
-        return prev.filter(t => t !== type);
-      } else {
-        return [...prev, type];
-      }
-    });
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, []);
 
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -269,7 +267,7 @@ const CalendarScreen = () => {
       .filter(p => {
         if (p.source === 'CSV Upload') return false;
         const postType = String(p.category || 'Announcement').toLowerCase();
-        return selectedContentTypes.includes(postType);
+        return selectedContentTypesSet.has(postType);
       })
       .reduce((acc, p) => {
         const key = parseAnyDateToKey(p.isoDate || p.date);
@@ -284,7 +282,7 @@ const CalendarScreen = () => {
     count += calendarEvents.reduce((acc, event) => {
       // Apply content type filter
       const eventType = String(event.category || 'Announcement').toLowerCase();
-      if (!selectedContentTypes.includes(eventType)) return acc;
+      if (!selectedContentTypesSet.has(eventType)) return acc;
       
       // Skip week/month-only events for calendar grid count
       if (event.dateType === 'week' || event.dateType === 'month') {
@@ -339,7 +337,7 @@ const CalendarScreen = () => {
         if (p.source !== 'CSV Upload') {
           // Apply content type filter
           const postType = String(p.category || 'Announcement').toLowerCase();
-          if (!selectedContentTypes.includes(postType)) return;
+          if (!selectedContentTypesSet.has(postType)) return;
           
           const eventDateKey = parseAnyDateToKey(p.isoDate || p.date);
           if (eventDateKey === key) {
@@ -371,7 +369,7 @@ const CalendarScreen = () => {
         
         // Apply content type filter
         const eventType = String(event.category || 'Announcement').toLowerCase();
-        if (!selectedContentTypes.includes(eventType)) return;
+        if (!selectedContentTypesSet.has(eventType)) return;
         
         // Handle date ranges - check if date falls within range
         if (event.dateType === 'date_range' && event.startDate && event.endDate) {
@@ -424,7 +422,7 @@ const CalendarScreen = () => {
     }
     
     return events;
-  }, [posts, calendarEvents, selectedContentTypes]);
+  }, [posts, calendarEvents, selectedContentTypesSet]);
 
   // Robust PH date-key comparison (avoids off-by-one no matter device tz)
   const getPHDateKey = (d: Date) => {
@@ -692,7 +690,7 @@ const CalendarScreen = () => {
         const eventType = String(event.category || 'Announcement').toLowerCase();
         
         // Apply filters - check if event type is in selected content types
-        if (!selectedContentTypes.includes(eventType)) return;
+        if (!selectedContentTypesSet.has(eventType)) return;
         
         // For date ranges, create a single entry with range info (avoid duplicates)
         if (event.dateType === 'date_range' && event.startDate && event.endDate) {
@@ -744,7 +742,7 @@ const CalendarScreen = () => {
     }
     
     return allEvents;
-  }, [calendarEvents, selectedContentTypes]);
+  }, [calendarEvents, selectedContentTypesSet]);
 
   const getAllEventsGrouped = React.useCallback(() => {
     if (!Array.isArray(calendarEvents)) return [];
@@ -764,7 +762,7 @@ const CalendarScreen = () => {
         const eventType = String(event.category || 'Announcement').toLowerCase();
         
         // Apply filters - check if event type is in selected content types
-        if (!selectedContentTypes.includes(eventType)) return;
+        if (!selectedContentTypesSet.has(eventType)) return;
         
         // For date ranges, use start date as the key and avoid duplicates
         let eventDateKey: string | null = null;
@@ -842,7 +840,7 @@ const CalendarScreen = () => {
       });
     
     return result;
-  }, [calendarEvents, selectedContentTypes, currentMonth]);
+  }, [calendarEvents, selectedContentTypesSet, currentMonth]);
 
 
   const openMonthPicker = () => {
@@ -1042,167 +1040,6 @@ const CalendarScreen = () => {
         bounces={true}
         scrollEventThrottle={16}
       >
-        {/* Content Type Filters - Dropdown */}
-        <View style={styles.filterDropdownWrapper}>
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 50 : 40}
-            tint={isDarkMode ? 'dark' : 'light'}
-            style={[styles.filterCard, { backgroundColor: isDarkMode ? t.colors.surface + '80' : t.colors.card + '4D' }]}
-          >
-            <View style={styles.filterContainer}>
-              <View style={styles.filterHeaderRow}>
-                <Text style={[styles.filterLabel, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(11) }]}>FILTER BY TYPE</Text>
-                <Text style={[styles.eventCountText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(11) }]}>
-                  {getMonthEventCount(currentMonth)} {getMonthEventCount(currentMonth) === 1 ? 'event' : 'events'} this month
-                </Text>
-              </View>
-              <View ref={filterButtonRef}>
-                <TouchableOpacity
-                  style={[styles.filterDropdownButton, {
-                    backgroundColor: t.colors.surface,
-                    borderColor: t.colors.border,
-                  }]}
-                  onPress={() => {
-                    if (filterButtonRef.current) {
-                      filterButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
-                        if (typeof pageX === 'number' && typeof pageY === 'number' && 
-                            typeof width === 'number' && typeof height === 'number' &&
-                            !isNaN(pageX) && !isNaN(pageY) && !isNaN(width) && !isNaN(height)) {
-                          setFilterButtonLayout({ x: pageX, y: pageY, width, height });
-                        } else {
-                          // Fallback to default values if measurement fails
-                          setFilterButtonLayout({ x: 16, y: 100, width: 200, height: 44 });
-                        }
-                        setShowFilterDropdown(!showFilterDropdown);
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      });
-                    } else {
-                      setShowFilterDropdown(!showFilterDropdown);
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }
-                  }}
-                  activeOpacity={0.7}
-                >
-                <View style={styles.filterDropdownButtonContent}>
-                  <View style={styles.filterDropdownSelectedChips}>
-                    {selectedContentTypes.length === 5 ? (
-                      <Text style={[styles.filterDropdownButtonText, { color: t.colors.text, fontSize: t.fontSize.scaleSize(12) }]}>All Types</Text>
-                    ) : (
-                      <View style={styles.filterChipsRow}>
-                        {selectedContentTypes.slice(0, 2).map((type) => {
-                          const typeName = type.charAt(0).toUpperCase() + type.slice(1);
-                          const getTypeColor = (typeStr: string) => {
-                            switch (typeStr.toLowerCase()) {
-                              case 'academic': return '#10B981';
-                              case 'institutional': return t.colors.accent;
-                              case 'event': return '#F59E0B';
-                              case 'announcement': return '#3B82F6';
-                              case 'news': return '#8B5CF6';
-                              default: return t.colors.accent;
-                            }
-                          };
-                          const typeColor = getTypeColor(type);
-                          return (
-                            <View key={type} style={[styles.filterChip, { backgroundColor: typeColor + '20', borderColor: typeColor }]}>
-                              <Text style={[styles.filterChipText, { color: typeColor, fontSize: t.fontSize.scaleSize(9) }]}>{typeName}</Text>
-                            </View>
-                          );
-                        })}
-                        {selectedContentTypes.length > 2 && (
-                          <Text style={[styles.filterDropdownButtonText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }]}>
-                            +{selectedContentTypes.length - 2} more
-                          </Text>
-                        )}
-                      </View>
-                    )}
-                  </View>
-                  <Ionicons 
-                    name={showFilterDropdown ? 'chevron-up' : 'chevron-down'} 
-                    size={16} 
-                    color={t.colors.textMuted} 
-                  />
-                </View>
-              </TouchableOpacity>
-              </View>
-              
-              {/* Dropdown Options - Modal Overlay */}
-              <Modal
-                visible={showFilterDropdown}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setShowFilterDropdown(false)}
-              >
-                <Pressable 
-                  style={styles.modalOverlay}
-                  onPress={() => setShowFilterDropdown(false)}
-                >
-                  <View 
-                    style={[
-                      styles.filterDropdownOptionsModal,
-                      {
-                        top: (isNaN(filterButtonLayout.y) || isNaN(filterButtonLayout.height)) ? 100 : filterButtonLayout.y + filterButtonLayout.height + 8,
-                        left: isNaN(filterButtonLayout.x) ? 16 : Math.max(0, filterButtonLayout.x),
-                        width: isNaN(filterButtonLayout.width) || filterButtonLayout.width <= 0 ? '90%' : Math.max(200, filterButtonLayout.width),
-                        backgroundColor: t.colors.surface,
-                        borderColor: t.colors.border,
-                      }
-                    ]}
-                    onStartShouldSetResponder={() => true}
-                  >
-                    {['Academic', 'Institutional', 'Event', 'Announcement', 'News'].map((type) => {
-                      const typeLower = type.toLowerCase();
-                      const isSelected = selectedContentTypes.includes(typeLower);
-                      const getTypeColor = (typeStr: string) => {
-                        switch (typeStr.toLowerCase()) {
-                          case 'academic': return '#10B981';
-                          case 'institutional': return t.colors.accent;
-                          case 'event': return '#F59E0B';
-                          case 'announcement': return '#3B82F6';
-                          case 'news': return '#8B5CF6';
-                          default: return t.colors.accent;
-                        }
-                      };
-                      const typeColor = getTypeColor(type);
-                      
-                      return (
-                        <TouchableOpacity
-                          key={type}
-                          style={[
-                            styles.filterDropdownOption,
-                            { borderBottomColor: t.colors.border },
-                            isSelected && { backgroundColor: t.colors.surfaceAlt }
-                          ]}
-                          onPress={() => toggleContentType(typeLower)}
-                          activeOpacity={0.7}
-                        >
-                          <View style={styles.filterDropdownOptionContent}>
-                            <View style={[styles.filterDropdownCheckbox, {
-                              backgroundColor: isSelected ? typeColor : 'transparent',
-                              borderColor: isSelected ? typeColor : t.colors.border,
-                            }]}>
-                              <View style={styles.checkboxInner}>
-                                {isSelected && (
-                                  <Ionicons name="checkmark" size={14} color="#FFFFFF" />
-                                )}
-                              </View>
-                            </View>
-                            <Text style={[styles.filterDropdownOptionText, { 
-                              color: t.colors.text, 
-                              fontSize: t.fontSize.scaleSize(12) 
-                            }]}>
-                              {type}
-                            </Text>
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </Pressable>
-              </Modal>
-            </View>
-          </BlurView>
-        </View>
-
         <View>
           <BlurView
             intensity={Platform.OS === 'ios' ? 50 : 40}
@@ -1273,9 +1110,63 @@ const CalendarScreen = () => {
                 const isSelectedDay = currentDate ? isSelected(currentDate) : false;
               return renderCalendarDay(currentDate || new Date(), day, isCurrentDay, !!isSelectedDay, index);
             })}
-                        </View>
-                      </BlurView>
-              </View>
+          </View>
+
+          {/* Event Type Legend - Inside Calendar Card */}
+          <View style={styles.legendContainer}>
+            <View style={styles.legendHeaderRow}>
+              <Text style={[styles.eventCountText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(11) }]}>
+                {getMonthEventCount(currentMonth)} {getMonthEventCount(currentMonth) === 1 ? 'event' : 'events'} this month
+              </Text>
+            </View>
+            <View style={styles.legendItems}>
+              {[
+                { type: 'Academic', key: 'academic', color: '#10B981' },
+                { type: 'Institutional', key: 'institutional', color: t.colors.accent },
+                { type: 'Event', key: 'event', color: '#F59E0B' },
+                { type: 'Announcement', key: 'announcement', color: '#3B82F6' },
+                { type: 'News', key: 'news', color: '#8B5CF6' },
+              ].map((item) => {
+                const isSelected = selectedLegendType === item.key;
+                return (
+                  <TouchableOpacity
+                    key={item.type}
+                    style={[
+                      styles.legendItem,
+                      isSelected && styles.legendItemSelected,
+                      isSelected && { 
+                        backgroundColor: item.color + '20',
+                        borderColor: item.color
+                      }
+                    ]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      // Toggle: if already selected, deselect (show all), otherwise select this type
+                      setSelectedLegendType(isSelected ? null : item.key);
+                    }}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${item.type} event type - ${isSelected ? 'selected, tap to show all' : 'tap to filter'}`}
+                  >
+                    <View style={[
+                      styles.legendColorDot,
+                      { backgroundColor: item.color },
+                      isSelected && styles.legendColorDotSelected
+                    ]} />
+                    <Text style={[
+                      styles.legendItemText,
+                      { color: t.colors.text, fontSize: t.fontSize.scaleSize(12) },
+                      isSelected && { fontWeight: '700', color: item.color }
+                    ]}>
+                      {item.type}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+          </BlurView>
+        </View>
 
         <MonthPickerModal
           visible={showMonthPicker}
@@ -1423,136 +1314,53 @@ const styles = StyleSheet.create({
     right: 0,
     zIndex: 998,
   },
-  filterDropdownWrapper: {
-    position: 'relative',
-    zIndex: 2000,
-    marginBottom: 12,
-    elevation: 20,
-  },
-  filterCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    padding: 12,
-  },
-  filterContainer: {
+  legendContainer: {
     gap: 8,
-  },
-  filterLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  filterDropdownButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingTop: 16,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    minHeight: 44,
-  },
-  filterDropdownButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flex: 1,
-    gap: 8,
-  },
-  filterDropdownSelectedChips: {
-    flex: 1,
-  },
-  filterChipsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  filterChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  filterChipText: {
-    fontSize: 9,
-    fontWeight: '600',
-  },
-  filterDropdownButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
-  },
-  filterDropdownOptionsModal: {
-    position: 'absolute',
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 20,
-  },
-  filterDropdownOptions: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
+    paddingBottom: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.2)',
     marginTop: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
-    zIndex: 2001,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 20,
   },
-  filterDropdownOption: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  filterDropdownOptionContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  filterDropdownCheckbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 20,
-    minHeight: 20,
-  },
-  checkboxInner: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterDropdownOptionText: {
-    fontSize: 12,
-    fontWeight: '600',
-    flex: 1,
-  },
-  filterHeaderRow: {
+  legendHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 8,
+  },
+  legendItems: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    alignItems: 'center',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  legendItemSelected: {
+    borderWidth: 1,
+  },
+  legendColorDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  legendColorDotSelected: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  legendItemText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   eventCountText: {
     fontSize: 11,

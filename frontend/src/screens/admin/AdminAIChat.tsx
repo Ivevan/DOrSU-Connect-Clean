@@ -42,7 +42,7 @@ type RootStackParamList = {
 const AdminAIChat = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { isDarkMode, theme } = useTheme();
+  const { isDarkMode, theme, colorTheme } = useTheme();
   const { getUserToken } = useAuth();
   const { isConnected, isInternetReachable } = useNetworkStatus();
   const isOnline = isConnected && isInternetReachable;
@@ -875,7 +875,7 @@ const AdminAIChat = () => {
           <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]}>
             {messages.length > 0 ? 'Conversation' : 'New Conversation'}
           </Text>
-          <View style={[styles.userTypeLabel, { backgroundColor: selectedUserType === 'student' ? theme.colors.accent : '#FBBF24' }]}>
+          <View style={[styles.userTypeLabel, { backgroundColor: selectedUserType === 'student' ? theme.colors.accent : (colorTheme === 'dorsu' ? '#FBBF24' : '#6B7280') }]}>
             <Text style={[styles.userTypeLabelText, { fontSize: theme.fontSize.scaleSize(9) }]}>
               {selectedUserType === 'faculty' ? 'Faculty' : 'Student'}
             </Text>
@@ -1184,7 +1184,7 @@ const AdminAIChat = () => {
         {/* Student/Faculty Toggle - Perplexity style in input bar */}
         <View style={styles.userTypeToggleContainer}>
           <View 
-            style={[styles.userTypeToggle, { backgroundColor: selectedUserType === 'student' ? theme.colors.accent : '#FBBF24' }]}
+            style={[styles.userTypeToggle, { backgroundColor: selectedUserType === 'student' ? theme.colors.accent : (colorTheme === 'dorsu' ? '#FBBF24' : '#6B7280') }]}
             onLayout={(e) => {
               segmentWidth.current = e.nativeEvent.layout.width;
               const targetX = selectedUserType === 'faculty' 

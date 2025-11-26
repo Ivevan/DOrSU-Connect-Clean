@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../config/api.config';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { createUserWithEmailAndPassword, sendEmailVerification, reloadUser, getCurrentUser } from '../../services/authService';
 import SuccessModal from '../../modals/SuccessModal';
 
 type RootStackParamList = {
@@ -134,6 +135,7 @@ const CreateAccount = () => {
     return '';
   };
 
+  // Check Firebase email verification status
   const checkEmailVerificationStatus = useCallback(
     async (options: { showErrors?: boolean } = {}) => {
       if (!email.trim()) {
@@ -151,38 +153,34 @@ const CreateAccount = () => {
       }
 
       try {
-        const response = await fetch(
-          `${API_BASE_URL}/api/auth/email-verification-status?email=${encodeURIComponent(
-            email.trim().toLowerCase()
-          )}`
-        );
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error || 'Unable to check verification status');
-        }
-
-        const verified = Boolean(data.verified);
-        if (verified) {
-          setEmailVerificationStatus('verified');
-          setEmailVerificationMessage('Email confirmed. You are good to go.');
-        } else if (data?.requestedAt) {
-          setEmailVerificationStatus('pending');
-          setEmailVerificationMessage('Waiting for confirmation. Please tap the link we sent to your email.');
-        } else {
+        const currentUser = getCurrentUser();
+        if (!currentUser || currentUser.email?.toLowerCase() !== email.trim().toLowerCase()) {
+          // User not signed in or different email
           setEmailVerificationStatus('idle');
           setEmailVerificationMessage('');
+          return false;
         }
 
-        if (!verified && options.showErrors) {
-          setErrors(prev => ({
-            ...prev,
-            general: data?.requestedAt
-              ? 'Please confirm your email by opening the link we sent.'
-              : 'Send a confirmation link to your email before creating an account.',
-          }));
+        // Reload user to get latest verification status
+        await reloadUser(currentUser);
+        const updatedUser = getCurrentUser();
+        
+        if (updatedUser?.emailVerified) {
+          setEmailVerificationStatus('verified');
+          setEmailVerificationMessage('Email confirmed. You are good to go.');
+          return true;
+        } else {
+          setEmailVerificationStatus('pending');
+          setEmailVerificationMessage('Waiting for confirmation. Please tap the link we sent to your email.');
+          
+          if (options.showErrors) {
+            setErrors(prev => ({
+              ...prev,
+              general: 'Please confirm your email by opening the link we sent.',
+            }));
+          }
+          return false;
         }
-
-        return verified;
       } catch (error) {
         console.error('Email verification status error:', error);
         if (options.showErrors) {
@@ -216,22 +214,20 @@ const CreateAccount = () => {
     setErrors(prev => ({ ...prev, general: '' }));
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/request-email-verification`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        if (data?.error === 'EMAIL_NOT_FOUND') {
-          setWarningModalMessage('The email address you entered does not exist. Please double-check the spelling.');
-          setWarningModalVisible(true);
-          return;
-        }
-        throw new Error(data?.error || 'Failed to send confirmation link');
+      // Check if user is already signed in
+      let currentUser = getCurrentUser();
+      
+      if (!currentUser || currentUser.email?.toLowerCase() !== email.trim().toLowerCase()) {
+        // User needs to create account first (will be done in handleSignUp)
+        setErrors(prev => ({
+          ...prev,
+          general: 'Please create your account first. The verification email will be sent automatically.',
+        }));
+        return;
       }
 
+      // Send verification email
+      await sendEmailVerification(currentUser);
       setEmailVerificationStatus('pending');
       setEmailVerificationMessage('Confirmation link sent. Please open the link from your email inbox.');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -249,7 +245,12 @@ const CreateAccount = () => {
   useFocusEffect(
     useCallback(() => {
       if (email && emailVerificationStatus === 'pending') {
-        checkEmailVerificationStatus();
+        // Check verification status periodically
+        const interval = setInterval(() => {
+          checkEmailVerificationStatus();
+        }, 3000); // Check every 3 seconds
+        
+        return () => clearInterval(interval);
       }
     }, [email, emailVerificationStatus, checkEmailVerificationStatus])
   );
@@ -312,11 +313,6 @@ const CreateAccount = () => {
       return;
     }
 
-    const isVerified = await checkEmailVerificationStatus({ showErrors: true });
-    if (!isVerified) {
-      return;
-    }
-
     setIsLoading(true);
     Animated.loop(
       Animated.timing(loadingRotation, {
@@ -327,36 +323,72 @@ const CreateAccount = () => {
     ).start();
     
     try {
-      // Call backend API to register user
-      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+      // Step 1: Create Firebase user account
+      const firebaseUser = await createUserWithEmailAndPassword(email.trim().toLowerCase(), password);
+      
+      // Step 2: Update Firebase user profile with username
+      try {
+        if (Platform.OS === 'web') {
+          const { updateProfile } = require('firebase/auth');
+          await updateProfile(firebaseUser, { displayName: username.trim() });
+        } else {
+          await firebaseUser.updateProfile({ displayName: username.trim() });
+        }
+      } catch (updateError) {
+        console.warn('Failed to update profile:', updateError);
+        // Continue anyway - profile update is not critical
+      }
+      
+      // Step 3: Send email verification
+      await sendEmailVerification(firebaseUser);
+      
+      // Step 4: Sync user to backend MongoDB
+      const idToken = await firebaseUser.getIdToken();
+      const response = await fetch(`${API_BASE_URL}/api/auth/register-firebase`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
         },
         body: JSON.stringify({
-          username,
-          email,
-          password,
+          username: username.trim(),
+          email: email.trim().toLowerCase(),
         }),
       });
       
       const data = await response.json();
       
       if (!response.ok) {
-        throw new Error(data.error || 'Registration failed');
+        // If backend sync fails, delete Firebase user to keep things clean
+        try {
+          if (Platform.OS === 'web') {
+            const { deleteUser } = require('firebase/auth');
+            await deleteUser(firebaseUser);
+          } else {
+            await firebaseUser.delete();
+          }
+        } catch (deleteError) {
+          console.error('Failed to delete Firebase user after backend error:', deleteError);
+        }
+        throw new Error(data.error || 'Failed to sync account with server');
       }
       
-      // Store user data and token locally
-      await AsyncStorage.setItem('userToken', data.token);
-      await AsyncStorage.setItem('userEmail', data.user.email);
-      await AsyncStorage.setItem('userName', data.user.username);
-      await AsyncStorage.setItem('userId', data.user.id);
+      // Step 5: Store user data locally
+      await AsyncStorage.setItem('userToken', data.token || idToken);
+      await AsyncStorage.setItem('userEmail', firebaseUser.email || email);
+      await AsyncStorage.setItem('userName', username.trim());
+      await AsyncStorage.setItem('userId', data.user?.id || firebaseUser.uid);
+      await AsyncStorage.setItem('authProvider', 'email');
       
       setIsLoading(false);
       loadingRotation.stopAnimation();
       
       // Show success modal
       setShowSuccessModal(true);
+      
+      // Set verification status
+      setEmailVerificationStatus('pending');
+      setEmailVerificationMessage('Verification email sent! Please check your inbox and confirm your email.');
       
       // Navigate after modal shows
       setTimeout(() => {
@@ -369,12 +401,12 @@ const CreateAccount = () => {
       
       let errorMessage = 'Failed to create account';
       
-      if (error.message.includes('already exists')) {
+      if (error.message.includes('already registered') || error.message.includes('email-already-in-use')) {
         setErrors({ username: '', email: 'This email is already registered', password: '', confirmPassword: '', general: '' });
-      } else if (error.message.includes('Invalid')) {
-        setErrors({ username: '', email: 'Invalid email or password format', password: '', confirmPassword: '', general: '' });
-      } else if (error.message.includes('Email not verified')) {
-        setErrors({ username: '', email: '', password: '', confirmPassword: '', general: 'Please confirm your email before creating an account.' });
+      } else if (error.message.includes('Invalid') || error.message.includes('invalid-email')) {
+        setErrors({ username: '', email: 'Invalid email format', password: '', confirmPassword: '', general: '' });
+      } else if (error.message.includes('weak-password')) {
+        setErrors({ username: '', email: '', password: 'Password is too weak', confirmPassword: '', general: '' });
       } else {
         setErrors({ username: '', email: '', password: '', confirmPassword: '', general: error.message || errorMessage });
       }
@@ -520,38 +552,31 @@ const CreateAccount = () => {
                 <Text style={styles.errorText}>{errors.email}</Text>
               ) : null}
             </View>
-          <View style={styles.verificationActions}>
-            <TouchableOpacity
-              style={[
-                styles.verificationButton,
-                (isSendingVerification || !email.trim() || !isOnline) && styles.verificationButtonDisabled
-              ]}
-              onPress={handleSendVerificationLink}
-              disabled={isSendingVerification || !email.trim() || !isOnline}
-              accessibilityLabel="Send email confirmation link"
-            >
-              <Text style={styles.verificationButtonText}>
-                {isSendingVerification ? 'Sending...' : 'Send confirmation link'}
-              </Text>
-            </TouchableOpacity>
-            {emailVerificationStatus === 'pending' ? (
+          {/* Email verification status (shown after account creation) */}
+          {emailVerificationStatus === 'pending' ? (
+            <View style={styles.verificationActions}>
+              <View style={styles.verificationInfoBox}>
+                <MaterialIcons name="info-outline" size={16} color="#2563EB" style={{ marginRight: 6 }} />
+                <Text style={styles.verificationInfoText}>
+                  Verification email sent! Please check your inbox and confirm your email.
+                </Text>
+              </View>
               <TouchableOpacity
                 style={styles.verificationRefreshButton}
                 onPress={() => checkEmailVerificationStatus()}
-                disabled={isSendingVerification}
                 accessibilityLabel="Refresh email confirmation status"
               >
                 <MaterialIcons name="refresh" size={16} color="#2563EB" style={{ marginRight: 4 }} />
                 <Text style={styles.verificationRefreshText}>I confirmed – Refresh</Text>
               </TouchableOpacity>
-            ) : null}
-            {emailVerificationStatus === 'verified' ? (
-              <View style={styles.verificationBadge}>
-                <MaterialIcons name="check-circle" size={16} color="#10B981" style={{ marginRight: 4 }} />
-                <Text style={styles.verificationBadgeText}>Email verified</Text>
-              </View>
-            ) : null}
-          </View>
+            </View>
+          ) : null}
+          {emailVerificationStatus === 'verified' ? (
+            <View style={styles.verificationBadge}>
+              <MaterialIcons name="check-circle" size={16} color="#10B981" style={{ marginRight: 4 }} />
+              <Text style={styles.verificationBadgeText}>Email verified</Text>
+            </View>
+          ) : null}
           {emailVerificationMessage ? (
             <Text
               style={[
@@ -939,22 +964,23 @@ const styles = StyleSheet.create({
   verificationActions: {
     marginTop: 4,
     alignItems: 'flex-start',
+    gap: 8,
   },
-  verificationButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+  verificationInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(37, 99, 235, 0.08)',
+    padding: 10,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#2563EB',
-    backgroundColor: 'rgba(37, 99, 235, 0.08)',
+    width: '100%',
   },
-  verificationButtonDisabled: {
-    opacity: 0.5,
-  },
-  verificationButtonText: {
+  verificationInfoText: {
     color: '#2563EB',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '500',
+    flex: 1,
   },
   verificationRefreshButton: {
     flexDirection: 'row',

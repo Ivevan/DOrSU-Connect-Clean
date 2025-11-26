@@ -8,9 +8,8 @@ import { Logger } from '../utils/logger.js';
  * Handles user registration, login, and JWT token management
  */
 export class AuthService {
-  constructor(mongoService, emailService = null) {
+  constructor(mongoService) {
     this.mongoService = mongoService;
-    this.emailService = emailService;
     this.JWT_SECRET = process.env.JWT_SECRET || 'dorsu-connect-secret-key-change-in-production';
     this.JWT_EXPIRES_IN = '7d'; // Token valid for 7 days
   }
@@ -73,84 +72,6 @@ export class AuthService {
     }
   }
 
-  /**
-   * Request email verification link
-   */
-  async requestEmailVerification(email) {
-    if (!this.emailService) {
-      throw new Error('Email service not available');
-    }
-
-    const normalizedEmail = email?.toLowerCase().trim();
-    if (!normalizedEmail) {
-      throw new Error('Email is required');
-    }
-
-    // Allow both @dorsu.edu.ph and @gmail.com domains
-    const allowedDomains = ['dorsu.edu.ph', 'gmail.com'];
-    const emailDomain = normalizedEmail.split('@')[1];
-    if (!allowedDomains.includes(emailDomain)) {
-      throw new Error('Only @dorsu.edu.ph and @gmail.com addresses are supported');
-    }
-
-    const token = crypto.randomUUID();
-    const ttlMinutes = Number(process.env.EMAIL_VERIFICATION_TTL_MINUTES || 30);
-    const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
-
-    await this.mongoService.createEmailVerificationRequest(normalizedEmail, token, expiresAt);
-
-    try {
-      await this.emailService.sendEmailVerification(normalizedEmail, token);
-    } catch (error) {
-      if (error?.code === 'EMAIL_NOT_FOUND') {
-        throw new Error('EMAIL_NOT_FOUND');
-      }
-      throw error;
-    }
-
-    return {
-      success: true,
-      message: 'Confirmation link sent. Please check your email inbox.',
-      expiresAt,
-    };
-  }
-
-  /**
-   * Confirm email token
-   */
-  async confirmEmailToken(token) {
-    const record = await this.mongoService.getEmailVerificationByToken(token);
-    if (!record) {
-      throw new Error('Token not found');
-    }
-
-    if (record.verified) {
-      return { success: true, email: record.email, status: 'already_verified' };
-    }
-
-    if (new Date(record.expiresAt).getTime() < Date.now()) {
-      throw new Error('Token expired');
-    }
-
-    await this.mongoService.markEmailVerificationVerified(token);
-    return { success: true, email: record.email, status: 'verified' };
-  }
-
-  /**
-   * Check verification status for an email
-   */
-  async getEmailVerificationStatus(email) {
-    const record = await this.mongoService.getLatestEmailVerification(email.toLowerCase());
-    if (!record) {
-      return { verified: false };
-    }
-    return {
-      verified: Boolean(record.verified),
-      requestedAt: record.createdAt,
-      verifiedAt: record.verifiedAt,
-      expiresAt: record.expiresAt,
-    };
-  }
 
   /**
    * Login user

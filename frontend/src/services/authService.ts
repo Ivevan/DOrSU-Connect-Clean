@@ -280,6 +280,112 @@ export const getGoogleSignInErrorMessage = (error: any): string => {
 };
 
 /**
+ * Create user account with email and password (Firebase)
+ */
+export const createUserWithEmailAndPassword = async (email: string, password: string): Promise<User> => {
+  try {
+    if (Platform.OS === 'web') {
+      if (!webFirebaseAuth) {
+        throw new Error('Firebase Auth is not initialized for web');
+      }
+      const { createUserWithEmailAndPassword: createUser } = require('firebase/auth');
+      const userCredential = await createUser(webFirebaseAuth, email, password);
+      return userCredential.user;
+    } else {
+      // Native - React Native Firebase
+      const userCredential = await auth().createUserWithEmailAndPassword(email, password);
+      return userCredential.user;
+    }
+  } catch (error: any) {
+    console.error('Create user error:', error);
+    
+    // Handle Firebase Auth errors
+    if (error.code === 'auth/email-already-in-use') {
+      throw new Error('This email is already registered. Please sign in instead.');
+    } else if (error.code === 'auth/invalid-email') {
+      throw new Error('Invalid email address format.');
+    } else if (error.code === 'auth/weak-password') {
+      throw new Error('Password is too weak. Please use a stronger password.');
+    } else if (error.code === 'auth/network-request-failed') {
+      throw new Error('Network error. Please check your internet connection.');
+    }
+    
+    throw new Error(error.message || 'Failed to create account');
+  }
+};
+
+/**
+ * Send email verification (Firebase)
+ */
+export const sendEmailVerification = async (user: User): Promise<void> => {
+  try {
+    if (Platform.OS === 'web') {
+      const { sendEmailVerification: sendVerification } = require('firebase/auth');
+      await sendVerification(user);
+    } else {
+      // Native - React Native Firebase
+      await user.sendEmailVerification();
+    }
+  } catch (error: any) {
+    console.error('Send email verification error:', error);
+    throw new Error(error.message || 'Failed to send verification email');
+  }
+};
+
+/**
+ * Sign in with email and password (Firebase)
+ */
+export const signInWithEmailAndPassword = async (email: string, password: string): Promise<User> => {
+  try {
+    if (Platform.OS === 'web') {
+      if (!webFirebaseAuth) {
+        throw new Error('Firebase Auth is not initialized for web');
+      }
+      const { signInWithEmailAndPassword: signIn } = require('firebase/auth');
+      const userCredential = await signIn(webFirebaseAuth, email, password);
+      return userCredential.user;
+    } else {
+      // Native - React Native Firebase
+      const userCredential = await auth().signInWithEmailAndPassword(email, password);
+      return userCredential.user;
+    }
+  } catch (error: any) {
+    console.error('Sign in error:', error);
+    
+    // Handle Firebase Auth errors
+    if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+      throw new Error('Invalid email or password.');
+    } else if (error.code === 'auth/invalid-email') {
+      throw new Error('Invalid email address format.');
+    } else if (error.code === 'auth/user-disabled') {
+      throw new Error('This account has been disabled.');
+    } else if (error.code === 'auth/network-request-failed') {
+      throw new Error('Network error. Please check your internet connection.');
+    }
+    
+    throw new Error(error.message || 'Failed to sign in');
+  }
+};
+
+/**
+ * Reload user to get latest email verification status
+ */
+export const reloadUser = async (user: User): Promise<void> => {
+  try {
+    if (Platform.OS === 'web') {
+      const { reload } = require('firebase/auth');
+      await reload(user);
+    } else {
+      // Native - React Native Firebase
+      await user.reload();
+    }
+  } catch (error: any) {
+    console.error('Reload user error:', error);
+    throw new Error(error.message || 'Failed to reload user');
+  }
+};
+
+/**
  * Delete user account from the backend (MongoDB)
  * This will delete the user account and all associated data from the knowledge base
  */

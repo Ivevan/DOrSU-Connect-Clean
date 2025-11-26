@@ -23,7 +23,6 @@ import { Logger } from './utils/logger.js';
 import { parseMultipartFormData } from './utils/multipart-parser.js';
 import QueryAnalyzer from './utils/query-analyzer.js';
 import ResponseCleaner from './utils/response-cleaner.js';
-import { EmailService } from './services/email.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,7 +42,6 @@ let newsScraperService = null;
 let authService = null;
 let chatHistoryService = null;
 let scheduleService = null;
-let emailService = null;
 
 // ===== FALLBACK CONTEXT =====
 const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
@@ -63,8 +61,7 @@ async function initializeServices() {
     Logger.success('GridFS service initialized');
     
     // Initialize authentication service
-    emailService = new EmailService();
-    authService = new AuthService(mongoService, emailService);
+    authService = new AuthService(mongoService);
     Logger.success('Auth service initialized');
     
     // Initialize chat history service
@@ -186,127 +183,124 @@ const server = http.createServer(async (req, res) => {
 
   // ===== AUTHENTICATION ENDPOINTS =====
 
-  // Request email verification link
-  if (method === 'POST' && url === '/api/auth/request-email-verification') {
+  // Firebase User Registration (sync Firebase user to MongoDB)
+  if (method === 'POST' && url === '/api/auth/register-firebase') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
     req.on('end', async () => {
       try {
-        if (!authService) {
+        if (!authService || !mongoService) {
           sendJson(res, 503, { error: 'Authentication service not available' });
           return;
         }
 
-        const { email } = JSON.parse(body || '{}');
-        if (!email) {
-          sendJson(res, 400, { error: 'Email is required' });
+        // Get Firebase ID token from Authorization header
+        const authHeader = req.headers['authorization'];
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          sendJson(res, 401, { error: 'Firebase ID token required in Authorization header' });
           return;
         }
 
-        const result = await authService.requestEmailVerification(email);
-        sendJson(res, 200, result);
-      } catch (error) {
-        Logger.error('Email verification request error:', error.message);
-        if (error.message === 'EMAIL_NOT_FOUND') {
-          sendJson(res, 400, { error: 'EMAIL_NOT_FOUND', message: 'The email address does not exist.' });
+        const idToken = authHeader.substring(7);
+        
+        // Validate token format
+        const tokenParts = idToken.split('.');
+        if (tokenParts.length !== 3) {
+          sendJson(res, 400, { error: 'Invalid token format' });
           return;
         }
-        sendJson(res, 400, { error: error.message || 'Failed to send confirmation link' });
+
+        // Verify Firebase token and get user info
+        let tokenInfo = null;
+        try {
+          const tokenInfoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+          if (tokenInfoRes.ok) {
+            tokenInfo = await tokenInfoRes.json();
+          } else {
+            // Fallback: decode JWT payload locally
+            const payload = tokenParts[1];
+            const padded = payload + '='.repeat((4 - payload.length % 4) % 4);
+            const decoded = Buffer.from(padded.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8');
+            const parsed = JSON.parse(decoded);
+            
+            if (parsed.exp && parsed.exp < Math.floor(Date.now() / 1000)) {
+              sendJson(res, 401, { error: 'Token expired' });
+              return;
+            }
+            
+            tokenInfo = {
+              email: parsed.email,
+              name: parsed.name || parsed.email?.split('@')[0],
+              sub: parsed.sub || parsed.user_id,
+              email_verified: parsed.email_verified || false,
+            };
+          }
+        } catch (tokenError) {
+          Logger.error('Token validation error:', tokenError);
+          sendJson(res, 401, { error: 'Invalid Firebase token' });
+          return;
+        }
+
+        if (!tokenInfo || !tokenInfo.email) {
+          sendJson(res, 401, { error: 'Invalid token - missing email' });
+          return;
+        }
+
+        const { username } = JSON.parse(body || '{}');
+        const normalizedEmail = tokenInfo.email.toLowerCase();
+        const displayName = username || tokenInfo.name || normalizedEmail.split('@')[0];
+
+        // Check if user already exists in MongoDB
+        let user = await mongoService.findUser(normalizedEmail);
+        
+        if (user) {
+          // Update existing user
+          await mongoService.updateUser(normalizedEmail, {
+            username: displayName,
+            emailVerified: tokenInfo.email_verified || false,
+            firebaseUid: tokenInfo.sub,
+            provider: 'firebase',
+          });
+          user = await mongoService.findUser(normalizedEmail);
+        } else {
+          // Create new user in MongoDB
+          user = await mongoService.createUser({
+            username: displayName,
+            email: normalizedEmail,
+            password: '', // No password for Firebase users
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            isActive: true,
+            emailVerified: tokenInfo.email_verified || false,
+            provider: 'firebase',
+            firebaseUid: tokenInfo.sub,
+          });
+        }
+
+        // Generate JWT token
+        const token = authService.generateToken(user);
+
+        Logger.success(`✅ Firebase user synced to MongoDB: ${normalizedEmail}`);
+
+        sendJson(res, 201, {
+          success: true,
+          user: {
+            id: user._id || user.id,
+            username: user.username,
+            email: user.email,
+            createdAt: user.createdAt,
+          },
+          token,
+        });
+      } catch (error) {
+        Logger.error('Firebase register error:', error.message);
+        sendJson(res, 400, { error: error.message || 'Failed to sync Firebase user' });
       }
     });
     return;
   }
 
-  if (method === 'GET' && url === '/api/auth/confirm-email') {
-    try {
-      if (!authService) {
-        sendHtml(res, 503, '<h1>Service unavailable</h1>');
-        return;
-      }
-
-      const requestUrl = new URL(
-        req.url || '/api/auth/confirm-email',
-        `http://${req.headers.host || 'localhost'}`
-      );
-      const token = requestUrl.searchParams.get('token');
-
-      if (!token) {
-        sendHtml(res, 400, '<h1>Verification token missing.</h1>');
-        return;
-      }
-
-      const result = await authService.confirmEmailToken(token);
-      const deepLink = emailService?.buildDeepLink(result.email, token) || '';
-
-      const successHtml = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8" />
-            <title>Email Confirmed</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 32px; background: #F9FAFB; color: #111827; }
-              .card { max-width: 520px; margin: 0 auto; background: #fff; border-radius: 16px; padding: 32px; box-shadow: 0 10px 25px rgba(0,0,0,0.08); }
-              .badge { display: inline-block; padding: 6px 12px; background: #D1FAE5; color: #065F46; border-radius: 999px; font-size: 13px; font-weight: 600; }
-              a { color: #2563EB; }
-            </style>
-            ${deepLink ? `<meta http-equiv="refresh" content="2;url=${deepLink}">` : ''}
-          </head>
-          <body>
-            <div class="card">
-              <div class="badge">Email Verified</div>
-              <h1>Thanks! Your email is confirmed.</h1>
-              <p>We successfully verified <strong>${result.email}</strong>. You can go back to the DOrSU Connect app and finish creating your account.</p>
-              ${
-                deepLink
-                  ? `<p>If the app does not open automatically, <a href="${deepLink}">tap here to open it</a>.</p>`
-                  : ''
-              }
-            </div>
-          </body>
-        </html>
-      `;
-
-      sendHtml(res, 200, successHtml);
-    } catch (error) {
-      Logger.error('Email confirmation error:', error.message);
-      sendHtml(
-        res,
-        400,
-        `<h1>Verification failed</h1><p>${error.message || 'Invalid or expired token.'}</p>`
-      );
-    }
-    return;
-  }
-
-  if (method === 'GET' && url === '/api/auth/email-verification-status') {
-    try {
-      if (!authService) {
-        sendJson(res, 503, { error: 'Authentication service not available' });
-        return;
-      }
-
-      const requestUrl = new URL(
-        req.url || '/api/auth/email-verification-status',
-        `http://${req.headers.host || 'localhost'}`
-      );
-      const email = requestUrl.searchParams.get('email');
-
-      if (!email) {
-        sendJson(res, 400, { error: 'Email is required' });
-        return;
-      }
-
-      const status = await authService.getEmailVerificationStatus(email);
-      sendJson(res, 200, status);
-    } catch (error) {
-      Logger.error('Email verification status error:', error.message);
-      sendJson(res, 400, { error: error.message || 'Unable to check verification status' });
-    }
-    return;
-  }
-
-  // User Registration
+  // User Registration (Legacy - for backward compatibility)
   if (method === 'POST' && url === '/api/auth/register') {
     let body = '';
     req.on('data', chunk => { body += chunk; });

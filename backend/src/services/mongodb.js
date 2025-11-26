@@ -907,6 +907,34 @@ class MongoDBService {
   }
 
   /**
+   * Update user by email
+   */
+  async updateUser(email, updateData) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.users || 'users');
+      const result = await collection.updateOne(
+        { email: email.toLowerCase() },
+        {
+          $set: {
+            ...updateData,
+            updatedAt: new Date()
+          }
+        }
+      );
+      
+      if (result.matchedCount === 0) {
+        throw new Error('User not found');
+      }
+      
+      Logger.success(`✅ User updated: ${email}`);
+      return { success: true };
+    } catch (error) {
+      Logger.error('Failed to update user:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Update user's last login timestamp
    */
   async updateUserLastLogin(email) {
@@ -1079,8 +1107,12 @@ class MongoDBService {
       const { ObjectId } = await import('mongodb');
       const userObjectId = new ObjectId(userId);
       
-      // Delete user from users collection
+      // First, get user email before deletion (for email verification cleanup)
       const usersCollection = this.getCollection(mongoConfig.collections.users || 'users');
+      const user = await usersCollection.findOne({ _id: userObjectId });
+      const userEmail = user?.email;
+      
+      // Delete user from users collection
       const userResult = await usersCollection.deleteOne({ _id: userObjectId });
       
       if (userResult.deletedCount === 0) {
@@ -1092,7 +1124,25 @@ class MongoDBService {
       const conversationsCollection = this.getCollection(mongoConfig.collections.conversations);
       await conversationsCollection.deleteOne({ userId: userId });
       
-      Logger.success(`🗑️ User account deleted: ${userId}`);
+      // Delete email verification records if user email exists
+      if (userEmail) {
+        try {
+          const emailVerificationsCollection = this.getCollection(
+            mongoConfig.collections.emailVerifications || 'email_verifications'
+          );
+          const emailDeleteResult = await emailVerificationsCollection.deleteMany({ 
+            email: userEmail.toLowerCase() 
+          });
+          if (emailDeleteResult.deletedCount > 0) {
+            Logger.info(`🗑️ Deleted ${emailDeleteResult.deletedCount} email verification record(s) for ${userEmail}`);
+          }
+        } catch (emailError) {
+          Logger.warn('Failed to delete email verification records:', emailError);
+          // Continue - email verification deletion is not critical
+        }
+      }
+      
+      Logger.success(`🗑️ User account deleted: ${userId}${userEmail ? ` (${userEmail})` : ''}`);
       return { success: true, message: 'User account and all associated data deleted' };
     } catch (error) {
       Logger.error('Failed to delete user:', error);

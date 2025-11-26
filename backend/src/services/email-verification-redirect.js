@@ -109,7 +109,9 @@ export function generateVerificationRedirectPage(oobCode, mode, origin = 'http:/
     if (isWeb) {
       // On web (desktop browser), redirect to the app URL with verification parameters
       console.log('🌐 Web detected, redirecting to app URL...');
-      window.location.href = "${webAppUrl}";
+      console.log('🌐 Redirect URL:', "${webAppUrl}");
+      // Use replace to avoid adding to history
+      window.location.replace("${webAppUrl}");
     } else if (isAndroid) {
       // On Android, try to open the app with custom scheme
       console.log('🤖 Android detected, trying custom scheme...');

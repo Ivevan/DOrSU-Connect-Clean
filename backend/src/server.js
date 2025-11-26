@@ -158,8 +158,22 @@ const server = http.createServer(async (req, res) => {
   
   // Email verification redirect handler
   if (method === 'GET' && url === '/verify-email') {
+    // For web, try to detect the frontend URL from referer or use default localhost
+    let frontendOrigin = 'http://localhost:8081';
+    const referer = req.headers.referer;
+    if (referer) {
+      try {
+        const refererUrl = new URL(referer);
+        frontendOrigin = `${refererUrl.protocol}//${refererUrl.host}`;
+      } catch (e) {
+        // Use default if parsing fails
+      }
+    }
+    // Also check if there's a specific frontend URL in headers or use the request origin
     const origin = req.headers.origin || `http://${req.headers.host || 'localhost:3000'}`;
-    handleVerificationRedirect(urlObj, res, origin);
+    // Prefer frontend origin if we detected it, otherwise use request origin
+    const redirectOrigin = frontendOrigin !== 'http://localhost:8081' ? frontendOrigin : origin;
+    handleVerificationRedirect(urlObj, res, redirectOrigin);
     return;
   }
   

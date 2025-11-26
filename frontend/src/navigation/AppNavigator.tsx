@@ -64,25 +64,6 @@ const AppNavigator = () => {
   
   // Handle deep links for email verification
   useEffect(() => {
-    // On web, also check the current window location for verification parameters
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const checkCurrentUrl = async () => {
-        const currentUrl = window.location.href;
-        if (currentUrl.includes('verify-email') || currentUrl.includes('oobCode') || currentUrl.includes('actionCode')) {
-          console.log('🌐 Web: Checking current URL for verification parameters:', currentUrl);
-          await handleDeepLink(currentUrl);
-          // Clean up URL to remove parameters after processing
-          if (window.history && window.history.replaceState) {
-            const cleanUrl = window.location.origin + window.location.pathname;
-            window.history.replaceState({}, document.title, cleanUrl);
-          }
-        }
-      };
-      // Check immediately and after a short delay (in case page just loaded)
-      checkCurrentUrl();
-      setTimeout(checkCurrentUrl, 500);
-    }
-    
     const handleDeepLink = async (url: string) => {
       try {
         console.log('🔗 Deep link received:', url);
@@ -96,6 +77,7 @@ const AppNavigator = () => {
           const urlObj = new URL(url);
           oobCode = urlObj.searchParams.get('oobCode') || urlObj.searchParams.get('actionCode');
           mode = urlObj.searchParams.get('mode');
+          console.log('🔗 Parsed URL - oobCode:', oobCode ? oobCode.substring(0, 20) + '...' : 'none', 'mode:', mode || 'none');
         } catch {
           // For custom schemes (dorsuconnect://), manually parse query parameters
           console.log('⚠️ Custom scheme detected, parsing manually...');
@@ -111,6 +93,7 @@ const AppNavigator = () => {
           if (modeMatch && modeMatch[1]) {
             mode = decodeURIComponent(modeMatch[1]);
           }
+          console.log('🔗 Parsed custom scheme - oobCode:', oobCode ? oobCode.substring(0, 20) + '...' : 'none', 'mode:', mode || 'none');
         }
         
         // Check if this is an email verification link
@@ -227,6 +210,51 @@ const AppNavigator = () => {
         }
       }
     };
+
+    // On web, check the current window location for verification parameters
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const checkCurrentUrl = async () => {
+        const currentUrl = window.location.href;
+        const urlParams = new URLSearchParams(window.location.search);
+        const oobCode = urlParams.get('oobCode') || urlParams.get('actionCode');
+        const hasVerifyEmail = currentUrl.includes('verify-email') || currentUrl.includes('/verify-email');
+        
+        if (hasVerifyEmail || oobCode) {
+          console.log('🌐 Web: Checking current URL for verification parameters:', currentUrl);
+          console.log('🌐 Web: oobCode found:', oobCode ? oobCode.substring(0, 20) + '...' : 'none');
+          await handleDeepLink(currentUrl);
+          // Clean up URL to remove parameters after processing (but wait a bit to ensure processing is done)
+          setTimeout(() => {
+            if (window.history && window.history.replaceState) {
+              const cleanUrl = window.location.origin + window.location.pathname;
+              window.history.replaceState({}, document.title, cleanUrl);
+            }
+          }, 2000);
+        }
+      };
+      
+      // Check immediately and after delays (in case page just loaded or redirected)
+      checkCurrentUrl();
+      setTimeout(checkCurrentUrl, 300);
+      setTimeout(checkCurrentUrl, 1000);
+      setTimeout(checkCurrentUrl, 2000);
+      
+      // Also listen for popstate events (back/forward navigation) and hashchange
+      const handlePopState = () => {
+        setTimeout(checkCurrentUrl, 100);
+      };
+      const handleHashChange = () => {
+        setTimeout(checkCurrentUrl, 100);
+      };
+      window.addEventListener('popstate', handlePopState);
+      window.addEventListener('hashchange', handleHashChange);
+      
+      // Cleanup
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+        window.removeEventListener('hashchange', handleHashChange);
+      };
+    }
 
     // Handle initial URL (app opened via deep link)
     Linking.getInitialURL().then((url) => {

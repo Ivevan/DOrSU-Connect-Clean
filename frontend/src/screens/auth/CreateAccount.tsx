@@ -377,7 +377,7 @@ const CreateAccount = () => {
               setEmailVerificationStatus('pending');
               setEmailVerificationMessage('Please check your email and click the verification link to complete your account creation.');
               
-              // Start checking verification status periodically
+              // Start checking verification status periodically, but less frequently
               const verificationCheckInterval = setInterval(async () => {
                 try {
                   await reloadUser(firebaseUser);
@@ -393,7 +393,7 @@ const CreateAccount = () => {
                 } catch (error) {
                   console.error('Error checking verification status:', error);
                 }
-              }, 3000);
+              }, 10000); // Check every 10 seconds instead of 3 to avoid quota issues
               
               (global as any).verificationCheckInterval = verificationCheckInterval;
             }
@@ -414,10 +414,10 @@ const CreateAccount = () => {
   useFocusEffect(
     useCallback(() => {
       if (email && emailVerificationStatus === 'pending' && !isCompletingAccount) {
-        // Check verification status periodically
+        // Check verification status periodically, but less frequently to avoid quota issues
         const interval = setInterval(() => {
           checkEmailVerificationStatus();
-        }, 3000); // Check every 3 seconds
+        }, 10000); // Check every 10 seconds instead of 3 to avoid quota issues
         
         return () => clearInterval(interval);
       }
@@ -446,7 +446,34 @@ const CreateAccount = () => {
       if (pendingEmail && pendingPassword && pendingUsername) {
         try {
           console.log('🔍 Checking email verification status...');
-          const firebaseUser = await signInWithEmailAndPassword(pendingEmail, pendingPassword);
+          
+          // First, check if user is already signed in
+          let firebaseUser = getCurrentUser();
+          let needsSignIn = false;
+          
+          // Only sign in if not already signed in or if email doesn't match
+          if (!firebaseUser || firebaseUser.email?.toLowerCase() !== pendingEmail.toLowerCase()) {
+            needsSignIn = true;
+          }
+          
+          if (needsSignIn) {
+            try {
+              firebaseUser = await signInWithEmailAndPassword(pendingEmail, pendingPassword);
+            } catch (signInError: any) {
+              // Handle quota exceeded error gracefully
+              if (signInError?.code === 'auth/quota-exceeded') {
+                console.warn('⚠️ Firebase quota exceeded, will retry later');
+                return; // Exit early, don't retry immediately
+              }
+              throw signInError; // Re-throw other errors
+            }
+          }
+          
+          // Ensure we have a valid user before proceeding
+          if (!firebaseUser) {
+            console.warn('⚠️ No Firebase user available, skipping verification check');
+            return;
+          }
           
           // If we have a verification code from deep link, apply it first
           if (pendingVerificationCode) {
@@ -469,7 +496,7 @@ const CreateAccount = () => {
           
           console.log('📧 Email verified:', currentUser?.emailVerified);
           
-          if (currentUser?.emailVerified) {
+          if (currentUser?.emailVerified && firebaseUser) {
             // Clear the deep link flag
             if (emailVerifiedViaDeepLink) {
               await AsyncStorage.removeItem('emailVerifiedViaDeepLink');
@@ -488,8 +515,12 @@ const CreateAccount = () => {
               setEmailVerificationMessage('Please check your email and click the verification link.');
             }
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error('❌ Error checking verification on focus:', error);
+          // Don't log quota errors repeatedly
+          if (error?.code !== 'auth/quota-exceeded') {
+            console.error('Error details:', error);
+          }
         }
       }
     };
@@ -497,11 +528,11 @@ const CreateAccount = () => {
     // Check when component mounts or when coming back to this screen
     checkVerificationOnFocus();
     
-    // Also check periodically if verification is pending
+    // Also check periodically if verification is pending, but with longer intervals to avoid quota issues
     if (emailVerificationStatus === 'pending') {
       const interval = setInterval(() => {
         checkVerificationOnFocus();
-      }, 2000); // Check every 2 seconds
+      }, 10000); // Check every 10 seconds instead of 2 to avoid quota issues
       
       return () => clearInterval(interval);
     }

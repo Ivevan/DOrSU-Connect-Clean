@@ -33,6 +33,19 @@ const port = Number.parseInt(process.env.PORT || '3000', 10);
 const publicDir = path.resolve(__dirname, '../../frontend');
 const dataPath = path.resolve(__dirname, './data/dorsu_data.json');
 
+// ===== TIMEZONE UTILITIES =====
+const DEFAULT_TIMEZONE = process.env.CALENDAR_TIMEZONE || 'Asia/Manila';
+
+function formatDateInTimezone(date, options = {}) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    return null;
+  }
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: DEFAULT_TIMEZONE,
+    ...options,
+  }).format(date);
+}
+
 // ===== SERVICE INSTANCES =====
 let dorsuData = null;
 let dorsuContext = '';
@@ -1786,11 +1799,13 @@ const server = http.createServer(async (req, res) => {
               
               if (events && events.length > 0) {
                 // Helper function to format date concisely (e.g., "Jan 11" or "Jan 11 - Jan 15")
+                // CRITICAL: Use Philippine timezone to prevent date shifts (e.g., Dec 1 -> Nov 30)
                 const formatDateConcise = (date) => {
                   if (!date) return 'Date TBD';
                   const d = new Date(date);
-                  const month = d.toLocaleDateString('en-US', { month: 'short' });
-                  const day = d.getDate();
+                  // Use timezone-aware formatting to ensure correct date in Philippine timezone
+                  const month = formatDateInTimezone(d, { month: 'short' });
+                  const day = formatDateInTimezone(d, { day: 'numeric' });
                   return `${month} ${day}`;
                 };
                 
@@ -1836,13 +1851,15 @@ const server = http.createServer(async (req, res) => {
                     if (eventGroup.length === 1) {
                       const start = formatDateConcise(startDate);
                       const end = formatDateConcise(endDate);
-                      const year = new Date(startDate).getFullYear();
+                      // CRITICAL: Use timezone-aware year to prevent date shifts
+                      const year = formatDateInTimezone(new Date(startDate), { year: 'numeric' });
                       eventInfo += `  📅 Date: ${start} - ${end}, ${year}\n`;
                     } else {
                       // Multiple ranges - show first and last
                       const firstStart = formatDateConcise(startDate);
                       const lastEnd = formatDateConcise(endDate);
-                      const year = new Date(startDate).getFullYear();
+                      // CRITICAL: Use timezone-aware year to prevent date shifts
+                      const year = formatDateInTimezone(new Date(startDate), { year: 'numeric' });
                       eventInfo += `  📅 Dates: ${firstStart} - ${lastEnd}, ${year}\n`;
                     }
                   } else {
@@ -1861,11 +1878,12 @@ const server = http.createServer(async (req, res) => {
                     if (dates.length > 0) {
                       // Remove duplicates and format
                       const uniqueDates = [...new Set(dates)];
+                      // CRITICAL: Use timezone-aware year to prevent date shifts
                       const year = eventGroup[0].isoDate || eventGroup[0].date 
-                        ? new Date(eventGroup[0].isoDate || eventGroup[0].date).getFullYear()
+                        ? formatDateInTimezone(new Date(eventGroup[0].isoDate || eventGroup[0].date), { year: 'numeric' })
                         : eventGroup[0].startDate 
-                          ? new Date(eventGroup[0].startDate).getFullYear()
-                          : new Date().getFullYear();
+                          ? formatDateInTimezone(new Date(eventGroup[0].startDate), { year: 'numeric' })
+                          : formatDateInTimezone(new Date(), { year: 'numeric' });
                       
                       if (uniqueDates.length === 1) {
                         eventInfo += `  📅 Date: ${uniqueDates[0]}, ${year}\n`;
@@ -1933,9 +1951,10 @@ const server = http.createServer(async (req, res) => {
                   
                   if (post.date) {
                     const postDate = new Date(post.date);
-                    const month = postDate.toLocaleDateString('en-US', { month: 'short' });
-                    const day = postDate.getDate();
-                    const year = postDate.getFullYear();
+                    // CRITICAL: Use timezone-aware formatting to prevent date shifts
+                    const month = formatDateInTimezone(postDate, { month: 'short' });
+                    const day = formatDateInTimezone(postDate, { day: 'numeric' });
+                    const year = formatDateInTimezone(postDate, { year: 'numeric' });
                     postText += `  📅 Date: ${month} ${day}, ${year}\n`;
                   }
                   
@@ -1983,11 +2002,14 @@ const server = http.createServer(async (req, res) => {
                   });
                   
                   if (events && events.length > 0) {
+                    // Helper function to format date concisely (e.g., "Jan 11" or "Jan 11 - Jan 15")
+                    // CRITICAL: Use Philippine timezone to prevent date shifts (e.g., Dec 1 -> Nov 30)
                     const formatDateConcise = (date) => {
                       if (!date) return 'Date TBD';
                       const d = new Date(date);
-                      const month = d.toLocaleDateString('en-US', { month: 'short' });
-                      const day = d.getDate();
+                      // Use timezone-aware formatting to ensure correct date in Philippine timezone
+                      const month = formatDateInTimezone(d, { month: 'short' });
+                      const day = formatDateInTimezone(d, { day: 'numeric' });
                       return `${month} ${day}`;
                     };
                     
@@ -1995,9 +2017,10 @@ const server = http.createServer(async (req, res) => {
                       let eventText = `- **${event.title || 'Untitled Event'}**\n`;
                       if (event.isoDate || event.date) {
                         const eventDate = new Date(event.isoDate || event.date);
-                        const month = eventDate.toLocaleDateString('en-US', { month: 'short' });
-                        const day = eventDate.getDate();
-                        const year = eventDate.getFullYear();
+                        // CRITICAL: Use timezone-aware formatting to prevent date shifts
+                        const month = formatDateInTimezone(eventDate, { month: 'short' });
+                        const day = formatDateInTimezone(eventDate, { day: 'numeric' });
+                        const year = formatDateInTimezone(eventDate, { year: 'numeric' });
                         eventText += `  📅 Date: ${month} ${day}, ${year}\n`;
                       }
                       if (event.category) eventText += `  🏷️ Category: ${event.category}\n`;

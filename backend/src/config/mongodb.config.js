@@ -33,8 +33,7 @@ export const mongoConfig = {
       retryReads: true,
       w: 'majority',
       // Additional resilience options
-      heartbeatFrequencyMS: 10000, // Check connection health every 10 seconds
-      serverSelectionRetryDelayMS: 2000 // Wait 2 seconds between retry attempts
+      heartbeatFrequencyMS: 10000 // Check connection health every 10 seconds
     }
   };
   

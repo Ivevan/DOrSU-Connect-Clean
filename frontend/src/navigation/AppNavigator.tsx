@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import * as Linking from 'expo-linking';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Platform, View } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -61,6 +62,119 @@ const AppNavigator = () => {
   const navigationRef = useNavigationContainerRef();
   const { resetInactivityTimer } = useAuth();
   
+  // Handle deep links for email verification
+  useEffect(() => {
+    const handleDeepLink = async (url: string) => {
+      try {
+        console.log('🔗 Deep link received:', url);
+        
+        // Extract oobCode or actionCode from URL
+        const urlObj = new URL(url);
+        const oobCode = urlObj.searchParams.get('oobCode') || urlObj.searchParams.get('actionCode');
+        const mode = urlObj.searchParams.get('mode');
+        
+        // Check if this is an email verification link
+        const isVerificationLink = url.includes('verify-email') || 
+                                   url.includes('action=verifyEmail') || 
+                                   mode === 'verifyEmail' ||
+                                   !!oobCode;
+        
+        if (isVerificationLink && oobCode) {
+          console.log('✅ Email verification link detected with code');
+          
+          // Navigate to CreateAccount screen to handle verification
+          if (navigationRef.isReady()) {
+            navigationRef.navigate('CreateAccount' as never);
+          }
+          
+          // Wait a moment for navigation to complete
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Check for pending account
+          const pendingEmail = await AsyncStorage.getItem('pendingEmail');
+          const pendingUsername = await AsyncStorage.getItem('pendingUsername');
+          const pendingPassword = await AsyncStorage.getItem('pendingPassword');
+          
+          if (pendingEmail && pendingPassword && pendingUsername) {
+            try {
+              console.log('🔐 Applying email verification code...');
+              const { applyEmailVerificationCode, signInWithEmailAndPassword, reloadUser, getCurrentUser, completeAccountCreation } = require('../services/authService');
+              
+              // Step 1: Apply the verification code from the URL
+              try {
+                await applyEmailVerificationCode(oobCode);
+                console.log('✅ Email verification code applied successfully');
+              } catch (applyError: any) {
+                console.error('❌ Failed to apply verification code:', applyError);
+                // Continue anyway - Firebase might have already verified it
+              }
+              
+              // Step 2: Sign in to get the user
+              const firebaseUser = await signInWithEmailAndPassword(pendingEmail, pendingPassword);
+              
+              // Step 3: Reload to get latest verification status
+              await reloadUser(firebaseUser);
+              
+              // Step 4: Check verification status
+              const currentUser = getCurrentUser();
+              console.log('📧 Email verified status:', currentUser?.emailVerified);
+              
+              if (currentUser?.emailVerified) {
+                // Email is verified - complete account creation
+                console.log('✅ Email verified via deep link - completing account creation');
+                await completeAccountCreation(firebaseUser, pendingUsername, pendingEmail);
+              } else {
+                console.log('⏳ Email not yet verified, will check again...');
+                // Set flag for CreateAccount to check
+                await AsyncStorage.setItem('emailVerifiedViaDeepLink', 'true');
+              }
+            } catch (error) {
+              console.error('❌ Error verifying email via deep link:', error);
+            }
+          } else {
+            console.log('⚠️ No pending account found for deep link verification');
+            // User might have already completed registration, just verify the email
+            if (oobCode) {
+              try {
+                const { applyEmailVerificationCode } = require('../services/authService');
+                await applyEmailVerificationCode(oobCode);
+                console.log('✅ Email verified (no pending account)');
+                // Navigate to sign in
+                if (navigationRef.isReady()) {
+                  navigationRef.navigate('SignIn' as never);
+                }
+              } catch (error) {
+                console.error('❌ Error applying verification code:', error);
+              }
+            }
+          }
+        } else if (isVerificationLink) {
+          console.log('⚠️ Verification link detected but no oobCode found');
+        }
+      } catch (error) {
+        console.error('❌ Error handling deep link:', error);
+      }
+    };
+
+    // Handle initial URL (app opened via deep link)
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        console.log('🔗 Initial URL:', url);
+        handleDeepLink(url);
+      }
+    });
+
+    // Handle deep links while app is running
+    const subscription = Linking.addEventListener('url', (event) => {
+      console.log('🔗 Deep link event:', event.url);
+      handleDeepLink(event.url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [navigationRef]);
+
   // Check authentication status on app load
   useEffect(() => {
     const checkAuthStatus = async () => {

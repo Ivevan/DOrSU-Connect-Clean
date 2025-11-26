@@ -23,6 +23,7 @@ import { Logger } from './utils/logger.js';
 import { parseMultipartFormData } from './utils/multipart-parser.js';
 import QueryAnalyzer from './utils/query-analyzer.js';
 import ResponseCleaner from './utils/response-cleaner.js';
+import { handleVerificationRedirect } from './services/email-verification-redirect.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -140,6 +141,13 @@ const server = http.createServer(async (req, res) => {
   // Parse URL to get pathname (remove query parameters and hash)
   const rawUrl = req.url || '/';
   const url = rawUrl.split('?')[0].split('#')[0];
+  const urlObj = new URL(rawUrl, `http://${req.headers.host || 'localhost:3000'}`);
+  
+  // Email verification redirect handler
+  if (method === 'GET' && url === '/verify-email') {
+    handleVerificationRedirect(urlObj, res);
+    return;
+  }
   
   // Debug logging for specific endpoints
   if (url === '/api/top-queries' || rawUrl.includes('top-queries')) {

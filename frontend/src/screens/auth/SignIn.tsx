@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../config/api.config';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { signInWithEmailAndPassword } from '../../services/authService';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -198,30 +199,50 @@ const SignIn = () => {
         return;
       }
       
-      // Call backend API to login regular user
-      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      // Step 1: Sign in with Firebase Authentication
+      const firebaseUser = await signInWithEmailAndPassword(email.trim().toLowerCase(), password);
+      
+      // Step 2: Get Firebase ID token and sync with backend
+      const idToken = await firebaseUser.getIdToken();
+      
+      // Step 3: Sync user to backend MongoDB and get backend JWT token
+      const response = await fetch(`${API_BASE_URL}/api/auth/firebase-login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          email,
-          password,
+          idToken,
         }),
       });
       
       const data = await response.json();
       
       if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
+        // If backend sync fails, sign out from Firebase
+        try {
+          if (Platform.OS === 'web') {
+            const { getFirebaseAuth } = require('../../config/firebase');
+            const auth = getFirebaseAuth();
+            const { signOut } = require('firebase/auth');
+            await signOut(auth);
+          } else {
+            const auth = require('@react-native-firebase/auth').default();
+            await auth.signOut();
+          }
+        } catch (signOutError) {
+          console.error('Failed to sign out from Firebase after backend error:', signOutError);
+        }
+        throw new Error(data.error || 'Failed to sync with server');
       }
       
-      // Store user data and token locally
-      await AsyncStorage.setItem('userToken', data.token);
-      await AsyncStorage.setItem('userEmail', data.user.email);
-      await AsyncStorage.setItem('userName', data.user.username);
-      await AsyncStorage.setItem('userId', data.user.id);
+      // Step 4: Store user data locally
+      await AsyncStorage.setItem('userToken', data.token || idToken);
+      await AsyncStorage.setItem('userEmail', firebaseUser.email || email);
+      await AsyncStorage.setItem('userName', data.user?.username || firebaseUser.displayName || email.split('@')[0]);
+      await AsyncStorage.setItem('userId', data.user?.id || firebaseUser.uid);
       await AsyncStorage.setItem('isAdmin', 'false'); // Explicitly set as non-admin
+      await AsyncStorage.setItem('authProvider', 'email');
       
       setIsLoading(false);
       loadingRotation.stopAnimation();
@@ -237,16 +258,39 @@ const SignIn = () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       
       let errorMessage = 'Invalid email or password. Please try again.';
+      let emailError = '';
+      let passwordError = '';
       
-      if (error.message.includes('Invalid')) {
-        errorMessage = 'Invalid email or password';
+      // Check Firebase error codes for specific error messages
+      if (error.code === 'auth/user-not-found' || error.message.includes('user-not-found')) {
+        emailError = 'This email address is not registered. Please create an account first.';
+        errorMessage = '';
+      } else if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential' || error.message.includes('wrong-password') || error.message.includes('invalid-credential')) {
+        passwordError = 'Incorrect password. Please try again.';
+        errorMessage = '';
+      } else if (error.code === 'auth/invalid-email' || error.message.includes('invalid-email')) {
+        emailError = 'Invalid email address format.';
+        errorMessage = '';
+      } else if (error.code === 'auth/user-disabled' || error.message.includes('user-disabled')) {
+        errorMessage = 'This account has been disabled. Please contact support.';
+      } else if (error.code === 'auth/too-many-requests' || error.message.includes('too-many-requests')) {
+        errorMessage = 'Too many failed login attempts. Please try again later.';
+      } else if (error.code === 'auth/network-request-failed' || error.message.includes('network')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
       } else if (error.message.includes('deactivated')) {
         errorMessage = 'This account has been deactivated';
+      } else if (error.message.includes('Invalid email or password')) {
+        // Generic backend error - try to be more specific
+        errorMessage = 'Invalid email or password. Please check your credentials and try again.';
       } else if (error.message) {
         errorMessage = error.message;
       }
       
-      setErrors(prev => ({ ...prev, general: errorMessage }));
+      setErrors({
+        email: emailError,
+        password: passwordError,
+        general: errorMessage,
+      });
       
       console.error('Sign in error:', error);
     }

@@ -308,6 +308,8 @@ export const createUserWithEmailAndPassword = async (email: string, password: st
       throw new Error('Password is too weak. Please use a stronger password.');
     } else if (error.code === 'auth/network-request-failed') {
       throw new Error('Network error. Please check your internet connection.');
+    } else if (error.code === 'auth/operation-not-allowed') {
+      throw new Error('Email/Password authentication is not enabled in Firebase. Please contact support or enable it in Firebase Console under Authentication > Sign-in method.');
     }
     
     throw new Error(error.message || 'Failed to create account');
@@ -315,20 +317,82 @@ export const createUserWithEmailAndPassword = async (email: string, password: st
 };
 
 /**
- * Send email verification (Firebase)
+ * Send email verification (Firebase) with deep link support
  */
 export const sendEmailVerification = async (user: User): Promise<void> => {
   try {
+    console.log('📧 Sending email verification for user:', user.email);
+    console.log('📧 Platform:', Platform.OS);
+    
+    if (!user || !user.email) {
+      throw new Error('Invalid user object. Cannot send verification email.');
+    }
+    
     if (Platform.OS === 'web') {
       const { sendEmailVerification: sendVerification } = require('firebase/auth');
-      await sendVerification(user);
+      // For web, use actionCodeSettings to redirect to the app
+      const actionCodeSettings = {
+        url: `${window.location.origin}/verify-email`,
+        handleCodeInApp: true,
+      };
+      console.log('📧 Sending verification email (web) with settings:', actionCodeSettings);
+      await sendVerification(user, actionCodeSettings);
+      console.log('✅ Verification email sent successfully (web)');
     } else {
       // Native - React Native Firebase
-      await user.sendEmailVerification();
+      // React Native Firebase sendEmailVerification may not support actionCodeSettings
+      // Try simple call first (most reliable)
+      console.log('📧 Attempting to send verification email (native)...');
+      
+      try {
+        // First, try without actionCodeSettings (most compatible)
+        await user.sendEmailVerification();
+        console.log('✅ Verification email sent successfully (native - simple)');
+      } catch (simpleError: any) {
+        console.warn('⚠️ Simple sendEmailVerification failed, trying with actionCodeSettings:', simpleError);
+        
+        // Fallback: try with actionCodeSettings if available
+        try {
+          const actionCodeSettings = {
+            url: 'dorsuconnect://verify-email',
+            handleCodeInApp: true,
+            iOS: {
+              bundleId: 'com.dorsuconnect.app',
+            },
+            android: {
+              packageName: 'com.dorsuconnect.app',
+              installApp: false,
+              minimumVersion: '1',
+            },
+          };
+          await user.sendEmailVerification(actionCodeSettings);
+          console.log('✅ Verification email sent successfully (native - with deep link)');
+        } catch (settingsError: any) {
+          console.error('❌ Both methods failed:', settingsError);
+          throw simpleError; // Throw the original error
+        }
+      }
     }
+    
+    console.log('✅ Email verification process completed successfully');
   } catch (error: any) {
-    console.error('Send email verification error:', error);
-    throw new Error(error.message || 'Failed to send verification email');
+    console.error('❌ Send email verification error:', error);
+    console.error('❌ Error code:', error?.code);
+    console.error('❌ Error message:', error?.message);
+    console.error('❌ Full error:', JSON.stringify(error, null, 2));
+    
+    // Provide more specific error messages
+    if (error?.code === 'auth/too-many-requests') {
+      throw new Error('Too many verification emails sent. Please wait a few minutes before requesting another.');
+    } else if (error?.code === 'auth/user-not-found') {
+      throw new Error('User account not found. Please try creating your account again.');
+    } else if (error?.code === 'auth/invalid-action-code') {
+      throw new Error('Invalid verification code. Please request a new verification email.');
+    } else if (error?.message) {
+      throw new Error(`Failed to send verification email: ${error.message}`);
+    } else {
+      throw new Error('Failed to send verification email. Please check your internet connection and try again. If the problem persists, check your Firebase Console settings.');
+    }
   }
 };
 
@@ -382,6 +446,40 @@ export const reloadUser = async (user: User): Promise<void> => {
   } catch (error: any) {
     console.error('Reload user error:', error);
     throw new Error(error.message || 'Failed to reload user');
+  }
+};
+
+/**
+ * Apply email verification action code from URL
+ * This is used when user clicks the verification link in their email
+ */
+export const applyEmailVerificationCode = async (actionCode: string): Promise<void> => {
+  try {
+    console.log('🔐 Applying email verification code...');
+    
+    if (Platform.OS === 'web') {
+      const { applyActionCode, getAuth } = require('firebase/auth');
+      const auth = getAuth();
+      await applyActionCode(auth, actionCode);
+      console.log('✅ Email verification code applied successfully (web)');
+    } else {
+      // Native - React Native Firebase
+      const auth = require('@react-native-firebase/auth').default();
+      await auth().applyActionCode(actionCode);
+      console.log('✅ Email verification code applied successfully (native)');
+    }
+  } catch (error: any) {
+    console.error('❌ Failed to apply verification code:', error);
+    
+    if (error?.code === 'auth/invalid-action-code') {
+      throw new Error('Invalid or expired verification code. Please request a new verification email.');
+    } else if (error?.code === 'auth/expired-action-code') {
+      throw new Error('Verification code has expired. Please request a new verification email.');
+    } else if (error?.message) {
+      throw new Error(`Failed to verify email: ${error.message}`);
+    } else {
+      throw new Error('Failed to verify email. Please try again.');
+    }
   }
 };
 

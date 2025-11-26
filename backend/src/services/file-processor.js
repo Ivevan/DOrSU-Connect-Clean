@@ -271,6 +271,17 @@ class FileProcessorService {
           }
         }
       });
+
+      const rawUserType = rowObj.usertype || rowObj.audience || rowObj.targetuser || rowObj.audiencetype;
+      const normalizedUserType = this.normalizeUserType(rawUserType);
+      if (normalizedUserType) {
+        const audienceLabel = normalizedUserType === 'student'
+          ? 'Students'
+          : normalizedUserType === 'faculty'
+            ? 'Faculty'
+            : 'All audiences';
+        entryParts.push(`Audience: ${audienceLabel}`);
+      }
       
       if (entryParts.length > 0) {
         text += entryParts.join('. ') + '.\n\n';
@@ -467,6 +478,7 @@ class FileProcessorService {
     const descriptionIndex = findFieldIndex(['description', 'desc', 'details']);
     const timeIndex = findFieldIndex(['time', 'eventtime', 'event_time']);
     const semesterIndex = findFieldIndex(['semester', 'sem', 'term']);
+    const userTypeIndex = findFieldIndex(['usertype', 'audience', 'audience_type', 'audiencetype', 'targetuser']);
     
     // Count how many required fields are present (need at least 3, including Event)
     const foundFields = [
@@ -517,6 +529,8 @@ class FileProcessorService {
       
       const description = descriptionIndex >= 0 ? fields[descriptionIndex]?.trim() || '' : '';
       const time = timeIndex >= 0 ? fields[timeIndex]?.trim() || 'All Day' : 'All Day';
+      const rawUserType = userTypeIndex >= 0 ? fields[userTypeIndex]?.trim() : '';
+      const normalizedUserType = this.normalizeUserType(rawUserType) || 'all';
       
       // Parse semester field: 1 (1st semester), 2 (2nd semester), or "Off" (off semester)
       let semester = null;
@@ -587,11 +601,12 @@ class FileProcessorService {
           events.push({
             title,
             date: this.formatDate(placeholderDate),
-            isoDate: placeholderDate.toISOString(),
+            isoDate: new Date(placeholderDate),
             time,
             category,
             description,
             source: 'CSV Upload',
+            userType: normalizedUserType,
             dateType: 'month',
             month: parseInt(month, 10),
             year: yearNum,
@@ -613,11 +628,12 @@ class FileProcessorService {
           events.push({
             title,
             date: this.formatDate(placeholderDate),
-            isoDate: placeholderDate.toISOString(),
+            isoDate: new Date(placeholderDate),
             time,
             category,
             description,
             source: 'CSV Upload',
+            userType: normalizedUserType,
             dateType: 'week',
             weekOfMonth: weekNum,
             month: parseInt(month, 10),
@@ -637,14 +653,15 @@ class FileProcessorService {
             events.push({
               title,
               date: this.formatDate(startDate),
-              isoDate: startDate.toISOString(),
+              isoDate: new Date(startDate),
               time,
               category,
               description,
               source: 'CSV Upload',
+              userType: normalizedUserType,
               dateType: 'date',
-              startDate: startDate.toISOString(),
-              endDate: startDate.toISOString(),
+              startDate: new Date(startDate),
+              endDate: new Date(startDate),
               weekOfMonth: weekOfMonth ? parseInt(weekOfMonth, 10) : null,
               month: month ? parseInt(month, 10) : null,
               year: parseInt(year, 10),
@@ -657,14 +674,15 @@ class FileProcessorService {
               events.push({
                 title,
                 date: this.formatDate(eventDate),
-                isoDate: eventDate.toISOString(),
+                isoDate: new Date(eventDate),
                 time,
                 category,
                 description,
                 source: 'CSV Upload',
+                userType: normalizedUserType,
                 dateType: 'date_range',
-                startDate: startDate.toISOString(),
-                endDate: endDate.toISOString(),
+                startDate: new Date(startDate),
+                endDate: new Date(endDate),
                 weekOfMonth: weekOfMonth ? parseInt(weekOfMonth, 10) : null,
                 month: month ? parseInt(month, 10) : null,
                 year: parseInt(year, 10),
@@ -677,14 +695,15 @@ class FileProcessorService {
           events.push({
             title,
             date: this.formatDate(startDate),
-            isoDate: startDate.toISOString(),
+            isoDate: new Date(startDate),
             time,
             category,
             description,
             source: 'CSV Upload',
+            userType: normalizedUserType,
             dateType: 'date',
-            startDate: startDate.toISOString(),
-            endDate: startDate.toISOString(),
+            startDate: new Date(startDate),
+            endDate: new Date(startDate),
             weekOfMonth: weekOfMonth ? parseInt(weekOfMonth, 10) : null,
             month: month ? parseInt(month, 10) : null,
             year: parseInt(year, 10),
@@ -729,11 +748,12 @@ class FileProcessorService {
           events.push({
             title,
             date: this.formatDate(date),
-            isoDate: date.toISOString(),
+            isoDate: new Date(date),
             time,
             category,
             description,
             source: 'CSV Upload',
+            userType: normalizedUserType,
             semester: semester
           });
         }
@@ -950,6 +970,28 @@ class FileProcessorService {
   formatDate(date) {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+  }
+
+  /**
+   * Normalize textual user type values from CSV uploads
+   */
+  normalizeUserType(value) {
+    if (!value || typeof value !== 'string') {
+      return null;
+    }
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return null;
+
+    if (['student', 'students', 'student only', 'students only', 'learner', 'learners'].includes(normalized)) {
+      return 'student';
+    }
+    if (['faculty', 'faculties', 'faculty only', 'staff', 'teachers', 'professors', 'instructors'].includes(normalized)) {
+      return 'faculty';
+    }
+    if (['all', 'everyone', 'public', 'general', 'both', 'all students', 'all faculty'].includes(normalized)) {
+      return 'all';
+    }
+    return null;
   }
 }
 

@@ -1577,7 +1577,8 @@ const server = http.createServer(async (req, res) => {
             ragTokens,
             ragSections,
             false, // suggestMore
-            scheduleService // Pass scheduleService for calendar event retrieval
+            scheduleService, // Pass scheduleService for calendar event retrieval
+            userType
           );
           Logger.info(`📊 RAG: ${ragSections} sections, ${relevantContext.length} chars ${retrievalType}`);
           

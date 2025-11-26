@@ -512,8 +512,8 @@ export class CalendarService {
         
         // Single date events: isoDate falls within query range
         const singleDateQuery = {};
-        if (queryStart) singleDateQuery.$gte = queryStart.toISOString();
-        if (queryEnd) singleDateQuery.$lte = queryEnd.toISOString();
+        if (queryStart) singleDateQuery.$gte = queryStart;
+        if (queryEnd) singleDateQuery.$lte = queryEnd;
         if (Object.keys(singleDateQuery).length > 0) {
           query.$or.push({
             isoDate: singleDateQuery,
@@ -531,21 +531,21 @@ export class CalendarService {
           // Event startDate is within query range
           if (queryStart && queryEnd) {
             rangeConditions.push({
-              startDate: { $gte: queryStart.toISOString(), $lte: queryEnd.toISOString() }
+              startDate: { $gte: queryStart, $lte: queryEnd }
             });
             // Event endDate is within query range
             rangeConditions.push({
-              endDate: { $gte: queryStart.toISOString(), $lte: queryEnd.toISOString() }
+              endDate: { $gte: queryStart, $lte: queryEnd }
             });
             // Event range completely contains query range
             rangeConditions.push({
-              startDate: { $lte: queryStart.toISOString() },
-              endDate: { $gte: queryEnd.toISOString() }
+              startDate: { $lte: queryStart },
+              endDate: { $gte: queryEnd }
             });
           } else if (queryStart) {
-            rangeConditions.push({ endDate: { $gte: queryStart.toISOString() } });
+            rangeConditions.push({ endDate: { $gte: queryStart } });
           } else if (queryEnd) {
-            rangeConditions.push({ startDate: { $lte: queryEnd.toISOString() } });
+            rangeConditions.push({ startDate: { $lte: queryEnd } });
           }
           
           if (rangeConditions.length > 0) {

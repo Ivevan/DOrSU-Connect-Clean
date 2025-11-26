@@ -98,6 +98,24 @@ const getCellColor = (events: any[]): string | null => {
   return null;
 };
 
+const buildDateRange = (startISO?: string, endISO?: string) => {
+  const dates: Date[] = [];
+  if (!startISO || !endISO) return dates;
+  const start = new Date(startISO);
+  const end = new Date(endISO);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return dates;
+  }
+  const current = new Date(start);
+  current.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  while (current <= end) {
+    dates.push(new Date(current));
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
+};
+
 
 // Robust PH date-key comparison (avoids off-by-one no matter device tz)
 const getPHDateKey = (d: Date, PH_TZ: string) => {
@@ -274,6 +292,93 @@ const AdminCalendar = () => {
   const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
   const [isUploadingCSV, setIsUploadingCSV] = useState<boolean>(false);
   
+  const postsForCalendar = useMemo(() => {
+    if (!Array.isArray(posts)) return [];
+    return posts.filter(post => {
+      if (post.source === 'CSV Upload') return false;
+      const postType = String(post.category || 'Announcement').toLowerCase();
+      return selectedContentTypesSet.has(postType);
+    });
+  }, [posts, selectedContentTypesSet]);
+
+  const calendarEventsForCalendar = useMemo(() => {
+    if (!Array.isArray(calendarEvents)) return [];
+    return calendarEvents.filter(event => {
+      const eventType = String(event.category || 'Announcement').toLowerCase();
+      return selectedContentTypesSet.has(eventType);
+    });
+  }, [calendarEvents, selectedContentTypesSet]);
+
+  const { eventsByDateMap, monthEventCountMap } = useMemo(() => {
+    const dateMap = new Map<string, any[]>();
+    const monthMap = new Map<string, number>();
+
+    const incrementMonth = (dateObj: Date) => {
+      if (!dateObj || Number.isNaN(dateObj.getTime())) return;
+      const key = `${dateObj.getFullYear()}-${dateObj.getMonth() + 1}`;
+      monthMap.set(key, (monthMap.get(key) || 0) + 1);
+    };
+
+    const addEventInstance = (dateObj: Date, payload: any) => {
+      if (!dateObj || Number.isNaN(dateObj.getTime())) return;
+      const key = formatDateKey(dateObj);
+      if (!dateMap.has(key)) {
+        dateMap.set(key, []);
+      }
+      dateMap.get(key)!.push(payload);
+      incrementMonth(dateObj);
+    };
+
+    postsForCalendar.forEach(post => {
+      const dateObj = new Date(post.isoDate || post.date);
+      if (Number.isNaN(dateObj.getTime())) return;
+      const payload = {
+        id: post.id,
+        title: post.title,
+        dateKey: formatDateKey(dateObj),
+        time: post.time || '',
+        type: post.category || 'Announcement',
+        color: categoryToColors(post.category).dot,
+        chip: categoryToColors(post.category),
+        description: post.description,
+        isPinned: post.isPinned,
+        isUrgent: post.isUrgent,
+        source: 'post',
+      };
+      addEventInstance(dateObj, payload);
+    });
+
+    calendarEventsForCalendar.forEach(event => {
+      const payload = {
+        ...event,
+        id: event._id || `calendar-${event.isoDate || event.startDate}-${event.title}`,
+        type: event.category || 'Announcement',
+        color: categoryToColors(event.category).dot,
+        chip: categoryToColors(event.category),
+        source: 'calendar',
+      };
+
+      if (event.dateType === 'week' || event.dateType === 'month') {
+        if (event.year && event.month) {
+          const placeholder = new Date(event.year, event.month - 1, 1);
+          incrementMonth(placeholder);
+        }
+        return;
+      }
+
+      if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+        const rangeDates = buildDateRange(event.startDate, event.endDate);
+        rangeDates.forEach(dateObj => addEventInstance(dateObj, payload));
+      } else {
+        const fallbackDate = event.isoDate || event.date || event.startDate;
+        const dateObj = fallbackDate ? new Date(fallbackDate) : new Date(NaN);
+        addEventInstance(dateObj, payload);
+      }
+    });
+
+    return { eventsByDateMap: dateMap, monthEventCountMap: monthMap };
+  }, [postsForCalendar, calendarEventsForCalendar]);
+
   // Calculate min/max years from events and posts to dynamically adjust calendar range
   const eventYearRange = React.useMemo(() => {
     const years = new Set<number>();
@@ -502,103 +607,10 @@ const AdminCalendar = () => {
     isUrgent: !!p.isUrgent,
   });
 
-  const getEventsForDate = React.useCallback((date: Date) => {
+  const getEventsForDate = useCallback((date: Date) => {
     const key = formatDateKey(date);
-    const events: any[] = [];
-    
-    // Add posts/announcements from AdminDataService
-    if (Array.isArray(posts)) {
-      posts.forEach(p => {
-        // Only include posts that are NOT from CSV uploads (to avoid duplicates)
-        if (p.source !== 'CSV Upload') {
-          // Apply content type filter - use Set for O(1) lookup
-          const postType = String(p.category || 'Announcement').toLowerCase();
-          if (!selectedContentTypesSet.has(postType)) return;
-          
-          const eventDateKey = parseAnyDateToKey(p.isoDate || p.date);
-          if (eventDateKey === key) {
-            events.push({
-              id: p.id,
-              title: p.title,
-              dateKey: eventDateKey,
-              time: p.time || '',
-              type: p.category || 'Announcement',
-              color: categoryToColors(p.category).dot,
-              chip: categoryToColors(p.category),
-              description: p.description,
-              isPinned: p.isPinned,
-              isUrgent: p.isUrgent,
-              source: 'post', // Mark as post to distinguish from calendar events
-            });
-          }
-        }
-      });
-    }
-    
-    // Add events from CalendarService (backend calendar events)
-    if (Array.isArray(calendarEvents)) {
-      calendarEvents.forEach(event => {
-        // Skip week/month-only events for calendar grid (they only show in All tab)
-        if (event.dateType === 'week' || event.dateType === 'month') {
-          return;
-        }
-        
-        // Apply content type filter - use Set for O(1) lookup
-        const eventType = String(event.category || 'Announcement').toLowerCase();
-        if (!selectedContentTypesSet.has(eventType)) return;
-        
-        // Handle date ranges - check if date falls within range
-        if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-          const startDate = new Date(event.startDate);
-          const endDate = new Date(event.endDate);
-          const checkDate = new Date(date);
-          
-          // Normalize to start of day for comparison
-          startDate.setHours(0, 0, 0, 0);
-          endDate.setHours(0, 0, 0, 0);
-          checkDate.setHours(0, 0, 0, 0);
-          
-          if (checkDate >= startDate && checkDate <= endDate) {
-            events.push({
-              id: event._id || `calendar-${event.isoDate}-${event.title}`,
-              title: event.title,
-              dateKey: key,
-              time: event.time || 'All Day',
-              type: event.category || 'Announcement',
-              color: categoryToColors(event.category).dot,
-              chip: categoryToColors(event.category),
-              dateType: event.dateType,
-              category: event.category,
-              description: event.description,
-              startDate: event.startDate,
-              endDate: event.endDate,
-            });
-          }
-        } else {
-          // Single date event
-          const eventDateKey = parseAnyDateToKey(event.isoDate || event.date);
-          if (eventDateKey === key) {
-            events.push({
-              id: event._id || `calendar-${event.isoDate}-${event.title}`,
-              title: event.title,
-              dateKey: eventDateKey,
-              time: event.time || 'All Day',
-              type: event.category || 'Announcement',
-              color: categoryToColors(event.category).dot,
-              chip: categoryToColors(event.category),
-              dateType: event.dateType,
-              category: event.category,
-              description: event.description,
-              startDate: event.startDate,
-              endDate: event.endDate,
-            });
-          }
-        }
-      });
-    }
-    
-    return events;
-  }, [posts, calendarEvents, selectedContentTypesSet]); // Only recompute when posts, calendarEvents, or filter changes
+    return eventsByDateMap.get(key) || [];
+  }, [eventsByDateMap]);
 
   const isToday = (date: Date) => {
     return getPHDateKey(date, PH_TZ) === getPHDateKey(new Date(), PH_TZ);
@@ -713,56 +725,37 @@ const AdminCalendar = () => {
   }, [deleteAllModalSlideAnim, deleteAllModalBackdropOpacity]);
 
   const getAllEventsGrouped = React.useCallback(() => {
-    if (!Array.isArray(calendarEvents) && !Array.isArray(posts)) return [];
+    if (!Array.isArray(calendarEventsForCalendar) && !Array.isArray(postsForCalendar)) return [];
     
     const all: any[] = [];
     
-    // Get current month and year for filtering
-    const currentYear = currentMonth.getUTCFullYear();
-    const currentMonthIndex = currentMonth.getUTCMonth() + 1; // 1-12
-    
     // Add posts/announcements from AdminDataService
-    if (Array.isArray(posts)) {
-      posts.forEach((post: any) => {
-        // Only include posts that are NOT from CSV uploads (to avoid duplicates)
-        if (post.source !== 'CSV Upload') {
-          const eventType = String(post.category || 'Announcement').toLowerCase();
-          
-          // Apply content type filter - use Set for O(1) lookup
-          if (!selectedContentTypesSet.has(eventType)) return;
-          
-          const eventDateKey = parseAnyDateToKey(post.isoDate || post.date);
-          if (eventDateKey) {
-            const dateObj = new Date(post.isoDate || post.date);
-            all.push({
-              id: post.id,
-              title: post.title,
-              dateKey: eventDateKey,
-              time: post.time || 'All Day',
-              type: post.category || 'Announcement',
-              color: categoryToColors(post.category).dot,
-              chip: categoryToColors(post.category),
-              dateObj: dateObj,
-              year: dateObj.getFullYear(),
-              description: post.description,
-              source: 'post',
-            });
-          }
-        }
-      });
-    }
+    postsForCalendar.forEach((post: any) => {
+      const eventDateKey = parseAnyDateToKey(post.isoDate || post.date);
+      if (eventDateKey) {
+        const dateObj = new Date(post.isoDate || post.date);
+        all.push({
+          id: post.id,
+          title: post.title,
+          dateKey: eventDateKey,
+          time: post.time || 'All Day',
+          type: post.category || 'Announcement',
+          color: categoryToColors(post.category).dot,
+          chip: categoryToColors(post.category),
+          dateObj: dateObj,
+          year: dateObj.getFullYear(),
+          description: post.description,
+          source: 'post',
+        });
+      }
+    });
     
     // Add events from calendarEvents (CalendarService)
     // Use a Set to track date ranges we've already added (to avoid duplicates)
     const dateRangeKeys = new Set<string>();
     
-    if (Array.isArray(calendarEvents)) {
-      calendarEvents.forEach(event => {
-        const eventType = String(event.category || 'Announcement').toLowerCase();
-        
-        // Apply content type filter
-        if (!selectedContentTypes.includes(eventType)) return;
-        
+    if (Array.isArray(calendarEventsForCalendar)) {
+      calendarEventsForCalendar.forEach(event => {
         // For date ranges, use start date as the key and avoid duplicates
         let eventDateKey: string | null = null;
         let dateObj: Date | null = null;
@@ -839,64 +832,11 @@ const AdminCalendar = () => {
       });
     
     return result;
-  }, [calendarEvents, posts, selectedContentTypesSet, currentMonth]); // Only recompute when calendarEvents, posts, filters, or currentMonth change
+  }, [calendarEventsForCalendar, postsForCalendar]); // Only recompute when filtered data changes
 
   const getMonthEventCount = (dateRef: Date) => {
-    const y = dateRef.getFullYear();
-    const m = dateRef.getMonth() + 1;
-    
-    let count = 0;
-    
-    // Count events from posts (AdminDataService) - filtered by selected content types
-    count += posts
-      .filter(p => {
-        if (p.source === 'CSV Upload') return false;
-        const postType = String(p.category || 'Announcement').toLowerCase();
-        return selectedContentTypesSet.has(postType);
-      })
-      .reduce((acc, p) => {
-        const key = parseAnyDateToKey(p.isoDate || p.date);
-        if (!key) return acc;
-        const [yy, mm] = key.split('-');
-        return acc + ((Number(yy) === y && Number(mm) === m) ? 1 : 0);
-      }, 0);
-    
-    // Count events from calendarEvents (CalendarService) - filtered by selected content types
-    // For date ranges, count if any date in range falls in the month
-    // For week/month-only events, count if the month matches
-    count += calendarEvents.reduce((acc, event) => {
-      // Apply content type filter - use Set for O(1) lookup
-      const eventType = String(event.category || 'Announcement').toLowerCase();
-      if (!selectedContentTypesSet.has(eventType)) return acc;
-      
-      // Skip week/month-only events for calendar grid count
-      if (event.dateType === 'week' || event.dateType === 'month') {
-        // Only count if month matches
-        if (event.month === m && event.year === y) {
-          return acc + 1;
-        }
-        return acc;
-      }
-      
-      if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-        const startDate = new Date(event.startDate);
-        const endDate = new Date(event.endDate);
-        // Check if range overlaps with the month
-        const monthStart = new Date(y, m - 1, 1);
-        const monthEnd = new Date(y, m, 0);
-        if (startDate <= monthEnd && endDate >= monthStart) {
-          return acc + 1;
-        }
-        return acc;
-      }
-      
-      const key = parseAnyDateToKey(event.isoDate || event.date);
-      if (!key) return acc;
-      const [yy, mm] = key.split('-');
-      return acc + ((Number(yy) === y && Number(mm) === m) ? 1 : 0);
-    }, 0);
-    
-    return count;
+    const key = `${dateRef.getFullYear()}-${dateRef.getMonth() + 1}`;
+    return monthEventCountMap.get(key) || 0;
   };
 
   // Track last calendar fetch time
@@ -960,10 +900,15 @@ const AdminCalendar = () => {
 
       const asset = Array.isArray((result as any).assets) ? (result as any).assets[0] : (result as any);
       const fileName = asset.name || 'unknown';
-      const fileUri = asset.uri;
+      const fileUri = asset?.fileCopyUri || asset?.uri;
 
       if (!fileName.toLowerCase().endsWith('.csv')) {
         Alert.alert('Invalid File', 'Please select a CSV file');
+        return;
+      }
+
+      if (!fileUri) {
+        Alert.alert('File Unavailable', 'Unable to access the selected CSV file. Please try selecting it again.');
         return;
       }
 
@@ -984,28 +929,24 @@ const AdminCalendar = () => {
       const totalEvents = eventsAdded + eventsUpdated;
       
       Alert.alert(
-        'Upload Successful',
-        `File uploaded successfully!\n\n${eventsAdded} new event${eventsAdded !== 1 ? 's' : ''} added.\n${eventsUpdated} event${eventsUpdated !== 1 ? 's' : ''} updated.\n\nTotal: ${totalEvents} event${totalEvents !== 1 ? 's' : ''} processed.\n\nThe calendar has been refreshed.`,
+        'CSV Successfully Uploaded!',
+        `CSV successfully uploaded!\n\n${eventsAdded} new event${eventsAdded !== 1 ? 's' : ''} added.\n${eventsUpdated} event${eventsUpdated !== 1 ? 's' : ''} updated.\n\nTotal: ${totalEvents} event${totalEvents !== 1 ? 's' : ''} processed.\n\nThe calendar has been refreshed.`,
         [{ text: 'OK' }]
       );
     } catch (error: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const errorMessage = error.message || 'Failed to upload CSV file';
-      let displayMessage = 'Upload Failed - Wrong Format';
-      let alertTitle = 'Upload Failed';
+      let displayMessage = 'CSV failed to upload. Please check your CSV file format and try again.';
+      let alertTitle = 'CSV Failed to Upload';
       
       if (errorMessage.includes('must contain at least 3')) {
-        displayMessage = 'Your CSV must contain at least 3 of the required fields:\n\n• Type (Institutional or Academic)\n• Event (Required)\n• DateType\n• StartDate\n• EndDate\n• Year\n• Month\n• WeekOfMonth\n• Description';
-        alertTitle = 'Upload Failed - Wrong Format';
+        displayMessage = 'CSV failed to upload.\n\nYour CSV must contain at least 3 of the required fields:\n\n• Type (Institutional or Academic)\n• Event (Required)\n• DateType\n• StartDate\n• EndDate\n• Year\n• Month\n• WeekOfMonth\n• Description';
       } else if (errorMessage.includes('must contain "Event"')) {
-        displayMessage = 'Your CSV must contain an "Event" column (or "Title"/"Name").\n\nThe Event field is required.';
-        alertTitle = 'Upload Failed - Missing Event Field';
+        displayMessage = 'CSV failed to upload.\n\nYour CSV must contain an "Event" column (or "Title"/"Name"). The Event field is required.';
       } else if (errorMessage.includes('HTTP error')) {
-        displayMessage = 'Failed to connect to the server. Please check your internet connection and try again.';
-        alertTitle = 'Upload Failed - Connection Error';
+        displayMessage = 'CSV failed to upload.\n\nFailed to connect to the server. Please check your internet connection and try again.';
       } else {
-        displayMessage = `Upload failed: ${errorMessage}\n\nPlease check your CSV file format and try again.`;
-        alertTitle = 'Upload Failed';
+        displayMessage = `CSV failed to upload.\n\n${errorMessage}\nPlease check your CSV file format and try again.`;
       }
       
       Alert.alert(alertTitle, displayMessage);

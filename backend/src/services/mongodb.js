@@ -382,6 +382,7 @@ class MongoDBService {
             dateType: 1,
             startDate: 1,
             endDate: 1,
+            userType: 1,
             image: 1,
             images: 1,
             imageFileId: 1,

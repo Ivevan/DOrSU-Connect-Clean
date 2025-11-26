@@ -231,8 +231,11 @@ const AIChat = () => {
       setIsLoadingTopQueries(true);
       const token = await getUserToken();
       if (token) {
-        // Pass selectedUserType to filter FAQs (shared across all users)
-        const queries = await AIService.getTopQueries(token, selectedUserType);
+        // Only restrict FAQs when student mode is active; faculty sees all
+        const queries = await AIService.getTopQueries(
+          token,
+          selectedUserType === 'student' ? 'student' : undefined
+        );
         if (queries && queries.length > 0) {
           setTopQueries(queries);
         } else {

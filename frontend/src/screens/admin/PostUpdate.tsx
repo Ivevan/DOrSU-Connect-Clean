@@ -335,7 +335,22 @@ const PostUpdate: React.FC = () => {
     return `${dd}/${mm}/${yyyy}`;
   };
 
-  // Helper to parse date from various formats (ISO, dd/mm/yyyy, etc.)
+  const MONTH_NAME_MAP = useMemo<Record<string, number>>(() => ({
+    january: 0, jan: 0,
+    february: 1, feb: 1,
+    march: 2, mar: 2,
+    april: 3, apr: 3,
+    may: 4,
+    june: 5, jun: 5,
+    july: 6, jul: 6,
+    august: 7, aug: 7,
+    september: 8, sep: 8, sept: 8,
+    october: 9, oct: 9,
+    november: 10, nov: 10,
+    december: 11, dec: 11
+  }), []);
+
+  // Helper to parse date from various formats (ISO, dd/mm/yyyy, textual, etc.)
   const parseDate = (dateStr: string | null | undefined): Date | null => {
     if (!dateStr) return null;
     
@@ -350,9 +365,26 @@ const PostUpdate: React.FC = () => {
       const parsed = new Date(parseInt(yyyy, 10), parseInt(mm, 10) - 1, parseInt(dd, 10));
       if (!isNaN(parsed.getTime())) return parsed;
     }
+
+    // Try formats with month names e.g., "February 12, 2025" or "Feb 12 2025"
+    const monthNameMatch = dateStr.match(/^([A-Za-z]+)\s+(\d{1,2})(?:,)?\s+(\d{4})$/);
+    if (monthNameMatch) {
+      const [, monthNameRaw, dayRaw, yearRaw] = monthNameMatch;
+      const monthIndex = MONTH_NAME_MAP[monthNameRaw.toLowerCase()];
+      const day = parseInt(dayRaw, 10);
+      const year = parseInt(yearRaw, 10);
+      if (monthIndex !== undefined && !isNaN(day) && !isNaN(year)) {
+        const parsed = new Date(year, monthIndex, day);
+        if (!isNaN(parsed.getTime())) return parsed;
+      }
+    }
     
     return null;
   };
+  const resolvedDateForSubmission = useMemo(() => {
+    if (selectedDateObj) return selectedDateObj;
+    return parseDate(date);
+  }, [selectedDateObj, date]);
 
   const openCategoryMenu = useCallback(() => {
     setIsCategoryOpen(true);
@@ -572,23 +604,14 @@ const PostUpdate: React.FC = () => {
     });
 
     // Prepare payload immediately (no delay)
-    const now = new Date();
-    // Get ISO date: prefer selectedDateObj, otherwise parse from date string, otherwise use now
-    let isoDate: string;
-    if (selectedDateObj) {
-      isoDate = selectedDateObj.toISOString();
-    } else if (date) {
-      const parsed = parseDate(date);
-      isoDate = parsed ? parsed.toISOString() : now.toISOString();
-    } else {
-      isoDate = now.toISOString();
-    }
+    const submissionDate = resolvedDateForSubmission || new Date();
+    const isoDate = submissionDate.toISOString();
     
     const payload: any = {
       title: title || 'Untitled',
       category,
       date: isoDate,
-      isoDate: isoDate,
+      isoDate,
       description,
     };
 
@@ -631,7 +654,7 @@ const PostUpdate: React.FC = () => {
       .finally(() => {
         setIsPublishing(false);
       });
-  }, [title, category, date, description, pickedFile, editingPostId, navigation, selectedDateObj, publishAlertSheetY, isPublishing]);
+  }, [title, category, date, description, pickedFile, editingPostId, navigation, resolvedDateForSubmission, publishAlertSheetY, isPublishing, parseDate]);
 
   const confirmCancel = useCallback(() => {
     Animated.timing(cancelAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {

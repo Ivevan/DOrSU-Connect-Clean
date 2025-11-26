@@ -260,8 +260,11 @@ const AdminAIChat = () => {
       setIsLoadingTopQueries(true);
       const token = await getUserToken();
       if (token) {
-        // Pass selectedUserType to filter FAQs (shared across all users)
-        const queries = await AIService.getTopQueries(token, selectedUserType);
+        // Restrict FAQs only when student scope is required
+        const queries = await AIService.getTopQueries(
+          token,
+          selectedUserType === 'student' ? 'student' : undefined
+        );
         if (queries && queries.length > 0) {
           setTopQueries(queries);
         } else {

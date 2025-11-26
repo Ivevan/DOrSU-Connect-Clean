@@ -21,6 +21,17 @@ function formatDateInTimezone(date, options = {}) {
   }).format(date);
 }
 
+const matchesUserType = (chunkUserType, requestedUserType) => {
+  if (!requestedUserType || requestedUserType === 'faculty') {
+    return true;
+  }
+  const normalized = (chunkUserType || 'all').toString().toLowerCase();
+  if (!normalized || normalized === 'all') {
+    return true;
+  }
+  return normalized === requestedUserType.toLowerCase();
+};
+
 /**
  * VectorSearchService - Handles all data retrieval/search operations
  */
@@ -43,7 +54,8 @@ export class VectorSearchService {
     const {
       maxResults = 10,
       maxSections = 10,
-      queryType = null // Can be: 'history', 'leadership', 'office', 'comprehensive', 'general'
+      queryType = null, // Can be: 'history', 'leadership', 'office', 'comprehensive', 'general'
+      userType = null
     } = options;
 
     // Detect query type if not provided
@@ -111,7 +123,7 @@ export class VectorSearchService {
         break;
       
       case 'schedule':
-        searchResults = await this.searchSchedule(query, { maxResults, maxSections });
+        searchResults = await this.searchSchedule(query, { maxResults, maxSections, userType });
         break;
       
       case 'scholarship':
@@ -2368,6 +2380,14 @@ export class VectorSearchService {
       return aIndex - bIndex;
     });
     
+    if (userType) {
+      const beforeFilter = results.length;
+      results = results.filter(chunk => matchesUserType(chunk.metadata?.userType, userType));
+      if (beforeFilter !== results.length) {
+        Logger.debug(`📅 Schedule search: filtered combined results by userType (${userType}) from ${beforeFilter} to ${results.length}`);
+      }
+    }
+    
     return results.slice(0, maxSections);
   }
 
@@ -3357,7 +3377,7 @@ export class VectorSearchService {
    * Search for schedule/calendar queries (events, announcements, dates)
    */
   async searchSchedule(query, options = {}) {
-    const { maxResults = 30, maxSections = 30 } = options;
+    const { maxResults = 30, maxSections = 30, userType = null } = options;
     
     Logger.debug(`📅 Schedule/Calendar search: "${query.substring(0, 40)}..."`);
     
@@ -3480,7 +3500,8 @@ export class VectorSearchService {
               startDate: event.startDate,
               endDate: event.endDate,
               time: event.time,
-              source: event.source
+              source: event.source,
+              userType: event.userType || 'all'
             },
             keywords: [
               ...(event.title ? event.title.toLowerCase().split(/\s+/).filter(w => w.length > 3) : []),
@@ -3493,6 +3514,14 @@ export class VectorSearchService {
             source: 'mongodb_vector_search_schedule'
           };
         });
+        
+        if (userType) {
+          const beforeFilter = results.length;
+          results = results.filter(chunk => matchesUserType(chunk.metadata?.userType, userType));
+          if (beforeFilter !== results.length) {
+            Logger.debug(`📅 Schedule vector search: filtered events by userType (${userType}) from ${beforeFilter} to ${results.length}`);
+          }
+        }
         
         Logger.debug(`✅ Schedule vector search: Found ${results.length} events`);
         
@@ -3604,11 +3633,11 @@ export class VectorSearchService {
             // Date range filter
             {
               $or: [
-                { isoDate: { $gte: startDate.toISOString(), $lte: endDate.toISOString() } },
+                { isoDate: { $gte: startDate, $lte: endDate } },
                 { 
                   dateType: 'date_range',
-                  startDate: { $lte: endDate.toISOString() },
-                  endDate: { $gte: startDate.toISOString() }
+                  startDate: { $lte: endDate },
+                  endDate: { $gte: startDate }
                 }
               ]
             },
@@ -3628,6 +3657,19 @@ export class VectorSearchService {
             }
           ]
         };
+        
+        if (userType && userType.toLowerCase() !== 'faculty') {
+          const normalizedUserType = userType.toLowerCase();
+          mongoQuery.$and.push({
+            $or: [
+              { userType: { $exists: false } },
+              { userType: null },
+              { userType: '' },
+              { userType: 'all' },
+              { userType: normalizedUserType }
+            ]
+          });
+        }
         
         // Filter by semester if provided (same as schedule.js)
         if (requestedSemester !== null) {
@@ -3758,7 +3800,8 @@ export class VectorSearchService {
                 startDate: event.startDate,
                 endDate: event.endDate,
                 time: event.time,
-                source: event.source
+                source: event.source,
+                userType: event.userType || 'all'
               },
               keywords: [
                 ...(event.title ? event.title.toLowerCase().split(/\s+/).filter(w => w.length > 3) : []),

@@ -7,13 +7,20 @@
  * Generate HTML page that redirects to the app with verification code
  * @param {string} oobCode - The verification code from Firebase
  * @param {string} mode - The verification mode (optional)
+ * @param {string} origin - The origin URL (for web redirects)
  * @returns {string} HTML content
  */
-export function generateVerificationRedirectPage(oobCode, mode) {
+export function generateVerificationRedirectPage(oobCode, mode, origin = 'http://localhost:8081') {
   // Build deep link URL with the verification code
   const deepLinkUrl = oobCode 
     ? `dorsuconnect://verify-email?oobCode=${encodeURIComponent(oobCode)}${mode ? `&mode=${encodeURIComponent(mode)}` : ''}`
     : 'dorsuconnect://verify-email';
+  
+  // For web, redirect to the app URL with the verification parameters
+  // This allows the web app to handle the verification directly
+  const webAppUrl = oobCode
+    ? `${origin}/verify-email?oobCode=${encodeURIComponent(oobCode)}${mode ? `&mode=${encodeURIComponent(mode)}` : ''}`
+    : `${origin}/verify-email`;
   
   return `<!DOCTYPE html>
 <html lang="en">
@@ -90,16 +97,80 @@ export function generateVerificationRedirectPage(oobCode, mode) {
     <a href="${deepLinkUrl}" class="button">Open DOrSU Connect</a>
   </div>
   <script>
-    // Try to open the app immediately
-    window.location.href = "${deepLinkUrl}";
+    // Detect platform
+    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+    const isAndroid = /android/i.test(userAgent);
+    const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
+    const isMobile = isAndroid || isIOS;
+    const isWeb = !isMobile && (window.location.protocol === 'http:' || window.location.protocol === 'https:');
     
-    // Fallback: If still on page after 2 seconds, show manual button
-    setTimeout(() => {
-      const button = document.querySelector('.button');
-      if (button) {
-        button.style.display = 'inline-block';
-      }
-    }, 2000);
+    console.log('Platform detection:', { isAndroid, isIOS, isMobile, isWeb, userAgent });
+    
+    if (isWeb) {
+      // On web (desktop browser), redirect to the app URL with verification parameters
+      console.log('🌐 Web detected, redirecting to app URL...');
+      window.location.href = "${webAppUrl}";
+    } else if (isAndroid) {
+      // On Android, try to open the app with custom scheme
+      console.log('🤖 Android detected, trying custom scheme...');
+      
+      // Try to open the app
+      window.location.href = "${deepLinkUrl}";
+      
+      // Fallback: If app doesn't open, show manual button after a delay
+      let appOpened = false;
+      const checkAppOpened = setTimeout(() => {
+        if (!appOpened && document.visibilityState === 'visible') {
+          console.log('⚠️ App may not have opened, showing manual button');
+          const button = document.querySelector('.button');
+          if (button) {
+            button.style.display = 'inline-block';
+          }
+        }
+      }, 2000);
+      
+      // Detect if page becomes hidden (app opened)
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          appOpened = true;
+          clearTimeout(checkAppOpened);
+        }
+      });
+      
+      // Also try intent:// URL for Android as fallback
+      setTimeout(() => {
+        if (!appOpened && document.visibilityState === 'visible') {
+          ${oobCode ? `const intentUrl = 'intent://verify-email?oobCode=${encodeURIComponent(oobCode)}${mode ? `&mode=${encodeURIComponent(mode)}` : ''}#Intent;scheme=dorsuconnect;package=com.dorsuconnect.app;end';` : `const intentUrl = 'intent://verify-email#Intent;scheme=dorsuconnect;package=com.dorsuconnect.app;end';`}
+          try {
+            window.location.href = intentUrl;
+          } catch (e) {
+            console.log('Intent URL failed, showing manual button');
+          }
+        }
+      }, 1500);
+    } else if (isIOS) {
+      // On iOS, try to open the app with custom scheme
+      console.log('🍎 iOS detected, trying custom scheme...');
+      window.location.href = "${deepLinkUrl}";
+      
+      // Fallback: If still on page after 2 seconds, show manual button
+      setTimeout(() => {
+        const button = document.querySelector('.button');
+        if (button) {
+          button.style.display = 'inline-block';
+        }
+      }, 2000);
+    } else {
+      // Unknown platform, try custom scheme first, then web
+      console.log('❓ Unknown platform, trying custom scheme then web...');
+      window.location.href = "${deepLinkUrl}";
+      
+      setTimeout(() => {
+        if (document.visibilityState === 'visible') {
+          window.location.href = "${webAppUrl}";
+        }
+      }, 2000);
+    }
   </script>
 </body>
 </html>`;
@@ -109,12 +180,13 @@ export function generateVerificationRedirectPage(oobCode, mode) {
  * Handle email verification redirect request
  * @param {URL} urlObj - Parsed URL object with query parameters
  * @param {object} res - HTTP response object
+ * @param {string} origin - The origin URL (for web redirects)
  */
-export function handleVerificationRedirect(urlObj, res) {
+export function handleVerificationRedirect(urlObj, res, origin = 'http://localhost:8081') {
   const oobCode = urlObj.searchParams.get('oobCode') || urlObj.searchParams.get('actionCode');
   const mode = urlObj.searchParams.get('mode');
   
-  const html = generateVerificationRedirectPage(oobCode, mode);
+  const html = generateVerificationRedirectPage(oobCode, mode, origin);
   
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(html);

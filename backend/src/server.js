@@ -158,7 +158,8 @@ const server = http.createServer(async (req, res) => {
   
   // Email verification redirect handler
   if (method === 'GET' && url === '/verify-email') {
-    handleVerificationRedirect(urlObj, res);
+    const origin = req.headers.origin || `http://${req.headers.host || 'localhost:3000'}`;
+    handleVerificationRedirect(urlObj, res, origin);
     return;
   }
   

@@ -64,6 +64,25 @@ const AppNavigator = () => {
   
   // Handle deep links for email verification
   useEffect(() => {
+    // On web, also check the current window location for verification parameters
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const checkCurrentUrl = async () => {
+        const currentUrl = window.location.href;
+        if (currentUrl.includes('verify-email') || currentUrl.includes('oobCode') || currentUrl.includes('actionCode')) {
+          console.log('🌐 Web: Checking current URL for verification parameters:', currentUrl);
+          await handleDeepLink(currentUrl);
+          // Clean up URL to remove parameters after processing
+          if (window.history && window.history.replaceState) {
+            const cleanUrl = window.location.origin + window.location.pathname;
+            window.history.replaceState({}, document.title, cleanUrl);
+          }
+        }
+      };
+      // Check immediately and after a short delay (in case page just loaded)
+      checkCurrentUrl();
+      setTimeout(checkCurrentUrl, 500);
+    }
+    
     const handleDeepLink = async (url: string) => {
       try {
         console.log('🔗 Deep link received:', url);
@@ -159,13 +178,11 @@ const AppNavigator = () => {
                 console.log('📧 Email verified status:', currentUser?.emailVerified);
                 
                 if (currentUser?.emailVerified) {
-                  // Email is verified - clear verification code and trigger account completion
-                  console.log('✅ Email verified via deep link - completing account creation');
+                  // Email is verified - clear verification code and set flag for CreateAccount to complete
+                  console.log('✅ Email verified via deep link - setting flag for CreateAccount to complete');
                   await AsyncStorage.removeItem('pendingVerificationCode');
-                  
-                  // Import and call completeAccountCreation
-                  const { completeAccountCreation } = require('../services/authService');
-                  await completeAccountCreation(firebaseUser, pendingUsername, pendingEmail);
+                  await AsyncStorage.setItem('emailVerifiedViaDeepLink', 'true');
+                  // CreateAccount will detect this and complete the account creation
                 } else {
                   console.log('⏳ Email not yet verified, will check again...');
                   // Set flag for CreateAccount to check

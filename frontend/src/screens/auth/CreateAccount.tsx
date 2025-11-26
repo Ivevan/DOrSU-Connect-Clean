@@ -304,7 +304,7 @@ const CreateAccount = () => {
     }
   };
 
-  // Check for pending account creation on mount
+  // Check for pending account creation on mount and handle verification code from deep link
   useEffect(() => {
     const checkPendingAccount = async () => {
       try {
@@ -312,24 +312,71 @@ const CreateAccount = () => {
         const pendingUsername = await AsyncStorage.getItem('pendingUsername');
         const pendingPassword = await AsyncStorage.getItem('pendingPassword');
         const pendingFirebaseUid = await AsyncStorage.getItem('pendingFirebaseUid');
+        const pendingVerificationCode = await AsyncStorage.getItem('pendingVerificationCode');
+        const emailVerifiedViaDeepLink = await AsyncStorage.getItem('emailVerifiedViaDeepLink');
         
         if (pendingEmail && pendingUsername && pendingPassword && pendingFirebaseUid) {
           // User has a pending account - check if email is verified
           setEmail(pendingEmail);
           setUsername(pendingUsername);
-          setEmailVerificationStatus('pending');
-          setEmailVerificationMessage('Please check your email and click the verification link to complete your account creation.');
           
           // Try to sign in to check verification status
           try {
             const firebaseUser = await signInWithEmailAndPassword(pendingEmail, pendingPassword);
+            
+            // If we have a verification code from deep link, apply it first
+            if (pendingVerificationCode) {
+              console.log('🔐 Applying verification code from deep link...');
+              try {
+                const { applyEmailVerificationCode } = require('../services/authService');
+                await applyEmailVerificationCode(pendingVerificationCode);
+                console.log('✅ Verification code applied successfully');
+                await AsyncStorage.removeItem('pendingVerificationCode');
+                // Reload user to get updated verification status
+                await reloadUser(firebaseUser);
+              } catch (applyError: any) {
+                console.error('❌ Failed to apply verification code:', applyError);
+                // Continue to check status anyway - might already be verified
+              }
+            }
+            
+            // Reload user to get latest verification status
             await reloadUser(firebaseUser);
             const currentUser = getCurrentUser();
             
             if (currentUser?.emailVerified) {
               // Email is verified - complete account creation
+              console.log('✅ Email verified - completing account creation');
+              setEmailVerificationStatus('verified');
+              setEmailVerificationMessage('Email verified! Completing account creation...');
               await completeAccountCreation(firebaseUser, pendingUsername, pendingEmail);
+            } else if (emailVerifiedViaDeepLink) {
+              // Deep link was processed but email not verified yet - check again after a moment
+              console.log('⏳ Deep link processed, checking verification status...');
+              setEmailVerificationStatus('pending');
+              setEmailVerificationMessage('Processing verification... Please wait.');
+              
+              // Wait a moment and check again
+              setTimeout(async () => {
+                try {
+                  await reloadUser(firebaseUser);
+                  const updatedUser = getCurrentUser();
+                  if (updatedUser?.emailVerified) {
+                    await AsyncStorage.removeItem('emailVerifiedViaDeepLink');
+                    await completeAccountCreation(firebaseUser, pendingUsername, pendingEmail);
+                  } else {
+                    setEmailVerificationStatus('pending');
+                    setEmailVerificationMessage('Please check your email and click the verification link to complete your account creation.');
+                  }
+                } catch (error) {
+                  console.error('Error checking verification status after deep link:', error);
+                }
+              }, 2000);
             } else {
+              // Email not verified yet
+              setEmailVerificationStatus('pending');
+              setEmailVerificationMessage('Please check your email and click the verification link to complete your account creation.');
+              
               // Start checking verification status periodically
               const verificationCheckInterval = setInterval(async () => {
                 try {
@@ -393,12 +440,30 @@ const CreateAccount = () => {
       const pendingEmail = await AsyncStorage.getItem('pendingEmail');
       const pendingPassword = await AsyncStorage.getItem('pendingPassword');
       const pendingUsername = await AsyncStorage.getItem('pendingUsername');
+      const pendingVerificationCode = await AsyncStorage.getItem('pendingVerificationCode');
       const emailVerifiedViaDeepLink = await AsyncStorage.getItem('emailVerifiedViaDeepLink');
       
       if (pendingEmail && pendingPassword && pendingUsername) {
         try {
           console.log('🔍 Checking email verification status...');
           const firebaseUser = await signInWithEmailAndPassword(pendingEmail, pendingPassword);
+          
+          // If we have a verification code from deep link, apply it first
+          if (pendingVerificationCode) {
+            console.log('🔐 Applying verification code from deep link...');
+            try {
+              const { applyEmailVerificationCode } = require('../services/authService');
+              await applyEmailVerificationCode(pendingVerificationCode);
+              console.log('✅ Verification code applied successfully');
+              await AsyncStorage.removeItem('pendingVerificationCode');
+              // Reload user to get updated verification status
+              await reloadUser(firebaseUser);
+            } catch (applyError: any) {
+              console.error('❌ Failed to apply verification code:', applyError);
+              // Continue to check status anyway - might already be verified
+            }
+          }
+          
           await reloadUser(firebaseUser);
           const currentUser = getCurrentUser();
           
@@ -412,11 +477,16 @@ const CreateAccount = () => {
             
             // Complete account creation
             console.log('✅ Email verified - completing account creation');
+            setEmailVerificationStatus('verified');
+            setEmailVerificationMessage('Email verified! Completing account creation...');
             await completeAccountCreation(firebaseUser, pendingUsername, pendingEmail);
           } else if (emailVerificationStatus === 'pending') {
             // Still pending, update status
-            setEmailVerificationStatus('pending');
-            setEmailVerificationMessage('Please check your email and click the verification link.');
+            if (emailVerifiedViaDeepLink) {
+              setEmailVerificationMessage('Processing verification... Please wait a moment.');
+            } else {
+              setEmailVerificationMessage('Please check your email and click the verification link.');
+            }
           }
         } catch (error) {
           console.error('❌ Error checking verification on focus:', error);

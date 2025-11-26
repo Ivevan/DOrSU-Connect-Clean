@@ -691,13 +691,18 @@ const SchoolUpdates = () => {
   }, [filtered]);
 
   // Filtered by time (all, upcoming, or recent) and content type
-  // Only show Event, Announcement, and News entries that are in the current month
+  // Only show Event, Announcement, and News entries that are in the current month or next month
   const displayedUpdates = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
     
-    // Categories that should be filtered by current month
+    // Calculate next month and year (handle year rollover)
+    const nextMonth = currentMonth + 1;
+    const nextYear = nextMonth > 11 ? currentYear + 1 : currentYear;
+    const normalizedNextMonth = nextMonth > 11 ? 0 : nextMonth;
+    
+    // Categories that should be filtered by current month and next month
     const monthFilteredCategories = new Set(['event', 'announcement', 'news']);
     
     console.log('🔍 Computing displayedUpdates:', {
@@ -725,7 +730,7 @@ const SchoolUpdates = () => {
       return selectedContentTypes.includes(updateType);
     });
     
-    // Filter by current month for Event, Announcement, and News categories
+    // Filter by current month or next month for Event, Announcement, and News categories
     result = result.filter(update => {
       const updateType = String(update.tag || 'Announcement').toLowerCase();
       
@@ -734,9 +739,14 @@ const SchoolUpdates = () => {
         if (!update.isoDate) return false; // Exclude entries without dates
         try {
           const updateDate = new Date(update.isoDate);
-          const isCurrentMonth = updateDate.getFullYear() === currentYear &&
-                                updateDate.getMonth() === currentMonth;
-          return isCurrentMonth;
+          const updateYear = updateDate.getFullYear();
+          const updateMonth = updateDate.getMonth();
+          
+          // Check if date is in current month or next month
+          const isCurrentMonth = updateYear === currentYear && updateMonth === currentMonth;
+          const isNextMonth = updateYear === nextYear && updateMonth === normalizedNextMonth;
+          
+          return isCurrentMonth || isNextMonth;
         } catch {
           return false; // Exclude entries with invalid dates
         }
@@ -771,16 +781,17 @@ const SchoolUpdates = () => {
     return result;
   }, [timeFilter, selectedContentTypes, upcomingUpdates, recentUpdates, filtered, updates.length]);
 
-  // Current month calendar events (separate from posts/announcements)
-  // Sorted chronologically by date (day 1 to 31), then by time if same date
-  // Filtered by selectedContentTypes
+  // Current month events - combines calendar events and posts/updates
+  // Filtered by selectedContentTypes and search query
   const currentMonthEvents = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
     
-    // Filter and map events for current month
-    const monthEvents = calendarEvents
+    const events: any[] = [];
+    
+    // Add calendar events for current month
+    calendarEvents
       .filter(event => {
         const eventDate = event.isoDate || event.date;
         if (!eventDate) return false;
@@ -794,26 +805,71 @@ const SchoolUpdates = () => {
         const eventType = String(event.category || 'Event').toLowerCase();
         return selectedContentTypes.includes(eventType);
       })
-      .map(event => ({
-        id: event._id || `calendar-${event.isoDate}-${event.title}`,
-        title: event.title,
-        date: new Date(event.isoDate || event.date).toLocaleDateString(),
-        tag: event.category || 'Event',
-        description: event.description || '',
-        image: undefined,
-        images: undefined,
-        pinned: false,
-        isoDate: event.isoDate || event.date,
-        time: event.time, // Preserve time for sorting
-      }));
+      .forEach(event => {
+        events.push({
+          id: event._id || `calendar-${event.isoDate}-${event.title}`,
+          title: event.title,
+          date: new Date(event.isoDate || event.date).toLocaleDateString(),
+          tag: event.category || 'Event',
+          description: event.description || '',
+          image: undefined,
+          images: undefined,
+          pinned: false,
+          isoDate: event.isoDate || event.date,
+          time: event.time, // Preserve time for sorting
+          source: 'calendar', // Mark as calendar event
+          _id: event._id,
+        });
+      });
+    
+    // Add posts/updates for current month (events, announcements, news)
+    updates
+      .filter(update => {
+        if (!update.isoDate) return false;
+        const updateDate = new Date(update.isoDate);
+        const isCurrentMonth = updateDate.getFullYear() === currentYear &&
+                              updateDate.getMonth() === currentMonth;
+        
+        if (!isCurrentMonth) return false;
+        
+        // Apply content type filter
+        const updateType = String(update.tag || 'Announcement').toLowerCase();
+        return selectedContentTypes.includes(updateType);
+      })
+      .forEach(update => {
+        events.push({
+          id: update.id,
+          title: update.title,
+          date: new Date(update.isoDate || update.date).toLocaleDateString(),
+          tag: update.tag || 'Announcement',
+          description: update.description || '',
+          image: update.image,
+          images: update.images,
+          pinned: update.pinned || false,
+          isoDate: update.isoDate || update.date,
+          source: 'post', // Mark as post/update
+        });
+      });
+    
+    // Apply search filter if search query exists
+    let filteredEvents = events;
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filteredEvents = events.filter(event => {
+        const title = (event.title || '').toLowerCase();
+        const description = (event.description || '').toLowerCase();
+        const tag = (event.tag || '').toLowerCase();
+        return title.includes(query) || description.includes(query) || tag.includes(query);
+      });
+    }
     
     // Sort chronologically by date (day 1 to 31), then by time if same date
-    monthEvents.sort((a, b) => {
+    filteredEvents.sort((a, b) => {
       const dateA = new Date(a.isoDate || a.date).getTime();
       const dateB = new Date(b.isoDate || b.date).getTime();
       
       // If dates are the same, sort by time if available
-      if (dateA === dateB) {
+      if (dateA === dateB && a.time && b.time) {
         // Parse time strings (e.g., "8:00 AM" or "14:30")
         const parseTime = (timeStr: string | undefined): number => {
           if (!timeStr) return 9999; // Events without time go to the end
@@ -852,8 +908,8 @@ const SchoolUpdates = () => {
       return dateA - dateB;
     });
     
-    return monthEvents;
-  }, [calendarEvents, selectedContentTypes]);
+    return filteredEvents;
+  }, [calendarEvents, updates, selectedContentTypes, searchQuery]);
 
   // Calculate available height for scrollable cards section (after currentMonthEvents is defined)
   const cardsScrollViewHeight = useMemo(() => {
@@ -1487,11 +1543,28 @@ const SchoolUpdates = () => {
                   accentColor = colors.dot || '#93C5FD';
                 }
                 
-                // Find the full CalendarEvent object
-                const fullEvent = calendarEvents.find(e => 
-                  e._id === event.id || 
-                  `calendar-${e.isoDate}-${e.title}` === event.id
-                ) || null;
+                // Find the full event object (calendar event or post)
+                let fullEvent: any = null;
+                if (event.source === 'calendar') {
+                  // Calendar event
+                  fullEvent = calendarEvents.find(e => 
+                    e._id === event.id || 
+                    `calendar-${e.isoDate}-${e.title}` === event.id
+                  ) || null;
+                } else if (event.source === 'post') {
+                  // Post/Update - create event data format
+                  fullEvent = {
+                    id: event.id,
+                    title: event.title,
+                    description: event.description,
+                    category: event.tag,
+                    type: event.tag,
+                    date: event.isoDate || event.date,
+                    isoDate: event.isoDate || event.date,
+                    image: event.image,
+                    images: event.images,
+                  };
+                }
                 
                 // Create a subtle background color based on accent color
                 const cardBackgroundColor = isDarkMode 
@@ -1510,10 +1583,34 @@ const SchoolUpdates = () => {
                     delayPressIn={0}
                     onPress={() => {
                       if (fullEvent) {
-                        const eventDate = fullEvent.isoDate || fullEvent.date 
-                          ? new Date(fullEvent.isoDate || fullEvent.date)
-                          : new Date();
-                        openEventDrawer(fullEvent, eventDate);
+                        if (event.source === 'calendar') {
+                          // Calendar event
+                          const eventDate = fullEvent.isoDate || fullEvent.date 
+                            ? new Date(fullEvent.isoDate || fullEvent.date)
+                            : new Date();
+                          openEventDrawer(fullEvent, eventDate);
+                        } else if (event.source === 'post') {
+                          // Post/Update - use ViewEventModal format
+                          const eventDate = fullEvent.isoDate || fullEvent.date 
+                            ? new Date(fullEvent.isoDate || fullEvent.date)
+                            : new Date();
+                          setSelectedEvent(fullEvent);
+                          setSelectedDateForDrawer(eventDate);
+                          setSelectedDateEvents([{
+                            id: fullEvent.id,
+                            title: fullEvent.title,
+                            color: accentColor,
+                            type: fullEvent.category,
+                            category: fullEvent.category,
+                            description: fullEvent.description,
+                            isoDate: fullEvent.isoDate || fullEvent.date,
+                            date: fullEvent.isoDate || fullEvent.date,
+                            image: fullEvent.image,
+                            images: fullEvent.images,
+                          }]);
+                          setShowEventDrawer(true);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }
                       }
                     }}
                   >
@@ -1521,7 +1618,11 @@ const SchoolUpdates = () => {
                     <View style={styles.calendarEventContent} collapsable={false}>
                       <View style={styles.calendarEventHeader}>
                         <View style={[styles.calendarEventIconWrapper, { backgroundColor: accentColor + '20' }]}>
-                          <Ionicons name="calendar" size={16} color={accentColor} />
+                          <Ionicons 
+                            name={event.source === 'post' ? 'document-text' : 'calendar'} 
+                            size={16} 
+                            color={accentColor} 
+                          />
                         </View>
                         <Text style={[styles.calendarEventTag, { color: accentColor, fontSize: theme.fontSize.scaleSize(9) }]}>{event.tag}</Text>
                       </View>

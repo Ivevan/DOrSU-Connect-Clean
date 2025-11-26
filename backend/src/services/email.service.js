@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import { Logger } from '../utils/logger.js';
 
 export class EmailService {
@@ -23,9 +24,10 @@ export class EmailService {
       process.env.BASE_URL?.trim() ||
       'http://localhost:3000';
 
-    // Determine which provider to use and initialize transporter
+    // Determine which provider to use and initialize
     // Priority: Resend > Brevo (with automatic fallback)
-    this.transporter = null;
+    this.resendClient = null; // Resend uses native API client
+    this.transporter = null; // Brevo uses SMTP transporter
     this.fromEmail = null;
     this.enabled = false;
 
@@ -59,29 +61,11 @@ export class EmailService {
 
   initializeResend() {
     try {
-      // Resend uses SMTP with API key
-      this.transporter = nodemailer.createTransport({
-        host: 'smtp.resend.com',
-        port: 587,
-        secure: false, // Use TLS
-        auth: {
-          user: 'resend', // Resend requires 'resend' as username
-          pass: this.resendApiKey,
-        },
-        // Connection timeout settings for cloud environments
-        connectionTimeout: 30000, // 30 seconds
-        socketTimeout: 30000, // 30 seconds
-        greetingTimeout: 10000, // 10 seconds
-        pool: false,
-        tls: {
-          rejectUnauthorized: true, // Resend uses valid certificates
-        },
-        debug: process.env.EMAIL_DEBUG === 'true',
-        logger: process.env.EMAIL_DEBUG === 'true',
-      });
+      // Resend uses native API (not SMTP) - much more reliable on cloud platforms
+      this.resendClient = new Resend(this.resendApiKey);
       this.fromEmail = this.resendFromEmail || 'onboarding@resend.dev'; // Resend default
       this.enabled = true;
-      Logger.success('EmailService: Resend configured successfully');
+      Logger.success('EmailService: Resend configured successfully (using native API)');
     } catch (error) {
       Logger.error('EmailService: Failed to initialize Resend:', error.message);
     }
@@ -161,34 +145,55 @@ Or open the app directly: ${deepLink}
 
 This link expires in ${process.env.EMAIL_VERIFICATION_TTL_MINUTES || 30} minutes.`;
 
-    const mailOptions = {
-      from: `"DOrSU Connect" <${this.fromEmail}>`,
-      to: email,
-      subject: 'Confirm your DOrSU Connect email',
-      text: textBody,
-      html: htmlBody,
-    };
-
     // Retry logic with exponential backoff
     const maxRetries = 3;
     let lastError = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        // Verify connection before sending (only on first attempt)
-        if (attempt === 1) {
-          try {
-            await this.transporter.verify();
-            Logger.info('EmailService: SMTP connection verified');
-          } catch (verifyError) {
-            Logger.warn(`EmailService: SMTP verification failed (attempt ${attempt}):`, verifyError.message);
-            // Continue anyway - verification might fail but sending could still work
-          }
-        }
+        if (this.provider === 'resend' && this.resendClient) {
+          // Use Resend native API (no SMTP, more reliable)
+          const result = await this.resendClient.emails.send({
+            from: `"DOrSU Connect" <${this.fromEmail}>`,
+            to: email,
+            subject: 'Confirm your DOrSU Connect email',
+            text: textBody,
+            html: htmlBody,
+          });
 
-        await this.transporter.sendMail(mailOptions);
-        Logger.success(`EmailService: Verification email sent successfully to ${email}`);
-        return; // Success - exit the retry loop
+          if (result.error) {
+            throw new Error(result.error.message || 'Resend API error');
+          }
+
+          Logger.success(`EmailService: Verification email sent successfully to ${email} via Resend`);
+          return; // Success - exit the retry loop
+        } else if (this.provider === 'brevo' && this.transporter) {
+          // Use Brevo SMTP
+          const mailOptions = {
+            from: `"DOrSU Connect" <${this.fromEmail}>`,
+            to: email,
+            subject: 'Confirm your DOrSU Connect email',
+            text: textBody,
+            html: htmlBody,
+          };
+
+          // Verify connection before sending (only on first attempt)
+          if (attempt === 1) {
+            try {
+              await this.transporter.verify();
+              Logger.info('EmailService: SMTP connection verified');
+            } catch (verifyError) {
+              Logger.warn(`EmailService: SMTP verification failed (attempt ${attempt}):`, verifyError.message);
+              // Continue anyway - verification might fail but sending could still work
+            }
+          }
+
+          await this.transporter.sendMail(mailOptions);
+          Logger.success(`EmailService: Verification email sent successfully to ${email} via Brevo`);
+          return; // Success - exit the retry loop
+        } else {
+          throw new Error('No email provider configured');
+        }
       } catch (error) {
         lastError = error;
         const isTimeoutError = 
@@ -206,7 +211,8 @@ This link expires in ${process.env.EMAIL_VERIFICATION_TTL_MINUTES || 30} minutes
         if (
           error?.responseCode === 550 ||
           /5\.1\.1/.test(error?.response) ||
-          /Recipient address rejected/i.test(error?.message || '')
+          /Recipient address rejected/i.test(error?.message || '') ||
+          /invalid recipient/i.test(error?.message || '')
         ) {
           const notFoundError = new Error(
             'The email address you entered does not exist or cannot receive mail.'

@@ -198,13 +198,18 @@ const AdminDashboard = () => {
   }, [allUpdates]);
 
   // Filtered updates based on selected time filter, content type, and search query
-  // Only show Event, Announcement, and News entries that are in the current month
+  // Only show Event, Announcement, and News entries that are in the current month or next month
   const displayedUpdates = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
     
-    // Categories that should be filtered by current month
+    // Calculate next month and year (handle year rollover)
+    const nextMonth = currentMonth + 1;
+    const nextYear = nextMonth > 11 ? currentYear + 1 : currentYear;
+    const normalizedNextMonth = nextMonth > 11 ? 0 : nextMonth;
+    
+    // Categories that should be filtered by current month and next month
     const monthFilteredCategories = new Set(['event', 'announcement', 'news']);
     
     let result;
@@ -222,7 +227,7 @@ const AdminDashboard = () => {
       return selectedContentTypesSet.has(updateType);
     });
     
-    // Filter by current month for Event, Announcement, and News categories
+    // Filter by current month or next month for Event, Announcement, and News categories
     result = result.filter(update => {
       const updateType = String(update.tag || 'Announcement').toLowerCase();
       
@@ -231,9 +236,14 @@ const AdminDashboard = () => {
         if (!update.isoDate) return false; // Exclude entries without dates
         try {
           const updateDate = new Date(update.isoDate);
-          const isCurrentMonth = updateDate.getFullYear() === currentYear &&
-                                updateDate.getMonth() === currentMonth;
-          return isCurrentMonth;
+          const updateYear = updateDate.getFullYear();
+          const updateMonth = updateDate.getMonth();
+          
+          // Check if date is in current month or next month
+          const isCurrentMonth = updateYear === currentYear && updateMonth === currentMonth;
+          const isNextMonth = updateYear === nextYear && updateMonth === normalizedNextMonth;
+          
+          return isCurrentMonth || isNextMonth;
         } catch {
           return false; // Exclude entries with invalid dates
         }

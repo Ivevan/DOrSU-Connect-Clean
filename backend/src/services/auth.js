@@ -86,8 +86,11 @@ export class AuthService {
       throw new Error('Email is required');
     }
 
-    if (!/^[\w-.]+@gmail\.com$/i.test(normalizedEmail)) {
-      throw new Error('Only Gmail addresses are supported');
+    // Allow both @dorsu.edu.ph and @gmail.com domains
+    const allowedDomains = ['dorsu.edu.ph', 'gmail.com'];
+    const emailDomain = normalizedEmail.split('@')[1];
+    if (!allowedDomains.includes(emailDomain)) {
+      throw new Error('Only @dorsu.edu.ph and @gmail.com addresses are supported');
     }
 
     const token = crypto.randomUUID();
@@ -107,7 +110,7 @@ export class AuthService {
 
     return {
       success: true,
-      message: 'Confirmation link sent. Please check your Gmail inbox.',
+      message: 'Confirmation link sent. Please check your email inbox.',
       expiresAt,
     };
   }

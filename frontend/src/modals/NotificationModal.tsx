@@ -12,7 +12,6 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, RefreshControl, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet from '../components/common/BottomSheet';
 import { useThemeValues } from '../contexts/ThemeContext';
 import NotificationService from '../services/NotificationService';
@@ -59,8 +58,7 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
   visible,
   onClose,
 }) => {
-  const { theme, isDarkMode } = useThemeValues();
-  const insets = useSafeAreaInsets();
+  const { theme } = useThemeValues();
   const sheetY = useRef(new Animated.Value(600)).current;
 
   // Helper function to convert hex to rgba
@@ -90,9 +88,12 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
       if (readIdsJson) {
         const readIds = JSON.parse(readIdsJson);
         setReadNotificationIds(new Set(readIds));
+        return new Set(readIds);
       }
+      return new Set<string>();
     } catch (error) {
       console.error('Error loading read notifications:', error);
+      return new Set<string>();
     }
   }, []);
 
@@ -109,9 +110,14 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
 
   // Mark a notification as read
   const markAsRead = useCallback(async (notificationId: string) => {
-    const newReadIds = new Set(readNotificationIds);
-    newReadIds.add(notificationId);
-    await saveReadNotifications(newReadIds);
+    setReadNotificationIds(prev => {
+      const newReadIds = new Set(prev);
+      newReadIds.add(notificationId);
+      // Save to AsyncStorage
+      const readIdsArray = Array.from(newReadIds);
+      AsyncStorage.setItem('readNotificationIds', JSON.stringify(readIdsArray)).catch(console.error);
+      return newReadIds;
+    });
     
     // Update the notification item's read status
     setNotificationItems(prev => 
@@ -119,7 +125,7 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
         item.id === notificationId ? { ...item, read: true } : item
       )
     );
-  }, [readNotificationIds, saveReadNotifications]);
+  }, []);
 
   // Mark all notifications as read
   const markAllAsRead = useCallback(async () => {
@@ -136,17 +142,20 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
     try {
       setIsLoading(true);
       
-      // Load read status first
-      let currentReadIds = readNotificationIds;
+      // Load read status first - read directly from AsyncStorage to avoid dependency issues
+      let currentReadIds: Set<string>;
       try {
         const readIdsJson = await AsyncStorage.getItem('readNotificationIds');
         if (readIdsJson) {
           const readIds = JSON.parse(readIdsJson);
           currentReadIds = new Set(readIds);
           setReadNotificationIds(currentReadIds);
+        } else {
+          currentReadIds = new Set<string>();
         }
       } catch (error) {
         console.error('Error loading read notifications:', error);
+        currentReadIds = new Set<string>();
       }
       
       // Fetch current data to show what would trigger notifications
@@ -249,7 +258,29 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [readNotificationIds]);
+  }, []); // Removed readNotificationIds dependency - we read directly from AsyncStorage
+
+  // Memoize checkPermissions to avoid recreating on every render
+  const checkPermissions = useCallback(async () => {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      setHasPermission(status === 'granted');
+      const enabled = await NotificationService.areNotificationsEnabled();
+      setNotificationsEnabled(enabled);
+    } catch (error) {
+      console.error('Error checking permissions:', error);
+    }
+  }, []);
+
+  const handleClose = useCallback(() => {
+    Animated.timing(sheetY, {
+      toValue: 600,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      onClose();
+    });
+  }, [sheetY, onClose]);
 
   // Animate sheet when visible changes
   useEffect(() => {
@@ -269,28 +300,8 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
         useNativeDriver: true,
       }).start();
     }
-  }, [visible, sheetY, loadNotifications]);
-
-  const handleClose = useCallback(() => {
-    Animated.timing(sheetY, {
-      toValue: 600,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      onClose();
-    });
-  }, [sheetY, onClose]);
-
-  const checkPermissions = async () => {
-    try {
-      const { status } = await Notifications.getPermissionsAsync();
-      setHasPermission(status === 'granted');
-      const enabled = await NotificationService.areNotificationsEnabled();
-      setNotificationsEnabled(enabled);
-    } catch (error) {
-      console.error('Error checking permissions:', error);
-    }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]); // Only depend on visible - loadNotifications and checkPermissions are stable
 
   const handleRefresh = async () => {
     setIsRefreshing(true);

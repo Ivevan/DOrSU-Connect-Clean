@@ -124,8 +124,9 @@ const CreateAccount = () => {
       return 'Please enter a valid email address';
     }
     const emailDomain = value.toLowerCase().split('@')[1];
-    if (!emailDomain?.includes('gmail.com')) {
-      return 'Only Gmail addresses are supported';
+    const allowedDomains = ['dorsu.edu.ph', 'gmail.com'];
+    if (!emailDomain || !allowedDomains.includes(emailDomain)) {
+      return 'Only @dorsu.edu.ph and @gmail.com addresses are supported';
     }
     if (TEMP_EMAIL_DOMAINS.includes(emailDomain)) {
       return 'Temporary emails not allowed';
@@ -163,10 +164,10 @@ const CreateAccount = () => {
         const verified = Boolean(data.verified);
         if (verified) {
           setEmailVerificationStatus('verified');
-          setEmailVerificationMessage('Gmail confirmed. You are good to go.');
+          setEmailVerificationMessage('Email confirmed. You are good to go.');
         } else if (data?.requestedAt) {
           setEmailVerificationStatus('pending');
-          setEmailVerificationMessage('Waiting for confirmation. Please tap the link we sent to your Gmail.');
+          setEmailVerificationMessage('Waiting for confirmation. Please tap the link we sent to your email.');
         } else {
           setEmailVerificationStatus('idle');
           setEmailVerificationMessage('');
@@ -176,8 +177,8 @@ const CreateAccount = () => {
           setErrors(prev => ({
             ...prev,
             general: data?.requestedAt
-              ? 'Please confirm your Gmail by opening the link we sent.'
-              : 'Send a confirmation link to your Gmail before creating an account.',
+              ? 'Please confirm your email by opening the link we sent.'
+              : 'Send a confirmation link to your email before creating an account.',
           }));
         }
 
@@ -224,7 +225,7 @@ const CreateAccount = () => {
       const data = await response.json();
       if (!response.ok) {
         if (data?.error === 'EMAIL_NOT_FOUND') {
-          setWarningModalMessage('The Gmail address you entered does not exist. Please double-check the spelling.');
+          setWarningModalMessage('The email address you entered does not exist. Please double-check the spelling.');
           setWarningModalVisible(true);
           return;
         }
@@ -232,7 +233,7 @@ const CreateAccount = () => {
       }
 
       setEmailVerificationStatus('pending');
-      setEmailVerificationMessage('Confirmation link sent. Please open the link from your Gmail inbox.');
+      setEmailVerificationMessage('Confirmation link sent. Please open the link from your email inbox.');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error: any) {
       console.error('Failed to send verification link:', error);
@@ -373,7 +374,7 @@ const CreateAccount = () => {
       } else if (error.message.includes('Invalid')) {
         setErrors({ username: '', email: 'Invalid email or password format', password: '', confirmPassword: '', general: '' });
       } else if (error.message.includes('Email not verified')) {
-        setErrors({ username: '', email: '', password: '', confirmPassword: '', general: 'Please confirm your Gmail before creating an account.' });
+        setErrors({ username: '', email: '', password: '', confirmPassword: '', general: 'Please confirm your email before creating an account.' });
       } else {
         setErrors({ username: '', email: '', password: '', confirmPassword: '', general: error.message || errorMessage });
       }
@@ -547,7 +548,7 @@ const CreateAccount = () => {
             {emailVerificationStatus === 'verified' ? (
               <View style={styles.verificationBadge}>
                 <MaterialIcons name="check-circle" size={16} color="#10B981" style={{ marginRight: 4 }} />
-                <Text style={styles.verificationBadgeText}>Gmail verified</Text>
+                <Text style={styles.verificationBadgeText}>Email verified</Text>
               </View>
             ) : null}
           </View>
@@ -820,9 +821,9 @@ const CreateAccount = () => {
         <View style={styles.warningModalOverlay}>
           <View style={styles.warningModalCard}>
             <MaterialIcons name="warning-amber" size={32} color="#F97316" style={styles.warningModalIcon} />
-            <Text style={styles.warningModalTitle}>Gmail not found</Text>
+            <Text style={styles.warningModalTitle}>Email not found</Text>
             <Text style={styles.warningModalMessage}>
-              {warningModalMessage || 'We could not reach that Gmail address. Please use an existing Gmail account.'}
+              {warningModalMessage || 'We could not reach that email address. Please use an existing email account.'}
             </Text>
             <TouchableOpacity
               style={styles.warningModalButton}

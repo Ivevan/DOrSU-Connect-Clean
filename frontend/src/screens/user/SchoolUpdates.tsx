@@ -691,7 +691,15 @@ const SchoolUpdates = () => {
   }, [filtered]);
 
   // Filtered by time (all, upcoming, or recent) and content type
+  // Only show Event, Announcement, and News entries that are in the current month
   const displayedUpdates = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    
+    // Categories that should be filtered by current month
+    const monthFilteredCategories = new Set(['event', 'announcement', 'news']);
+    
     console.log('🔍 Computing displayedUpdates:', {
       timeFilter,
       selectedContentTypes,
@@ -715,6 +723,27 @@ const SchoolUpdates = () => {
     result = result.filter(update => {
       const updateType = String(update.tag || 'Announcement').toLowerCase();
       return selectedContentTypes.includes(updateType);
+    });
+    
+    // Filter by current month for Event, Announcement, and News categories
+    result = result.filter(update => {
+      const updateType = String(update.tag || 'Announcement').toLowerCase();
+      
+      // Only apply month filter to Event, Announcement, and News
+      if (monthFilteredCategories.has(updateType)) {
+        if (!update.isoDate) return false; // Exclude entries without dates
+        try {
+          const updateDate = new Date(update.isoDate);
+          const isCurrentMonth = updateDate.getFullYear() === currentYear &&
+                                updateDate.getMonth() === currentMonth;
+          return isCurrentMonth;
+        } catch {
+          return false; // Exclude entries with invalid dates
+        }
+      }
+      
+      // For other categories (Academic, Institutional), show all (no month filter)
+      return true;
     });
     
     console.log('📋 Result before sorting:', result.length, 'items');

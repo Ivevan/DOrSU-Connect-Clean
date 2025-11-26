@@ -138,6 +138,82 @@ GROQ_API_KEYS=key1,key2,...  # Groq API keys (comma-separated for multi-key supp
 # GROQ_API_KEY=your_groq_api_key_here
 ```
 
+### Email Configuration
+
+The backend supports multiple email providers for sending verification emails. **Resend is recommended** as it's reliable, developer-friendly, and doesn't require phone verification.
+
+#### Option 1: Resend (RECOMMENDED - No Phone Verification!)
+
+1. Sign up at [Resend](https://resend.com) (free tier: 3,000 emails/month, 100 emails/day)
+2. Create an API key:
+   - Go to [API Keys](https://resend.com/api-keys)
+   - Click "Create API Key"
+   - Copy the API key (starts with `re_`)
+3. Configure in `.env`:
+   ```env
+   EMAIL_PROVIDER=resend
+   RESEND_API_KEY=re_your_api_key_here
+   RESEND_FROM_EMAIL=noreply@dorsu.edu.ph
+   ```
+   **Note**: For production, you'll need to verify a domain. For testing, Resend provides `onboarding@resend.dev` as a default sender.
+
+#### Option 2: Brevo (No Phone Verification!)
+
+1. Sign up at [Brevo](https://www.brevo.com) (free tier: 300 emails/day)
+2. Get your SMTP credentials:
+   - Go to Dashboard → Settings → SMTP & API
+   - Under "SMTP" section, copy your SMTP key
+   - Note your account email address
+3. Configure in `.env`:
+   ```env
+   EMAIL_PROVIDER=brevo
+   BREVO_SMTP_KEY=your_smtp_key_here
+   BREVO_SMTP_USER=your_email@example.com
+   BREVO_FROM_EMAIL=noreply@dorsu.edu.ph
+   ```
+
+#### Option 3: Mailgun (Alternative)
+
+1. Sign up at [Mailgun](https://www.mailgun.com) (free tier: 5,000 emails/month)
+2. Verify your domain or use sandbox domain
+3. Get API key from Settings → API Keys
+4. Configure in `.env`:
+   ```env
+   EMAIL_PROVIDER=mailgun
+   MAILGUN_API_KEY=your_mailgun_api_key
+   MAILGUN_DOMAIN=your_domain.com
+   MAILGUN_FROM_EMAIL=noreply@your_domain.com
+   ```
+
+#### Option 4: SendGrid (May require phone verification)
+
+1. Sign up at [SendGrid](https://sendgrid.com) (free tier: 100 emails/day)
+2. Create an API key:
+   - Go to Settings → API Keys
+   - Create API Key with "Mail Send" permissions
+   - Copy the API key
+3. Configure in `.env`:
+   ```env
+   EMAIL_PROVIDER=sendgrid
+   SENDGRID_API_KEY=SG.your_api_key_here
+   SENDGRID_FROM_EMAIL=noreply@dorsu.edu.ph
+   ```
+
+#### Option 5: Gmail (Fallback - May have connection issues on cloud platforms)
+
+1. Enable 2-Factor Authentication on your Gmail account
+2. Generate an App Password:
+   - Go to Google Account → Security → App passwords
+   - Create password for "Mail"
+3. Configure in `.env`:
+   ```env
+   EMAIL_PROVIDER=gmail
+   GMAIL_USER=your_email@gmail.com
+   GMAIL_APP_PASSWORD=your_app_password
+   ```
+
+**Note**: If `EMAIL_PROVIDER` is not set, the system will automatically try Resend → Brevo → Mailgun → SendGrid → Gmail in that order.
+
 ### Knowledge Base
 
 The knowledge base is stored in `src/data/dorsu_data.json`. To update:

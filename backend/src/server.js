@@ -208,7 +208,7 @@ const server = http.createServer(async (req, res) => {
       } catch (error) {
         Logger.error('Email verification request error:', error.message);
         if (error.message === 'EMAIL_NOT_FOUND') {
-          sendJson(res, 400, { error: 'EMAIL_NOT_FOUND', message: 'The Gmail address does not exist.' });
+          sendJson(res, 400, { error: 'EMAIL_NOT_FOUND', message: 'The email address does not exist.' });
           return;
         }
         sendJson(res, 400, { error: error.message || 'Failed to send confirmation link' });
@@ -255,7 +255,7 @@ const server = http.createServer(async (req, res) => {
           <body>
             <div class="card">
               <div class="badge">Email Verified</div>
-              <h1>Thanks! Your Gmail is confirmed.</h1>
+              <h1>Thanks! Your email is confirmed.</h1>
               <p>We successfully verified <strong>${result.email}</strong>. You can go back to the DOrSU Connect app and finish creating your account.</p>
               ${
                 deepLink

@@ -30,7 +30,6 @@ import { useThemeValues } from '../../contexts/ThemeContext';
 import PreviewModal from '../../modals/PreviewModal';
 import BottomSheet from '../../components/common/BottomSheet';
 import MonthPickerModal from '../../modals/MonthPickerModal';
-import { formatDate } from '../../utils/dateUtils';
 
 type RootStackParamList = {
   AdminDashboard: undefined;
@@ -325,11 +324,34 @@ const PostUpdate: React.FC = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, [openMonthPicker]);
 
-  const formatDate = (date: Date) => {
-    const dd = String(date.getDate()).padStart(2, '0');
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const yyyy = date.getFullYear();
+  // Helper to format date as dd/mm/yyyy for display
+  const formatDateForDisplay = (date: Date | string | null | undefined): string => {
+    if (!date) return '';
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(dateObj.getTime())) return '';
+    const dd = String(dateObj.getDate()).padStart(2, '0');
+    const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const yyyy = dateObj.getFullYear();
     return `${dd}/${mm}/${yyyy}`;
+  };
+
+  // Helper to parse date from various formats (ISO, dd/mm/yyyy, etc.)
+  const parseDate = (dateStr: string | null | undefined): Date | null => {
+    if (!dateStr) return null;
+    
+    // Try ISO format first
+    const isoDate = new Date(dateStr);
+    if (!isNaN(isoDate.getTime())) return isoDate;
+    
+    // Try dd/mm/yyyy format
+    const ddmmyyyyMatch = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (ddmmyyyyMatch) {
+      const [, dd, mm, yyyy] = ddmmyyyyMatch;
+      const parsed = new Date(parseInt(yyyy, 10), parseInt(mm, 10) - 1, parseInt(dd, 10));
+      if (!isNaN(parsed.getTime())) return parsed;
+    }
+    
+    return null;
   };
 
   const openCategoryMenu = useCallback(() => {
@@ -365,7 +387,7 @@ const PostUpdate: React.FC = () => {
     const safeDay = Math.min(tmpDay, getDaysInMonth(tmpYear, tmpMonth));
     const next = new Date(tmpYear, tmpMonth, safeDay);
     setSelectedDateObj(next);
-    setDate(formatDate(next));
+    setDate(formatDateForDisplay(next));
     Animated.timing(datePickerSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
       InteractionManager.runAfterInteractions(() => {
         setShowDatePicker(false);
@@ -491,25 +513,41 @@ const PostUpdate: React.FC = () => {
           description: '',
           hasFile: false,
         });
+        setSelectedDateObj(null);
+        setDate('');
         return;
       }
       const post = await AdminDataService.getPostById(editingPostId);
       if (isCancelled || !post) return;
       const loadedTitle = post.title || '';
       const loadedCategory = post.category || 'Announcement';
-      const loadedDate = post.date || '';
       const loadedDescription = post.description || '';
+      
+      // Parse and format the date properly
+      // Use isoDate if available (more reliable), otherwise use date
+      const dateSource = post.isoDate || post.date || '';
+      const parsedDate = parseDate(dateSource);
+      const formattedDate = parsedDate ? formatDateForDisplay(parsedDate) : '';
       
       setTitle(loadedTitle);
       setCategory(loadedCategory);
-      setDate(loadedDate);
+      setDate(formattedDate);
       setDescription(loadedDescription);
       
-      // Store original values for change detection
+      // Initialize selectedDateObj for the date picker
+      if (parsedDate) {
+        setSelectedDateObj(parsedDate);
+        // Also initialize tmp values for the date picker
+        setTmpMonth(parsedDate.getMonth());
+        setTmpYear(parsedDate.getFullYear());
+        setTmpDay(parsedDate.getDate());
+      }
+      
+      // Store original values for change detection (use formatted date for comparison)
       setOriginalValues({
         title: loadedTitle,
         category: loadedCategory,
-        date: loadedDate,
+        date: formattedDate,
         description: loadedDescription,
         hasFile: false, // We don't track file changes from existing posts
       });
@@ -535,7 +573,16 @@ const PostUpdate: React.FC = () => {
 
     // Prepare payload immediately (no delay)
     const now = new Date();
-    const isoDate = selectedDateObj ? selectedDateObj.toISOString() : (date ? new Date(date).toISOString() : now.toISOString());
+    // Get ISO date: prefer selectedDateObj, otherwise parse from date string, otherwise use now
+    let isoDate: string;
+    if (selectedDateObj) {
+      isoDate = selectedDateObj.toISOString();
+    } else if (date) {
+      const parsed = parseDate(date);
+      isoDate = parsed ? parsed.toISOString() : now.toISOString();
+    } else {
+      isoDate = now.toISOString();
+    }
     
     const payload: any = {
       title: title || 'Untitled',

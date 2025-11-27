@@ -34,6 +34,7 @@ interface AdminSidebarProps {
   sessionId?: string;
   onDeleteChat?: (chatId: string) => void;
   onDeleteAllChats?: () => Promise<void>;
+  selectedUserType?: 'student' | 'faculty';
 }
 
 const AdminSidebar: React.FC<AdminSidebarProps> = ({
@@ -46,10 +47,11 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
   sessionId,
   onDeleteChat,
   onDeleteAllChats,
+  selectedUserType = 'student',
 }) => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute();
-  const { isDarkMode, theme: t } = useThemeValues();
+  const { isDarkMode, theme: t, colorTheme } = useThemeValues();
   const insets = useSafeAreaInsets();
   const sidebarAnim = useRef(new Animated.Value(-320)).current;
 
@@ -58,9 +60,16 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   // Sort chat history by timestamp (newest first)
   const sortedChatHistory = useMemo(() => {
+    // Sort by timestamp (newest first)
     return [...chatHistory].sort((a, b) => {
       const timeA = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp).getTime();
       const timeB = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp).getTime();
+      
+      // Handle invalid dates
+      if (isNaN(timeA) && isNaN(timeB)) return 0;
+      if (isNaN(timeA)) return 1; // Invalid dates go to end
+      if (isNaN(timeB)) return -1;
+      
       return timeB - timeA; // Descending order (newest first)
     });
   }, [chatHistory]);
@@ -382,17 +391,38 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
                       {chat.userType && (
                         <View style={[
                           styles.historyAccent,
-                          { backgroundColor: chat.userType === 'student' ? t.colors.accent : '#FBBF24' }
+                          { backgroundColor: chat.userType === 'student' ? t.colors.accent : (colorTheme === 'dorsu' ? '#FBBF24' : '#6B7280') }
                         ]} />
                       )}
                       <View style={styles.historyItemContent}>
                         <View style={styles.historyItemTextContainer}>
-                          <Text style={[styles.historyTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(14) }]} numberOfLines={1}>
-                            {chat.title}
-                          </Text>
-                          <Text style={[styles.historyPreview, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(13) }]} numberOfLines={1}>
-                            {chat.preview}
-                          </Text>
+                          <View style={styles.historyTitleRow}>
+                            <Text style={[styles.historyTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(14) }]} numberOfLines={1}>
+                              {chat.title}
+                            </Text>
+                            {chat.userType && (
+                              <View style={[
+                                styles.historyUserTypeBadge,
+                                { backgroundColor: chat.userType === 'student' ? t.colors.accent : (colorTheme === 'dorsu' ? '#FBBF24' : '#6B7280') }
+                              ]}>
+                                <Text style={[styles.historyUserTypeBadgeText, { fontSize: t.fontSize.scaleSize(9) }]}>
+                                  {chat.userType === 'student' ? 'Student' : 'Faculty'}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                          <View style={styles.historyActionsRow}>
+                            <Text style={[styles.historyPreview, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(13) }]} numberOfLines={1}>
+                              {chat.preview}
+                            </Text>
+                            <TouchableOpacity
+                              style={styles.deleteHistoryBtn}
+                              onPress={() => handleDeleteChat(chat.id)}
+                              accessibilityLabel="Delete chat"
+                            >
+                              <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                            </TouchableOpacity>
+                          </View>
                           {chat.timestamp && (
                             <View style={styles.historyDateRow}>
                               <Ionicons name="time-outline" size={10} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
@@ -403,13 +433,6 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
                           )}
                         </View>
                       </View>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.deleteHistoryBtn}
-                      onPress={() => handleDeleteChat(chat.id)}
-                      accessibilityLabel="Delete chat"
-                    >
-                      <Ionicons name="trash-outline" size={16} color={isDarkMode ? '#9CA3AF' : '#6B7280'} />
                     </TouchableOpacity>
                   </View>
                 ))
@@ -616,14 +639,42 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 8,
   },
+  historyTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+    flexWrap: 'wrap',
+  },
   historyTitle: {
     fontSize: 14,
     fontWeight: '600',
+    flex: 1,
+    minWidth: 0,
+  },
+  historyUserTypeBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  historyUserTypeBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  historyActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 4,
+    gap: 8,
   },
   historyPreview: {
     fontSize: 13,
-    marginBottom: 4,
+    flex: 1,
+    minWidth: 0,
   },
   historyDateRow: {
     flexDirection: 'row',
@@ -636,11 +687,10 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   deleteHistoryBtn: {
-    position: 'absolute',
-    right: 8,
-    top: 8,
-    padding: 6,
-    borderRadius: 6,
+    padding: 4,
+    borderRadius: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyHistoryContainer: {
     alignItems: 'center',
@@ -652,6 +702,25 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginTop: 12,
     textAlign: 'center',
+  },
+  filterButtonsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  filterButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    minWidth: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 

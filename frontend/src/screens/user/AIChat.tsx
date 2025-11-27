@@ -65,6 +65,7 @@ const AIChat = () => {
   const hasInitialized = useRef<boolean>(false);
   const isEditingRef = useRef<boolean>(false);
   const originalMessagesRef = useRef<Message[]>([]);
+  const previousUserTypeRef = useRef<'student' | 'faculty'>('student');
 
   // Segmented control animation and width tracking
   const segmentAnim = useRef(new Animated.Value(0)).current;
@@ -341,6 +342,59 @@ const AIChat = () => {
   // Reload top queries when userType changes
   useEffect(() => {
     loadTopQueries();
+  }, [selectedUserType]);
+
+  // Reset chat when userType changes
+  useEffect(() => {
+    // Skip on initial mount (when selectedUserType is first set)
+    if (!hasInitialized.current) {
+      previousUserTypeRef.current = selectedUserType;
+      return;
+    }
+
+    // Only reset if userType actually changed
+    if (previousUserTypeRef.current === selectedUserType) {
+      return;
+    }
+
+    // Save current conversation with previous userType before clearing
+    const saveAndReset = async () => {
+      try {
+        // Capture current messages and sessionId before clearing
+        const currentMessages = messages;
+        const currentSessionId = sessionId.current;
+        
+        // Save current conversation if there are messages, using the PREVIOUS userType
+        if (currentMessages.length > 0 && currentSessionId) {
+          const token = await getUserToken();
+          if (token) {
+            // Save with the previous userType before switching
+            await AIService.saveChatHistory(currentSessionId, currentMessages, token, previousUserTypeRef.current);
+            await loadChatHistory();
+          }
+        }
+        
+        // Clear current conversation
+        setMessages([]);
+        sessionId.current = '';
+        hasRestoredConversation.current = false;
+        await clearCurrentConversation();
+        setInputText('');
+        isEditingRef.current = false;
+        setIsEditing(false);
+        originalMessagesRef.current = [];
+        
+        // Update the previous userType ref
+        previousUserTypeRef.current = selectedUserType;
+      } catch (error) {
+        console.error('Failed to reset chat on userType change:', error);
+        // Still update the ref even on error
+        previousUserTypeRef.current = selectedUserType;
+      }
+    };
+
+    saveAndReset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUserType]);
 
   // Animate floating background orb on mount
@@ -1115,6 +1169,7 @@ const AIChat = () => {
         }}
         getUserToken={getUserToken}
         sessionId={sessionId.current}
+        selectedUserType={selectedUserType}
         onDeleteChat={async (chatId) => {
           try {
             const token = await getUserToken();

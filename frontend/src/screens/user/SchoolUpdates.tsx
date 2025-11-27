@@ -410,7 +410,7 @@ const SchoolUpdates = () => {
   const [updates, setUpdates] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'recent'>('all');
+  const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'recent' | 'thismonth'>('all');
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [isLoadingCalendarEvents, setIsLoadingCalendarEvents] = useState(false);
@@ -641,16 +641,13 @@ const SchoolUpdates = () => {
     setupNotifications();
   }, []); // Empty deps - only run on mount
 
-  // Refresh updates when screen comes into focus (with smart refresh)
+  // Refresh updates when screen comes into focus (always refresh to show new posts)
   useFocusEffect(
     useCallback(() => {
-      // Only refresh if data is older than 30 seconds
-      const timeSinceLastFetch = Date.now() - lastFetchTime.current;
-      const shouldRefresh = timeSinceLastFetch > 30 * 1000; // 30 seconds
-      
-      if (shouldRefresh) {
-        fetchUpdates(false); // Use cache if available
-      }
+      // Always refresh when screen comes into focus to ensure new posts appear immediately
+      // Force refresh (bypass cache) to get the latest data including newly created posts
+      // The fetchUpdates function has its own cooldown to prevent too many requests
+      fetchUpdates(true); // Force refresh to bypass cache and get latest posts
     }, [fetchUpdates])
   );
 
@@ -691,11 +688,13 @@ const SchoolUpdates = () => {
   }, [filtered]);
 
   // Filtered by time (all, upcoming, or recent) and content type
+  // Includes both posts and calendar events
   // Only show Event, Announcement, and News entries that are in the current month or next month
   const displayedUpdates = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
+    const todayKey = getPHDateKey(now);
     
     // Calculate next month and year (handle year rollover)
     const nextMonth = currentMonth + 1;
@@ -714,15 +713,78 @@ const SchoolUpdates = () => {
       recentCount: recentUpdates.length,
     });
     
+    // Start with posts based on time filter
     let result;
     if (timeFilter === 'upcoming') {
       result = [...upcomingUpdates];
     } else if (timeFilter === 'recent') {
       result = [...recentUpdates];
+    } else if (timeFilter === 'thismonth') {
+      // Filter by current month only
+      result = filtered.filter(u => {
+        if (!u.isoDate) return false;
+        try {
+          const updateDate = new Date(u.isoDate);
+          const updateYear = updateDate.getFullYear();
+          const updateMonth = updateDate.getMonth();
+          return updateYear === currentYear && updateMonth === currentMonth;
+        } catch {
+          return false;
+        }
+      });
     } else {
       // 'all' - show all posts, including those without dates
       result = [...filtered];
     }
+    
+    // Add calendar events based on time filter
+    const calendarEventsForUpdates = calendarEvents
+      .filter(event => {
+        const eventDate = event.isoDate || event.date;
+        if (!eventDate) return false;
+        
+        const eventDateObj = new Date(eventDate);
+        const eventKey = getPHDateKey(eventDate);
+        const eventYear = eventDateObj.getFullYear();
+        const eventMonth = eventDateObj.getMonth();
+        
+        // Apply time filter
+        if (timeFilter === 'upcoming') {
+          return eventKey > todayKey;
+        } else if (timeFilter === 'recent') {
+          return eventKey <= todayKey;
+        } else if (timeFilter === 'thismonth') {
+          return eventYear === currentYear && eventMonth === currentMonth;
+        } else {
+          // 'all' - include all calendar events
+          return true;
+        }
+      })
+      .map(event => ({
+        id: event._id || `calendar-${event.isoDate}-${event.title}`,
+        title: event.title,
+        date: new Date(event.isoDate || event.date).toLocaleDateString(),
+        tag: event.category || 'Event',
+        description: event.description || '',
+        image: undefined,
+        images: undefined,
+        pinned: false,
+        isoDate: event.isoDate || event.date,
+        source: 'calendar', // Mark as calendar event
+        _id: event._id,
+      }));
+    
+    // Combine posts and calendar events
+    result = [...result, ...calendarEventsForUpdates];
+    
+    // Remove duplicates (same ID or same title + date)
+    const seen = new Set<string>();
+    result = result.filter(update => {
+      const key = update.id || `${update.title}-${update.isoDate}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     
     // Apply content type filter
     result = result.filter(update => {
@@ -779,7 +841,7 @@ const SchoolUpdates = () => {
       console.log('📝 First update:', { id: result[0].id, title: result[0].title, isoDate: result[0].isoDate });
     }
     return result;
-  }, [timeFilter, selectedContentTypes, upcomingUpdates, recentUpdates, filtered, updates.length]);
+  }, [timeFilter, selectedContentTypes, upcomingUpdates, recentUpdates, filtered, updates.length, calendarEvents]);
 
   // Current month events - combines calendar events and posts/updates
   // Filtered by selectedContentTypes and search query
@@ -1662,8 +1724,6 @@ const SchoolUpdates = () => {
           </View>
           
           {/* Time Filter Pills */}
-
-          {/* Time Filter Pills */}
           <View style={[styles.filtersContainer, { flexShrink: 0, marginBottom: 12 }]} collapsable={false}>
             <Pressable
               style={[
@@ -1683,15 +1743,15 @@ const SchoolUpdates = () => {
               style={[
                 styles.filterPill, 
                 { borderColor: theme.colors.border }, 
-                timeFilter === 'upcoming' && {
+                timeFilter === 'thismonth' && {
                   backgroundColor: theme.colors.accent,
                   borderColor: theme.colors.accent,
                   shadowColor: theme.colors.accent,
                 }
               ]}
-              onPress={() => setTimeFilter('upcoming')}
+              onPress={() => setTimeFilter('thismonth')}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'upcoming' && { color: '#FFF' }]}>Upcoming</Text>
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'thismonth' && { color: '#FFF' }]}>This month</Text>
             </Pressable>
             <Pressable
               style={[
@@ -1706,6 +1766,20 @@ const SchoolUpdates = () => {
               onPress={() => setTimeFilter('recent')}
             >
               <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'recent' && { color: '#FFF' }]}>Recent</Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.filterPill, 
+                { borderColor: theme.colors.border }, 
+                timeFilter === 'upcoming' && {
+                  backgroundColor: theme.colors.accent,
+                  borderColor: theme.colors.accent,
+                  shadowColor: theme.colors.accent,
+                }
+              ]}
+              onPress={() => setTimeFilter('upcoming')}
+            >
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'upcoming' && { color: '#FFF' }]}>Upcoming</Text>
             </Pressable>
           </View>
           
@@ -1729,7 +1803,7 @@ const SchoolUpdates = () => {
               <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                 <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
                 <Text style={{ marginTop: 6, fontSize: theme.fontSize.scaleSize(12), color: theme.colors.textMuted, fontWeight: '600' }}>
-                  {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : 'No updates found'}
+                  {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : timeFilter === 'thismonth' ? 'No updates this month' : 'No updates found'}
                 </Text>
               </View>
             )}
@@ -1756,7 +1830,25 @@ const SchoolUpdates = () => {
                   activeOpacity={0.7}
                   delayPressIn={0}
                   onPress={() => {
-                    // Convert to CalendarEvent format for ViewEventModal
+                    // Check if it's a calendar event (has _id) or a post
+                    if (update.source === 'calendar' && update._id) {
+                      // Calendar event - find the full event object
+                      const fullEvent = calendarEvents.find(e => 
+                        e._id === update._id || 
+                        e._id === update.id ||
+                        `calendar-${e.isoDate}-${e.title}` === update.id
+                      );
+                      if (fullEvent) {
+                        const eventDate = fullEvent.isoDate || fullEvent.date 
+                          ? new Date(fullEvent.isoDate || fullEvent.date)
+                          : new Date();
+                        openEventDrawer(fullEvent, eventDate);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        return;
+                      }
+                    }
+                    
+                    // Post/Update - convert to CalendarEvent format for ViewEventModal
                     const eventDate = update.isoDate || update.date 
                       ? new Date(update.isoDate || update.date)
                       : new Date();

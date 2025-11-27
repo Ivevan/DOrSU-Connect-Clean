@@ -46,7 +46,8 @@ type DashboardUpdate = {
   description?: string; 
   source?: string; 
   pinned?: boolean; 
-  isoDate?: string 
+  isoDate?: string;
+  _id?: string; // For calendar events
 };
 
 // Helper function to get Philippines timezone date key (moved outside component for performance)
@@ -137,8 +138,21 @@ const AdminDashboard = () => {
   // Auth state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
+  const [backendUserFirstName, setBackendUserFirstName] = useState<string | null>(null);
+  const [backendUserLastName, setBackendUserLastName] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const userName = useMemo(() => currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Admin', [currentUser]);
+  const userName = useMemo(() => {
+    // Priority: Backend firstName + lastName -> Backend userName -> Firebase displayName -> Firebase email username -> Default
+    if (backendUserFirstName && backendUserLastName) {
+      return `${backendUserFirstName} ${backendUserLastName}`.trim();
+    }
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    // Try to get from AsyncStorage synchronously (will be updated by useFocusEffect)
+    try {
+      // This is a fallback - the actual value will be set by useFocusEffect
+    } catch {}
+    return currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Admin';
+  }, [currentUser, backendUserFirstName, backendUserLastName]);
   
   // Dashboard data
   const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'recent' | 'thismonth'>('all');
@@ -450,7 +464,11 @@ const AdminDashboard = () => {
         try {
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const userPhoto = await AsyncStorage.getItem('userPhoto');
+          const firstName = await AsyncStorage.getItem('userFirstName');
+          const lastName = await AsyncStorage.getItem('userLastName');
           setBackendUserPhoto(userPhoto);
+          setBackendUserFirstName(firstName);
+          setBackendUserLastName(lastName);
         } catch (error) {
           if (__DEV__) console.error('Failed to load backend user data:', error);
         }
@@ -461,6 +479,10 @@ const AdminDashboard = () => {
   );
 
   const getUserInitials = () => {
+    // Use firstName and lastName directly if available
+    if (backendUserFirstName && backendUserLastName) {
+      return (backendUserFirstName[0] + backendUserLastName[0]).toUpperCase();
+    }
     if (!userName) return '?';
     const names = userName.split(' ');
     if (names.length >= 2) {
@@ -1267,8 +1289,8 @@ const AdminDashboard = () => {
                     console.log('📅 Event data for ViewEventModal:', { 
                       title: eventData.title, 
                       time: eventData.time, 
-                      updateTime: update.time,
-                      hasTime: !!update.time 
+                      updateTime: (update as any).time,
+                      hasTime: !!(update as any).time 
                     });
                     setSelectedEvent(eventData);
                     setSelectedDateEvents([eventData]);

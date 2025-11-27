@@ -68,6 +68,8 @@ const UserSettings = () => {
   
   // Backend auth user data from AsyncStorage
   const [backendUserName, setBackendUserName] = useState<string | null>(null);
+  const [backendUserFirstName, setBackendUserFirstName] = useState<string | null>(null);
+  const [backendUserLastName, setBackendUserLastName] = useState<string | null>(null);
   const [backendUserEmail, setBackendUserEmail] = useState<string | null>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
@@ -78,9 +80,13 @@ const UserSettings = () => {
       const loadBackendUserData = async () => {
         try {
           const userName = await AsyncStorage.getItem('userName');
+          const firstName = await AsyncStorage.getItem('userFirstName');
+          const lastName = await AsyncStorage.getItem('userLastName');
           const userEmail = await AsyncStorage.getItem('userEmail');
           const userPhoto = await AsyncStorage.getItem('userPhoto');
           setBackendUserName(userName);
+          setBackendUserFirstName(firstName);
+          setBackendUserLastName(lastName);
           setBackendUserEmail(userEmail);
           setBackendUserPhoto(userPhoto);
         } catch (error) {
@@ -93,13 +99,16 @@ const UserSettings = () => {
   
   // Get user display name and email (memoized) - Check backend first, then Firebase
   const userName = useMemo(() => {
-    // Priority: Backend username -> Firebase displayName -> Firebase email username -> Backend email username -> Default
+    // Priority: Backend firstName + lastName -> Backend username -> Firebase displayName -> Firebase email username -> Backend email username -> Default
+    if (backendUserFirstName && backendUserLastName) {
+      return `${backendUserFirstName} ${backendUserLastName}`.trim();
+    }
     if (backendUserName) return backendUserName;
     if (currentUser?.displayName) return currentUser.displayName;
     if (currentUser?.email) return currentUser.email.split('@')[0];
     if (backendUserEmail) return backendUserEmail.split('@')[0];
     return 'User';
-  }, [currentUser, backendUserName, backendUserEmail]);
+  }, [currentUser, backendUserName, backendUserFirstName, backendUserLastName, backendUserEmail]);
   
   const userEmail = useMemo(() => {
     // Priority: Backend email -> Firebase email -> Default
@@ -215,7 +224,7 @@ const UserSettings = () => {
       await AsyncStorage.multiRemove(['currentConversation', 'conversationLastSaveTime']);
       
       // Clear backend auth data from AsyncStorage
-      await AsyncStorage.multiRemove(['userToken', 'userEmail', 'userName', 'userId', 'userPhoto', 'authProvider']);
+      await AsyncStorage.multiRemove(['userToken', 'userEmail', 'userName', 'userFirstName', 'userLastName', 'userId', 'userPhoto', 'authProvider']);
       
       // Sign out from Firebase if user is signed in
       if (currentUser) {

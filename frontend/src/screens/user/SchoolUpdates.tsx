@@ -451,10 +451,15 @@ const SchoolUpdates = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
   const [backendUserName, setBackendUserName] = useState<string | null>(null);
-  const userName = useMemo(
-    () => backendUserName || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User',
-    [backendUserName, currentUser]
-  );
+  const [backendUserFirstName, setBackendUserFirstName] = useState<string | null>(null);
+  const [backendUserLastName, setBackendUserLastName] = useState<string | null>(null);
+  const userName = useMemo(() => {
+    // Priority: Backend firstName + lastName -> Backend userName -> Firebase displayName -> Firebase email username -> Default
+    if (backendUserFirstName && backendUserLastName) {
+      return `${backendUserFirstName} ${backendUserLastName}`.trim();
+    }
+    return backendUserName || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
+  }, [backendUserName, backendUserFirstName, backendUserLastName, currentUser]);
 
   // Animated floating background orb (Copilot-style)
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -500,9 +505,17 @@ const SchoolUpdates = () => {
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const userPhoto = await AsyncStorage.getItem('userPhoto');
           const storedUserName = await AsyncStorage.getItem('userName');
+          const firstName = await AsyncStorage.getItem('userFirstName');
+          const lastName = await AsyncStorage.getItem('userLastName');
           setBackendUserPhoto(userPhoto);
           if (storedUserName) {
             setBackendUserName(storedUserName);
+          }
+          if (firstName) {
+            setBackendUserFirstName(firstName);
+          }
+          if (lastName) {
+            setBackendUserLastName(lastName);
           }
         } catch (error) {
           console.error('Failed to load backend user data:', error);
@@ -513,6 +526,10 @@ const SchoolUpdates = () => {
   );
 
   const getUserInitials = () => {
+    // Use firstName and lastName directly if available
+    if (backendUserFirstName && backendUserLastName) {
+      return (backendUserFirstName[0] + backendUserLastName[0]).toUpperCase();
+    }
     if (!userName) return '?';
     const names = userName.split(' ');
     if (names.length >= 2) {

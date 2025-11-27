@@ -78,6 +78,9 @@ const AdminSettings = () => {
   const [isKnowledgeBaseModalOpen, setIsKnowledgeBaseModalOpen] = useState(false);
   const [adminUserPhoto, setAdminUserPhoto] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [adminFirstName, setAdminFirstName] = useState<string | null>(null);
+  const [adminLastName, setAdminLastName] = useState<string | null>(null);
+  const [adminEmail, setAdminEmail] = useState<string | null>(null);
 
   // Lock header height to prevent layout shifts
   const headerHeightRef = useRef<number>(64);
@@ -125,7 +128,9 @@ const AdminSettings = () => {
       await AsyncStorage.multiRemove([
         'userToken', 
         'userEmail', 
-        'userName', 
+        'userName',
+        'userFirstName',
+        'userLastName',
         'userId', 
         'isAdmin',
         'authProvider'
@@ -147,17 +152,23 @@ const AdminSettings = () => {
   const handlePrivacyPolicyPress = useCallback(() => navigation.navigate('PrivacyPolicy'), [navigation]);
   const handleLicensesPress = useCallback(() => navigation.navigate('Licenses'), [navigation]);
 
-  // Load admin profile photo on mount and screen focus
+  // Load admin profile data on mount and screen focus
   useEffect(() => {
-    const loadAdminPhoto = async () => {
+    const loadAdminData = async () => {
       try {
         const userPhoto = await AsyncStorage.getItem('userPhoto');
+        const firstName = await AsyncStorage.getItem('userFirstName');
+        const lastName = await AsyncStorage.getItem('userLastName');
+        const email = await AsyncStorage.getItem('userEmail');
         setAdminUserPhoto(userPhoto);
+        setAdminFirstName(firstName);
+        setAdminLastName(lastName);
+        setAdminEmail(email);
       } catch (error) {
-        console.error('Failed to load admin photo:', error);
+        console.error('Failed to load admin data:', error);
       }
     };
-    loadAdminPhoto();
+    loadAdminData();
   }, []);
 
   // Handle profile picture upload
@@ -424,7 +435,9 @@ const AdminSettings = () => {
               numberOfLines={1}
               ellipsizeMode="tail"
             >
-              Admin User
+              {adminFirstName && adminLastName 
+                ? `${adminFirstName} ${adminLastName}`.trim()
+                : adminFirstName || adminLastName || 'Admin User'}
             </Text>
             <View style={styles.profileEmailContainer}>
               <Ionicons name="mail-outline" size={14} color={theme.colors.textMuted} />
@@ -433,7 +446,7 @@ const AdminSettings = () => {
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                admin@dorsu.edu.ph
+                {adminEmail || 'admin@dorsu.edu.ph'}
               </Text>
             </View>
           </View>

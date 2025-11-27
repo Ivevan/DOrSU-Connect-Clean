@@ -282,26 +282,37 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        const { username } = JSON.parse(body || '{}');
+        const { username, firstName, lastName } = JSON.parse(body || '{}');
         const normalizedEmail = tokenInfo.email.toLowerCase();
-        const displayName = username || tokenInfo.name || normalizedEmail.split('@')[0];
+        // Use firstName + lastName if available, otherwise fall back to username or tokenInfo.name
+        const displayName = (firstName && lastName) 
+          ? `${firstName.trim()} ${lastName.trim()}`.trim()
+          : username || tokenInfo.name || normalizedEmail.split('@')[0];
 
         // Check if user already exists in MongoDB
         let user = await mongoService.findUser(normalizedEmail);
         
+        const updateData = {
+          username: displayName,
+          emailVerified: tokenInfo.email_verified || false,
+          firebaseUid: tokenInfo.sub,
+          provider: 'firebase',
+        };
+        
+        // Add firstName and lastName if provided
+        if (firstName) updateData.firstName = firstName.trim();
+        if (lastName) updateData.lastName = lastName.trim();
+        
         if (user) {
           // Update existing user
-          await mongoService.updateUser(normalizedEmail, {
-            username: displayName,
-            emailVerified: tokenInfo.email_verified || false,
-            firebaseUid: tokenInfo.sub,
-            provider: 'firebase',
-          });
+          await mongoService.updateUser(normalizedEmail, updateData);
           user = await mongoService.findUser(normalizedEmail);
         } else {
           // Create new user in MongoDB
           user = await mongoService.createUser({
             username: displayName,
+            firstName: firstName ? firstName.trim() : undefined,
+            lastName: lastName ? lastName.trim() : undefined,
             email: normalizedEmail,
             password: '', // No password for Firebase users
             createdAt: new Date(),

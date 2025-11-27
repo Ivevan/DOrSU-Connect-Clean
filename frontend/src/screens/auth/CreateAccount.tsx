@@ -45,7 +45,8 @@ const CreateAccount = () => {
   const loadingRotation = useRef(new Animated.Value(0)).current;
   
   // Form state
-  const [username, setUsername] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -58,11 +59,12 @@ const CreateAccount = () => {
   const [emailVerificationMessage, setEmailVerificationMessage] = useState('');
   const [warningModalVisible, setWarningModalVisible] = useState(false);
   const [warningModalMessage, setWarningModalMessage] = useState('');
-  const [errors, setErrors] = useState({ username: '', email: '', password: '', confirmPassword: '', general: '' });
+  const [errors, setErrors] = useState({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '', general: '' });
   const [isCompletingAccount, setIsCompletingAccount] = useState(false);
   
   // Input focus states
-  const usernameFocus = useRef(new Animated.Value(0)).current;
+  const firstNameFocus = useRef(new Animated.Value(0)).current;
+  const lastNameFocus = useRef(new Animated.Value(0)).current;
   const emailFocus = useRef(new Animated.Value(0)).current;
   const passwordFocus = useRef(new Animated.Value(0)).current;
   const confirmPasswordFocus = useRef(new Animated.Value(0)).current;
@@ -244,7 +246,7 @@ const CreateAccount = () => {
   };
 
   // Function to complete account creation after email verification
-  const completeAccountCreation = async (firebaseUser: any, username: string, email: string) => {
+  const completeAccountCreation = async (firebaseUser: any, firstName: string, lastName: string, email: string) => {
     if (isCompletingAccount) return; // Prevent duplicate calls
     
     setIsCompletingAccount(true);
@@ -260,7 +262,9 @@ const CreateAccount = () => {
           'Authorization': `Bearer ${idToken}`,
         },
         body: JSON.stringify({
-          username: username.trim(),
+          username: `${firstName.trim()} ${lastName.trim()}`.trim(), // Combine for backward compatibility
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
           email: email.trim().toLowerCase(),
         }),
       });
@@ -274,12 +278,14 @@ const CreateAccount = () => {
       // Step 2: Store user data locally
       await AsyncStorage.setItem('userToken', data.token || idToken);
       await AsyncStorage.setItem('userEmail', firebaseUser.email || email);
-      await AsyncStorage.setItem('userName', username.trim());
+      await AsyncStorage.setItem('userName', `${firstName.trim()} ${lastName.trim()}`.trim()); // Full name for backward compatibility
+      await AsyncStorage.setItem('userFirstName', firstName.trim());
+      await AsyncStorage.setItem('userLastName', lastName.trim());
       await AsyncStorage.setItem('userId', data.user?.id || firebaseUser.uid);
       await AsyncStorage.setItem('authProvider', 'email');
       
       // Clear pending data
-      await AsyncStorage.multiRemove(['pendingEmail', 'pendingUsername', 'pendingPassword', 'pendingFirebaseUid']);
+      await AsyncStorage.multiRemove(['pendingEmail', 'pendingFirstName', 'pendingLastName', 'pendingPassword', 'pendingFirebaseUid']);
       
       setIsLoading(false);
       setIsCompletingAccount(false);
@@ -299,7 +305,7 @@ const CreateAccount = () => {
     } catch (error: any) {
       setIsLoading(false);
       setIsCompletingAccount(false);
-      setErrors({ username: '', email: '', password: '', confirmPassword: '', general: error.message || 'Failed to complete account creation' });
+      setErrors({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '', general: error.message || 'Failed to complete account creation' });
       console.error('Complete account creation error:', error);
     }
   };
@@ -309,16 +315,18 @@ const CreateAccount = () => {
     const checkPendingAccount = async () => {
       try {
         const pendingEmail = await AsyncStorage.getItem('pendingEmail');
-        const pendingUsername = await AsyncStorage.getItem('pendingUsername');
+        const pendingFirstName = await AsyncStorage.getItem('pendingFirstName');
+        const pendingLastName = await AsyncStorage.getItem('pendingLastName');
         const pendingPassword = await AsyncStorage.getItem('pendingPassword');
         const pendingFirebaseUid = await AsyncStorage.getItem('pendingFirebaseUid');
         const pendingVerificationCode = await AsyncStorage.getItem('pendingVerificationCode');
         const emailVerifiedViaDeepLink = await AsyncStorage.getItem('emailVerifiedViaDeepLink');
         
-        if (pendingEmail && pendingUsername && pendingPassword && pendingFirebaseUid) {
+        if (pendingEmail && pendingFirstName && pendingLastName && pendingPassword && pendingFirebaseUid) {
           // User has a pending account - check if email is verified
           setEmail(pendingEmail);
-          setUsername(pendingUsername);
+          setFirstName(pendingFirstName);
+          setLastName(pendingLastName);
           
           // Try to sign in to check verification status
           try {
@@ -349,7 +357,7 @@ const CreateAccount = () => {
               console.log('✅ Email verified - completing account creation');
               setEmailVerificationStatus('verified');
               setEmailVerificationMessage('Email verified! Completing account creation...');
-              await completeAccountCreation(firebaseUser, pendingUsername, pendingEmail);
+              await completeAccountCreation(firebaseUser, pendingFirstName, pendingLastName, pendingEmail);
             } else if (emailVerifiedViaDeepLink) {
               // Deep link was processed but email not verified yet - check again after a moment
               console.log('⏳ Deep link processed, checking verification status...');
@@ -363,7 +371,7 @@ const CreateAccount = () => {
                   const updatedUser = getCurrentUser();
                   if (updatedUser?.emailVerified) {
                     await AsyncStorage.removeItem('emailVerifiedViaDeepLink');
-                    await completeAccountCreation(firebaseUser, pendingUsername, pendingEmail);
+                    await completeAccountCreation(firebaseUser, pendingFirstName, pendingLastName, pendingEmail);
                   } else {
                     setEmailVerificationStatus('pending');
                     setEmailVerificationMessage('Please check your email and click the verification link to complete your account creation.');
@@ -388,7 +396,7 @@ const CreateAccount = () => {
                     if ((global as any).verificationCheckInterval === verificationCheckInterval) {
                       delete (global as any).verificationCheckInterval;
                     }
-                    await completeAccountCreation(firebaseUser, pendingUsername, pendingEmail);
+                    await completeAccountCreation(firebaseUser, pendingFirstName, pendingLastName, pendingEmail);
                   }
                 } catch (error) {
                   console.error('Error checking verification status:', error);
@@ -400,7 +408,7 @@ const CreateAccount = () => {
           } catch (signInError) {
             console.error('Failed to sign in with pending account:', signInError);
             // Clear pending data if sign in fails
-            await AsyncStorage.multiRemove(['pendingEmail', 'pendingUsername', 'pendingPassword', 'pendingFirebaseUid']);
+            await AsyncStorage.multiRemove(['pendingEmail', 'pendingFirstName', 'pendingLastName', 'pendingPassword', 'pendingFirebaseUid']);
           }
         }
       } catch (error) {
@@ -436,14 +444,15 @@ const CreateAccount = () => {
 
   // Handle app state changes to check verification when app comes to foreground or deep link
   useEffect(() => {
-    const checkVerificationOnFocus = async () => {
+      const checkVerificationOnFocus = async () => {
       const pendingEmail = await AsyncStorage.getItem('pendingEmail');
       const pendingPassword = await AsyncStorage.getItem('pendingPassword');
-      const pendingUsername = await AsyncStorage.getItem('pendingUsername');
+      const pendingFirstName = await AsyncStorage.getItem('pendingFirstName');
+      const pendingLastName = await AsyncStorage.getItem('pendingLastName');
       const pendingVerificationCode = await AsyncStorage.getItem('pendingVerificationCode');
       const emailVerifiedViaDeepLink = await AsyncStorage.getItem('emailVerifiedViaDeepLink');
       
-      if (pendingEmail && pendingPassword && pendingUsername) {
+      if (pendingEmail && pendingPassword && pendingFirstName && pendingLastName) {
         try {
           console.log('🔍 Checking email verification status...');
           
@@ -506,7 +515,7 @@ const CreateAccount = () => {
             console.log('✅ Email verified - completing account creation');
             setEmailVerificationStatus('verified');
             setEmailVerificationMessage('Email verified! Completing account creation...');
-            await completeAccountCreation(firebaseUser, pendingUsername, pendingEmail);
+            await completeAccountCreation(firebaseUser, pendingFirstName, pendingLastName, pendingEmail);
           } else if (emailVerificationStatus === 'pending') {
             // Still pending, update status
             if (emailVerifiedViaDeepLink) {
@@ -541,19 +550,24 @@ const CreateAccount = () => {
   const handleSignUp = async () => {
     // Check network status first
     if (!isOnline) {
-      setErrors({ username: '', email: '', password: '', confirmPassword: '', general: 'No internet connection. Please check your network and try again.' });
+      setErrors({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '', general: 'No internet connection. Please check your network and try again.' });
       return;
     }
 
     // Clear previous errors
-    setErrors({ username: '', email: '', password: '', confirmPassword: '', general: '' });
+    setErrors({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '', general: '' });
     
     // Validation
     let hasErrors = false;
-    const newErrors = { username: '', email: '', password: '', confirmPassword: '', general: '' };
+    const newErrors = { firstName: '', lastName: '', email: '', password: '', confirmPassword: '', general: '' };
     
-    if (!username.trim()) {
-      newErrors.username = 'Please enter a username';
+    if (!firstName.trim()) {
+      newErrors.firstName = 'Please enter your first name';
+      hasErrors = true;
+    }
+    
+    if (!lastName.trim()) {
+      newErrors.lastName = 'Please enter your last name';
       hasErrors = true;
     }
     
@@ -609,13 +623,14 @@ const CreateAccount = () => {
       // Step 1: Create Firebase user account
       const firebaseUser = await createUserWithEmailAndPassword(email.trim().toLowerCase(), password);
       
-      // Step 2: Update Firebase user profile with username
+      // Step 2: Update Firebase user profile with full name
+      const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
       try {
         if (Platform.OS === 'web') {
           const { updateProfile } = require('firebase/auth');
-          await updateProfile(firebaseUser, { displayName: username.trim() });
+          await updateProfile(firebaseUser, { displayName: fullName });
         } else {
-          await firebaseUser.updateProfile({ displayName: username.trim() });
+          await firebaseUser.updateProfile({ displayName: fullName });
         }
       } catch (updateError) {
         console.warn('Failed to update profile:', updateError);
@@ -645,7 +660,8 @@ const CreateAccount = () => {
       
       // Step 4: Store temporary user data locally (not synced to backend yet)
       await AsyncStorage.setItem('pendingEmail', email.trim().toLowerCase());
-      await AsyncStorage.setItem('pendingUsername', username.trim());
+      await AsyncStorage.setItem('pendingFirstName', firstName.trim());
+      await AsyncStorage.setItem('pendingLastName', lastName.trim());
       await AsyncStorage.setItem('pendingPassword', password); // Temporary, will be cleared after verification
       await AsyncStorage.setItem('pendingFirebaseUid', firebaseUser.uid);
       
@@ -669,7 +685,7 @@ const CreateAccount = () => {
               delete (global as any).verificationCheckInterval;
             }
             // Email verified - now sync to backend
-            await completeAccountCreation(firebaseUser, username.trim(), email.trim().toLowerCase());
+            await completeAccountCreation(firebaseUser, firstName.trim(), lastName.trim(), email.trim().toLowerCase());
           }
         } catch (error) {
           console.error('Error checking verification status:', error);
@@ -731,17 +747,17 @@ const CreateAccount = () => {
 
         {/* Form Section */}
         <View style={styles.formSection}>
-          {/* Username Input */}
+          {/* First Name Input */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Username</Text>
+            <Text style={styles.inputLabel}>First Name</Text>
             <Animated.View style={[
               styles.inputWrapper,
               {
-                borderColor: usernameFocus.interpolate({
+                borderColor: firstNameFocus.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [errors.username ? '#EF4444' : '#E5E7EB', errors.username ? '#EF4444' : '#2563EB'],
+                  outputRange: [errors.firstName ? '#EF4444' : '#E5E7EB', errors.firstName ? '#EF4444' : '#2563EB'],
                 }),
-                borderWidth: usernameFocus.interpolate({
+                borderWidth: firstNameFocus.interpolate({
                   inputRange: [0, 1],
                   outputRange: [1, 2],
                 }),
@@ -750,39 +766,95 @@ const CreateAccount = () => {
               <MaterialIcons 
                 name="person" 
                 size={20} 
-                color={errors.username ? '#EF4444' : '#9CA3AF'} 
+                color={errors.firstName ? '#EF4444' : '#9CA3AF'} 
                 style={styles.inputIcon} 
               />
               <TextInput
                 style={styles.input}
-                placeholder="Enter your username"
+                placeholder="Enter your first name"
                 placeholderTextColor="#9CA3AF"
-                autoCapitalize="none"
-                value={username}
+                autoCapitalize="words"
+                value={firstName}
                 onChangeText={(text) => {
-                  setUsername(text);
-                  if (errors.username) setErrors(prev => ({ ...prev, username: '' }));
+                  setFirstName(text);
+                  if (errors.firstName) setErrors(prev => ({ ...prev, firstName: '' }));
                 }}
                 onFocus={() => {
-                  Animated.timing(usernameFocus, {
+                  Animated.timing(firstNameFocus, {
                     toValue: 1,
                     duration: 200,
                     useNativeDriver: false,
                   }).start();
                 }}
                 onBlur={() => {
-                  Animated.timing(usernameFocus, {
+                  Animated.timing(firstNameFocus, {
                     toValue: 0,
                     duration: 200,
                     useNativeDriver: false,
                   }).start();
                 }}
-                accessibilityLabel="Username"
+                accessibilityLabel="First Name"
               />
             </Animated.View>
             <View style={styles.errorContainer}>
-              {errors.username ? (
-                <Text style={styles.errorText}>{errors.username}</Text>
+              {errors.firstName ? (
+                <Text style={styles.errorText}>{errors.firstName}</Text>
+              ) : null}
+            </View>
+          </View>
+
+          {/* Last Name Input */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Last Name</Text>
+            <Animated.View style={[
+              styles.inputWrapper,
+              {
+                borderColor: lastNameFocus.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [errors.lastName ? '#EF4444' : '#E5E7EB', errors.lastName ? '#EF4444' : '#2563EB'],
+                }),
+                borderWidth: lastNameFocus.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [1, 2],
+                }),
+              }
+            ]}>
+              <MaterialIcons 
+                name="person" 
+                size={20} 
+                color={errors.lastName ? '#EF4444' : '#9CA3AF'} 
+                style={styles.inputIcon} 
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Enter your last name"
+                placeholderTextColor="#9CA3AF"
+                autoCapitalize="words"
+                value={lastName}
+                onChangeText={(text) => {
+                  setLastName(text);
+                  if (errors.lastName) setErrors(prev => ({ ...prev, lastName: '' }));
+                }}
+                onFocus={() => {
+                  Animated.timing(lastNameFocus, {
+                    toValue: 1,
+                    duration: 200,
+                    useNativeDriver: false,
+                  }).start();
+                }}
+                onBlur={() => {
+                  Animated.timing(lastNameFocus, {
+                    toValue: 0,
+                    duration: 200,
+                    useNativeDriver: false,
+                  }).start();
+                }}
+                accessibilityLabel="Last Name"
+              />
+            </Animated.View>
+            <View style={styles.errorContainer}>
+              {errors.lastName ? (
+                <Text style={styles.errorText}>{errors.lastName}</Text>
               ) : null}
             </View>
           </View>
@@ -908,9 +980,10 @@ const CreateAccount = () => {
                         await reloadUser(firebaseUser);
                         const currentUser = getCurrentUser();
                         if (currentUser?.emailVerified) {
-                          const pendingUsername = await AsyncStorage.getItem('pendingUsername');
-                          if (pendingUsername) {
-                            await completeAccountCreation(firebaseUser, pendingUsername, pendingEmail);
+                          const pendingFirstName = await AsyncStorage.getItem('pendingFirstName');
+                          const pendingLastName = await AsyncStorage.getItem('pendingLastName');
+                          if (pendingFirstName && pendingLastName) {
+                            await completeAccountCreation(firebaseUser, pendingFirstName, pendingLastName, pendingEmail);
                           }
                         } else {
                           setErrors(prev => ({

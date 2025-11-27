@@ -17,7 +17,7 @@ import {
   InteractionManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ConfirmationModal from '../../modals/ConfirmationModal';
@@ -158,54 +158,54 @@ const ManagePosts: React.FC = () => {
   const isFetching = useRef<boolean>(false);
   const FETCH_COOLDOWN = 1000; // 1 second cooldown
 
-  // Load posts on mount only (filtering is done client-side, no need to refetch on filter changes)
-  useEffect(() => {
-    let isCancelled = false;
-    
+  // Fetch posts function - reusable for both mount and focus
+  const fetchPosts = useCallback(async (forceRefresh: boolean = false) => {
     // Prevent duplicate simultaneous fetches
-    if (isFetching.current) {
+    if (isFetching.current && !forceRefresh) {
       return;
     }
 
-    // Cooldown check
+    // Cooldown check - skip if not forcing refresh
     const now = Date.now();
-    if (now - lastFetchTime.current < FETCH_COOLDOWN) {
+    if (!forceRefresh && now - lastFetchTime.current < FETCH_COOLDOWN) {
       return;
     }
 
     isFetching.current = true;
     lastFetchTime.current = now;
 
-    const fetchPosts = async () => {
-      try {
-        setIsLoadingPosts(true);
-        setPostsError(null);
-        // Use cache if available (filtering is client-side)
-        const json = await AdminDataService.getPosts(false);
-        if (!isCancelled) {
-          // Map the API response to include isPinned and isUrgent fields
-          const mappedPosts: Post[] = json.map((post: any) => ({
-            ...post,
-            isPinned: post.isPinned || false,
-            isUrgent: post.isUrgent || false,
-          }));
-          setPosts(mappedPosts);
-        }
-      } catch (e: any) {
-        if (!isCancelled) setPostsError(e?.message || 'Failed to load posts');
-      } finally {
-        if (!isCancelled) {
-          setIsLoadingPosts(false);
-          isFetching.current = false;
-        }
-      }
-    };
-    fetchPosts();
-    return () => { 
-      isCancelled = true;
+    try {
+      setIsLoadingPosts(true);
+      setPostsError(null);
+      // Fetch posts from backend (always fresh data)
+      const json = await AdminDataService.getPosts();
+      // Map the API response to include isPinned and isUrgent fields
+      const mappedPosts: Post[] = json.map((post: any) => ({
+        ...post,
+        isPinned: post.isPinned || false,
+        isUrgent: post.isUrgent || false,
+      }));
+      setPosts(mappedPosts);
+    } catch (e: any) {
+      setPostsError(e?.message || 'Failed to load posts');
+    } finally {
+      setIsLoadingPosts(false);
       isFetching.current = false;
-    };
-  }, []); // Empty deps - only fetch on mount, filtering is client-side
+    }
+  }, []);
+
+  // Load posts on mount
+  useEffect(() => {
+    fetchPosts(true); // Force refresh on mount
+  }, [fetchPosts]);
+
+  // Refresh posts when screen comes into focus (e.g., after editing)
+  useFocusEffect(
+    useCallback(() => {
+      // Force refresh when screen comes into focus to show updated posts
+      fetchPosts(true);
+    }, [fetchPosts])
+  );
 
   const handleNewPost = useCallback(() => {
     // Prevent rapid tapping during animation

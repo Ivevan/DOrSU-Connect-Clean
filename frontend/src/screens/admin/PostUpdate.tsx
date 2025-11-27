@@ -629,25 +629,34 @@ const PostUpdate: React.FC = () => {
       payload: { ...payload, imageFile: payload.imageFile ? 'present' : 'none' } 
     });
     
-    // Start the operation immediately
+    // Start the operation and wait for it to complete before navigating
     const op = editingPostId
       ? AdminDataService.updatePost(editingPostId, payload)
       : AdminDataService.createPost(payload);
     
-    // Navigate optimistically (immediately) for better UX
-    // The upload will continue in the background
-    InteractionManager.runAfterInteractions(() => {
-      navigation.navigate('AdminDashboard');
-    });
-    
+    // Wait for the operation to complete before navigating
+    // This ensures the backend has processed the update before we refresh the screens
     Promise.resolve(op)
-      .then((result) => {
+      .then(async (result) => {
         console.log('✅ Post operation successful', { result: !!result });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        
+        // Add a small delay to ensure backend has fully processed the update
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Navigate after update is complete
+        // Try to go back to previous screen, otherwise navigate to AdminDashboard
+        InteractionManager.runAfterInteractions(() => {
+          if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
+            navigation.goBack();
+          } else {
+            // Fallback to AdminDashboard if we can't go back
+            navigation.navigate('AdminDashboard');
+          }
+        });
       })
       .catch((error) => {
         console.error('❌ Post operation failed:', error);
-        // Show error but don't block navigation
         Alert.alert('Error', error.message || 'Failed to save post');
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       })

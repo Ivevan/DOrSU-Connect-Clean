@@ -659,12 +659,21 @@ const SchoolUpdates = () => {
   }, []); // Empty deps - only run on mount
 
   // Refresh updates when screen comes into focus (always refresh to show new posts)
+  // Note: This is defined before refreshCalendarEvents, so we'll refresh calendar events separately
   useFocusEffect(
     useCallback(() => {
-      // Always refresh when screen comes into focus to ensure new posts appear immediately
-      // Force refresh (bypass cache) to get the latest data including newly created posts
-      // The fetchUpdates function has its own cooldown to prevent too many requests
-      fetchUpdates(true); // Force refresh to bypass cache and get latest posts
+      // Add a small delay to ensure backend has processed any updates
+      // This is especially important when coming back from PostUpdate screen
+      const refreshTimer = setTimeout(() => {
+        // Always refresh when screen comes into focus to ensure new posts appear immediately
+        // Force refresh (bypass cache) to get the latest data including newly created posts
+        // The fetchUpdates function has its own cooldown to prevent too many requests
+        fetchUpdates(true); // Force refresh to bypass cache and get latest posts
+      }, 100); // Small delay to ensure backend has processed updates
+      
+      return () => {
+        clearTimeout(refreshTimer);
+      };
     }, [fetchUpdates])
   );
 
@@ -1054,6 +1063,20 @@ const SchoolUpdates = () => {
   useEffect(() => {
     refreshCalendarEvents();
   }, [refreshCalendarEvents]);
+
+  // Also refresh calendar events when screen comes into focus (after refreshCalendarEvents is defined)
+  useFocusEffect(
+    useCallback(() => {
+      // Add a small delay to ensure backend has processed any updates
+      const refreshTimer = setTimeout(() => {
+        refreshCalendarEvents();
+      }, 150); // Slightly longer delay to ensure posts refresh first
+      
+      return () => {
+        clearTimeout(refreshTimer);
+      };
+    }, [refreshCalendarEvents])
+  );
 
   // Auto-scroll to center today's events when events load
   // Layout: Past events (left) -> Today's events (center) -> Future events (right)

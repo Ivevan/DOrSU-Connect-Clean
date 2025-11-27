@@ -720,11 +720,21 @@ const AdminDashboard = () => {
   // Refresh dashboard data when screen comes into focus (always refresh to show new posts)
   useFocusEffect(
     useCallback(() => {
-      // Always refresh when screen comes into focus to ensure new posts appear immediately
-      // Force refresh (bypass cache) to get the latest data including newly created posts
-      // The fetchDashboardData function has its own cooldown to prevent too many requests
-      fetchDashboardData(true); // Force refresh to bypass cache and get latest posts
-    }, [fetchDashboardData])
+      // Add a small delay to ensure backend has processed any updates
+      // This is especially important when coming back from PostUpdate screen
+      const refreshTimer = setTimeout(() => {
+        // Always refresh when screen comes into focus to ensure new posts appear immediately
+        // Force refresh (bypass cache) to get the latest data including newly created posts
+        // The fetchDashboardData function has its own cooldown to prevent too many requests
+        fetchDashboardData(true); // Force refresh to bypass cache and get latest posts
+        // Also refresh calendar events in case posts appear there
+        refreshCalendarEvents(true);
+      }, 100); // Small delay to ensure backend has processed updates
+      
+      return () => {
+        clearTimeout(refreshTimer);
+      };
+    }, [fetchDashboardData, refreshCalendarEvents])
   );
 
   return (

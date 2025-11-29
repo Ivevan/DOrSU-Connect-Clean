@@ -218,7 +218,7 @@ const EmailSettings = () => {
         >
           <View style={styles.cloudPatch1}>
             <LinearGradient
-              colors={['rgba(255, 149, 0, 0.3)', 'transparent']}
+              colors={[t.colors.orbColors.orange4, 'transparent']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={{ flex: 1 }}
@@ -243,7 +243,7 @@ const EmailSettings = () => {
         >
           <View style={styles.cloudPatch2}>
             <LinearGradient
-              colors={['rgba(255, 149, 0, 0.2)', 'transparent']}
+              colors={[t.colors.orbColors.orange2, 'transparent']}
               start={{ x: 1, y: 0 }}
               end={{ x: 0, y: 1 }}
               style={{ flex: 1 }}
@@ -267,7 +267,7 @@ const EmailSettings = () => {
           ]}
         >
           <LinearGradient
-            colors={['rgba(255, 200, 100, 0.4)', 'transparent']}
+            colors={[t.colors.orbColors.orange5, 'transparent']}
             start={{ x: 0.5, y: 0 }}
             end={{ x: 0.5, y: 1 }}
             style={{ flex: 1 }}
@@ -284,7 +284,7 @@ const EmailSettings = () => {
         >
           <Ionicons name="chevron-back" size={28} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Email</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}>Email</Text>
       </View>
 
       <ScrollView
@@ -297,16 +297,16 @@ const EmailSettings = () => {
           tint={isDarkMode ? 'dark' : 'light'}
           style={styles.sectionCard}
         >
-          <Text style={[styles.sectionTitle, { color: t.colors.text }]}>Email Address</Text>
+          <Text style={[styles.sectionTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(15) }]}>Email Address</Text>
 
           <TouchableOpacity style={styles.settingItemLast}>
             <View style={styles.settingLeft}>
               <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
-                <Ionicons name="mail-outline" size={20} color="#FF9500" />
+                <Ionicons name="mail-outline" size={20} color={t.colors.accent} />
               </View>
               <View>
-                <Text style={[styles.settingTitle, { color: t.colors.text }]}>Email</Text>
-                <Text style={[styles.settingValue, { color: t.colors.textMuted, marginTop: 4 }]}>{userEmail}</Text>
+                <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Email</Text>
+                <Text style={[styles.settingValue, { color: t.colors.textMuted, marginTop: 4, fontSize: t.fontSize.scaleSize(13) }]}>{userEmail}</Text>
               </View>
             </View>
           </TouchableOpacity>

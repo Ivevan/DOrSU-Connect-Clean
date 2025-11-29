@@ -1,15 +1,16 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useRef } from 'react';
-import { Animated, Dimensions, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, BackHandler, Dimensions, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../config/api.config';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { signInWithEmailAndPassword } from '../../services/authService';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -21,7 +22,7 @@ type RootStackParamList = {
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'SignIn'>;
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 const SignIn = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -35,15 +36,42 @@ const SignIn = () => {
   const loadingRotation = useRef(new Animated.Value(0)).current;
   
   // Form state management
-  const [email, setEmail] = React.useState('');
-  const [password, setPassword] = React.useState('');
-  const [showPassword, setShowPassword] = React.useState(false);
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [errors, setErrors] = React.useState({ email: '', password: '', general: '' });
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState({ email: '', password: '', general: '' });
   
   // Input focus states
   const emailFocus = useRef(new Animated.Value(0)).current;
   const passwordFocus = useRef(new Animated.Value(0)).current;
+
+  // Handle back button/gesture to navigate to GetStarted
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        navigation.navigate('GetStarted');
+        return true; // Prevent default behavior
+      };
+
+      if (Platform.OS === 'android') {
+        const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+        return () => subscription.remove();
+      }
+    }, [navigation])
+  );
+
+  // Handle navigation back button and iOS swipe back gesture
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      // Prevent default behavior of leaving the screen
+      e.preventDefault();
+      // Navigate to GetStarted instead
+      navigation.navigate('GetStarted');
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   // Animation functions
   const handleButtonPress = (scaleRef: Animated.Value, callback: () => void) => {
@@ -82,16 +110,13 @@ const SignIn = () => {
     setIsLoading(true);
     
     // Start loading spinner animation
-    const startLoadingAnimation = () => {
-      Animated.loop(
-        Animated.timing(loadingRotation, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        })
-      ).start();
-    };
-    startLoadingAnimation();
+    Animated.loop(
+      Animated.timing(loadingRotation, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      })
+    ).start();
     
     try {
       // Check for static admin credentials FIRST (before validation)
@@ -174,37 +199,57 @@ const SignIn = () => {
         return;
       }
       
-      // Call backend API to login regular user
-      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      // Step 1: Sign in with Firebase Authentication
+      const firebaseUser = await signInWithEmailAndPassword(email.trim().toLowerCase(), password);
+      
+      // Step 2: Get Firebase ID token and sync with backend
+      const idToken = await firebaseUser.getIdToken();
+      
+      // Step 3: Sync user to backend MongoDB and get backend JWT token
+      const response = await fetch(`${API_BASE_URL}/api/auth/firebase-login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          email,
-          password,
+          idToken,
         }),
       });
       
       const data = await response.json();
       
       if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
+        // If backend sync fails, sign out from Firebase
+        try {
+          if (Platform.OS === 'web') {
+            const { getFirebaseAuth } = require('../../config/firebase');
+            const auth = getFirebaseAuth();
+            const { signOut } = require('firebase/auth');
+            await signOut(auth);
+          } else {
+            const auth = require('@react-native-firebase/auth').default();
+            await auth.signOut();
+          }
+        } catch (signOutError) {
+          console.error('Failed to sign out from Firebase after backend error:', signOutError);
+        }
+        throw new Error(data.error || 'Failed to sync with server');
       }
       
-      // Store user data and token locally
-      await AsyncStorage.setItem('userToken', data.token);
-      await AsyncStorage.setItem('userEmail', data.user.email);
-      await AsyncStorage.setItem('userName', data.user.username);
-      await AsyncStorage.setItem('userId', data.user.id);
+      // Step 4: Store user data locally
+      await AsyncStorage.setItem('userToken', data.token || idToken);
+      await AsyncStorage.setItem('userEmail', firebaseUser.email || email);
+      await AsyncStorage.setItem('userName', data.user?.username || firebaseUser.displayName || email.split('@')[0]);
+      await AsyncStorage.setItem('userId', data.user?.id || firebaseUser.uid);
       await AsyncStorage.setItem('isAdmin', 'false'); // Explicitly set as non-admin
+      await AsyncStorage.setItem('authProvider', 'email');
       
       setIsLoading(false);
       loadingRotation.stopAnimation();
       
       // Success - navigate to AI Chat for regular users
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      (navigation as any).navigate('AIChat');
+      navigation.navigate('AIChat');
     } catch (error: any) {
       setIsLoading(false);
       loadingRotation.stopAnimation();
@@ -213,16 +258,39 @@ const SignIn = () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       
       let errorMessage = 'Invalid email or password. Please try again.';
+      let emailError = '';
+      let passwordError = '';
       
-      if (error.message.includes('Invalid')) {
-        errorMessage = 'Invalid email or password';
+      // Check Firebase error codes for specific error messages
+      if (error.code === 'auth/user-not-found' || error.message.includes('user-not-found')) {
+        emailError = 'This email address is not registered. Please create an account first.';
+        errorMessage = '';
+      } else if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential' || error.message.includes('wrong-password') || error.message.includes('invalid-credential')) {
+        passwordError = 'Incorrect password. Please try again.';
+        errorMessage = '';
+      } else if (error.code === 'auth/invalid-email' || error.message.includes('invalid-email')) {
+        emailError = 'Invalid email address format.';
+        errorMessage = '';
+      } else if (error.code === 'auth/user-disabled' || error.message.includes('user-disabled')) {
+        errorMessage = 'This account has been disabled. Please contact support.';
+      } else if (error.code === 'auth/too-many-requests' || error.message.includes('too-many-requests')) {
+        errorMessage = 'Too many failed login attempts. Please try again later.';
+      } else if (error.code === 'auth/network-request-failed' || error.message.includes('network')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
       } else if (error.message.includes('deactivated')) {
         errorMessage = 'This account has been deactivated';
+      } else if (error.message.includes('Invalid email or password')) {
+        // Generic backend error - try to be more specific
+        errorMessage = 'Invalid email or password. Please check your credentials and try again.';
       } else if (error.message) {
         errorMessage = error.message;
       }
       
-      setErrors(prev => ({ ...prev, general: errorMessage }));
+      setErrors({
+        email: emailError,
+        password: passwordError,
+        general: errorMessage,
+      });
       
       console.error('Sign in error:', error);
     }
@@ -244,7 +312,7 @@ const SignIn = () => {
           />
           <View style={styles.logoTextContainer}>
             <Text style={styles.logoTitle}>DOrSU CONNECT</Text>
-            <Text style={styles.logoSubtitle}>Official University Portal</Text>
+            <Text style={styles.logoSubtitle}>AI-Powered Academic Assistant</Text>
           </View>
         </View>
 
@@ -428,9 +496,9 @@ const SignIn = () => {
           {/* Links Section */}
           <View style={styles.linksSection}>
             <TouchableOpacity 
-              style={styles.linkButton}
               onPress={() => navigation.navigate('CreateAccount')}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              activeOpacity={0.7}
             >
               <Text style={styles.linkText}>Create New Account</Text>
             </TouchableOpacity>
@@ -457,7 +525,7 @@ const SignIn = () => {
           resizeMode="cover"
         />
         <LinearGradient
-          colors={['rgba(101, 67, 33, 0.2)', 'rgba(139, 90, 43, 0.5)', 'rgba(101, 67, 33, 0.7)']}
+          colors={['rgba(59, 130, 246, 0.2)', 'rgba(37, 99, 235, 0.5)', 'rgba(29, 78, 216, 0.7)']}
           style={styles.gradientOverlay}
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 1 }}
@@ -587,7 +655,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF2F2',
     padding: 8,
     borderRadius: 8,
-    marginBottom: 6,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: '#FCA5A5',
     minHeight: 40,
@@ -614,6 +682,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
+    marginTop: 8,
     marginBottom: 0,
     shadowColor: '#2563EB',
     shadowOffset: { width: 0, height: 4 },
@@ -636,16 +705,13 @@ const styles = StyleSheet.create({
   },
   // Links Section
   linksSection: {
-    marginBottom: 0,
-  },
-  linkButton: {
-    marginBottom: 0,
+    marginTop: 16,
+    alignItems: 'center',
   },
   linkText: {
     color: '#2563EB',
     fontSize: 14,
     fontWeight: '500',
-    textDecorationLine: 'underline',
   },
   mobileContainer: {
     flex: 1,

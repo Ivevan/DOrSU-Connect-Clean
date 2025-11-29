@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import * as Linking from 'expo-linking';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, Platform, View } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -61,53 +62,265 @@ const AppNavigator = () => {
   const navigationRef = useNavigationContainerRef();
   const { resetInactivityTimer } = useAuth();
   
+  // Handle deep links for email verification
+  useEffect(() => {
+    const handleDeepLink = async (url: string) => {
+      try {
+        console.log('🔗 Deep link received:', url);
+        
+        // Parse URL - handle both custom scheme (dorsuconnect://) and http/https URLs
+        let oobCode: string | null = null;
+        let mode: string | null = null;
+        
+        try {
+          // Try parsing as standard URL first (works for http/https)
+          const urlObj = new URL(url);
+          oobCode = urlObj.searchParams.get('oobCode') || urlObj.searchParams.get('actionCode');
+          mode = urlObj.searchParams.get('mode');
+          console.log('🔗 Parsed URL - oobCode:', oobCode ? oobCode.substring(0, 20) + '...' : 'none', 'mode:', mode || 'none');
+        } catch {
+          // For custom schemes (dorsuconnect://), manually parse query parameters
+          console.log('⚠️ Custom scheme detected, parsing manually...');
+          
+          // Extract oobCode using regex (handles both ? and &)
+          const oobCodeMatch = url.match(/[?&](?:oobCode|actionCode|oobcode|actioncode)=([^&]+)/i);
+          if (oobCodeMatch && oobCodeMatch[1]) {
+            oobCode = decodeURIComponent(oobCodeMatch[1]);
+          }
+          
+          // Extract mode using regex
+          const modeMatch = url.match(/[?&]mode=([^&]+)/i);
+          if (modeMatch && modeMatch[1]) {
+            mode = decodeURIComponent(modeMatch[1]);
+          }
+          console.log('🔗 Parsed custom scheme - oobCode:', oobCode ? oobCode.substring(0, 20) + '...' : 'none', 'mode:', mode || 'none');
+        }
+        
+        // Check if this is an email verification link
+        const isVerificationLink = url.includes('verify-email') || 
+                                   url.includes('action=verifyEmail') || 
+                                   url.includes('action=VerifyEmail') ||
+                                   mode === 'verifyEmail' ||
+                                   mode === 'VerifyEmail' ||
+                                   !!oobCode;
+        
+        if (isVerificationLink) {
+          console.log('✅ Email verification link detected');
+          
+          if (oobCode) {
+            console.log('🔐 Verification code found:', oobCode.substring(0, 20) + '...');
+            
+            // Store the verification code for CreateAccount to use
+            await AsyncStorage.setItem('pendingVerificationCode', oobCode);
+            
+            // Navigate to CreateAccount screen to handle verification
+            if (navigationRef.isReady()) {
+              navigationRef.navigate('CreateAccount' as never);
+            }
+            
+            // Wait a moment for navigation to complete
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Check for pending account
+            const pendingEmail = await AsyncStorage.getItem('pendingEmail');
+            const pendingUsername = await AsyncStorage.getItem('pendingUsername');
+            const pendingPassword = await AsyncStorage.getItem('pendingPassword');
+            
+            if (pendingEmail && pendingPassword && pendingUsername) {
+              try {
+                console.log('🔐 Processing email verification...');
+                const { applyEmailVerificationCode, signInWithEmailAndPassword, reloadUser, getCurrentUser } = require('../services/authService');
+                
+                // Step 1: Apply the verification code from the URL
+                try {
+                  console.log('🔐 Applying email verification code...');
+                  await applyEmailVerificationCode(oobCode);
+                  console.log('✅ Email verification code applied successfully');
+                } catch (applyError: any) {
+                  console.error('❌ Failed to apply verification code:', applyError);
+                  // If code is invalid/expired, clear it and show error
+                  if (applyError?.code === 'auth/invalid-action-code' || 
+                      applyError?.code === 'auth/expired-action-code') {
+                    await AsyncStorage.removeItem('pendingVerificationCode');
+                    await AsyncStorage.setItem('verificationError', applyError.message || 'Invalid or expired verification code');
+                    return;
+                  }
+                  // Continue anyway - Firebase might have already verified it
+                }
+                
+                // Step 2: Sign in to get the user
+                console.log('🔑 Signing in with pending credentials...');
+                const firebaseUser = await signInWithEmailAndPassword(pendingEmail, pendingPassword);
+                
+                // Step 3: Reload to get latest verification status
+                console.log('🔄 Reloading user to check verification status...');
+                await reloadUser(firebaseUser);
+                
+                // Step 4: Check verification status
+                const currentUser = getCurrentUser();
+                console.log('📧 Email verified status:', currentUser?.emailVerified);
+                
+                if (currentUser?.emailVerified) {
+                  // Email is verified - clear verification code and set flag for CreateAccount to complete
+                  console.log('✅ Email verified via deep link - setting flag for CreateAccount to complete');
+                  await AsyncStorage.removeItem('pendingVerificationCode');
+                  await AsyncStorage.setItem('emailVerifiedViaDeepLink', 'true');
+                  // CreateAccount will detect this and complete the account creation
+                } else {
+                  console.log('⏳ Email not yet verified, will check again...');
+                  // Set flag for CreateAccount to check
+                  await AsyncStorage.setItem('emailVerifiedViaDeepLink', 'true');
+                }
+              } catch (error: any) {
+                console.error('❌ Error verifying email via deep link:', error);
+                await AsyncStorage.setItem('verificationError', error.message || 'Failed to verify email');
+              }
+            } else {
+              console.log('⚠️ No pending account found for deep link verification');
+              // User might have already completed registration, just verify the email
+              try {
+                const { applyEmailVerificationCode } = require('../services/authService');
+                console.log('🔐 Applying verification code for existing account...');
+                await applyEmailVerificationCode(oobCode);
+                console.log('✅ Email verified (no pending account)');
+                await AsyncStorage.removeItem('pendingVerificationCode');
+                // Navigate to sign in
+                if (navigationRef.isReady()) {
+                  navigationRef.navigate('SignIn' as never);
+                }
+              } catch (error: any) {
+                console.error('❌ Error applying verification code:', error);
+                await AsyncStorage.setItem('verificationError', error.message || 'Failed to verify email');
+              }
+            }
+          } else {
+            console.log('⚠️ Verification link detected but no oobCode found');
+            // Still navigate to CreateAccount to show appropriate message
+            if (navigationRef.isReady()) {
+              navigationRef.navigate('CreateAccount' as never);
+            }
+          }
+        }
+      } catch (error: any) {
+        console.error('❌ Error handling deep link:', error);
+        // Store error for CreateAccount to display
+        await AsyncStorage.setItem('verificationError', error.message || 'Failed to process verification link');
+        if (navigationRef.isReady()) {
+          navigationRef.navigate('CreateAccount' as never);
+        }
+      }
+    };
+
+    // On web, check the current window location for verification parameters
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const checkCurrentUrl = async () => {
+        const currentUrl = window.location.href;
+        const urlParams = new URLSearchParams(window.location.search);
+        const oobCode = urlParams.get('oobCode') || urlParams.get('actionCode');
+        const hasVerifyEmail = currentUrl.includes('verify-email') || currentUrl.includes('/verify-email');
+        
+        if (hasVerifyEmail || oobCode) {
+          console.log('🌐 Web: Checking current URL for verification parameters:', currentUrl);
+          console.log('🌐 Web: oobCode found:', oobCode ? oobCode.substring(0, 20) + '...' : 'none');
+          await handleDeepLink(currentUrl);
+          // Clean up URL to remove parameters after processing (but wait a bit to ensure processing is done)
+          setTimeout(() => {
+            if (window.history && window.history.replaceState) {
+              const cleanUrl = window.location.origin + window.location.pathname;
+              window.history.replaceState({}, document.title, cleanUrl);
+            }
+          }, 2000);
+        }
+      };
+      
+      // Check immediately and after delays (in case page just loaded or redirected)
+      checkCurrentUrl();
+      setTimeout(checkCurrentUrl, 300);
+      setTimeout(checkCurrentUrl, 1000);
+      setTimeout(checkCurrentUrl, 2000);
+      
+      // Also listen for popstate events (back/forward navigation) and hashchange
+      const handlePopState = () => {
+        setTimeout(checkCurrentUrl, 100);
+      };
+      const handleHashChange = () => {
+        setTimeout(checkCurrentUrl, 100);
+      };
+      window.addEventListener('popstate', handlePopState);
+      window.addEventListener('hashchange', handleHashChange);
+      
+      // Cleanup
+      return () => {
+        window.removeEventListener('popstate', handlePopState);
+        window.removeEventListener('hashchange', handleHashChange);
+      };
+    }
+
+    // Handle initial URL (app opened via deep link)
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        console.log('🔗 Initial URL:', url);
+        handleDeepLink(url);
+      }
+    });
+
+    // Handle deep links while app is running
+    const subscription = Linking.addEventListener('url', (event) => {
+      console.log('🔗 Deep link event:', event.url);
+      handleDeepLink(event.url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [navigationRef]);
+
   // Check authentication status on app load
   useEffect(() => {
     const checkAuthStatus = async () => {
       try {
-        // Check for admin login first
-        const isAdmin = await AsyncStorage.getItem('isAdmin');
-        const adminToken = await AsyncStorage.getItem('userToken');
-        const adminEmail = await AsyncStorage.getItem('userEmail');
+        // Always start with SplashScreen for fresh installs
+        // Only route to authenticated screens if we have a valid, verified session
         
-        if (isAdmin === 'true' && adminToken && adminEmail) {
-          // Admin is logged in - route to admin AI chat
-          setInitialRoute('AdminAIChat');
-          setIsLoading(false);
-          return;
+        // Check for Firebase auth first (most reliable)
+        let hasFirebaseAuth = false;
+        try {
+          const { getCurrentUser } = require('../services/authService');
+          const currentUser = getCurrentUser();
+          if (currentUser?.email) {
+            hasFirebaseAuth = true;
+          }
+        } catch {
+          // No Firebase auth
         }
         
-        // Check for regular user backend auth token
+        // Check for backend auth token
         const userToken = await AsyncStorage.getItem('userToken');
         const userEmail = await AsyncStorage.getItem('userEmail');
         const authProvider = await AsyncStorage.getItem('authProvider');
         const userRole = await AsyncStorage.getItem('userRole');
+        const isAdmin = await AsyncStorage.getItem('isAdmin');
         
-        // If user has valid session, determine initial screen based on role
-        if ((userToken && userEmail) || (userEmail && authProvider === 'google')) {
-          // Check if user is admin
-          if (userRole === 'admin') {
+        // Only route to authenticated screens if we have BOTH:
+        // 1. A valid token (or Firebase auth)
+        // 2. A user email
+        // This prevents routing on stale/incomplete data
+        const hasValidSession = (userToken && userToken.length > 20 && userEmail) || (hasFirebaseAuth && userEmail);
+        
+        if (hasValidSession) {
+          // Determine route based on role
+          if (isAdmin === 'true' || userRole === 'admin') {
             setInitialRoute('AdminAIChat');
           } else {
             setInitialRoute('AIChat');
           }
         } else {
-          // Check for Firebase auth (if user logged in with Google)
-          try {
-            const { getCurrentUser } = require('../services/authService');
-            const currentUser = getCurrentUser();
-            if (currentUser?.email) {
-              // Default to AIChat for regular users
-              setInitialRoute('AIChat');
-            } else {
-              setInitialRoute('SplashScreen');
-            }
-          } catch {
-            setInitialRoute('SplashScreen');
-          }
+          // No valid session - start with SplashScreen
+          setInitialRoute('SplashScreen');
         }
       } catch (error) {
         console.error('Auth check error:', error);
+        // On any error, default to SplashScreen
         setInitialRoute('SplashScreen');
       } finally {
         setIsLoading(false);

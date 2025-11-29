@@ -2,8 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Animated, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../../contexts/ThemeContext';
-import { theme } from '../../config/theme';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,7 +17,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'PrivacyPoli
 
 const PrivacyPolicyScreen = () => {
   const insets = useSafeAreaInsets();
-  const { theme, isDarkMode } = useTheme();
+  const { isDarkMode, theme: t } = useThemeValues();
   const navigation = useNavigation<NavigationProp>();
 
   // Animated floating background orb (Copilot-style)
@@ -42,7 +41,7 @@ const PrivacyPolicyScreen = () => {
     );
     animation.start();
     return () => animation.stop();
-  }, [floatAnim1]);
+  }, []);
 
   const sections = [
     {
@@ -138,7 +137,7 @@ const PrivacyPolicyScreen = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[t.colors.orbColors.orange1, t.colors.orbColors.orange2, t.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -167,7 +166,7 @@ const PrivacyPolicyScreen = () => {
             <Ionicons name="chevron-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
           </TouchableOpacity>
         </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Privacy Policy</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}>Privacy Policy</Text>
         <View style={styles.headerRight} />
       </View>
 
@@ -181,14 +180,14 @@ const PrivacyPolicyScreen = () => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.descriptionContainer}>
-          <View style={[styles.descriptionCard, { borderColor: theme.colors.border }]}>
+          <View style={[styles.descriptionCard, { borderColor: t.colors.border }]}>
             <BlurView
               intensity={Platform.OS === 'ios' ? 20 : 15}
               tint={isDarkMode ? 'dark' : 'light'}
               style={styles.descriptionBlur}
             >
               <View style={[styles.descriptionContent, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
-                <Text style={[styles.description, { color: theme.colors.textMuted }]}>
+                <Text style={[styles.description, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(14) }]}>
                   Your privacy is important to us. This Privacy Policy explains how DOrSU Connect collects, uses, and protects your personal information.
                 </Text>
               </View>
@@ -200,7 +199,7 @@ const PrivacyPolicyScreen = () => {
           {sections.map((section, index) => (
             <View 
               key={index} 
-              style={[styles.sectionCardWrapper, { borderColor: theme.colors.border }]}
+              style={[styles.sectionCardWrapper, { borderColor: t.colors.border }]}
             >
               <BlurView
                 intensity={Platform.OS === 'ios' ? 20 : 15}
@@ -208,10 +207,10 @@ const PrivacyPolicyScreen = () => {
                 style={styles.sectionCardBlur}
               >
                 <View style={[styles.sectionCard, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
-                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                  <Text style={[styles.sectionTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>
                     {section.title}
                   </Text>
-                  <Text style={[styles.sectionContent, { color: theme.colors.textMuted }]}>
+                  <Text style={[styles.sectionContent, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(14) }]}>
                     {section.content}
                   </Text>
                 </View>
@@ -221,7 +220,7 @@ const PrivacyPolicyScreen = () => {
         </View>
 
         {/* Last Updated */}
-        <View style={[styles.lastUpdatedBoxWrapper, { borderColor: theme.colors.border }]}>
+        <View style={[styles.lastUpdatedBoxWrapper, { borderColor: t.colors.border }]}>
           <BlurView
             intensity={Platform.OS === 'ios' ? 20 : 15}
             tint={isDarkMode ? 'dark' : 'light'}
@@ -229,10 +228,10 @@ const PrivacyPolicyScreen = () => {
           >
             <View style={[styles.lastUpdatedBox, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
               <View style={styles.lastUpdatedHeader}>
-                <Ionicons name="information-circle-outline" size={20} color={theme.colors.accent} />
-                <Text style={[styles.lastUpdatedTitle, { color: theme.colors.text }]}>Last Updated</Text>
+                <Ionicons name="information-circle-outline" size={20} color={t.colors.accent} />
+                <Text style={[styles.lastUpdatedTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(15) }]}>Last Updated</Text>
               </View>
-              <Text style={[styles.lastUpdatedText, { color: theme.colors.textMuted }]}>
+              <Text style={[styles.lastUpdatedText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(13) }]}>
                 This Privacy Policy was last updated on January 1, 2024.
               </Text>
             </View>
@@ -350,13 +349,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 10,
-    color: theme.colors.text,
     letterSpacing: 0.2,
   },
   sectionContent: {
     fontSize: 14,
     lineHeight: 20,
-    color: theme.colors.textMuted,
     opacity: 0.9,
   },
   lastUpdatedBoxWrapper: {

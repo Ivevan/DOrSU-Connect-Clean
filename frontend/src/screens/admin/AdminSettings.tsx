@@ -8,13 +8,14 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet from '../../components/common/BottomSheet';
 import { theme as themeConfig } from '../../config/theme';
 import { useThemeActions, useThemeValues } from '../../contexts/ThemeContext';
 import LogoutModal from '../../modals/LogoutModal';
 import AdminFileService from '../../services/AdminFileService';
+import ProfileService from '../../services/ProfileService';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -75,6 +76,11 @@ const AdminSettings = () => {
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isKnowledgeBaseModalOpen, setIsKnowledgeBaseModalOpen] = useState(false);
+  const [adminUserPhoto, setAdminUserPhoto] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [adminFirstName, setAdminFirstName] = useState<string | null>(null);
+  const [adminLastName, setAdminLastName] = useState<string | null>(null);
+  const [adminEmail, setAdminEmail] = useState<string | null>(null);
 
   // Lock header height to prevent layout shifts
   const headerHeightRef = useRef<number>(64);
@@ -115,11 +121,16 @@ const AdminSettings = () => {
 
   const confirmLogout = useCallback(async () => {
     try {
+      // Clear conversation data from AsyncStorage
+      await AsyncStorage.multiRemove(['adminCurrentConversation', 'adminConversationLastSaveTime']);
+      
       // Clear all admin and user data from AsyncStorage
       await AsyncStorage.multiRemove([
         'userToken', 
         'userEmail', 
-        'userName', 
+        'userName',
+        'userFirstName',
+        'userLastName',
         'userId', 
         'isAdmin',
         'authProvider'
@@ -140,6 +151,74 @@ const AdminSettings = () => {
   const handleTermsOfUsePress = useCallback(() => navigation.navigate('TermsOfUse'), [navigation]);
   const handlePrivacyPolicyPress = useCallback(() => navigation.navigate('PrivacyPolicy'), [navigation]);
   const handleLicensesPress = useCallback(() => navigation.navigate('Licenses'), [navigation]);
+
+  // Load admin profile data on mount and screen focus
+  useEffect(() => {
+    const loadAdminData = async () => {
+      try {
+        const userPhoto = await AsyncStorage.getItem('userPhoto');
+        const firstName = await AsyncStorage.getItem('userFirstName');
+        const lastName = await AsyncStorage.getItem('userLastName');
+        const email = await AsyncStorage.getItem('userEmail');
+        setAdminUserPhoto(userPhoto);
+        setAdminFirstName(firstName);
+        setAdminLastName(lastName);
+        setAdminEmail(email);
+      } catch (error) {
+        console.error('Failed to load admin data:', error);
+      }
+    };
+    loadAdminData();
+  }, []);
+
+  // Handle profile picture upload
+  const handleProfilePictureUpload = useCallback(async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'image/*',
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) return;
+
+      const asset = Array.isArray((result as any).assets)
+        ? (result as any).assets[0]
+        : (result as any);
+
+      if (!asset || !asset.uri) {
+        Alert.alert('Error', 'Failed to select image');
+        return;
+      }
+
+      const mime = asset.mimeType || 'image/jpeg';
+      if (!mime.startsWith('image/')) {
+        Alert.alert('Invalid file', 'Please select a JPEG or PNG image.');
+        return;
+      }
+
+      setIsUploadingPhoto(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      const fileName = asset.name || `profile_${Date.now()}.jpg`;
+      const uploadResult = await ProfileService.uploadProfilePicture(
+        asset.uri,
+        fileName,
+        mime
+      );
+
+      // Update local state
+      setAdminUserPhoto(uploadResult.imageUrl);
+      
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Success', 'Profile picture updated successfully!');
+    } catch (error: any) {
+      console.error('Profile picture upload error:', error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Upload Failed', error.message || 'Failed to upload profile picture');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  }, []);
 
   // File upload handler
   const handleFileUpload = useCallback(async () => {
@@ -185,6 +264,7 @@ const AdminSettings = () => {
       setIsUploadingFile(false);
     }
   }, [closeKnowledgeBaseModal]);
+
 
   return (
     <View style={[styles.container, {
@@ -255,7 +335,7 @@ const AdminSettings = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[theme.colors.orbColors.orange1, theme.colors.orbColors.orange2, theme.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -275,16 +355,19 @@ const AdminSettings = () => {
         marginLeft: insets.left,
         marginRight: insets.right,
       }]}>
-        <View style={styles.headerLeft}>
+        <View style={styles.headerLeft} pointerEvents="box-none">
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={styles.backButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={0.7}
             accessibilityLabel="Go back"
+            accessibilityRole="button"
           >
             <Ionicons name="chevron-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
           </TouchableOpacity>
         </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Settings</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]} pointerEvents="none">Settings</Text>
         <View style={styles.headerRight} />
       </View>
 
@@ -314,31 +397,56 @@ const AdminSettings = () => {
           ]}
         >
           <View style={styles.profileAvatarContainer}>
-            <View style={[styles.profileAvatar, { backgroundColor: theme.colors.primary + '20' }]}>
-              <View style={styles.profileAvatarPlaceholder}>
-                <Ionicons name="person" size={40} color={theme.colors.primary} />
+            <TouchableOpacity
+              onPress={handleProfilePictureUpload}
+              disabled={isUploadingPhoto}
+              activeOpacity={0.7}
+              style={styles.profileAvatarTouchable}
+            >
+              <View style={[styles.profileAvatar, { backgroundColor: theme.colors.primary + '20' }]}>
+                {isUploadingPhoto ? (
+                  <View style={styles.profileAvatarPlaceholder}>
+                    <Ionicons name="hourglass-outline" size={40} color={theme.colors.primary} />
+                  </View>
+                ) : adminUserPhoto ? (
+                  <Image 
+                    source={{ uri: adminUserPhoto }} 
+                    style={styles.profileAvatarImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.profileAvatarPlaceholder}>
+                    <Ionicons name="person" size={40} color={theme.colors.primary} />
+                  </View>
+                )}
               </View>
-            </View>
-            <View style={[styles.profileBadge, { backgroundColor: '#10B981' }]}>
-              <Ionicons name="checkmark" size={12} color="#FFFFFF" />
-            </View>
+              <View style={[styles.profileBadge, { backgroundColor: '#10B981' }]}>
+                {isUploadingPhoto ? (
+                  <Ionicons name="hourglass-outline" size={12} color="#FFFFFF" />
+                ) : (
+                  <Ionicons name="camera" size={12} color="#FFFFFF" />
+                )}
+              </View>
+            </TouchableOpacity>
           </View>
           <View style={styles.profileInfo}>
             <Text
-              style={[styles.profileName, { color: theme.colors.text }]}
+              style={[styles.profileName, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(18) }]}
               numberOfLines={1}
               ellipsizeMode="tail"
             >
-              Admin User
+              {adminFirstName && adminLastName 
+                ? `${adminFirstName} ${adminLastName}`.trim()
+                : adminFirstName || adminLastName || 'Admin User'}
             </Text>
             <View style={styles.profileEmailContainer}>
               <Ionicons name="mail-outline" size={14} color={theme.colors.textMuted} />
               <Text
-                style={[styles.profileEmail, { color: theme.colors.textMuted }]}
+                style={[styles.profileEmail, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(14) }]}
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                admin@dorsu.edu.ph
+                {adminEmail || 'admin@dorsu.edu.ph'}
               </Text>
             </View>
           </View>
@@ -362,7 +470,7 @@ const AdminSettings = () => {
                 navigation.navigate('AdminGeneralSettings');
               }}
             >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>General</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>General</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 
@@ -372,7 +480,7 @@ const AdminSettings = () => {
                 navigation.navigate('AdminAccountSettings');
               }}
             >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Account</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Account</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 
@@ -382,7 +490,7 @@ const AdminSettings = () => {
                 navigation.navigate('AdminEmailSettings');
               }}
             >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Email</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Email</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 
@@ -392,7 +500,7 @@ const AdminSettings = () => {
                 navigation.navigate('AdminAbout');
               }}
             >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>About</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>About</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 
@@ -400,33 +508,27 @@ const AdminSettings = () => {
               style={[styles.sectionTitleButton, styles.sectionTitleButtonLast]}
               onPress={openKnowledgeBaseModal}
             >
-              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Update</Text>
+              <Text style={[styles.sectionTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Update</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
           </BlurView>
 
-          {/* Sign Out Section */}
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 50 : 40}
-            tint={isDarkMode ? 'dark' : 'light'}
-            style={[styles.sectionCard, { backgroundColor: 'rgba(255, 255, 255, 0.3)', marginTop: themeConfig.spacing(1.5) }]}
+          {/* Sign Out Button */}
+          <TouchableOpacity 
+            style={[
+              styles.signOutButton, 
+              { 
+                backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)',
+                borderColor: isDarkMode ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.2)',
+                marginTop: themeConfig.spacing(1.5),
+              }
+            ]}
+            onPress={openLogout}
+            activeOpacity={0.7}
           >
-            {/* Sign Out Button */}
-            <TouchableOpacity 
-              style={[
-                styles.signOutButtonInCard, 
-                { 
-                  backgroundColor: isDarkMode ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)',
-                  borderColor: isDarkMode ? 'rgba(239, 68, 68, 0.3)' : 'rgba(239, 68, 68, 0.2)',
-                }
-              ]}
-              onPress={openLogout}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="log-out-outline" size={18} color="#EF4444" />
-              <Text style={[styles.signOutText, { color: '#EF4444' }]}>Sign out</Text>
-            </TouchableOpacity>
-          </BlurView>
+            <Ionicons name="log-out-outline" size={18} color="#EF4444" />
+            <Text style={[styles.signOutText, { color: '#EF4444', fontSize: theme.fontSize.scaleSize(14) }]}>Sign out</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -443,11 +545,13 @@ const AdminSettings = () => {
         onClose={closeKnowledgeBaseModal}
         sheetY={knowledgeBaseSheetY}
         backgroundColor={theme.colors.surface}
+        sheetPaddingBottom={0}
+        autoSize={true}
       >
         <View style={styles.modalHeader}>
           <View style={styles.uploadSectionHeader}>
             <Ionicons name="document-text-outline" size={20} color={theme.colors.primary} />
-            <Text style={[styles.uploadSectionTitle, { color: theme.colors.text }]}>Knowledge Base</Text>
+            <Text style={[styles.uploadSectionTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Knowledge Base</Text>
           </View>
           <TouchableOpacity
             onPress={closeKnowledgeBaseModal}
@@ -457,7 +561,7 @@ const AdminSettings = () => {
             <Ionicons name="close" size={24} color={theme.colors.text} />
           </TouchableOpacity>
         </View>
-        <Text style={[styles.uploadSectionDescription, { color: theme.colors.textMuted }]}>
+        <Text style={[styles.uploadSectionDescription, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(13) }]}>
           Upload .txt, .csv, or .json files to update the knowledge base
         </Text>
         <TouchableOpacity 
@@ -475,12 +579,12 @@ const AdminSettings = () => {
           {isUploadingFile ? (
             <>
               <Ionicons name="hourglass-outline" size={18} color="#FFFFFF" />
-              <Text style={styles.uploadButtonText}>Uploading...</Text>
+              <Text style={[styles.uploadButtonText, { fontSize: theme.fontSize.scaleSize(14) }]}>Uploading...</Text>
             </>
           ) : (
             <>
               <Ionicons name="cloud-upload-outline" size={18} color="#FFFFFF" />
-              <Text style={styles.uploadButtonText}>Upload File</Text>
+              <Text style={[styles.uploadButtonText, { fontSize: theme.fontSize.scaleSize(14) }]}>Upload File</Text>
             </>
           )}
         </TouchableOpacity>
@@ -506,6 +610,7 @@ const styles = StyleSheet.create({
   },
   headerLeft: {
     width: 44,
+    zIndex: 11,
   },
   backButton: {
     width: 44,
@@ -513,6 +618,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 12,
   },
   headerTitle: {
     fontSize: 17,
@@ -552,6 +658,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
+  },
+  profileAvatarTouchable: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileAvatarImage: {
+    width: '100%',
+    height: '100%',
   },
   profileAvatar: {
     width: 72,
@@ -651,6 +766,37 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: themeConfig.spacing(2),
     marginBottom: 0,
+  },
+  inlineActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: themeConfig.spacing(1.75),
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    gap: themeConfig.spacing(1.5),
+  },
+  inlineActionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: themeConfig.spacing(1.5),
+    flex: 1,
+  },
+  inlineActionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inlineActionTitle: {
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+  inlineActionSubtitle: {
+    marginTop: 2,
+    fontWeight: '400',
+    letterSpacing: 0.1,
   },
   settingItem: {
     flexDirection: 'row',

@@ -11,6 +11,18 @@ import { getEmbeddingService } from './embedding.js';
 import { getFileProcessorService } from './file-processor.js';
 import { getGridFSService } from './gridfs.js';
 
+const DEFAULT_TIMEZONE = process.env.CALENDAR_TIMEZONE || 'Asia/Manila';
+
+function formatDateInTimezone(date, options = {}) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    return null;
+  }
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: DEFAULT_TIMEZONE,
+    ...options,
+  }).format(date);
+}
+
 export class ScheduleService {
   constructor(mongoService, authService) {
     this.mongoService = mongoService;
@@ -89,12 +101,14 @@ export class ScheduleService {
       const eventDate = new Date(event.isoDate || event.date);
       if (!isNaN(eventDate.getTime())) {
         const dateFormats = [
-          eventDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-          eventDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
-          eventDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' }),
-          eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        ];
-        text += `Date: ${dateFormats.join(', ')}. `;
+          formatDateInTimezone(eventDate, { year: 'numeric', month: 'long', day: 'numeric' }),
+          formatDateInTimezone(eventDate, { year: 'numeric', month: 'short', day: 'numeric' }),
+          formatDateInTimezone(eventDate, { month: 'long', day: 'numeric' }),
+          formatDateInTimezone(eventDate, { month: 'short', day: 'numeric' })
+        ].filter(Boolean);
+        if (dateFormats.length > 0) {
+          text += `Date: ${dateFormats.join(', ')}. `;
+        }
       }
     }
     
@@ -103,9 +117,11 @@ export class ScheduleService {
       const start = new Date(event.startDate);
       const end = new Date(event.endDate);
       if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
-        const startStr = start.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-        const endStr = end.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-        text += `Date Range: ${startStr} to ${endStr}. `;
+        const startStr = formatDateInTimezone(start, { year: 'numeric', month: 'long', day: 'numeric' });
+        const endStr = formatDateInTimezone(end, { year: 'numeric', month: 'long', day: 'numeric' });
+        if (startStr && endStr) {
+          text += `Date Range: ${startStr} to ${endStr}. `;
+        }
       }
     }
     
@@ -121,6 +137,11 @@ export class ScheduleService {
                           event.semester === 'Off' ? 'Off Semester' : 
                           `Semester ${event.semester}`;
       text += `Semester: ${semesterText}. `;
+    }
+
+    if (event.userType && event.userType !== 'all') {
+      const audienceText = event.userType === 'student' ? 'Students' : 'Faculty';
+      text += `Audience: ${audienceText}. `;
     }
     
     return text.trim();
@@ -690,13 +711,14 @@ export class ScheduleService {
       // Create event/announcement document for schedule collection
       const baseUrl = this.getBaseUrl(req);
       
+      const isoDateValue = new Date(date);
       const event = {
         title,
         description,
         category,
         type: category === 'Event' ? 'event' : 'announcement', // Explicit type field
         date: date.toISOString(),
-        isoDate: date.toISOString(),
+        isoDate: isoDateValue,
         imageFileId: imageFileId, // GridFS file ID
         image: imageFileId ? `${baseUrl}/api/images/${imageFileId}` : null, // Full URL for image retrieval
         images: imageFileId ? [`${baseUrl}/api/images/${imageFileId}`] : [],
@@ -705,6 +727,8 @@ export class ScheduleService {
         updatedAt: new Date(),
         createdBy: auth.userId || 'admin',
       };
+      
+      Logger.info(`🕐 Event object before insert - has time: ${!!event.time}, time value: "${event.time}"`);
 
       // Generate embedding for semantic search
       Logger.info(`🔍 Generating embedding for schedule event: ${title}`);
@@ -851,11 +875,8 @@ export class ScheduleService {
    * Format date to readable string
    */
   formatDate(date) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const month = months[date.getMonth()];
-    const day = date.getDate();
-    const year = date.getFullYear();
-    return `${month} ${day}, ${year}`;
+    const formatted = formatDateInTimezone(date, { month: 'short', day: 'numeric', year: 'numeric' });
+    return formatted || '';
   }
 
   /**
@@ -1079,7 +1100,7 @@ export class ScheduleService {
           const date = new Date(dateStr);
           if (!isNaN(date.getTime())) {
             updateData.date = date.toISOString();
-            updateData.isoDate = date.toISOString();
+            updateData.isoDate = date;
           }
         }
 
@@ -1279,7 +1300,7 @@ export class ScheduleService {
           const date = new Date(dateStr);
           if (!isNaN(date.getTime())) {
             updates.date = this.formatDate(date);
-            updates.isoDate = date.toISOString();
+            updates.isoDate = date;
           }
         }
         
@@ -1292,7 +1313,7 @@ export class ScheduleService {
         if (!updates.isoDate && updates.date) {
           const date = new Date(updates.date);
           if (!isNaN(date.getTime())) {
-            updates.isoDate = date.toISOString();
+            updates.isoDate = date;
           }
         }
 
@@ -1361,9 +1382,28 @@ export class ScheduleService {
         
         // If isoDate is not provided but date is, derive isoDate from date
         if (!eventData.isoDate && eventData.date) {
-          const date = new Date(eventData.date);
-          if (!isNaN(date.getTime())) {
-            eventData.isoDate = date.toISOString();
+          const derivedDate = new Date(eventData.date);
+          if (!isNaN(derivedDate.getTime())) {
+            eventData.isoDate = derivedDate;
+          }
+        } else if (eventData.isoDate && !(eventData.isoDate instanceof Date)) {
+          const normalizedIso = new Date(eventData.isoDate);
+          if (!isNaN(normalizedIso.getTime())) {
+            eventData.isoDate = normalizedIso;
+          }
+        }
+
+        if (eventData.startDate && !(eventData.startDate instanceof Date)) {
+          const normalizedStart = new Date(eventData.startDate);
+          if (!isNaN(normalizedStart.getTime())) {
+            eventData.startDate = normalizedStart;
+          }
+        }
+
+        if (eventData.endDate && !(eventData.endDate instanceof Date)) {
+          const normalizedEnd = new Date(eventData.endDate);
+          if (!isNaN(normalizedEnd.getTime())) {
+            eventData.endDate = normalizedEnd;
           }
         }
 
@@ -1480,6 +1520,24 @@ export class ScheduleService {
       let updatedCount = 0;
       
       for (const event of events) {
+        if (event.isoDate && !(event.isoDate instanceof Date)) {
+          const parsedIso = new Date(event.isoDate);
+          if (!isNaN(parsedIso.getTime())) {
+            event.isoDate = parsedIso;
+          }
+        }
+        if (event.startDate && !(event.startDate instanceof Date)) {
+          const parsedStart = new Date(event.startDate);
+          if (!isNaN(parsedStart.getTime())) {
+            event.startDate = parsedStart;
+          }
+        }
+        if (event.endDate && !(event.endDate instanceof Date)) {
+          const parsedEnd = new Date(event.endDate);
+          if (!isNaN(parsedEnd.getTime())) {
+            event.endDate = parsedEnd;
+          }
+        }
         // Generate embedding for each event
         Logger.info(`🔍 Generating embedding for CSV event: ${event.title}`);
         const embedding = await this.generateEmbedding(event);
@@ -1530,7 +1588,7 @@ export class ScheduleService {
    * Supports exam filtering: 'prelim', 'midterm', 'final' to filter by exam type in title
    * @param {boolean} enableLogging - Whether to enable verbose logging (default: false, only log for RAG/AI queries)
    */
-  async getEvents({ startDate, endDate, category, semester, limit = 100, type, examType, enableLogging = false }) {
+  async getEvents({ startDate, endDate, category, semester, limit = 100, type, examType, enableLogging = false, userType = null }) {
     try {
       const scheduleCollection = this.mongoService.getCollection('schedule');
       
@@ -1550,8 +1608,8 @@ export class ScheduleService {
         
         // Single date events: isoDate falls within query range
         const singleDateQuery = {};
-        if (queryStart) singleDateQuery.$gte = queryStart.toISOString();
-        if (queryEnd) singleDateQuery.$lte = queryEnd.toISOString();
+        if (queryStart) singleDateQuery.$gte = queryStart;
+        if (queryEnd) singleDateQuery.$lte = queryEnd;
         if (Object.keys(singleDateQuery).length > 0) {
           query.$or.push({
             isoDate: singleDateQuery,
@@ -1569,21 +1627,21 @@ export class ScheduleService {
           // Event startDate is within query range
           if (queryStart && queryEnd) {
             rangeConditions.push({
-              startDate: { $gte: queryStart.toISOString(), $lte: queryEnd.toISOString() }
+              startDate: { $gte: queryStart, $lte: queryEnd }
             });
             // Event endDate is within query range
             rangeConditions.push({
-              endDate: { $gte: queryStart.toISOString(), $lte: queryEnd.toISOString() }
+              endDate: { $gte: queryStart, $lte: queryEnd }
             });
             // Event range completely contains query range
             rangeConditions.push({
-              startDate: { $lte: queryStart.toISOString() },
-              endDate: { $gte: queryEnd.toISOString() }
+              startDate: { $lte: queryStart },
+              endDate: { $gte: queryEnd }
             });
           } else if (queryStart) {
-            rangeConditions.push({ endDate: { $gte: queryStart.toISOString() } });
+            rangeConditions.push({ endDate: { $gte: queryStart } });
           } else if (queryEnd) {
-            rangeConditions.push({ startDate: { $lte: queryEnd.toISOString() } });
+            rangeConditions.push({ startDate: { $lte: queryEnd } });
           }
           
           if (rangeConditions.length > 0) {
@@ -1666,6 +1724,27 @@ export class ScheduleService {
         }
       }
 
+      if (userType && userType.toLowerCase() !== 'faculty') {
+        const normalizedUserType = userType.toLowerCase();
+        const audienceFilter = {
+          $or: [
+            { userType: { $exists: false } },
+            { userType: null },
+            { userType: '' },
+            { userType: 'all' },
+            { userType: normalizedUserType }
+          ]
+        };
+        if (query.$and) {
+          query.$and.push(audienceFilter);
+        } else if (query.$or) {
+          query.$and = [{ $or: query.$or }, audienceFilter];
+          delete query.$or;
+        } else {
+          query.$and = [audienceFilter];
+        }
+      }
+
       // Filter by exam type if provided (prelim, midterm, final)
       // This filters events by keywords in the title for exam-specific queries
       if (examType) {
@@ -1739,11 +1818,10 @@ export class ScheduleService {
         const eventsForLogging = events.map(event => {
           // Format event date
           const eventDate = event.isoDate || event.date;
-          const dateStr = eventDate ? new Date(eventDate).toLocaleDateString('en-US', { 
-            year: 'numeric', 
-            month: 'long', 
-            day: 'numeric' 
-          }) : 'Date TBD';
+          const dateStr = eventDate ? formatDateInTimezone(
+            new Date(eventDate),
+            { year: 'numeric', month: 'long', day: 'numeric' }
+          ) || 'Date TBD' : 'Date TBD';
           
           // Create formatted text content similar to RAG format
           let eventText = `${event.title || 'Untitled Event'}. `;
@@ -1763,9 +1841,11 @@ export class ScheduleService {
           
           // Include date range if applicable
           if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-            const start = new Date(event.startDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-            const end = new Date(event.endDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-            eventText += `Date Range: ${start} to ${end}. `;
+            const start = formatDateInTimezone(new Date(event.startDate), { year: 'numeric', month: 'long', day: 'numeric' });
+            const end = formatDateInTimezone(new Date(event.endDate), { year: 'numeric', month: 'long', day: 'numeric' });
+            if (start && end) {
+              eventText += `Date Range: ${start} to ${end}. `;
+            }
           }
           
           return {

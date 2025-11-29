@@ -313,25 +313,25 @@ export function getMarkdownStyles(theme: any) {
   return {
     body: { 
       color: theme.colors.text, 
-      fontSize: 15, 
-      lineHeight: 22 
+      fontSize: theme.fontSize.scaleSize(15), 
+      lineHeight: theme.fontSize.scaleSize(22)
     },
     heading1: { 
-      fontSize: 22, 
+      fontSize: theme.fontSize.scaleSize(22), 
       fontWeight: '800' as '800', 
       color: theme.colors.text,
       marginTop: 16,
       marginBottom: 8
     },
     heading2: { 
-      fontSize: 20, 
+      fontSize: theme.fontSize.scaleSize(20), 
       fontWeight: '700' as '700', 
       color: theme.colors.text,
       marginTop: 14,
       marginBottom: 6
     },
     heading3: { 
-      fontSize: 18, 
+      fontSize: theme.fontSize.scaleSize(18), 
       fontWeight: '700' as '700', 
       color: theme.colors.text,
       marginTop: 12,
@@ -353,7 +353,7 @@ export function getMarkdownStyles(theme: any) {
     paragraph: { 
       marginTop: 0, 
       marginBottom: 10,
-      lineHeight: 22
+      lineHeight: theme.fontSize.scaleSize(22)
     },
     bullet_list: { 
       marginBottom: 10,
@@ -365,7 +365,7 @@ export function getMarkdownStyles(theme: any) {
     },
     list_item: { 
       marginBottom: 6,
-      lineHeight: 22
+      lineHeight: theme.fontSize.scaleSize(22)
     },
     code_inline: { 
       backgroundColor: theme.colors.surfaceAlt, 
@@ -374,7 +374,7 @@ export function getMarkdownStyles(theme: any) {
       paddingVertical: 3,
       borderRadius: 4,
       fontFamily: 'Courier New',
-      fontSize: 14
+      fontSize: theme.fontSize.scaleSize(14)
     },
     code_block: {
       backgroundColor: theme.colors.surfaceAlt,

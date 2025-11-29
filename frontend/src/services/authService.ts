@@ -51,21 +51,8 @@ export type User = FirebaseAuthTypes.User;
  */
 export const signInWithGoogleAndroid = async (): Promise<User> => {
   try {
-    // Check if your device supports Google Play
+    // Check if your device supports Google Play (only once)
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-
-    // Ensure Google Sign-In is properly configured before attempting sign-in
-    // This helps prevent web view fallback
-    try {
-      const isSignedIn = await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-      if (isSignedIn) {
-        // Sign out from Google Sign-In to force account selection
-        await GoogleSignin.signOut();
-      }
-    } catch (signOutError) {
-      // Ignore sign out errors (user might not be signed in)
-      console.log('Sign out before sign in (expected):', signOutError);
-    }
 
     // Get the user's ID token from Google Sign-In
     // This uses native sign-in - should not open web view
@@ -289,6 +276,210 @@ export const getGoogleSignInErrorMessage = (error: any): string => {
       return 'Password is too weak.';
     default:
       return error.message || 'An error occurred during sign-in';
+  }
+};
+
+/**
+ * Create user account with email and password (Firebase)
+ */
+export const createUserWithEmailAndPassword = async (email: string, password: string): Promise<User> => {
+  try {
+    if (Platform.OS === 'web') {
+      if (!webFirebaseAuth) {
+        throw new Error('Firebase Auth is not initialized for web');
+      }
+      const { createUserWithEmailAndPassword: createUser } = require('firebase/auth');
+      const userCredential = await createUser(webFirebaseAuth, email, password);
+      return userCredential.user;
+    } else {
+      // Native - React Native Firebase
+      const userCredential = await auth().createUserWithEmailAndPassword(email, password);
+      return userCredential.user;
+    }
+  } catch (error: any) {
+    console.error('Create user error:', error);
+    
+    // Handle Firebase Auth errors
+    if (error.code === 'auth/email-already-in-use') {
+      throw new Error('This email is already registered. Please sign in instead.');
+    } else if (error.code === 'auth/invalid-email') {
+      throw new Error('Invalid email address format.');
+    } else if (error.code === 'auth/weak-password') {
+      throw new Error('Password is too weak. Please use a stronger password.');
+    } else if (error.code === 'auth/network-request-failed') {
+      throw new Error('Network error. Please check your internet connection.');
+    } else if (error.code === 'auth/operation-not-allowed') {
+      throw new Error('Email/Password authentication is not enabled in Firebase. Please contact support or enable it in Firebase Console under Authentication > Sign-in method.');
+    }
+    
+    throw new Error(error.message || 'Failed to create account');
+  }
+};
+
+/**
+ * Send email verification (Firebase) with deep link support
+ */
+export const sendEmailVerification = async (user: User): Promise<void> => {
+  try {
+    console.log('📧 Sending email verification for user:', user.email);
+    console.log('📧 Platform:', Platform.OS);
+    
+    if (!user || !user.email) {
+      throw new Error('Invalid user object. Cannot send verification email.');
+    }
+    
+    if (Platform.OS === 'web') {
+      const { sendEmailVerification: sendVerification } = require('firebase/auth');
+      // For web, use actionCodeSettings to redirect to the app
+      const actionCodeSettings = {
+        url: `${window.location.origin}/verify-email`,
+        handleCodeInApp: true,
+      };
+      console.log('📧 Sending verification email (web) with settings:', actionCodeSettings);
+      await sendVerification(user, actionCodeSettings);
+      console.log('✅ Verification email sent successfully (web)');
+    } else {
+      // Native - React Native Firebase
+      // React Native Firebase sendEmailVerification may not support actionCodeSettings
+      // Try simple call first (most reliable)
+      console.log('📧 Attempting to send verification email (native)...');
+      
+      try {
+        // First, try without actionCodeSettings (most compatible)
+        await user.sendEmailVerification();
+        console.log('✅ Verification email sent successfully (native - simple)');
+      } catch (simpleError: any) {
+        console.warn('⚠️ Simple sendEmailVerification failed, trying with actionCodeSettings:', simpleError);
+        
+        // Fallback: try with actionCodeSettings if available
+        try {
+          const actionCodeSettings = {
+            url: 'dorsuconnect://verify-email',
+            handleCodeInApp: true,
+            iOS: {
+              bundleId: 'com.dorsuconnect.app',
+            },
+            android: {
+              packageName: 'com.dorsuconnect.app',
+              installApp: false,
+              minimumVersion: '1',
+            },
+          };
+          await user.sendEmailVerification(actionCodeSettings);
+          console.log('✅ Verification email sent successfully (native - with deep link)');
+        } catch (settingsError: any) {
+          console.error('❌ Both methods failed:', settingsError);
+          throw simpleError; // Throw the original error
+        }
+      }
+    }
+    
+    console.log('✅ Email verification process completed successfully');
+  } catch (error: any) {
+    console.error('❌ Send email verification error:', error);
+    console.error('❌ Error code:', error?.code);
+    console.error('❌ Error message:', error?.message);
+    console.error('❌ Full error:', JSON.stringify(error, null, 2));
+    
+    // Provide more specific error messages
+    if (error?.code === 'auth/too-many-requests') {
+      throw new Error('Too many verification emails sent. Please wait a few minutes before requesting another.');
+    } else if (error?.code === 'auth/user-not-found') {
+      throw new Error('User account not found. Please try creating your account again.');
+    } else if (error?.code === 'auth/invalid-action-code') {
+      throw new Error('Invalid verification code. Please request a new verification email.');
+    } else if (error?.message) {
+      throw new Error(`Failed to send verification email: ${error.message}`);
+    } else {
+      throw new Error('Failed to send verification email. Please check your internet connection and try again. If the problem persists, check your Firebase Console settings.');
+    }
+  }
+};
+
+/**
+ * Sign in with email and password (Firebase)
+ */
+export const signInWithEmailAndPassword = async (email: string, password: string): Promise<User> => {
+  try {
+    if (Platform.OS === 'web') {
+      if (!webFirebaseAuth) {
+        throw new Error('Firebase Auth is not initialized for web');
+      }
+      const { signInWithEmailAndPassword: signIn } = require('firebase/auth');
+      const userCredential = await signIn(webFirebaseAuth, email, password);
+      return userCredential.user;
+    } else {
+      // Native - React Native Firebase
+      const userCredential = await auth().signInWithEmailAndPassword(email, password);
+      return userCredential.user;
+    }
+  } catch (error: any) {
+    console.error('Sign in error:', error);
+    
+    // Handle Firebase Auth errors
+    if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+      throw new Error('Invalid email or password.');
+    } else if (error.code === 'auth/invalid-email') {
+      throw new Error('Invalid email address format.');
+    } else if (error.code === 'auth/user-disabled') {
+      throw new Error('This account has been disabled.');
+    } else if (error.code === 'auth/network-request-failed') {
+      throw new Error('Network error. Please check your internet connection.');
+    }
+    
+    throw new Error(error.message || 'Failed to sign in');
+  }
+};
+
+/**
+ * Reload user to get latest email verification status
+ */
+export const reloadUser = async (user: User): Promise<void> => {
+  try {
+    if (Platform.OS === 'web') {
+      const { reload } = require('firebase/auth');
+      await reload(user);
+    } else {
+      // Native - React Native Firebase
+      await user.reload();
+    }
+  } catch (error: any) {
+    console.error('Reload user error:', error);
+    throw new Error(error.message || 'Failed to reload user');
+  }
+};
+
+/**
+ * Apply email verification action code from URL
+ * This is used when user clicks the verification link in their email
+ */
+export const applyEmailVerificationCode = async (actionCode: string): Promise<void> => {
+  try {
+    console.log('🔐 Applying email verification code...');
+    
+    if (Platform.OS === 'web') {
+      const { applyActionCode, getAuth } = require('firebase/auth');
+      const auth = getAuth();
+      await applyActionCode(auth, actionCode);
+      console.log('✅ Email verification code applied successfully (web)');
+    } else {
+      // Native - React Native Firebase
+      const auth = require('@react-native-firebase/auth').default();
+      await auth().applyActionCode(actionCode);
+      console.log('✅ Email verification code applied successfully (native)');
+    }
+  } catch (error: any) {
+    console.error('❌ Failed to apply verification code:', error);
+    
+    if (error?.code === 'auth/invalid-action-code') {
+      throw new Error('Invalid or expired verification code. Please request a new verification email.');
+    } else if (error?.code === 'auth/expired-action-code') {
+      throw new Error('Verification code has expired. Please request a new verification email.');
+    } else if (error?.message) {
+      throw new Error(`Failed to verify email: ${error.message}`);
+    } else {
+      throw new Error('Failed to verify email. Please try again.');
+    }
   }
 };
 

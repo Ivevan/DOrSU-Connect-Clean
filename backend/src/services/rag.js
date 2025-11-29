@@ -9,6 +9,18 @@ import { VectorSearchService } from './vector-search.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const DEFAULT_TIMEZONE = process.env.CALENDAR_TIMEZONE || 'Asia/Manila';
+
+function formatDateInTimezone(date, options = {}) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    return null;
+  }
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: DEFAULT_TIMEZONE,
+    ...options,
+  }).format(date);
+}
+
 export class OptimizedRAGService {
   constructor(mongoService = null) {
     this.faissOptimizedData = null;
@@ -195,14 +207,16 @@ export class OptimizedRAGService {
           const date = chunk.metadata.date || chunk.metadata.startDate;
           try {
             const dateObj = new Date(date);
-            // Add multiple date formats to improve matching
+            // Add multiple date formats to improve matching (using timezone-aware formatting)
             const dateFormats = [
-              dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
-              dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
-              dateObj.toLocaleDateString('en-US', { month: 'long', day: 'numeric' }),
-              dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-            ];
-            text = `${text} ${dateFormats.join(' ')}`;
+              formatDateInTimezone(dateObj, { year: 'numeric', month: 'long', day: 'numeric' }),
+              formatDateInTimezone(dateObj, { year: 'numeric', month: 'short', day: 'numeric' }),
+              formatDateInTimezone(dateObj, { month: 'long', day: 'numeric' }),
+              formatDateInTimezone(dateObj, { month: 'short', day: 'numeric' })
+            ].filter(Boolean);
+            if (dateFormats.length > 0) {
+              text = `${text} ${dateFormats.join(' ')}`;
+            }
           } catch (e) {
             // Date parsing failed, continue with original text
           }
@@ -329,7 +343,7 @@ export class OptimizedRAGService {
 
   // Get context for specific topics using optimized chunking
   // SIMPLIFIED: Now uses VectorSearchService for all retrieval
-  async getContextForTopic(query, maxTokens = 500, maxSections = 10, suggestMore = false, scheduleService = null) {
+  async getContextForTopic(query, maxTokens = 500, maxSections = 10, suggestMore = false, scheduleService = null, userType = null) {
     // Debug: Verify we have optimized data
     if (!this.faissOptimizedData || !this.faissOptimizedData.chunks) {
       Logger.warn('RAG: No optimized data available');
@@ -509,7 +523,8 @@ export class OptimizedRAGService {
       relevantData = await this.vectorSearchService.search(query, {
         maxResults: adjustedMaxResults, // Get more for admission requirements to ensure all student categories are included
         maxSections: maxSections,
-        queryType: queryType
+        queryType: queryType,
+        userType
       });
       
       Logger.debug(`✅ VectorSearchService returned ${relevantData.length} chunks for query type: ${queryType || 'general'}`);
@@ -542,7 +557,8 @@ export class OptimizedRAGService {
         relevantData = await this.vectorSearchService.search(query, {
           maxResults: maxSections * 2,
           maxSections: maxSections,
-          queryType: 'comprehensive'
+          queryType: 'comprehensive',
+          userType
         });
       } catch (error) {
         Logger.debug(`Vision/mission search failed: ${error.message}`);
@@ -640,7 +656,20 @@ export class OptimizedRAGService {
         }
         
         // Check if schedule events are already in relevantData from vector search
-        let scheduleEventsFromVectorSearch = relevantData.filter(item => item.section === 'schedule_events');
+        const matchesUserTypeForEvent = (eventUserType) => {
+          if (!userType || userType === 'faculty') {
+            return true;
+          }
+          const normalized = (eventUserType || 'all').toString().toLowerCase();
+          if (!normalized || normalized === 'all') {
+            return true;
+          }
+          return normalized === userType.toLowerCase();
+        };
+
+        let scheduleEventsFromVectorSearch = relevantData
+          .filter(item => item.section === 'schedule_events')
+          .filter(event => matchesUserTypeForEvent(event.metadata?.userType || event.userType));
         
         Logger.debug(`📅 RAG: Already have ${scheduleEventsFromVectorSearch.length} schedule events from vector search`);
         
@@ -741,7 +770,8 @@ export class OptimizedRAGService {
             semester: requestedSemester, // Pass semester filter
             limit: 100,
             examType: examTypeForQuery, // Only set if single exam type, null for multiple types
-            enableLogging: true // Enable logging for RAG/AI queries
+            enableLogging: true, // Enable logging for RAG/AI queries
+            userType
           });
           
           const examTypesStr = requestedExamTypes.length > 0 ? requestedExamTypes.join(' + ') : 'none';
@@ -769,8 +799,16 @@ export class OptimizedRAGService {
         
         // Additional filtering: For date ranges, check if query month/year falls within the range
         let filteredEvents = events;
+        if (events && events.length > 0) {
+          const initialCount = filteredEvents.length;
+          filteredEvents = filteredEvents.filter(event => matchesUserTypeForEvent(event.userType));
+          if (filteredEvents.length !== initialCount) {
+            Logger.debug(`📅 RAG: Filtered schedule events by userType (${userType || 'all'}) from ${initialCount} to ${filteredEvents.length}`);
+          }
+        }
         if (requestedMonth !== null && requestedYear) {
-          filteredEvents = events.filter(event => {
+          const beforeMonthFilter = filteredEvents.length;
+          filteredEvents = filteredEvents.filter(event => {
             // For date ranges, check if the requested month/year overlaps with the range
             if (event.dateType === 'date_range' && event.startDate && event.endDate) {
               const rangeStart = new Date(event.startDate);
@@ -786,18 +824,17 @@ export class OptimizedRAGService {
               return eventDate.getMonth() === requestedMonth && eventDate.getFullYear() === requestedYear;
             }
           });
-          Logger.debug(`📅 Filtered ${events.length} events to ${filteredEvents.length} events for ${monthNames[requestedMonth]} ${requestedYear}`);
+          Logger.debug(`📅 Filtered ${beforeMonthFilter} events to ${filteredEvents.length} events for ${monthNames[requestedMonth]} ${requestedYear}`);
         }
         
         if (filteredEvents && filteredEvents.length > 0) {
           // Convert schedule events to RAG format chunks
           scheduleEventsData = filteredEvents.map((event, idx) => {
             const eventDate = event.isoDate || event.date;
-            const dateStr = eventDate ? new Date(eventDate).toLocaleDateString('en-US', { 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            }) : 'Date TBD';
+            const dateStr = eventDate ? formatDateInTimezone(
+              new Date(eventDate),
+              { year: 'numeric', month: 'long', day: 'numeric' }
+            ) || 'Date TBD' : 'Date TBD';
             
             // Create searchable text from event
             let eventText = `${event.title || 'Untitled Event'}. `;
@@ -814,9 +851,11 @@ export class OptimizedRAGService {
               eventText += `Semester: ${semesterText}. `;
             }
             if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-              const start = new Date(event.startDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-              const end = new Date(event.endDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-              eventText += `Date Range: ${start} to ${end}. `;
+              const start = formatDateInTimezone(new Date(event.startDate), { year: 'numeric', month: 'long', day: 'numeric' });
+              const end = formatDateInTimezone(new Date(event.endDate), { year: 'numeric', month: 'long', day: 'numeric' });
+              if (start && end) {
+                eventText += `Date Range: ${start} to ${end}. `;
+              }
             }
             
             // Extract keywords from event
@@ -849,7 +888,8 @@ export class OptimizedRAGService {
                 dateType: event.dateType,
                 startDate: event.startDate,
                 endDate: event.endDate,
-                semester: event.semester // Include semester in metadata
+                semester: event.semester, // Include semester in metadata
+                userType: event.userType || 'all'
               },
               keywords: [...new Set(keywords)], // Remove duplicates
               source: 'schedule_database'
@@ -948,7 +988,7 @@ export class OptimizedRAGService {
           
           Logger.logDataFetch('ragExamQueryNoResults', query, {
             method: 'exam_filter_removed',
-            examType,
+            examTypes: examTypesStr,
             remainingEvents: relevantData.filter(item => item.section === 'schedule_events').length,
             totalRelevantData: relevantData.length
           });
@@ -1005,9 +1045,9 @@ export class OptimizedRAGService {
       const formatDateConcise = (date) => {
         if (!date) return 'Date TBD';
         const d = new Date(date);
-        const month = d.toLocaleDateString('en-US', { month: 'short' });
-        const day = d.getDate();
-        return `${month} ${day}`;
+        const month = formatDateInTimezone(d, { month: 'short' });
+        const day = formatDateInTimezone(d, { day: 'numeric' });
+        return month && day ? `${month} ${day}` : 'Date TBD';
       };
       
       // Group events by title to avoid redundancy

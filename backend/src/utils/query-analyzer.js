@@ -428,6 +428,7 @@ export class QueryAnalyzer {
     let detectedTopics = [];
     let detectedIntents = [];
     let ragMultiplier = 1.0;
+    const wordCount = lowerQuery.split(/\s+/).filter(word => word.length > 0).length;
     
     // Detect topics
     Object.entries(topicCategories).forEach(([category, keywords]) => {
@@ -463,6 +464,20 @@ export class QueryAnalyzer {
         }
       }
     });
+
+    // Additional safeguard: treat pronoun matches as follow-ups only when query truly
+    // depends on previous context (i.e., short question without explicit subject).
+    if (isFollowUpQuery) {
+      const explicitSubjectPattern = /\b(programs?|courses?|faculties?|deans?|students?|campus|campuses|university|dorsu|office|offices|department|departments|schedule|schedules|calendar|event|events|exam|exams|requirements?|admission|tuition|history|mission|vision|values?|outcomes?|organization|usc|sidlakan|catalyst|leadership|president|vice\s+president)\b/i;
+      const hasExplicitSubject = explicitSubjectPattern.test(lowerQuery);
+      const isShortPronounQuery = wordCount <= 8;
+      if (hasExplicitSubject && !isShortPronounQuery) {
+        // Remove follow-up intent to avoid unnecessary pronoun resolution
+        detectedIntents = detectedIntents.filter(intent => intent !== 'followUp');
+        isFollowUpQuery = false;
+        ragMultiplier = Math.max(1.0, ragMultiplier - 0.5);
+      }
+    }
     
     // Check for plural nouns (indicates multiple items needed)
     const pluralKeywords = [
@@ -493,7 +508,7 @@ export class QueryAnalyzer {
     }
     
     // STEP 2: Detect vague queries that need clarification
-    const vagueQueryAnalysis = this.detectVagueQuery(query, detectedTopics, detectedIntents, isFollowUpQuery);
+    const vagueQueryAnalysis = this.detectVagueQuery(query, detectedTopics, detectedIntents, isFollowUpQuery, intentClassification);
     
     // IMPROVED: Boost multiplier for structured entity queries
     if (extractedEntities.officeAcronyms.length > 0) {
@@ -534,13 +549,23 @@ export class QueryAnalyzer {
    * @param {Array} detectedTopics - Topics detected in query
    * @param {Array} detectedIntents - Intents detected in query
    * @param {boolean} isFollowUp - Whether this is a follow-up query
+   * @param {Object} intentClassification - Intent classification result (optional)
    * @returns {Object} - { isVague: boolean, reason: string, needsClarification: boolean }
    */
-  static detectVagueQuery(query, detectedTopics, detectedIntents, isFollowUp) {
+  static detectVagueQuery(query, detectedTopics, detectedIntents, isFollowUp, intentClassification = null) {
     const lowerQuery = query.toLowerCase().trim();
     const queryWords = lowerQuery.split(/\s+/).filter(w => w.length > 0);
     const queryLength = query.length;
     const wordCount = queryWords.length;
+    
+    // Skip vague detection for greetings - let the AI respond naturally
+    if (intentClassification && intentClassification.conversationalIntent === 'greeting') {
+      return {
+        isVague: false,
+        reason: null,
+        needsClarification: false
+      };
+    }
     
     // Vague query patterns that need clarification
     const vaguePatterns = {

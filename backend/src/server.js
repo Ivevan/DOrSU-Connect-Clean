@@ -16,11 +16,14 @@ import { OptimizedRAGService } from './services/rag.js';
 import { getNewsScraperService } from './services/scraper.js';
 import { LlamaService } from './services/service.js';
 import { buildSystemInstructions, getCalendarEventsInstructions, getHistoryCriticalRules, getHistoryDataSummary, getHistoryInstructions, getHymnCriticalRules, getHymnInstructions, getLeadershipCriticalRules, getLeadershipInstructions, getPresidentInstructions, getProgramInstructions, getProgramCriticalRules } from './services/system.js';
+import { isConversationResetRequest, buildClarificationMessage } from './services/chat-guardrails.js';
+import { buildNewsContext } from './services/news-context.js';
 import { IntentClassifier } from './utils/intent-classifier.js';
 import { Logger } from './utils/logger.js';
 import { parseMultipartFormData } from './utils/multipart-parser.js';
 import QueryAnalyzer from './utils/query-analyzer.js';
 import ResponseCleaner from './utils/response-cleaner.js';
+import { handleVerificationRedirect } from './services/email-verification-redirect.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,6 +32,19 @@ const __dirname = path.dirname(__filename);
 const port = Number.parseInt(process.env.PORT || '3000', 10);
 const publicDir = path.resolve(__dirname, '../../frontend');
 const dataPath = path.resolve(__dirname, './data/dorsu_data.json');
+
+// ===== TIMEZONE UTILITIES =====
+const DEFAULT_TIMEZONE = process.env.CALENDAR_TIMEZONE || 'Asia/Manila';
+
+function formatDateInTimezone(date, options = {}) {
+  if (!(date instanceof Date) || isNaN(date.getTime())) {
+    return null;
+  }
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: DEFAULT_TIMEZONE,
+    ...options,
+  }).format(date);
+}
 
 // ===== SERVICE INSTANCES =====
 let dorsuData = null;
@@ -47,8 +63,7 @@ const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
 **Vision:** A university of excellence, innovation and inclusion
 **President:** Dr. Roy G. Ponce`;
 
-// ===== SERVICE INITIALIZATION =====
-(async () => {
+async function initializeServices() {
   try {
     mongoService = getMongoDBService();
     await mongoService.connect();
@@ -83,22 +98,27 @@ const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
     newsScraperService = getNewsScraperService(mongoService);
     newsScraperService.startAutoScraping();
     Logger.success('News scraper service started');
+    
+    // Initialize RAG service now that MongoDB is connected
+    if (!ragService) {
+      ragService = new OptimizedRAGService(mongoService);
+      Logger.success('RAG service initialized');
+      setTimeout(() => ragService?.syncWithMongoDB(), 2000);
+    }
   } catch (error) {
     Logger.error('MongoDB init failed:', error.message);
   }
-})();
+}
 
-// ===== DATA & RAG INITIALIZATION =====
+// Kick off initialization (async but awaited internally)
+initializeServices();
+
+// ===== DATA INITIALIZATION =====
 try {
   dorsuData = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
   dorsuContext = fallbackContext;
-  ragService = new OptimizedRAGService(mongoService);
-  
-  setTimeout(() => ragService?.syncWithMongoDB(), 2000);
-  
-  Logger.success('RAG service initialized');
 } catch (e) {
-  Logger.error('RAG init failed:', e.message);
+  Logger.error('Data init failed:', e.message);
 }
 
 // ===== UTILITY FUNCTIONS =====
@@ -107,6 +127,11 @@ function sendJson(res, status, body) {
   const json = JSON.stringify(body);
   res.writeHead(status, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(json) });
   res.end(json);
+}
+
+function sendHtml(res, status, html) {
+  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(html);
 }
 
 function serveStatic(req, res) {
@@ -129,6 +154,28 @@ const server = http.createServer(async (req, res) => {
   // Parse URL to get pathname (remove query parameters and hash)
   const rawUrl = req.url || '/';
   const url = rawUrl.split('?')[0].split('#')[0];
+  const urlObj = new URL(rawUrl, `http://${req.headers.host || 'localhost:3000'}`);
+  
+  // Email verification redirect handler
+  if (method === 'GET' && url === '/verify-email') {
+    // For web, try to detect the frontend URL from referer or use default localhost
+    let frontendOrigin = 'http://localhost:8081';
+    const referer = req.headers.referer;
+    if (referer) {
+      try {
+        const refererUrl = new URL(referer);
+        frontendOrigin = `${refererUrl.protocol}//${refererUrl.host}`;
+      } catch (e) {
+        // Use default if parsing fails
+      }
+    }
+    // Also check if there's a specific frontend URL in headers or use the request origin
+    const origin = req.headers.origin || `http://${req.headers.host || 'localhost:3000'}`;
+    // Prefer frontend origin if we detected it, otherwise use request origin
+    const redirectOrigin = frontendOrigin !== 'http://localhost:8081' ? frontendOrigin : origin;
+    handleVerificationRedirect(urlObj, res, redirectOrigin);
+    return;
+  }
   
   // Debug logging for specific endpoints
   if (url === '/api/top-queries' || rawUrl.includes('top-queries')) {
@@ -172,7 +219,135 @@ const server = http.createServer(async (req, res) => {
 
   // ===== AUTHENTICATION ENDPOINTS =====
 
-  // User Registration
+  // Firebase User Registration (sync Firebase user to MongoDB)
+  if (method === 'POST' && url === '/api/auth/register-firebase') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        if (!authService || !mongoService) {
+          sendJson(res, 503, { error: 'Authentication service not available' });
+          return;
+        }
+
+        // Get Firebase ID token from Authorization header
+        const authHeader = req.headers['authorization'];
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          sendJson(res, 401, { error: 'Firebase ID token required in Authorization header' });
+          return;
+        }
+
+        const idToken = authHeader.substring(7);
+        
+        // Validate token format
+        const tokenParts = idToken.split('.');
+        if (tokenParts.length !== 3) {
+          sendJson(res, 400, { error: 'Invalid token format' });
+          return;
+        }
+
+        // Verify Firebase token and get user info
+        let tokenInfo = null;
+        try {
+          const tokenInfoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+          if (tokenInfoRes.ok) {
+            tokenInfo = await tokenInfoRes.json();
+          } else {
+            // Fallback: decode JWT payload locally
+            const payload = tokenParts[1];
+            const padded = payload + '='.repeat((4 - payload.length % 4) % 4);
+            const decoded = Buffer.from(padded.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8');
+            const parsed = JSON.parse(decoded);
+            
+            if (parsed.exp && parsed.exp < Math.floor(Date.now() / 1000)) {
+              sendJson(res, 401, { error: 'Token expired' });
+              return;
+            }
+            
+            tokenInfo = {
+              email: parsed.email,
+              name: parsed.name || parsed.email?.split('@')[0],
+              sub: parsed.sub || parsed.user_id,
+              email_verified: parsed.email_verified || false,
+            };
+          }
+        } catch (tokenError) {
+          Logger.error('Token validation error:', tokenError);
+          sendJson(res, 401, { error: 'Invalid Firebase token' });
+          return;
+        }
+
+        if (!tokenInfo || !tokenInfo.email) {
+          sendJson(res, 401, { error: 'Invalid token - missing email' });
+          return;
+        }
+
+        const { username, firstName, lastName } = JSON.parse(body || '{}');
+        const normalizedEmail = tokenInfo.email.toLowerCase();
+        // Use firstName + lastName if available, otherwise fall back to username or tokenInfo.name
+        const displayName = (firstName && lastName) 
+          ? `${firstName.trim()} ${lastName.trim()}`.trim()
+          : username || tokenInfo.name || normalizedEmail.split('@')[0];
+
+        // Check if user already exists in MongoDB
+        let user = await mongoService.findUser(normalizedEmail);
+        
+        const updateData = {
+          username: displayName,
+          emailVerified: tokenInfo.email_verified || false,
+          firebaseUid: tokenInfo.sub,
+          provider: 'firebase',
+        };
+        
+        // Add firstName and lastName if provided
+        if (firstName) updateData.firstName = firstName.trim();
+        if (lastName) updateData.lastName = lastName.trim();
+        
+        if (user) {
+          // Update existing user
+          await mongoService.updateUser(normalizedEmail, updateData);
+          user = await mongoService.findUser(normalizedEmail);
+        } else {
+          // Create new user in MongoDB
+          user = await mongoService.createUser({
+            username: displayName,
+            firstName: firstName ? firstName.trim() : undefined,
+            lastName: lastName ? lastName.trim() : undefined,
+            email: normalizedEmail,
+            password: '', // No password for Firebase users
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            isActive: true,
+            emailVerified: tokenInfo.email_verified || false,
+            provider: 'firebase',
+            firebaseUid: tokenInfo.sub,
+          });
+        }
+
+        // Generate JWT token
+        const token = authService.generateToken(user);
+
+        Logger.success(`✅ Firebase user synced to MongoDB: ${normalizedEmail}`);
+
+        sendJson(res, 201, {
+          success: true,
+          user: {
+            id: user._id || user.id,
+            username: user.username,
+            email: user.email,
+            createdAt: user.createdAt,
+          },
+          token,
+        });
+      } catch (error) {
+        Logger.error('Firebase register error:', error.message);
+        sendJson(res, 400, { error: error.message || 'Failed to sync Firebase user' });
+      }
+    });
+    return;
+  }
+
+  // User Registration (Legacy - for backward compatibility)
   if (method === 'POST' && url === '/api/auth/register') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
@@ -449,6 +624,125 @@ const server = http.createServer(async (req, res) => {
       Logger.error('Get user error:', error.message);
       sendJson(res, 500, { error: error.message });
     }
+    return;
+  }
+
+  // Upload profile picture
+  if (method === 'POST' && url === '/api/auth/profile-picture') {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+
+    try {
+      const contentType = req.headers['content-type'] || '';
+      if (!contentType.includes('multipart/form-data')) {
+        sendJson(res, 400, { error: 'Content-Type must be multipart/form-data' });
+        return;
+      }
+
+      const boundary = contentType.split('boundary=')[1];
+      if (!boundary) {
+        sendJson(res, 400, { error: 'Missing boundary in Content-Type' });
+        return;
+      }
+
+      const parts = await parseMultipartFormData(req, boundary);
+      const filePart = parts.find(p => p.filename);
+      
+      if (!filePart) {
+        sendJson(res, 400, { error: 'No file uploaded' });
+        return;
+      }
+
+      // Validate file type (images only)
+      const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+      const mimeType = filePart.contentType || 'image/jpeg';
+      
+      if (!allowedMimeTypes.includes(mimeType.toLowerCase())) {
+        sendJson(res, 400, { 
+          error: `File type not allowed. Allowed types: ${allowedMimeTypes.join(', ')}` 
+        });
+        return;
+      }
+
+      // Validate file size (max 5MB)
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      if (filePart.data.length > maxSize) {
+        sendJson(res, 400, { error: 'File size exceeds 5MB limit' });
+        return;
+      }
+
+      Logger.info(`📤 Processing profile picture upload for user: ${auth.userId} (${(filePart.data.length / 1024).toFixed(2)} KB)`);
+
+      // Upload to GridFS
+      const gridFSService = getGridFSService();
+      const fileName = filePart.filename || `profile_${Date.now()}.jpg`;
+      const imageFileId = await gridFSService.uploadImage(
+        Buffer.from(filePart.data),
+        fileName,
+        mimeType,
+        { userId: auth.userId, type: 'profile-picture' }
+      );
+
+      // Build image URL
+      const baseUrl = process.env.PUBLIC_BACKEND_URL || `http://localhost:${port}`;
+      const imageUrl = `${baseUrl}/api/images/${imageFileId}`;
+
+      // Update user profile picture in database
+      await mongoService.updateUserProfilePicture(auth.userId, imageFileId, imageUrl);
+
+      Logger.success(`✅ Profile picture uploaded: ${imageFileId}`);
+
+      sendJson(res, 200, {
+        success: true,
+        message: 'Profile picture uploaded successfully',
+        imageFileId,
+        imageUrl
+      });
+    } catch (error) {
+      Logger.error('Profile picture upload error:', error);
+      sendJson(res, 500, { error: error.message || 'Failed to upload profile picture' });
+    }
+    return;
+  }
+
+  // Change password
+  if (method === 'POST' && url === '/api/auth/change-password') {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+
+    if (auth.isAdmin) {
+      sendJson(res, 400, { error: 'Password changes are not supported for admin tokens' });
+      return;
+    }
+
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { currentPassword, newPassword } = JSON.parse(body || '{}');
+        const result = await authService.changePassword(auth.userId, currentPassword, newPassword);
+        sendJson(res, 200, result);
+      } catch (error) {
+        Logger.error('Change password error:', error.message || error);
+        sendJson(res, 400, { error: error.message || 'Failed to change password' });
+      }
+    });
     return;
   }
 
@@ -771,6 +1065,17 @@ const server = http.createServer(async (req, res) => {
         const prompt = json.prompt || json.message || '';
         const userType = json.userType || null; // 'student' or 'faculty' or null
         if (!prompt.trim()) { sendJson(res, 400, { error: 'prompt required' }); return; }
+
+        const sessionId = conversationService.getSessionId(req);
+        if (isConversationResetRequest(prompt)) {
+          conversationService.clearConversation(sessionId);
+          sendJson(res, 200, {
+            reply: 'Conversation context cleared. Feel free to start with a new question.',
+            source: 'system',
+            conversationCleared: true
+          });
+          return;
+        }
         
         // Try to get userId from auth token (optional - chat can work without auth)
         let userId = null;
@@ -1129,6 +1434,7 @@ const server = http.createServer(async (req, res) => {
         
         // Analyze query complexity and intent (using corrected query)
         const queryAnalysis = QueryAnalyzer.analyzeComplexity(processedPrompt);
+        queryAnalysis.originalQuery = processedPrompt;
         
         // Check if query is vague and needs clarification
         if (queryAnalysis.isVague && queryAnalysis.needsClarification) {
@@ -1145,11 +1451,20 @@ const server = http.createServer(async (req, res) => {
         Logger.info(`${intentIcon} Conversational Intent: ${intentClassification.conversationalIntent} (${intentClassification.conversationalConfidence}% confidence)`);
         
         // Conversation context for follow-ups
-        const sessionId = conversationService.getSessionId(req);
         const conversationContext = conversationService.getContext(sessionId);
         
         if (queryAnalysis.isFollowUp && conversationContext) {
           processedPrompt = conversationService.resolvePronouns(processedPrompt, conversationContext);
+        }
+
+        if (queryAnalysis.needsClarification) {
+          const clarificationMessage = buildClarificationMessage(queryAnalysis);
+          sendJson(res, 200, {
+            reply: clarificationMessage,
+            source: 'guardrail',
+            requiresClarification: true
+          });
+          return;
         }
         
         const options = {
@@ -1273,7 +1588,8 @@ const server = http.createServer(async (req, res) => {
             ragTokens,
             ragSections,
             false, // suggestMore
-            scheduleService // Pass scheduleService for calendar event retrieval
+            scheduleService, // Pass scheduleService for calendar event retrieval
+            userType
           );
           Logger.info(`📊 RAG: ${ragSections} sections, ${relevantContext.length} chars ${retrievalType}`);
           
@@ -1510,11 +1826,13 @@ const server = http.createServer(async (req, res) => {
               
               if (events && events.length > 0) {
                 // Helper function to format date concisely (e.g., "Jan 11" or "Jan 11 - Jan 15")
+                // CRITICAL: Use Philippine timezone to prevent date shifts (e.g., Dec 1 -> Nov 30)
                 const formatDateConcise = (date) => {
                   if (!date) return 'Date TBD';
                   const d = new Date(date);
-                  const month = d.toLocaleDateString('en-US', { month: 'short' });
-                  const day = d.getDate();
+                  // Use timezone-aware formatting to ensure correct date in Philippine timezone
+                  const month = formatDateInTimezone(d, { month: 'short' });
+                  const day = formatDateInTimezone(d, { day: 'numeric' });
                   return `${month} ${day}`;
                 };
                 
@@ -1560,13 +1878,15 @@ const server = http.createServer(async (req, res) => {
                     if (eventGroup.length === 1) {
                       const start = formatDateConcise(startDate);
                       const end = formatDateConcise(endDate);
-                      const year = new Date(startDate).getFullYear();
+                      // CRITICAL: Use timezone-aware year to prevent date shifts
+                      const year = formatDateInTimezone(new Date(startDate), { year: 'numeric' });
                       eventInfo += `  📅 Date: ${start} - ${end}, ${year}\n`;
                     } else {
                       // Multiple ranges - show first and last
                       const firstStart = formatDateConcise(startDate);
                       const lastEnd = formatDateConcise(endDate);
-                      const year = new Date(startDate).getFullYear();
+                      // CRITICAL: Use timezone-aware year to prevent date shifts
+                      const year = formatDateInTimezone(new Date(startDate), { year: 'numeric' });
                       eventInfo += `  📅 Dates: ${firstStart} - ${lastEnd}, ${year}\n`;
                     }
                   } else {
@@ -1585,11 +1905,12 @@ const server = http.createServer(async (req, res) => {
                     if (dates.length > 0) {
                       // Remove duplicates and format
                       const uniqueDates = [...new Set(dates)];
+                      // CRITICAL: Use timezone-aware year to prevent date shifts
                       const year = eventGroup[0].isoDate || eventGroup[0].date 
-                        ? new Date(eventGroup[0].isoDate || eventGroup[0].date).getFullYear()
+                        ? formatDateInTimezone(new Date(eventGroup[0].isoDate || eventGroup[0].date), { year: 'numeric' })
                         : eventGroup[0].startDate 
-                          ? new Date(eventGroup[0].startDate).getFullYear()
-                          : new Date().getFullYear();
+                          ? formatDateInTimezone(new Date(eventGroup[0].startDate), { year: 'numeric' })
+                          : formatDateInTimezone(new Date(), { year: 'numeric' });
                       
                       if (uniqueDates.length === 1) {
                         eventInfo += `  📅 Date: ${uniqueDates[0]}, ${year}\n`;
@@ -1657,9 +1978,10 @@ const server = http.createServer(async (req, res) => {
                   
                   if (post.date) {
                     const postDate = new Date(post.date);
-                    const month = postDate.toLocaleDateString('en-US', { month: 'short' });
-                    const day = postDate.getDate();
-                    const year = postDate.getFullYear();
+                    // CRITICAL: Use timezone-aware formatting to prevent date shifts
+                    const month = formatDateInTimezone(postDate, { month: 'short' });
+                    const day = formatDateInTimezone(postDate, { day: 'numeric' });
+                    const year = formatDateInTimezone(postDate, { year: 'numeric' });
                     postText += `  📅 Date: ${month} ${day}, ${year}\n`;
                   }
                   
@@ -1707,11 +2029,14 @@ const server = http.createServer(async (req, res) => {
                   });
                   
                   if (events && events.length > 0) {
+                    // Helper function to format date concisely (e.g., "Jan 11" or "Jan 11 - Jan 15")
+                    // CRITICAL: Use Philippine timezone to prevent date shifts (e.g., Dec 1 -> Nov 30)
                     const formatDateConcise = (date) => {
                       if (!date) return 'Date TBD';
                       const d = new Date(date);
-                      const month = d.toLocaleDateString('en-US', { month: 'short' });
-                      const day = d.getDate();
+                      // Use timezone-aware formatting to ensure correct date in Philippine timezone
+                      const month = formatDateInTimezone(d, { month: 'short' });
+                      const day = formatDateInTimezone(d, { day: 'numeric' });
                       return `${month} ${day}`;
                     };
                     
@@ -1719,9 +2044,10 @@ const server = http.createServer(async (req, res) => {
                       let eventText = `- **${event.title || 'Untitled Event'}**\n`;
                       if (event.isoDate || event.date) {
                         const eventDate = new Date(event.isoDate || event.date);
-                        const month = eventDate.toLocaleDateString('en-US', { month: 'short' });
-                        const day = eventDate.getDate();
-                        const year = eventDate.getFullYear();
+                        // CRITICAL: Use timezone-aware formatting to prevent date shifts
+                        const month = formatDateInTimezone(eventDate, { month: 'short' });
+                        const day = formatDateInTimezone(eventDate, { day: 'numeric' });
+                        const year = formatDateInTimezone(eventDate, { year: 'numeric' });
                         eventText += `  📅 Date: ${month} ${day}, ${year}\n`;
                       }
                       if (event.category) eventText += `  🏷️ Category: ${event.category}\n`;
@@ -2114,10 +2440,12 @@ const server = http.createServer(async (req, res) => {
   sendJson(res, 404, { error: 'Not found' });
 });
 
-server.listen(port, '0.0.0.0', () => {
-  Logger.success(`Server: http://localhost:${port}`);
-  Logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  server.listen(port, '0.0.0.0', () => {
+    Logger.success(`Server: http://localhost:${port}`);
+    Logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  });
+}
 
 // ===== HELPER FUNCTIONS =====
 
@@ -2137,94 +2465,5 @@ function getConversationalIntentIcon(intentType) {
     small_talk: '💬'
   };
   return icons[intentType] || '💬';
-}
-
-/**
- * Build news context - scrapes on-demand and returns formatted news
- */
-async function buildNewsContext(shouldIncludeNews, isDateSpecific, newsService) {
-  if (!shouldIncludeNews || !newsService) {
-    return { newsContext: '', newsInstruction: '' };
-  }
-  
-  try {
-    // Scrape news fresh on-demand (sorted by date, newest first)
-    const newsCount = isDateSpecific ? 10 : 3;
-    const news = await newsService.getLatestNews(newsCount);
-    
-    if (!news || news.length === 0) {
-      Logger.warn('📰 No news items found after scraping');
-      return { 
-        newsContext: '', 
-        newsInstruction: '\n⚠️ Note: No recent news was found. Inform the user that no news items are available at this time.' 
-      };
-    }
-    
-    // Format news with proper structure including links
-    let newsContext = '\n\n=== LATEST DORSU NEWS & UPDATES (SCRAPED ON-DEMAND) ===\n';
-    news.forEach((item, index) => {
-      newsContext += `\n${index + 1}. **${item.title}**\n`;
-      newsContext += `   📅 Date: ${item.date}\n`;
-      if (item.excerpt && item.excerpt !== 'Click to read more') {
-        newsContext += `   📄 ${item.excerpt}\n`;
-      }
-      newsContext += `   🔗 Link: ${item.link}\n`;
-    });
-    newsContext += '\n=== END OF NEWS ===\n';
-    
-    const newsInstruction = isDateSpecific ? 
-      '\n\n📰 NEWS RESPONSE FORMATTING (MANDATORY):\n' +
-      '• Format the news response as a numbered list (1, 2, 3, etc.)\n' +
-      '• For each news item, include:\n' +
-      '  - Bold title on the first line\n' +
-      '  - Date on the second line with 📅 emoji\n' +
-      '  - Excerpt/description if available (third line)\n' +
-      '  - Clickable link with 🔗 emoji and the FULL URL\n' +
-      '• Make links clickable using markdown format: [Link Text](URL)\n' +
-      '• At the end, inform users they can ask for summaries: "Would you like me to summarize any of these news items? Just say summarize news 1 or tell me about news 2!"\n' +
-      '• Example format:\n' +
-      '  1. **News Title**\n' +
-      '     📅 Date: January 15, 2025\n' +
-      '     This is the news excerpt or description.\n' +
-      '     🔗 Link: [Read more](https://dorsu.edu.ph/news/article/)\n\n' :
-      '\n\n📰 NEWS RESPONSE FORMATTING (MANDATORY):\n' +
-      '• User asked for latest news - show exactly 3 latest posts based on date\n' +
-      '• Format each news item as follows:\n' +
-      '  1. **Bold Title** (first line)\n' +
-      '     📅 Date: [Date] (second line)\n' +
-      '     [Excerpt/description if available] (third line)\n' +
-      '     🔗 Link: [Read full article](URL) (fourth line with clickable markdown link)\n' +
-      '• Number the news items: 1, 2, 3\n' +
-      '• Use proper spacing between items\n' +
-      '• Make sure all links are clickable using markdown: [text](URL)\n' +
-      '• Include the FULL URL from the knowledge base chunks\n' +
-      '• Start your response with a friendly intro like: "Here are the 3 latest news from DOrSU:"\n' +
-      '• After listing the news, add: "Would you like me to summarize any of these news items? Just say summarize news 1 or tell me about news 2!"\n' +
-      '• Example:\n' +
-      '  Here are the 3 latest news from DOrSU:\n\n' +
-      '  1. **Annual Research Conference 2025**\n' +
-      '     📅 Date: January 20, 2025\n' +
-      '     DOrSU announces the annual research conference.\n' +
-      '     🔗 Link: [Read full article](https://dorsu.edu.ph/news/annual-research-conference-2025/)\n\n' +
-      '  2. **New Academic Programs Offered**\n' +
-      '     📅 Date: January 15, 2025\n' +
-      '     The university introduces new programs for 2025.\n' +
-      '     🔗 Link: [Read full article](https://dorsu.edu.ph/news/new-academic-programs/)\n\n' +
-      '  3. **Enrollment Schedule Released**\n' +
-      '     📅 Date: January 10, 2025\n' +
-      '     Enrollment dates and requirements are now available.\n' +
-      '     🔗 Link: [Read full article](https://dorsu.edu.ph/news/enrollment-schedule-2025/)\n\n' +
-      '  Would you like me to summarize any of these news items? Just say summarize news 1 or tell me about news 2!\n\n';
-    
-    Logger.info(`📰 Including ${news.length} latest news items in response (scraped on-demand, sorted by date)`);
-    
-    return { newsContext, newsInstruction };
-  } catch (error) {
-    Logger.error('Failed to scrape news on-demand:', error.message);
-    return { 
-      newsContext: '', 
-      newsInstruction: '\n⚠️ Note: Unable to fetch news at this time. Inform the user that news scraping failed.' 
-    };
-  }
 }
 

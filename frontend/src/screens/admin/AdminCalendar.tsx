@@ -9,7 +9,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
@@ -55,23 +55,65 @@ const formatEventTitle = (raw?: string) => {
 const getCellColor = (events: any[]): string | null => {
   if (!events || events.length === 0) return null;
   
-  // Check for Institutional events (blue)
+  // Priority order: Institutional > Academic > Event > News > Announcement
   const hasInstitutional = events.some(e => {
     const type = String(e.type || e.category || '').toLowerCase();
     return type === 'institutional';
   });
   
-  // Check for Academic events (green)
   const hasAcademic = events.some(e => {
     const type = String(e.type || e.category || '').toLowerCase();
     return type === 'academic';
   });
   
-  // Priority: Institutional (blue) > Academic (green)
+  const hasEvent = events.some(e => {
+    const type = String(e.type || e.category || '').toLowerCase();
+    return type === 'event';
+  });
+  
+  const hasNews = events.some(e => {
+    const type = String(e.type || e.category || '').toLowerCase();
+    return type === 'news';
+  });
+  
+  const hasAnnouncement = events.some(e => {
+    const type = String(e.type || e.category || '').toLowerCase();
+    return type === 'announcement';
+  });
+  
+  // Return color based on priority
   if (hasInstitutional) return '#2563EB'; // Blue
   if (hasAcademic) return '#10B981'; // Green
+  if (hasEvent) return '#D97706'; // Orange
+  if (hasNews) return '#8B5CF6'; // Purple
+  if (hasAnnouncement) return '#1A3E7A'; // Dark Blue
+  
+  // Fallback: use first event's category color
+  const firstEvent = events[0];
+  if (firstEvent) {
+    const colors = categoryToColors(firstEvent.type || firstEvent.category);
+    return colors.cellColor || null;
+  }
   
   return null;
+};
+
+const buildDateRange = (startISO?: string, endISO?: string) => {
+  const dates: Date[] = [];
+  if (!startISO || !endISO) return dates;
+  const start = new Date(startISO);
+  const end = new Date(endISO);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return dates;
+  }
+  const current = new Date(start);
+  current.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  while (current <= end) {
+    dates.push(new Date(current));
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
 };
 
 
@@ -147,22 +189,29 @@ const AdminCalendar = () => {
   const deleteAllModalSlideAnim = useRef(new Animated.Value(0)).current;
   const deleteAllModalBackdropOpacity = useRef(new Animated.Value(0)).current;
   
-  // Event type filter - single selection: 'institutional' or 'academic'
-  const [selectedEventType, setSelectedEventType] = useState<'institutional' | 'academic'>('institutional');
+  // Legend filter state - null means show all types, otherwise show only selected type
+  const [selectedLegendType, setSelectedLegendType] = useState<string | null>(null);
   
-  // Event time range filter - 'allYear' or 'byMonth'
-  const [eventTimeRange, setEventTimeRange] = useState<'allYear' | 'byMonth'>('byMonth');
-  const [showTimeRangeDropdown, setShowTimeRangeDropdown] = useState(false);
+  // Get selected content types based on legend selection - memoized as Set for fast lookups
+  const selectedContentTypesSet = React.useMemo(() => {
+    const types = selectedLegendType 
+      ? [selectedLegendType] 
+      : ['academic', 'institutional', 'event', 'announcement', 'news'];
+    return new Set(types.map(t => t.toLowerCase()));
+  }, [selectedLegendType]);
+  
+  // Keep array version for backward compatibility with existing code
+  const selectedContentTypes = React.useMemo(() => {
+    return selectedLegendType 
+      ? [selectedLegendType] 
+      : ['academic', 'institutional', 'event', 'announcement', 'news'];
+  }, [selectedLegendType]);
   
   // Animation values
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
   const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
   const listAnim = useRef(new Animated.Value(0)).current;
   const dotScale = useRef(new Animated.Value(0.8)).current;
-  
-  // Derived filter states for compatibility with existing code
-  const showInstitutional = selectedEventType === 'institutional';
-  const showAcademic = selectedEventType === 'academic';
 
   const getUserInitials = () => {
     if (!currentUser?.displayName) return '?';
@@ -243,6 +292,93 @@ const AdminCalendar = () => {
   const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
   const [isUploadingCSV, setIsUploadingCSV] = useState<boolean>(false);
   
+  const postsForCalendar = useMemo(() => {
+    if (!Array.isArray(posts)) return [];
+    return posts.filter(post => {
+      if (post.source === 'CSV Upload') return false;
+      const postType = String(post.category || 'Announcement').toLowerCase();
+      return selectedContentTypesSet.has(postType);
+    });
+  }, [posts, selectedContentTypesSet]);
+
+  const calendarEventsForCalendar = useMemo(() => {
+    if (!Array.isArray(calendarEvents)) return [];
+    return calendarEvents.filter(event => {
+      const eventType = String(event.category || 'Announcement').toLowerCase();
+      return selectedContentTypesSet.has(eventType);
+    });
+  }, [calendarEvents, selectedContentTypesSet]);
+
+  const { eventsByDateMap, monthEventCountMap } = useMemo(() => {
+    const dateMap = new Map<string, any[]>();
+    const monthMap = new Map<string, number>();
+
+    const incrementMonth = (dateObj: Date) => {
+      if (!dateObj || Number.isNaN(dateObj.getTime())) return;
+      const key = `${dateObj.getFullYear()}-${dateObj.getMonth() + 1}`;
+      monthMap.set(key, (monthMap.get(key) || 0) + 1);
+    };
+
+    const addEventInstance = (dateObj: Date, payload: any) => {
+      if (!dateObj || Number.isNaN(dateObj.getTime())) return;
+      const key = formatDateKey(dateObj);
+      if (!dateMap.has(key)) {
+        dateMap.set(key, []);
+      }
+      dateMap.get(key)!.push(payload);
+      incrementMonth(dateObj);
+    };
+
+    postsForCalendar.forEach(post => {
+      const dateObj = new Date(post.isoDate || post.date);
+      if (Number.isNaN(dateObj.getTime())) return;
+      const payload = {
+        id: post.id,
+        title: post.title,
+        dateKey: formatDateKey(dateObj),
+        time: post.time || '',
+        type: post.category || 'Announcement',
+        color: categoryToColors(post.category).dot,
+        chip: categoryToColors(post.category),
+        description: post.description,
+        isPinned: post.isPinned,
+        isUrgent: post.isUrgent,
+        source: 'post',
+      };
+      addEventInstance(dateObj, payload);
+    });
+
+    calendarEventsForCalendar.forEach(event => {
+      const payload = {
+        ...event,
+        id: event._id || `calendar-${event.isoDate || event.startDate}-${event.title}`,
+        type: event.category || 'Announcement',
+        color: categoryToColors(event.category).dot,
+        chip: categoryToColors(event.category),
+        source: 'calendar',
+      };
+
+      if (event.dateType === 'week' || event.dateType === 'month') {
+        if (event.year && event.month) {
+          const placeholder = new Date(event.year, event.month - 1, 1);
+          incrementMonth(placeholder);
+        }
+        return;
+      }
+
+      if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+        const rangeDates = buildDateRange(event.startDate, event.endDate);
+        rangeDates.forEach(dateObj => addEventInstance(dateObj, payload));
+      } else {
+        const fallbackDate = event.isoDate || event.date || event.startDate;
+        const dateObj = fallbackDate ? new Date(fallbackDate) : new Date(NaN);
+        addEventInstance(dateObj, payload);
+      }
+    });
+
+    return { eventsByDateMap: dateMap, monthEventCountMap: monthMap };
+  }, [postsForCalendar, calendarEventsForCalendar]);
+
   // Calculate min/max years from events and posts to dynamically adjust calendar range
   const eventYearRange = React.useMemo(() => {
     const years = new Set<number>();
@@ -310,7 +446,7 @@ const AdminCalendar = () => {
     }
   }, []);
 
-  // Load calendar events and posts from backend - load all events (or wide range)
+  // Load calendar events and posts from backend
   // Refresh when screen comes into focus to show newly created posts/events
   useFocusEffect(
     useCallback(() => {
@@ -318,6 +454,7 @@ const AdminCalendar = () => {
       const loadData = async () => {
         try {
           setIsLoadingEvents(true);
+          setIsLoadingPosts(true);
           // Load events for a wide range (2020-2030) to cover all possible dates
           // This ensures we get all events regardless of year
           const startDate = new Date(2020, 0, 1).toISOString(); // January 1, 2020
@@ -452,6 +589,12 @@ const AdminCalendar = () => {
     });
   };
 
+  // Single tap handler for month/year
+  const handleMonthYearTap = useCallback(() => {
+    openMonthPicker();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [openMonthPicker]);
+
   const transformPostToEvent = (p: any) => ({
     id: p.id,
     title: p.title,
@@ -464,95 +607,10 @@ const AdminCalendar = () => {
     isUrgent: !!p.isUrgent,
   });
 
-  const getEventsForDate = React.useCallback((date: Date) => {
+  const getEventsForDate = useCallback((date: Date) => {
     const key = formatDateKey(date);
-    const events: any[] = [];
-    
-    // Add posts/announcements from AdminDataService
-    if (Array.isArray(posts)) {
-      posts.forEach(p => {
-        // Only include posts that are NOT from CSV uploads (to avoid duplicates)
-        if (p.source !== 'CSV Upload') {
-          const eventDateKey = parseAnyDateToKey(p.isoDate || p.date);
-          if (eventDateKey === key) {
-            events.push({
-              id: p.id,
-              title: p.title,
-              dateKey: eventDateKey,
-              time: p.time || '',
-              type: p.category || 'Announcement',
-              color: categoryToColors(p.category).dot,
-              chip: categoryToColors(p.category),
-              description: p.description,
-              isPinned: p.isPinned,
-              isUrgent: p.isUrgent,
-              source: 'post', // Mark as post to distinguish from calendar events
-            });
-          }
-        }
-      });
-    }
-    
-    // Add events from CalendarService (backend calendar events)
-    if (Array.isArray(calendarEvents)) {
-      calendarEvents.forEach(event => {
-        // Skip week/month-only events for calendar grid (they only show in All tab)
-        if (event.dateType === 'week' || event.dateType === 'month') {
-          return;
-        }
-        
-        // Handle date ranges - check if date falls within range
-        if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-          const startDate = new Date(event.startDate);
-          const endDate = new Date(event.endDate);
-          const checkDate = new Date(date);
-          
-          // Normalize to start of day for comparison
-          startDate.setHours(0, 0, 0, 0);
-          endDate.setHours(0, 0, 0, 0);
-          checkDate.setHours(0, 0, 0, 0);
-          
-          if (checkDate >= startDate && checkDate <= endDate) {
-            events.push({
-              id: event._id || `calendar-${event.isoDate}-${event.title}`,
-              title: event.title,
-              dateKey: key,
-              time: event.time || 'All Day',
-              type: event.category || 'Announcement',
-              color: categoryToColors(event.category).dot,
-              chip: categoryToColors(event.category),
-              dateType: event.dateType,
-              category: event.category,
-              description: event.description,
-              startDate: event.startDate,
-              endDate: event.endDate,
-            });
-          }
-        } else {
-          // Single date event
-          const eventDateKey = parseAnyDateToKey(event.isoDate || event.date);
-          if (eventDateKey === key) {
-            events.push({
-              id: event._id || `calendar-${event.isoDate}-${event.title}`,
-              title: event.title,
-              dateKey: eventDateKey,
-              time: event.time || 'All Day',
-              type: event.category || 'Announcement',
-              color: categoryToColors(event.category).dot,
-              chip: categoryToColors(event.category),
-              dateType: event.dateType,
-              category: event.category,
-              description: event.description,
-              startDate: event.startDate,
-              endDate: event.endDate,
-            });
-          }
-        }
-      });
-    }
-    
-    return events;
-  }, [posts, calendarEvents]); // Only recompute when posts or calendarEvents change
+    return eventsByDateMap.get(key) || [];
+  }, [eventsByDateMap]);
 
   const isToday = (date: Date) => {
     return getPHDateKey(date, PH_TZ) === getPHDateKey(new Date(), PH_TZ);
@@ -667,93 +725,37 @@ const AdminCalendar = () => {
   }, [deleteAllModalSlideAnim, deleteAllModalBackdropOpacity]);
 
   const getAllEventsGrouped = React.useCallback(() => {
-    if (!Array.isArray(calendarEvents) && !Array.isArray(posts)) return [];
+    if (!Array.isArray(calendarEventsForCalendar) && !Array.isArray(postsForCalendar)) return [];
     
     const all: any[] = [];
     
-    // Get current month and year for filtering
-    const currentYear = currentMonth.getUTCFullYear();
-    const currentMonthIndex = currentMonth.getUTCMonth() + 1; // 1-12
-    
     // Add posts/announcements from AdminDataService
-    if (Array.isArray(posts)) {
-      posts.forEach((post: any) => {
-        // Only include posts that are NOT from CSV uploads (to avoid duplicates)
-        if (post.source !== 'CSV Upload') {
-          const eventType = String(post.category || 'Announcement').toLowerCase();
-          
-          // Apply filters (posts don't have institutional/academic categories typically, but check anyway)
-          if (!showInstitutional && eventType === 'institutional') return;
-          if (!showAcademic && eventType === 'academic') return;
-          
-          // Filter by current month (only if byMonth mode is selected)
-          if (eventTimeRange === 'byMonth') {
-            const postDate = new Date(post.isoDate || post.date);
-            const isInCurrentMonth = postDate.getUTCFullYear() === currentYear && 
-                                     postDate.getUTCMonth() + 1 === currentMonthIndex;
-            if (!isInCurrentMonth) return;
-          }
-          
-          const eventDateKey = parseAnyDateToKey(post.isoDate || post.date);
-          if (eventDateKey) {
-            const dateObj = new Date(post.isoDate || post.date);
-            all.push({
-              id: post.id,
-              title: post.title,
-              dateKey: eventDateKey,
-              time: post.time || 'All Day',
-              type: post.category || 'Announcement',
-              color: categoryToColors(post.category).dot,
-              chip: categoryToColors(post.category),
-              dateObj: dateObj,
-              year: dateObj.getFullYear(),
-              description: post.description,
-              source: 'post',
-            });
-          }
-        }
-      });
-    }
+    postsForCalendar.forEach((post: any) => {
+      const eventDateKey = parseAnyDateToKey(post.isoDate || post.date);
+      if (eventDateKey) {
+        const dateObj = new Date(post.isoDate || post.date);
+        all.push({
+          id: post.id,
+          title: post.title,
+          dateKey: eventDateKey,
+          time: post.time || 'All Day',
+          type: post.category || 'Announcement',
+          color: categoryToColors(post.category).dot,
+          chip: categoryToColors(post.category),
+          dateObj: dateObj,
+          year: dateObj.getFullYear(),
+          description: post.description,
+          source: 'post',
+        });
+      }
+    });
     
     // Add events from calendarEvents (CalendarService)
     // Use a Set to track date ranges we've already added (to avoid duplicates)
     const dateRangeKeys = new Set<string>();
     
-    if (Array.isArray(calendarEvents)) {
-      calendarEvents.forEach(event => {
-        const eventType = String(event.category || 'Announcement').toLowerCase();
-        
-        // Apply filters
-        if (!showInstitutional && eventType === 'institutional') return;
-        if (!showAcademic && eventType === 'academic') return;
-        
-        // Filter by current month (only if byMonth mode is selected)
-        if (eventTimeRange === 'byMonth') {
-          let isInCurrentMonth = false;
-          
-          if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-            // Check if date range overlaps with current month
-            const startDate = new Date(event.startDate);
-            const endDate = new Date(event.endDate);
-            const monthStart = new Date(Date.UTC(currentYear, currentMonthIndex - 1, 1));
-            const monthEnd = new Date(Date.UTC(currentYear, currentMonthIndex, 0, 23, 59, 59));
-            
-            // Check if range overlaps with current month (compare UTC timestamps)
-            isInCurrentMonth = (startDate.getTime() <= monthEnd.getTime() && endDate.getTime() >= monthStart.getTime());
-          } else if (event.dateType === 'week' || event.dateType === 'month') {
-            // For week/month events, check if month and year match
-            isInCurrentMonth = event.month === currentMonthIndex && event.year === currentYear;
-          } else {
-            // Single date events - check if date is in current month
-            const eventDate = new Date(event.isoDate || event.date);
-            isInCurrentMonth = eventDate.getUTCFullYear() === currentYear && 
-                              eventDate.getUTCMonth() + 1 === currentMonthIndex;
-          }
-          
-          // Skip events not in current month
-          if (!isInCurrentMonth) return;
-        }
-        
+    if (Array.isArray(calendarEventsForCalendar)) {
+      calendarEventsForCalendar.forEach(event => {
         // For date ranges, use start date as the key and avoid duplicates
         let eventDateKey: string | null = null;
         let dateObj: Date | null = null;
@@ -830,58 +832,11 @@ const AdminCalendar = () => {
       });
     
     return result;
-  }, [calendarEvents, posts, showInstitutional, showAcademic, currentMonth, eventTimeRange]); // Only recompute when calendarEvents, posts, filters, currentMonth, or eventTimeRange change
-  
-  const groupedEvents = React.useMemo(() => getAllEventsGrouped(), [getAllEventsGrouped]);
+  }, [calendarEventsForCalendar, postsForCalendar]); // Only recompute when filtered data changes
 
   const getMonthEventCount = (dateRef: Date) => {
-    const y = dateRef.getFullYear();
-    const m = dateRef.getMonth() + 1;
-    
-    let count = 0;
-    
-    // Count events from posts (AdminDataService)
-    count += posts
-      .filter(p => p.source !== 'CSV Upload')
-      .reduce((acc, p) => {
-        const key = parseAnyDateToKey(p.isoDate || p.date);
-        if (!key) return acc;
-        const [yy, mm] = key.split('-');
-        return acc + ((Number(yy) === y && Number(mm) === m) ? 1 : 0);
-      }, 0);
-    
-    // Count events from calendarEvents (CalendarService)
-    // For date ranges, count if any date in range falls in the month
-    // For week/month-only events, count if the month matches
-    count += calendarEvents.reduce((acc, event) => {
-      // Skip week/month-only events for calendar grid count
-      if (event.dateType === 'week' || event.dateType === 'month') {
-        // Only count if month matches
-        if (event.month === m && event.year === y) {
-          return acc + 1;
-        }
-        return acc;
-      }
-      
-      if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-        const startDate = new Date(event.startDate);
-        const endDate = new Date(event.endDate);
-        // Check if range overlaps with the month
-        const monthStart = new Date(y, m - 1, 1);
-        const monthEnd = new Date(y, m, 0);
-        if (startDate <= monthEnd && endDate >= monthStart) {
-          return acc + 1;
-        }
-        return acc;
-      }
-      
-      const key = parseAnyDateToKey(event.isoDate || event.date);
-      if (!key) return acc;
-      const [yy, mm] = key.split('-');
-      return acc + ((Number(yy) === y && Number(mm) === m) ? 1 : 0);
-    }, 0);
-    
-    return count;
+    const key = `${dateRef.getFullYear()}-${dateRef.getMonth() + 1}`;
+    return monthEventCountMap.get(key) || 0;
   };
 
   // Track last calendar fetch time
@@ -945,10 +900,15 @@ const AdminCalendar = () => {
 
       const asset = Array.isArray((result as any).assets) ? (result as any).assets[0] : (result as any);
       const fileName = asset.name || 'unknown';
-      const fileUri = asset.uri;
+      const fileUri = asset?.fileCopyUri || asset?.uri;
 
       if (!fileName.toLowerCase().endsWith('.csv')) {
         Alert.alert('Invalid File', 'Please select a CSV file');
+        return;
+      }
+
+      if (!fileUri) {
+        Alert.alert('File Unavailable', 'Unable to access the selected CSV file. Please try selecting it again.');
         return;
       }
 
@@ -969,28 +929,24 @@ const AdminCalendar = () => {
       const totalEvents = eventsAdded + eventsUpdated;
       
       Alert.alert(
-        'Upload Successful',
-        `File uploaded successfully!\n\n${eventsAdded} new event${eventsAdded !== 1 ? 's' : ''} added.\n${eventsUpdated} event${eventsUpdated !== 1 ? 's' : ''} updated.\n\nTotal: ${totalEvents} event${totalEvents !== 1 ? 's' : ''} processed.\n\nThe calendar has been refreshed.`,
+        'CSV Successfully Uploaded!',
+        `CSV successfully uploaded!\n\n${eventsAdded} new event${eventsAdded !== 1 ? 's' : ''} added.\n${eventsUpdated} event${eventsUpdated !== 1 ? 's' : ''} updated.\n\nTotal: ${totalEvents} event${totalEvents !== 1 ? 's' : ''} processed.\n\nThe calendar has been refreshed.`,
         [{ text: 'OK' }]
       );
     } catch (error: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       const errorMessage = error.message || 'Failed to upload CSV file';
-      let displayMessage = 'Upload Failed - Wrong Format';
-      let alertTitle = 'Upload Failed';
+      let displayMessage = 'CSV failed to upload. Please check your CSV file format and try again.';
+      let alertTitle = 'CSV Failed to Upload';
       
       if (errorMessage.includes('must contain at least 3')) {
-        displayMessage = 'Your CSV must contain at least 3 of the required fields:\n\n• Type (Institutional or Academic)\n• Event (Required)\n• DateType\n• StartDate\n• EndDate\n• Year\n• Month\n• WeekOfMonth\n• Description';
-        alertTitle = 'Upload Failed - Wrong Format';
+        displayMessage = 'CSV failed to upload.\n\nYour CSV must contain at least 3 of the required fields:\n\n• Type (Institutional or Academic)\n• Event (Required)\n• DateType\n• StartDate\n• EndDate\n• Year\n• Month\n• WeekOfMonth\n• Description';
       } else if (errorMessage.includes('must contain "Event"')) {
-        displayMessage = 'Your CSV must contain an "Event" column (or "Title"/"Name").\n\nThe Event field is required.';
-        alertTitle = 'Upload Failed - Missing Event Field';
+        displayMessage = 'CSV failed to upload.\n\nYour CSV must contain an "Event" column (or "Title"/"Name"). The Event field is required.';
       } else if (errorMessage.includes('HTTP error')) {
-        displayMessage = 'Failed to connect to the server. Please check your internet connection and try again.';
-        alertTitle = 'Upload Failed - Connection Error';
+        displayMessage = 'CSV failed to upload.\n\nFailed to connect to the server. Please check your internet connection and try again.';
       } else {
-        displayMessage = `Upload failed: ${errorMessage}\n\nPlease check your CSV file format and try again.`;
-        alertTitle = 'Upload Failed';
+        displayMessage = `CSV failed to upload.\n\n${errorMessage}\nPlease check your CSV file format and try again.`;
       }
       
       Alert.alert(alertTitle, displayMessage);
@@ -1076,16 +1032,16 @@ const AdminCalendar = () => {
           styles.calendarDay,
           { 
             backgroundColor: cellColor || theme.colors.card,
-            // Selected day: orange border around entire cell (2px)
+            // Selected day: blue border around entire cell (2px)
             // Non-selected: normal grid borders (hairline)
             borderTopWidth: isSelected ? 2 : 0,
-            borderTopColor: isSelected ? '#FF9500' : 'transparent',
+            borderTopColor: isSelected ? theme.colors.accent : 'transparent',
             borderLeftWidth: isSelected ? 2 : 0,
-            borderLeftColor: isSelected ? '#FF9500' : 'transparent',
+            borderLeftColor: isSelected ? theme.colors.accent : 'transparent',
             borderRightWidth: isLastColumn ? (isSelected ? 2 : 0) : (isSelected ? 2 : StyleSheet.hairlineWidth),
-            borderRightColor: isSelected ? '#FF9500' : theme.colors.border,
+            borderRightColor: isSelected ? theme.colors.accent : theme.colors.border,
             borderBottomWidth: isSelected ? 2 : StyleSheet.hairlineWidth,
-            borderBottomColor: isSelected ? '#FF9500' : theme.colors.border,
+            borderBottomColor: isSelected ? theme.colors.accent : theme.colors.border,
             opacity: cellColor ? 0.85 : 1,
           }
         ]}
@@ -1097,7 +1053,7 @@ const AdminCalendar = () => {
           <View style={[
             styles.dayNumberContainer,
             isCurrentDay && styles.todayContainer,
-            isCurrentDay && { backgroundColor: '#FF9500' }, // Always orange for current day
+            isCurrentDay && { backgroundColor: theme.colors.accent }, // Theme color for current day
             !isCurrentDay && cellColor && { backgroundColor: cellColor }, // Only apply cell color if not current day
           ]}>
             <Text
@@ -1106,7 +1062,8 @@ const AdminCalendar = () => {
               accessibilityHint={hasEvents ? "Tap to view events for this date" : "Selects this date"}
               style={[
                 styles.dayNumber,
-                isCurrentDay && { color: '#FFFFFF', fontWeight: '700' }, // White text for current day (orange background)
+                { fontSize: theme.fontSize.scaleSize(12) },
+                isCurrentDay && { color: '#FFFFFF', fontWeight: '700' }, // White text for current day (blue background)
                 !isCurrentDay && { color: cellColor ? '#FFFFFF' : theme.colors.text }, // White if cell has color, otherwise theme text
                 isCurrentDay && styles.todayText,
                 !isCurrentDay && cellColor && { color: '#FFFFFF', fontWeight: '700' } // White text for colored cells (non-current day)
@@ -1162,8 +1119,14 @@ const AdminCalendar = () => {
 
       {/* Background Gradient - Soft beige (Copilot-style) */}
       <LinearGradient
-        colors={isDarkMode ? ['#1F1F1F', '#2A2A2A', '#1A1A1A'] : ['#FBF8F3', '#F8F5F0', '#F5F2ED']}
+        colors={[
+          isDarkMode ? '#0B1220' : '#FBF8F3',
+          isDarkMode ? '#111827' : '#F8F5F0',
+          isDarkMode ? '#1F2937' : '#F5F2ED'
+        ]}
         style={styles.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
       />
       <BlurView
         intensity={Platform.OS === 'ios' ? 5 : 3}
@@ -1173,7 +1136,7 @@ const AdminCalendar = () => {
 
       {/* Animated Floating Background Orb (Copilot-style) */}
       <View style={styles.floatingBgContainer} pointerEvents="none">
-        {/* Orb 1 - Soft Orange Glow (Center area) */}
+        {/* Orb 1 - Soft Blue Glow (Center area) */}
         <Animated.View
           style={[
             styles.floatingOrbWrapper,
@@ -1206,7 +1169,7 @@ const AdminCalendar = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[t.colors.orbColors.orange1, t.colors.orbColors.orange2, t.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -1230,7 +1193,10 @@ const AdminCalendar = () => {
           <TouchableOpacity 
             onPress={() => setIsSidebarOpen(true)} 
             style={styles.menuButton}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             accessibilityLabel="Open sidebar"
+            accessibilityRole="button"
           >
             <View style={styles.customHamburger} pointerEvents="none">
               <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
@@ -1239,15 +1205,23 @@ const AdminCalendar = () => {
             </View>
           </TouchableOpacity>
         </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>DOrSU Calendar</Text>
+        <Text 
+          style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}
+          pointerEvents="none"
+        >
+          DOrSU Calendar
+        </Text>
         <View style={styles.headerRight}>
           <TouchableOpacity 
             style={styles.profileButton} 
             onPress={() => navigation.navigate('AdminSettings')} 
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             accessibilityLabel="Admin profile - Go to settings"
+            accessibilityRole="button"
           >
-            <View style={[styles.profileIconCircle, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
-              <Text style={styles.profileInitials}>AD</Text>
+            <View style={[styles.profileIconCircle, { backgroundColor: t.colors.accent }]} pointerEvents="none">
+              <Text style={[styles.profileInitials, { fontSize: t.fontSize.scaleSize(13) }]}>AD</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -1267,7 +1241,6 @@ const AdminCalendar = () => {
         bounces={true}
         scrollEventThrottle={16}
       >
-
         {/* Calendar Card - Fixed below header */}
         {/* Animation wrapper removed for debugging */}
         <View>
@@ -1289,20 +1262,20 @@ const AdminCalendar = () => {
                 accessibilityLabel="Previous month"
                 accessibilityHint="Navigate to previous month"
               >
-                <Text style={[styles.angleBrackets, { color: t.colors.textMuted }]}>
+                <Text style={[styles.angleBrackets, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(18) }]}>
                   {'<'}
                 </Text>
               </TouchableOpacity>
               
               <TouchableOpacity
                 style={styles.monthSelectorButton}
-                onPress={navigateToNextMonth}
+                onPress={handleMonthYearTap}
                 activeOpacity={0.7}
                 accessibilityRole="button"
-                accessibilityLabel="Next month"
-                accessibilityHint="Navigate to next month"
+                accessibilityLabel="Open month picker"
+                accessibilityHint="Tap to open month and year picker"
               >
-                <Text style={[styles.monthHeaderText, { color: t.colors.text }]}>
+                <Text style={[styles.monthHeaderText, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>
                   {getMonthName(currentMonth)} {currentMonth.getFullYear()}
                 </Text>
               </TouchableOpacity>
@@ -1315,7 +1288,7 @@ const AdminCalendar = () => {
                 accessibilityLabel="Next month"
                 accessibilityHint="Navigate to next month"
               >
-                <Text style={[styles.angleBrackets, { color: t.colors.textMuted }]}>
+                <Text style={[styles.angleBrackets, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(18) }]}>
                   {'>'}
                 </Text>
               </TouchableOpacity>
@@ -1327,7 +1300,7 @@ const AdminCalendar = () => {
             {weekDays && Array.isArray(weekDays) && weekDays.map((day, index) => (
               <View key={index} style={[styles.weekDayHeader, { borderRightColor: t.colors.border }]}>
                 <Text
-                  style={[styles.weekDayText, { color: t.colors.textMuted }]}
+                  style={[styles.weekDayText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }]}
                   accessibilityElementsHidden={true}
                 >
                   {day}
@@ -1346,8 +1319,123 @@ const AdminCalendar = () => {
               return renderCalendarDay(currentDate || new Date(), day, isCurrentDay, !!isSelectedDay, index);
             })}
           </View>
+
+          {/* Event Type Legend - Inside Calendar Card */}
+          <View style={styles.legendContainer}>
+            <View style={styles.legendHeaderRow}>
+              <Text style={[styles.eventCountText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(11) }]}>
+                {getMonthEventCount(currentMonth)} {getMonthEventCount(currentMonth) === 1 ? 'event' : 'events'} this month
+              </Text>
+            </View>
+            <View style={styles.legendItems}>
+              {[
+                { type: 'Academic', key: 'academic', color: '#10B981' },
+                { type: 'Institutional', key: 'institutional', color: t.colors.accent },
+                { type: 'Event', key: 'event', color: '#F59E0B' },
+                { type: 'Announcement', key: 'announcement', color: '#3B82F6' },
+                { type: 'News', key: 'news', color: '#8B5CF6' },
+              ].map((item) => {
+                const isSelected = selectedLegendType === item.key;
+                return (
+                  <TouchableOpacity
+                    key={item.type}
+                    style={[
+                      styles.legendItem,
+                      isSelected && styles.legendItemSelected,
+                      isSelected && { 
+                        backgroundColor: item.color + '20',
+                        borderColor: item.color
+                      }
+                    ]}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      // Toggle: if already selected, deselect (show all), otherwise select this type
+                      setSelectedLegendType(isSelected ? null : item.key);
+                    }}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${item.type} event type - ${isSelected ? 'selected, tap to show all' : 'tap to filter'}`}
+                  >
+                    <View style={[
+                      styles.legendColorDot,
+                      { backgroundColor: item.color },
+                      isSelected && styles.legendColorDotSelected
+                    ]} />
+                    <Text style={[
+                      styles.legendItemText,
+                      { color: t.colors.text, fontSize: t.fontSize.scaleSize(12) },
+                      isSelected && { fontWeight: '700', color: item.color }
+                    ]}>
+                      {item.type}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
           </BlurView>
         </View>
+
+        {/* Admin Actions Section - Info Icon, Upload CSV & Delete All */}
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 50 : 40}
+          tint={isDarkMode ? 'dark' : 'light'}
+          style={[styles.adminActionsCard, { backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)' }]}
+        >
+          <View style={styles.adminActionsRow}>
+            <TouchableOpacity
+              style={[styles.helpButton, { 
+                backgroundColor: t.colors.surface,
+                borderColor: t.colors.border,
+              }]}
+              onPress={() => {
+                navigation.navigate('CalendarHelp');
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="information-circle-outline" size={16} color={t.colors.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.csvUploadButton, { 
+                backgroundColor: t.colors.surface,
+                borderColor: t.colors.border,
+                opacity: isUploadingCSV ? 0.6 : 1
+              }]}
+              onPress={handleCSVUpload}
+              disabled={isUploadingCSV}
+              activeOpacity={0.7}
+            >
+              {isUploadingCSV ? (
+                <ActivityIndicator size="small" color={t.colors.accent} />
+              ) : (
+                <>
+                  <Ionicons name="cloud-upload-outline" size={14} color={t.colors.accent} />
+                  <Text style={[styles.csvUploadText, { color: t.colors.accent, fontSize: t.fontSize.scaleSize(11) }]}>Upload CSV</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.deleteAllButton, { 
+                backgroundColor: t.colors.surface,
+                borderColor: '#DC2626',
+                opacity: isDeletingAll ? 0.6 : 1
+              }]}
+              onPress={openDeleteAllModal}
+              disabled={isDeletingAll || calendarEvents.length === 0}
+              activeOpacity={0.7}
+            >
+              {isDeletingAll ? (
+                <ActivityIndicator size="small" color="#DC2626" />
+              ) : (
+                <>
+                  <Ionicons name="trash-outline" size={14} color="#DC2626" />
+                  <Text style={[styles.deleteAllText, { color: '#DC2626', fontSize: t.fontSize.scaleSize(11) }]}>Delete All</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </BlurView>
 
         {/* Month Picker Modal */}
         <MonthPickerModal
@@ -1360,346 +1448,6 @@ const AdminCalendar = () => {
           minYear={eventYearRange.min}
           maxYear={eventYearRange.max}
         />
-
-
-        {/* Day Summary removed by request (Events section already shows count) */}
-
-        {/* Events Section - Glassmorphic */}
-        <BlurView
-          intensity={Platform.OS === 'ios' ? 50 : 40}
-          tint={isDarkMode ? 'dark' : 'light'}
-          style={[
-            styles.eventsSection,
-            {
-              backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)'
-            }
-          ]}
-        >
-          <View style={styles.eventsHeader}>
-            {/* Top Row: Events title with help icon | Upload CSV | Delete All */}
-            <View style={styles.eventsHeaderTopRow}>
-              <View style={styles.eventsTitleRow}>
-                <View style={[styles.eventsIconWrap, { borderColor: t.colors.border }]}>
-                  <Ionicons name="calendar-outline" size={14} color={t.colors.accent} />
-                </View>
-                <Text style={[styles.eventsTitle, { color: t.colors.text }]}>Events</Text>
-                <TouchableOpacity 
-                  style={styles.infoIconButton}
-                  onPress={() => {
-                    navigation.navigate('CalendarHelp');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                  accessibilityLabel="Calendar help and information"
-                  activeOpacity={0.7}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Ionicons name="information-circle-outline" size={18} color={t.colors.textMuted} />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.eventsHeaderTopRight}>
-                <TouchableOpacity
-                  style={[styles.csvUploadButton, { 
-                    backgroundColor: t.colors.surface,
-                    borderColor: t.colors.border,
-                    opacity: isUploadingCSV ? 0.6 : 1
-                  }]}
-                  onPress={handleCSVUpload}
-                  disabled={isUploadingCSV}
-                  activeOpacity={0.7}
-                >
-                  {isUploadingCSV ? (
-                    <ActivityIndicator size="small" color={t.colors.accent} />
-                  ) : (
-                    <>
-                      <Ionicons name="cloud-upload-outline" size={14} color={t.colors.accent} />
-                      <Text style={[styles.csvUploadText, { color: t.colors.accent }]}>Upload CSV</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.deleteAllButton, { 
-                    backgroundColor: t.colors.surface,
-                    borderColor: '#DC2626',
-                    opacity: isDeletingAll ? 0.6 : 1
-                  }]}
-                  onPress={openDeleteAllModal}
-                  disabled={isDeletingAll || calendarEvents.length === 0}
-                  activeOpacity={0.7}
-                >
-                  {isDeletingAll ? (
-                    <ActivityIndicator size="small" color="#DC2626" />
-                  ) : (
-                    <>
-                      <Ionicons name="trash-outline" size={14} color="#DC2626" />
-                      <Text style={[styles.deleteAllText, { color: '#DC2626' }]}>Delete All</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-            {/* Bottom Row: Yearly/Monthly Dropdown | Institutional | Academic */}
-            <View style={styles.eventsHeaderBottomRow}>
-              <View style={styles.eventFilterContainer}>
-                <View style={styles.timeRangeDropdownWrapper}>
-                  <TouchableOpacity
-                    style={[
-                      styles.timeRangeDropdownButton,
-                      {
-                        backgroundColor: t.colors.surface,
-                        borderColor: t.colors.border,
-                      }
-                    ]}
-                    onPress={() => {
-                      setShowTimeRangeDropdown(!showTimeRangeDropdown);
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[
-                      styles.timeRangeDropdownText,
-                      { color: t.colors.text }
-                    ]}>
-                      {eventTimeRange === 'allYear' ? 'Yearly' : 'Monthly'}
-                    </Text>
-                    <Ionicons 
-                      name={showTimeRangeDropdown ? 'chevron-up' : 'chevron-down'} 
-                      size={16} 
-                      color={t.colors.textMuted} 
-                    />
-                  </TouchableOpacity>
-                  
-                  {/* Dropdown Options */}
-                  {showTimeRangeDropdown && (
-                    <View style={[styles.timeRangeDropdownOptions, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
-                        <TouchableOpacity
-                          style={[
-                            styles.timeRangeDropdownOption,
-                            { borderBottomColor: t.colors.border },
-                            eventTimeRange === 'allYear' && { backgroundColor: t.colors.surfaceAlt }
-                          ]}
-                          onPress={() => {
-                            setEventTimeRange('allYear');
-                            setShowTimeRangeDropdown(false);
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.timeRangeDropdownOptionText, { color: t.colors.text }]}>Yearly</Text>
-                          {eventTimeRange === 'allYear' && (
-                            <Ionicons name="checkmark" size={16} color="#8B5CF6" />
-                          )}
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[
-                            styles.timeRangeDropdownOption,
-                            eventTimeRange === 'byMonth' && { backgroundColor: t.colors.surfaceAlt }
-                          ]}
-                          onPress={() => {
-                            setEventTimeRange('byMonth');
-                            setShowTimeRangeDropdown(false);
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={[styles.timeRangeDropdownOptionText, { color: t.colors.text }]}>Monthly</Text>
-                          {eventTimeRange === 'byMonth' && (
-                            <Ionicons name="checkmark" size={16} color="#8B5CF6" />
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                  )}
-                </View>
-                <View style={styles.eventTypeToggleContainer}>
-                  <TouchableOpacity
-                    style={[
-                      styles.eventTypeToggleButton,
-                      {
-                        backgroundColor: selectedEventType === 'institutional' ? '#2563EB' : 'transparent',
-                        borderColor: selectedEventType === 'institutional' ? '#2563EB' : t.colors.border,
-                      }
-                    ]}
-                    onPress={() => {
-                      setSelectedEventType('institutional');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[
-                      styles.eventTypeToggleText,
-                      { 
-                        color: selectedEventType === 'institutional' ? '#FFFFFF' : t.colors.textMuted 
-                      }
-                    ]}>
-                      Institutional
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.eventTypeToggleButton,
-                      {
-                        backgroundColor: selectedEventType === 'academic' ? '#10B981' : 'transparent',
-                        borderColor: selectedEventType === 'academic' ? '#10B981' : t.colors.border,
-                      }
-                    ]}
-                    onPress={() => {
-                      setSelectedEventType('academic');
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[
-                      styles.eventTypeToggleText,
-                      { 
-                        color: selectedEventType === 'academic' ? '#FFFFFF' : t.colors.textMuted 
-                      }
-                    ]}>
-                      Academic
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </View>
-          
-          <View style={styles.eventsSubtitleRowEnhanced}>
-            <Text style={[styles.eventsSubtitle, { color: t.colors.textMuted }]} numberOfLines={1}>
-              {(() => {
-                const eventCount = groupedEvents.reduce((sum, yearGroup) => 
-                  sum + yearGroup.dates.reduce((dateSum, dateGroup) => dateSum + dateGroup.items.length, 0), 0
-                );
-                if (eventTimeRange === 'byMonth') {
-                  return `${getMonthName(currentMonth)} ${currentMonth.getFullYear()} — ${eventCount} ${eventCount === 1 ? 'event' : 'events'}`;
-                } else {
-                  return `Year ${currentMonth.getFullYear()} — ${eventCount} ${eventCount === 1 ? 'event' : 'events'}`;
-                }
-              })()}
-            </Text>
-          </View>
-          <LinearGradient colors={[t.colors.border, 'rgba(0,0,0,0)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ height: 1, marginBottom: 10 }} />
-
-          {(() => {
-            const monthEventCount = groupedEvents.reduce((sum, yearGroup) => 
-              sum + yearGroup.dates.reduce((dateSum, dateGroup) => dateSum + dateGroup.items.length, 0), 0
-            );
-            return monthEventCount === 0 && !isLoadingEvents;
-          })() && (
-            <View style={[styles.emptyStateCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
-              <View style={[styles.emptyStateIconWrap, { backgroundColor: t.colors.surfaceAlt }]}>
-                <Ionicons name="calendar-outline" size={20} color={t.colors.accent} />
-              </View>
-              <Text style={[styles.emptyStateTitle, { color: t.colors.text }]}>No events yet</Text>
-              <Text style={[styles.emptyStateSubtitle, { color: t.colors.textMuted }]}>
-                {!showInstitutional && !showAcademic
-                  ? 'Please enable at least one event type filter.'
-                  : 'Upload a CSV file to add calendar events.'}
-              </Text>
-              <TouchableOpacity 
-                style={[
-                  styles.emptyStateBtn, 
-                  { 
-                    borderColor: t.colors.border,
-                    backgroundColor: t.colors.surface,
-                  }
-                ]} 
-                onPress={() => navigation.navigate('PostUpdate')}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="add" size={14} color={t.colors.accent} />
-                <Text style={[styles.emptyStateBtnText, { color: t.colors.accent }]}>Add Event</Text>
-          </TouchableOpacity>
-            </View>
-          )}
-
-          {isLoadingEvents ? (
-            <View style={[styles.emptyStateCard, { paddingVertical: 16, overflow: 'hidden', backgroundColor: t.colors.surface, borderColor: t.colors.border }]}>
-              <LinearGradient colors={[t.colors.surfaceAlt, t.colors.surface]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ ...StyleSheet.absoluteFillObject, opacity: 0.6 }} />
-              <Text style={{ color: t.colors.textMuted, fontSize: 12 }}>Loading…</Text>
-            </View>
-          ) : (
-            /* All Events List - Flat list with dates inside cards */
-            <View>
-              {Array.isArray(groupedEvents) && groupedEvents.length > 0 && groupedEvents.flatMap((yearGroup) => 
-                Array.isArray(yearGroup.dates) ? yearGroup.dates.flatMap((dateGroup) => 
-                  Array.isArray(dateGroup.items) ? dateGroup.items.map((event) => (
-                    <TouchableOpacity
-                      key={event.id}
-                      style={[styles.eventCard, { backgroundColor: t.colors.surface, borderColor: t.colors.border }]}
-                      onPress={() => {
-                        // Find the full event from calendarEvents or posts
-                        let fullEvent = null;
-                        if (event.source === 'post') {
-                          fullEvent = posts.find((p: any) => p.id === event.id) || event;
-                        } else {
-                          fullEvent = calendarEvents.find((e: any) => e._id === event.id || `calendar-${e.isoDate}-${e.title}` === event.id) || event;
-                        }
-                        const eventData = fullEvent || event;
-                        setSelectedEvent(eventData);
-                        setEditTitle(eventData?.title || '');
-                        setEditDescription(eventData?.description || '');
-                        
-                        // Set date and time for editing
-                        if (eventData?.isoDate || eventData?.date) {
-                          const eventDate = new Date(eventData.isoDate || eventData.date);
-                          setSelectedDateObj(eventDate);
-                          setEditDate(formatDate(eventDate));
-                        } else {
-                          setSelectedDateObj(null);
-                          setEditDate('');
-                        }
-                        setEditTime(eventData?.time || '');
-                        
-                        setIsEditing(false);
-                        setShowEventDrawer(true);
-                        
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Open event ${event.title}`}
-                      accessibilityHint="Opens the event to view or edit"
-                      activeOpacity={0.7}
-                    >
-                      <View style={[styles.eventAccent, { backgroundColor: event.color }]} />
-                      <View style={styles.eventContent}>
-                        {/* Date inside the card */}
-                        <View style={styles.eventDateRow}>
-                          <Text style={[styles.eventDateText, { color: t.colors.textMuted }]}>
-                            {formatCalendarDate(new Date(dateGroup.key))}
-                          </Text>
-                        </View>
-                        <Text style={[styles.eventTitle, { color: t.colors.text }]} numberOfLines={2}>
-                          {event.title}
-                        </Text>
-                        <View style={styles.eventInnerDivider} />
-                        <View style={styles.eventTimeRow}>
-                          <Ionicons name="time-outline" size={12} color={t.colors.textMuted} />
-                          <Text style={[styles.eventTimeText, { color: t.colors.textMuted }]}>
-                            {event.dateType === 'date_range' && event.startDate && event.endDate
-                              ? `${formatDate(new Date(event.startDate))} - ${formatDate(new Date(event.endDate))}`
-                              : event.dateType === 'week' && event.weekOfMonth && event.month
-                              ? `Week ${event.weekOfMonth} of ${new Date(2000, event.month - 1, 1).toLocaleString('default', { month: 'long' })}`
-                              : event.dateType === 'month' && event.month
-                              ? new Date(2000, event.month - 1, 1).toLocaleString('default', { month: 'long' })
-                              : event.time || 'All Day'}
-                          </Text>
-                        </View>
-                        <View style={styles.statusInline}>
-                          {!!event.type && (
-                            <View style={styles.statusItem}>
-                              <Ionicons name="pricetag-outline" size={12} color={event.color} />
-                              <Text style={[styles.statusText, { color: event.color }]}>
-                                {String(event.type || '').charAt(0).toUpperCase() + String(event.type || '').slice(1)}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  )) : []
-                ) : []
-              )}
-            </View>
-          )}
-        </BlurView>
       </ScrollView>
 
       {/* View Event Modal */}
@@ -1823,16 +1571,21 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     backgroundColor: 'transparent',
     zIndex: 10,
+    position: 'relative',
   },
   headerLeft: {
     width: 44,
+    zIndex: 11,
   },
   menuButton: {
     width: 44,
     height: 44,
+    minWidth: 44,
+    minHeight: 44,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 12,
   },
   customHamburger: {
     width: 24,
@@ -1851,8 +1604,13 @@ const styles = StyleSheet.create({
     width: 24,
   },
   profileButton: {
-    width: 32,
-    height: 32,
+    width: 44,
+    height: 44,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 12,
   },
   profileImage: {
     width: 32,
@@ -1865,7 +1623,8 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FF9500',
+    backgroundColor: 'transparent', // Will be set dynamically via theme
+    pointerEvents: 'none',
   },
   profileInitials: {
     fontSize: 13,
@@ -1884,10 +1643,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     textAlign: 'center',
+    zIndex: 1,
+    pointerEvents: 'none',
   },
   headerRight: {
     width: 44,
     alignItems: 'flex-end',
+    zIndex: 11,
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -1898,6 +1660,93 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 998,
+  },
+  adminActionsCard: {
+    borderRadius: 16,
+    marginBottom: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 12,
+  },
+  adminActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  legendWrapper: {
+    position: 'relative',
+    zIndex: 2000,
+    marginBottom: 12,
+    elevation: 20,
+  },
+  legendCard: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 12,
+  },
+  legendContainer: {
+    gap: 8,
+    paddingTop: 16,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.2)',
+    marginTop: 8,
+  },
+  legendLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  legendHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  legendItems: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    alignItems: 'center',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  legendItemSelected: {
+    borderWidth: 1,
+  },
+  legendColorDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  legendColorDotSelected: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  legendItemText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  eventCountText: {
+    fontSize: 11,
+    fontWeight: '500',
+    fontStyle: 'italic',
+    opacity: 0.7,
   },
   calendarCard: {
     borderRadius: 16,
@@ -1985,7 +1834,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
   },
   todayContainer: {
-    backgroundColor: '#FF9500', // Orange for current day
+    backgroundColor: 'transparent', // Will be set dynamically via theme // Blue for current day
   },
   todayText: {
     color: '#fff',
@@ -2468,6 +2317,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
+  helpButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   segmentedControlContainer: {
     marginBottom: 12,
     paddingHorizontal: 4,
@@ -2720,7 +2577,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#DC2626',
   },
   drawerEditButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: 'transparent', // Will be set dynamically via theme
   },
   drawerSaveButton: {
     backgroundColor: '#10B981',

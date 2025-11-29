@@ -1,11 +1,13 @@
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useRef } from 'react';
-import { Animated, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { API_BASE_URL } from '../../config/api.config';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getGoogleSignInErrorMessage, signInWithGoogle } from '../../services/authService';
@@ -14,15 +16,11 @@ type RootStackParamList = {
   GetStarted: undefined;
   SignIn: undefined;
   CreateAccount: undefined;
-  AdminDashboard: undefined;
   AdminAIChat: undefined;
-  SchoolUpdates: undefined;
   AIChat: undefined;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'GetStarted'>;
-
-const { width, height } = Dimensions.get('window');
 
 const GetStarted = () => {
   const navigation = useNavigation<NavigationProp>();
@@ -32,70 +30,18 @@ const GetStarted = () => {
   const isOnline = isConnected && isInternetReachable;
 
   // Simplified animation values
-  const logoScale = useRef(new Animated.Value(1)).current;
-  const logoGlow = useRef(new Animated.Value(0)).current;
   const googleButtonScale = useRef(new Animated.Value(1)).current;
   const signUpButtonScale = useRef(new Animated.Value(1)).current;
   const signInButtonScale = useRef(new Animated.Value(1)).current;
   const googleLoadingRotation = useRef(new Animated.Value(0)).current;
-  const floatingAnimation = useRef(new Animated.Value(0)).current;
-  const [isGoogleLoading, setIsGoogleLoading] = React.useState(false);
-  const [showErrorModal, setShowErrorModal] = React.useState(false);
-  const [errorMessage, setErrorMessage] = React.useState('');
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  // Start floating animation on mount
-  React.useEffect(() => {
-    const startFloatingAnimation = () => {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(floatingAnimation, {
-            toValue: 1,
-            duration: 3000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(floatingAnimation, {
-            toValue: 0,
-            duration: 3000,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    };
-    startFloatingAnimation();
-  }, []);
-
-  // Animation functions
+  // Handle logo press
   const handleLogoPress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    Animated.sequence([
-      Animated.parallel([
-        Animated.timing(logoScale, {
-          toValue: 0.95,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(logoGlow, {
-          toValue: 1,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.parallel([
-        Animated.timing(logoScale, {
-          toValue: 1,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(logoGlow, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]),
-    ]).start(() => {
-      navigation.navigate('AdminAIChat');
-    });
+    navigation.navigate('AdminAIChat');
   };
 
   // Handle Google Sign-In
@@ -112,16 +58,13 @@ const GetStarted = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
     // Start loading animation
-    const startLoadingAnimation = () => {
-      Animated.loop(
-        Animated.timing(googleLoadingRotation, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        })
-      ).start();
-    };
-    startLoadingAnimation();
+    Animated.loop(
+      Animated.timing(googleLoadingRotation, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      })
+    ).start();
 
     Animated.timing(googleButtonScale, {
       toValue: 0.98,
@@ -132,88 +75,92 @@ const GetStarted = () => {
     try {
       const user = await signInWithGoogle();
       
-      // Save Google user data to AsyncStorage for persistence
-      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      // Batch AsyncStorage operations for better performance
+      const storageUpdates: Array<[string, string]> = [];
+      
       if (user.email) {
-        await AsyncStorage.setItem('userEmail', user.email);
+        storageUpdates.push(['userEmail', user.email]);
       }
       if (user.displayName) {
-        await AsyncStorage.setItem('userName', user.displayName);
+        storageUpdates.push(['userName', user.displayName]);
       }
       if (user.photoURL) {
-        await AsyncStorage.setItem('userPhoto', user.photoURL);
+        storageUpdates.push(['userPhoto', user.photoURL]);
       }
-      // Mark as Google Sign-In user
-      await AsyncStorage.setItem('authProvider', 'google');
+      storageUpdates.push(['authProvider', 'google']);
 
-      // Exchange Firebase ID token for backend JWT and save user to MongoDB
-      let tokenExchangeSuccess = false;
-      try {
-        const idToken = await user.getIdToken(true);
-        
-        if (!idToken || typeof idToken !== 'string' || idToken.length < 100) {
-          console.error('❌ GetStarted: Invalid token format received from Firebase');
-          throw new Error('Invalid token format');
-        }
-        
-        const tokenParts = idToken.split('.');
-        if (tokenParts.length !== 3) {
-          console.error('❌ GetStarted: Token does not appear to be a valid JWT');
-          throw new Error('Invalid token format - expected JWT');
-        }
-        
-        console.log('🔄 GetStarted: Attempting Firebase token exchange, token length:', idToken.length, 'parts:', tokenParts.length);
-        
-        const { API_BASE_URL } = require('../../config/api.config');
-        const resp = await fetch(`${API_BASE_URL}/api/auth/firebase-login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idToken }),
-        });
-        
-        const data = await resp.json();
-        if (resp.ok && data?.token && data?.user?.id) {
-          await AsyncStorage.setItem('userToken', data.token);
-          await AsyncStorage.setItem('userId', String(data.user.id));
-          await AsyncStorage.setItem('userEmail', data.user.email || user.email);
-          if (data?.user?.username) {
-            await AsyncStorage.setItem('userName', data.user.username);
-          }
-          
-          tokenExchangeSuccess = true;
-          console.log('✅ GetStarted: Google user saved to MongoDB and backend JWT stored', {
-            userId: data.user.id,
-            email: data.user.email,
-            username: data.user.username
-          });
-        } else {
-          console.error('❌ GetStarted: Firebase login exchange failed:', {
-            status: resp.status,
-            statusText: resp.statusText,
-            error: data?.error,
-            details: data?.details
-          });
-        }
-      } catch (ex: unknown) {
-        const msg = ex instanceof Error ? ex.message : String(ex);
-        console.error('❌ GetStarted: Failed to exchange Firebase token:', msg);
-      }
+      // Get Firebase ID token (don't force refresh for speed)
+      const idToken = await user.getIdToken(false);
       
-      if (!tokenExchangeSuccess) {
-        console.warn('⚠️ Token exchange failed - chat history may not work until token is exchanged');
-      }
-      
-      // Success
+      // Exchange token for backend JWT in parallel with storage operations
+      // Use Promise.allSettled to ensure we don't block even if exchange fails
+      const [storedIsAdmin, tokenExchangeResult] = await Promise.allSettled([
+        AsyncStorage.getItem('isAdmin'),
+        // Token exchange with timeout (max 3 seconds)
+        Promise.race([
+          (async () => {
+            try {
+              if (!idToken || idToken.length < 100) {
+                throw new Error('Invalid token format');
+              }
+              
+              const resp = await fetch(`${API_BASE_URL}/api/auth/firebase-login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idToken }),
+              });
+              
+              const data = await resp.json();
+              if (resp.ok && data?.token && data?.user?.id) {
+                // Batch save backend token data
+                const backendUpdates: Array<[string, string]> = [
+                  ['userToken', data.token],
+                  ['userId', String(data.user.id)],
+                ];
+                if (data.user.email) {
+                  backendUpdates.push(['userEmail', data.user.email]);
+                }
+                if (data.user.username) {
+                  backendUpdates.push(['userName', data.user.username]);
+                }
+                await Promise.all(
+                  backendUpdates.map(([key, value]) => AsyncStorage.setItem(key, value))
+                );
+                console.log('✅ GetStarted: Token exchange successful');
+                return true;
+              } else {
+                throw new Error(data?.error || 'Token exchange failed');
+              }
+            } catch (error) {
+              console.warn('⚠️ Token exchange failed:', error instanceof Error ? error.message : String(error));
+              return false;
+            }
+          })(),
+          // Timeout after 3 seconds
+          new Promise<boolean>((resolve) => {
+            setTimeout(() => {
+              console.warn('⚠️ Token exchange timed out, continuing without backend token');
+              resolve(false);
+            }, 3000);
+          }),
+        ]),
+      ]);
+
+      // Save user data to AsyncStorage
+      await Promise.all(
+        storageUpdates.map(([key, value]) => AsyncStorage.setItem(key, value))
+      );
+
+      // Success feedback
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       googleLoadingRotation.stopAnimation();
       
       // Navigate based on user role
       const userEmail = user.email?.toLowerCase().trim();
       const isAdminEmail = userEmail === 'admin@dorsu.edu.ph' || userEmail === 'admin';
+      const adminStatus = storedIsAdmin.status === 'fulfilled' ? storedIsAdmin.value : null;
       
-      const storedIsAdmin = await AsyncStorage.getItem('isAdmin');
-      
-      if (isAdminEmail || storedIsAdmin === 'true') {
+      if (isAdminEmail || adminStatus === 'true') {
         navigation.navigate('AdminAIChat');
       } else {
         navigation.navigate('AIChat');
@@ -256,9 +203,7 @@ const GetStarted = () => {
   const KeyboardWrapper = Platform.OS === 'ios' ? KeyboardAvoidingView : View;
   const keyboardProps = Platform.OS === 'ios' ? { behavior: 'padding' as const, keyboardVerticalOffset: 0 } : {};
 
-  const isMobile = width < 768;
-
-  // Render content (shared between mobile and desktop)
+  // Render content
   const renderContent = () => {
     return (
       <>
@@ -269,35 +214,15 @@ const GetStarted = () => {
             activeOpacity={1}
             hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
           >
-            <Animated.View style={{
-              transform: [
-                { scale: logoScale },
-                { 
-                  translateY: floatingAnimation.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, -8],
-                  })
-                }
-              ],
-            }}>
-              <Animated.View style={[
-                styles.logoGlow,
-                {
-                  opacity: logoGlow,
-                },
-              ]} />
+            <View>
               <Image source={require('../../../../assets/DOrSU.png')} style={styles.logoImage} />
-            </Animated.View>
+            </View>
           </TouchableOpacity>
           <View style={styles.logoTextContainer}>
             <Text style={styles.logoTitle}>DOrSU CONNECT</Text>
-            <Text style={styles.logoSubtitle}>Official University Portal</Text>
+            <Text style={styles.logoSubtitle}>AI-Powered Academic Assistant</Text>
           </View>
         </View>
-
-        {/* Welcome Text */}
-        <Text style={styles.welcomeText}>Your Academic AI Assistant</Text>
-        <Text style={styles.subtitleText}>Get started with DOrSU Connect</Text>
 
         {/* Buttons Section */}
         <View style={styles.buttonsSection}>
@@ -379,7 +304,7 @@ const GetStarted = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={styles.mainContainer}>
       <StatusBar
         backgroundColor="transparent"
         barStyle="light-content"
@@ -387,86 +312,37 @@ const GetStarted = () => {
         animated={true}
       />
       
-      {/* Split Screen Layout - Desktop/Tablet, Stacked - Mobile */}
-      {isMobile ? (
-        // Mobile Layout - Full screen form with background
-        <View style={styles.mobileContainer}>
-          <Image 
-            source={require('../../../../assets/DOrSU_STATUE.png')} 
-            style={styles.mobileBackgroundImage}
-            resizeMode="cover"
-          />
-          <LinearGradient
-            colors={['rgba(101, 67, 33, 0.2)', 'rgba(139, 90, 43, 0.5)', 'rgba(101, 67, 33, 0.7)']}
-            style={styles.gradientOverlay}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-          />
-          <View style={[styles.mobileOverlay, { paddingTop: insets.top }]}>
-            <KeyboardWrapper 
-              style={styles.keyboardAvoidingView}
-              {...keyboardProps}
+      {/* Full screen form with background */}
+      <View style={styles.container}>
+        <Image 
+          source={require('../../../../assets/DOrSU_STATUE.png')} 
+          style={styles.backgroundImage}
+          resizeMode="cover"
+        />
+        <LinearGradient
+          colors={['rgba(59, 130, 246, 0.2)', 'rgba(37, 99, 235, 0.5)', 'rgba(29, 78, 216, 0.7)']}
+          style={styles.gradientOverlay}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+        />
+        <View style={[styles.overlay, { paddingTop: insets.top }]}>
+          <KeyboardWrapper 
+            style={styles.keyboardAvoidingView}
+            {...keyboardProps}
+          >
+            <ScrollView 
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              bounces={Platform.OS === 'ios'}
             >
-              <ScrollView 
-                contentContainerStyle={styles.scrollContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-                bounces={Platform.OS === 'ios'}
-              >
-                <View style={styles.mobileFormCard}>
-                  {renderContent()}
-                </View>
-              </ScrollView>
-            </KeyboardWrapper>
-          </View>
-        </View>
-      ) : (
-        // Desktop/Tablet Layout - Split Screen
-        <View style={styles.splitContainer}>
-          {/* Left Panel - Background Image with University Name */}
-          <View style={styles.leftPanel}>
-            <Image 
-              source={require('../../../../assets/DOrSU_STATUE.png')} 
-              style={styles.backgroundImage}
-              resizeMode="cover"
-            />
-            <LinearGradient
-              colors={['rgba(101, 67, 33, 0.15)', 'rgba(139, 90, 43, 0.4)', 'rgba(101, 67, 33, 0.6)']}
-              style={styles.gradientOverlay}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-            />
-            <View style={styles.overlay}>
-              <View style={styles.universityTextContainer}>
-                <Text style={styles.universityText}>DAVAO ORIENTAL STATE</Text>
-                <Text style={styles.universityText}>UNIVERSITY</Text>
+              <View style={styles.formCard}>
+                {renderContent()}
               </View>
-              <View style={styles.portalBanner}>
-                <Text style={styles.portalText}>-STUDENT PORTAL-</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Right Panel - Content */}
-          <View style={styles.rightPanel}>
-            <KeyboardWrapper 
-              style={styles.keyboardAvoidingView}
-              {...keyboardProps}
-            >
-              <ScrollView 
-                contentContainerStyle={styles.scrollContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-                bounces={Platform.OS === 'ios'}
-              >
-                <View style={styles.formCard}>
-                  {renderContent()}
-                </View>
-              </ScrollView>
-            </KeyboardWrapper>
-          </View>
+            </ScrollView>
+          </KeyboardWrapper>
         </View>
-      )}
+      </View>
 
       {/* Error Modal */}
       <Modal
@@ -508,23 +384,13 @@ const GetStarted = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
+  mainContainer: {
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
-  splitContainer: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  // Left Panel Styles
-  leftPanel: {
+  container: {
     flex: 1,
     position: 'relative',
-    ...Platform.select({
-      web: {
-        minWidth: width * 0.5,
-      },
-    }),
   },
   backgroundImage: {
     width: '100%',
@@ -541,48 +407,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 40,
     zIndex: 2,
-  },
-  universityTextContainer: {
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  universityText: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    letterSpacing: 2,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
-  portalBanner: {
-    backgroundColor: '#FFD700',
-    paddingHorizontal: 30,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-  },
-  portalText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
-    letterSpacing: 1,
-  },
-  // Right Panel Styles
-  rightPanel: {
-    flex: 1,
-    backgroundColor: '#F9FAFB',
-    ...Platform.select({
-      web: {
-        minWidth: width * 0.5,
-      },
-    }),
   },
   keyboardAvoidingView: {
     flex: 1,
@@ -594,24 +419,16 @@ const styles = StyleSheet.create({
   },
   formCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    marginHorizontal: 40,
-    marginVertical: 20,
+    margin: 16,
     borderRadius: 16,
-    padding: 20,
+    padding: 18,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.2,
     shadowRadius: 12,
     elevation: 8,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.3)',
-    ...Platform.select({
-      web: {
-        maxWidth: 500,
-        alignSelf: 'center',
-        width: '100%',
-      },
-    }),
   },
   // Logo Section
   logoSection: {
@@ -624,30 +441,18 @@ const styles = StyleSheet.create({
     height: 50,
     marginRight: 10,
   },
-  logoGlow: {
-    position: 'absolute',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#2563EB',
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 15,
-    elevation: 12,
-    top: -5,
-    left: -5,
-  },
   logoTextContainer: {
     flex: 1,
   },
   logoTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#2563EB',
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#1E3A8A',
     marginBottom: 2,
+    textShadowColor: 'rgba(30, 58, 138, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+    letterSpacing: 0.5,
   },
   logoSubtitle: {
     fontSize: 12,
@@ -736,7 +541,7 @@ const styles = StyleSheet.create({
   universityDivider: {
     width: 80,
     height: 2,
-    backgroundColor: '#FF9500',
+    backgroundColor: '#1E3A8A',
     borderRadius: 1,
     marginBottom: 6,
     opacity: 0.8,
@@ -756,33 +561,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
-  },
-  // Mobile Styles
-  mobileContainer: {
-    flex: 1,
-    position: 'relative',
-  },
-  mobileBackgroundImage: {
-    width: '100%',
-    height: '100%',
-    position: 'absolute',
-  },
-  mobileOverlay: {
-    flex: 1,
-    zIndex: 2,
-  },
-  mobileFormCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    margin: 16,
-    borderRadius: 16,
-    padding: 18,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   // Error Modal
   modalOverlay: {

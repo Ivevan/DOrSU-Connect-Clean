@@ -23,6 +23,18 @@ const CalendarHelpModal: React.FC<CalendarHelpModalProps> = ({
   const { isDarkMode, theme: t } = useThemeValues();
   const insets = useSafeAreaInsets();
 
+  // Helper function to convert hex to rgba
+  const hexToRgba = (hex: string | undefined, alpha: number) => {
+    if (!hex || typeof hex !== 'string' || !hex.startsWith('#')) {
+      // Fallback to a default color if hex is invalid
+      return `rgba(37, 99, 235, ${alpha})`; // Default blue
+    }
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
   // Trigger animation when modal becomes visible
   React.useEffect(() => {
     if (visible) {
@@ -108,8 +120,8 @@ const CalendarHelpModal: React.FC<CalendarHelpModalProps> = ({
             {/* Header */}
             <View style={[styles.header, { borderBottomColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)' }]}>
               <View style={styles.headerLeft}>
-                <View style={[styles.headerIconContainer, { backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.2)' : 'rgba(255, 149, 0, 0.1)' }]}>
-                  <Ionicons name="information-circle" size={24} color="#FF9500" />
+                <View style={[styles.headerIconContainer, { backgroundColor: isDarkMode ? hexToRgba(t.colors.accent, 0.2) : hexToRgba(t.colors.accent, 0.1) }]}>
+                  <Ionicons name="information-circle" size={24} color={t.colors.accent} />
                 </View>
                 <View>
                   <Text style={[styles.headerTitle, { color: t.colors.text }]}>
@@ -144,8 +156,8 @@ const CalendarHelpModal: React.FC<CalendarHelpModalProps> = ({
                 borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
               }]}>
                 <View style={styles.sectionHeader}>
-                  <View style={[styles.sectionIconContainer, { backgroundColor: '#3B82F6' + '20' }]}>
-                    <Ionicons name="cloud-upload" size={22} color="#3B82F6" />
+                  <View style={[styles.sectionIconContainer, { backgroundColor: hexToRgba(t.colors.accentLight, 0.2) }]}>
+                    <Ionicons name="cloud-upload" size={22} color={t.colors.accentLight} />
                   </View>
                   <View style={styles.sectionHeaderText}>
                     <Text style={[styles.sectionTitle, { color: t.colors.text }]}>
@@ -158,10 +170,10 @@ const CalendarHelpModal: React.FC<CalendarHelpModalProps> = ({
                 </View>
                 
                 <View style={[styles.infoBox, { 
-                  backgroundColor: isDarkMode ? 'rgba(59, 130, 246, 0.1)' : 'rgba(59, 130, 246, 0.08)',
-                  borderColor: isDarkMode ? 'rgba(59, 130, 246, 0.3)' : 'rgba(59, 130, 246, 0.2)',
+                  backgroundColor: isDarkMode ? hexToRgba(t.colors.accentLight, 0.1) : hexToRgba(t.colors.accentLight, 0.08),
+                  borderColor: isDarkMode ? hexToRgba(t.colors.accentLight, 0.3) : hexToRgba(t.colors.accentLight, 0.2),
                 }]}>
-                  <Ionicons name="information-circle-outline" size={16} color="#3B82F6" />
+                  <Ionicons name="information-circle-outline" size={16} color={t.colors.accentLight} />
                   <Text style={[styles.infoBoxText, { color: t.colors.text }]}>
                     Your CSV file must contain at least 3 of the following fields
                   </Text>
@@ -205,10 +217,10 @@ const CalendarHelpModal: React.FC<CalendarHelpModalProps> = ({
                 </View>
                 
                 <View style={[styles.noteBox, { 
-                  backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.1)' : 'rgba(255, 149, 0, 0.08)',
-                  borderColor: isDarkMode ? 'rgba(255, 149, 0, 0.3)' : 'rgba(255, 149, 0, 0.2)',
+                  backgroundColor: isDarkMode ? hexToRgba(t.colors.accent, 0.1) : hexToRgba(t.colors.accent, 0.08),
+                  borderColor: isDarkMode ? hexToRgba(t.colors.accent, 0.3) : hexToRgba(t.colors.accent, 0.2),
                 }]}>
-                  <Ionicons name="bulb" size={16} color="#FF9500" />
+                  <Ionicons name="bulb" size={16} color={t.colors.accent} />
                   <Text style={[styles.noteText, { color: t.colors.text }]}>
                     Field names are flexible (case-insensitive). Missing fields can be added later using the Edit button.
                   </Text>
@@ -221,8 +233,8 @@ const CalendarHelpModal: React.FC<CalendarHelpModalProps> = ({
                 borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
               }]}>
                 <View style={styles.sectionHeader}>
-                  <View style={[styles.sectionIconContainer, { backgroundColor: '#8B5CF6' + '20' }]}>
-                    <Ionicons name="color-palette" size={22} color="#8B5CF6" />
+                  <View style={[styles.sectionIconContainer, { backgroundColor: hexToRgba(t.colors.accent, 0.2) }]}>
+                    <Ionicons name="color-palette" size={22} color={t.colors.accent} />
                   </View>
                   <View style={styles.sectionHeaderText}>
                     <Text style={[styles.sectionTitle, { color: t.colors.text }]}>
@@ -236,10 +248,10 @@ const CalendarHelpModal: React.FC<CalendarHelpModalProps> = ({
                 
                 <View style={styles.categoryList}>
                   <View style={[styles.categoryCard, { 
-                    backgroundColor: isDarkMode ? 'rgba(37, 99, 235, 0.15)' : 'rgba(37, 99, 235, 0.08)',
-                    borderColor: '#2563EB',
+                    backgroundColor: isDarkMode ? hexToRgba(t.colors.accent, 0.15) : hexToRgba(t.colors.accent, 0.08),
+                    borderColor: t.colors.accent,
                   }]}>
-                    <View style={[styles.colorIndicator, { backgroundColor: '#2563EB' }]} />
+                    <View style={[styles.colorIndicator, { backgroundColor: t.colors.accent }]} />
                     <View style={styles.categoryInfo}>
                       <Text style={[styles.categoryName, { color: t.colors.text }]}>
                         Institutional
@@ -273,8 +285,8 @@ const CalendarHelpModal: React.FC<CalendarHelpModalProps> = ({
                 borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
               }]}>
                 <View style={styles.sectionHeader}>
-                  <View style={[styles.sectionIconContainer, { backgroundColor: '#10B981' + '20' }]}>
-                    <Ionicons name="calendar" size={22} color="#10B981" />
+                  <View style={[styles.sectionIconContainer, { backgroundColor: hexToRgba(t.colors.success, 0.2) }]}>
+                    <Ionicons name="calendar" size={22} color={t.colors.success} />
                   </View>
                   <View style={styles.sectionHeaderText}>
                     <Text style={[styles.sectionTitle, { color: t.colors.text }]}>
@@ -299,9 +311,9 @@ const CalendarHelpModal: React.FC<CalendarHelpModalProps> = ({
                     }]}>
                       <View style={styles.dateTypeHeader}>
                         <View style={[styles.dateTypeBadge, { 
-                          backgroundColor: '#10B981' + '20',
+                          backgroundColor: hexToRgba(t.colors.success, 0.2),
                         }]}>
-                          <Text style={[styles.dateTypeBadgeText, { color: '#10B981' }]}>
+                          <Text style={[styles.dateTypeBadgeText, { color: t.colors.success }]}>
                             {dateType.type}
                           </Text>
                         </View>
@@ -323,8 +335,8 @@ const CalendarHelpModal: React.FC<CalendarHelpModalProps> = ({
                 borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
               }]}>
                 <View style={styles.sectionHeader}>
-                  <View style={[styles.sectionIconContainer, { backgroundColor: '#F59E0B' + '20' }]}>
-                    <Ionicons name="bulb" size={22} color="#F59E0B" />
+                  <View style={[styles.sectionIconContainer, { backgroundColor: hexToRgba(t.colors.secondary, 0.2) }]}>
+                    <Ionicons name="bulb" size={22} color={t.colors.secondary} />
                   </View>
                   <View style={styles.sectionHeaderText}>
                     <Text style={[styles.sectionTitle, { color: t.colors.text }]}>
@@ -348,8 +360,8 @@ const CalendarHelpModal: React.FC<CalendarHelpModalProps> = ({
                     <View key={index} style={[styles.tipCard, { 
                       backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.03)' : 'rgba(0, 0, 0, 0.02)',
                     }]}>
-                      <View style={[styles.tipIconContainer, { backgroundColor: '#F59E0B' + '20' }]}>
-                        <Ionicons name={tip.icon as any} size={18} color="#F59E0B" />
+                      <View style={[styles.tipIconContainer, { backgroundColor: hexToRgba(t.colors.secondary, 0.2) }]}>
+                        <Ionicons name={tip.icon as any} size={18} color={t.colors.secondary} />
                       </View>
                       <Text style={[styles.tipText, { color: t.colors.text }]}>
                         {tip.text}

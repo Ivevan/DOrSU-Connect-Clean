@@ -56,7 +56,7 @@ const Bar: React.FC<BarProps> = ({
             <Ionicons 
               name={activeTab === 'home' ? 'home' : 'home-outline'} 
               size={28} 
-              color={activeTab === 'home' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
+              color={activeTab === 'home' ? t.colors.accent : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
 
@@ -64,15 +64,15 @@ const Bar: React.FC<BarProps> = ({
             <Ionicons 
               name={activeTab === 'discovery' ? 'newspaper' : 'newspaper-outline'} 
               size={28} 
-              color={activeTab === 'discovery' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
+              color={activeTab === 'discovery' ? t.colors.accent : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.tab} onPress={onCalendarPress}>
             <Ionicons 
-              name={activeTab === 'calendar' ? 'copy' : 'copy-outline'} 
+              name={activeTab === 'calendar' ? 'calendar' : 'calendar-outline'} 
               size={28} 
-              color={activeTab === 'calendar' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
+              color={activeTab === 'calendar' ? t.colors.accent : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
         </View>
@@ -113,6 +113,11 @@ const styles = StyleSheet.create({
   container: {
     position: 'relative',
     backgroundColor: 'transparent',
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   blurBackground: {
     borderTopLeftRadius: 20,
@@ -120,11 +125,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 0,
     borderBottomWidth: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   navContent: {
     flexDirection: 'row',

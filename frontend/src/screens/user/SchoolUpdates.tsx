@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Easing, Image, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Dimensions, Easing, Image, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import UserSidebar from '../../components/navigation/UserSidebar';
@@ -13,8 +13,10 @@ import { useThemeValues } from '../../contexts/ThemeContext';
 import ViewEventModal from '../../modals/ViewEventModal';
 import AdminDataService from '../../services/AdminDataService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
+import NotificationService from '../../services/NotificationService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import { categoryToColors } from '../../utils/calendarUtils';
+import NotificationModal from '../../modals/NotificationModal';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -206,19 +208,19 @@ const CalendarEventCard = memo<CalendarEventCardProps>(({ event, onPress, theme,
             <View style={[styles.calendarEventIconWrapper, { backgroundColor: accentColor + '20' }]}>
               <Ionicons name="calendar" size={18} color={accentColor} />
             </View>
-            <Text style={[styles.calendarEventTag, { color: accentColor }]}>{event.tag}</Text>
+            <Text style={[styles.calendarEventTag, { color: accentColor, fontSize: theme.fontSize.scaleSize(9) }]}>{event.tag}</Text>
           </View>
-          <Text style={[styles.calendarEventTitle, { color: theme.colors.text }]} numberOfLines={2}>
+          <Text style={[styles.calendarEventTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]} numberOfLines={2}>
             {event.title}
           </Text>
           <View style={styles.calendarEventDateRow}>
             <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-            <Text style={[styles.calendarEventDate, { color: theme.colors.textMuted }]}>
+            <Text style={[styles.calendarEventDate, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]}>
               {event.date}
             </Text>
           </View>
           {event.description && (
-            <Text style={[styles.calendarEventDescription, { color: theme.colors.textMuted }]} numberOfLines={2}>
+            <Text style={[styles.calendarEventDescription, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]} numberOfLines={2}>
               {event.description}
             </Text>
           )}
@@ -291,6 +293,20 @@ const getTagTextColor = (tag: string) => {
   }
 };
 
+type LegendItem = {
+  type: string;
+  key: string;
+  color: string;
+};
+
+const legendItemsData: LegendItem[] = [
+  { type: 'Academic', key: 'academic', color: '#10B981' },
+  { type: 'Institutional', key: 'institutional', color: '#2563EB' },
+  { type: 'News', key: 'news', color: '#8B5CF6' },
+  { type: 'Event', key: 'event', color: '#F59E0B' },
+  { type: 'Announcement', key: 'announcement', color: '#3B82F6' },
+];
+
 // Note: UpdateCard component is no longer used - cards are rendered inline to match AdminDashboard design
 
 // Event Card with Image Preview (Horizontal Scrollable)
@@ -316,19 +332,12 @@ const EventCard = memo(({ update, onPress, theme }: { update: any; onPress: () =
       >
         <View style={styles.eventOverlayContent}>
           <View style={[styles.eventTagOverlay, { backgroundColor: getTagColor(update.tag) }]}>
-            <Text style={[styles.eventTagText, { color: getTagTextColor(update.tag) }]}>{update.tag}</Text>
+            <Text style={[styles.eventTagText, { color: getTagTextColor(update.tag), fontSize: theme.fontSize.scaleSize(11) }]}>{update.tag}</Text>
           </View>
-          <Text style={styles.eventTitleOverlay} numberOfLines={2}>{update.title}</Text>
+          <Text style={[styles.eventTitleOverlay, { fontSize: theme.fontSize.scaleSize(20) }]} numberOfLines={2}>{update.title}</Text>
           <View style={styles.eventDateTimeRow}>
             <Ionicons name="calendar-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-            <Text style={styles.eventDateOverlay}>{update.date}</Text>
-            {update.time && (
-              <>
-                <Text style={styles.eventTimeSeparator}>•</Text>
-                <Ionicons name="time-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                <Text style={styles.eventDateOverlay}>{update.time}</Text>
-              </>
-            )}
+            <Text style={[styles.eventDateOverlay, { fontSize: theme.fontSize.scaleSize(14) }]}>{update.date}</Text>
           </View>
         </View>
       </LinearGradient>
@@ -339,13 +348,69 @@ const EventCard = memo(({ update, onPress, theme }: { update: any; onPress: () =
 const SchoolUpdates = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
+  const resolvedLegendItems = useMemo<LegendItem[]>(() => (
+    legendItemsData.map(item => {
+      if (item.key === 'institutional') {
+        return { ...item, color: theme.colors.accent };
+      }
+      return item;
+    })
+  ), [theme.colors.accent]);
+  const legendRows = useMemo<(LegendItem | null)[][]>(() => {
+    const firstRow: (LegendItem | null)[] = resolvedLegendItems.slice(0, 3);
+    const secondRow: (LegendItem | null)[] = resolvedLegendItems.slice(3, 5);
+    while (secondRow.length < 3) {
+      secondRow.push(null);
+    }
+    return [firstRow, secondRow];
+  }, [resolvedLegendItems]);
+  
+  // Get header gradient colors based on theme
+  const getHeaderGradientColors = (): [string, string, string] => {
+    // DOrSU theme (Royal Blue)
+    if (theme.colors.accent === '#2563EB') {
+      return ['#DBEAFE', '#93C5FD', '#2563EB'];
+    }
+    // Facet theme (Orange)
+    if (theme.colors.accent === '#FF9500') {
+      return ['#FFE0B2', '#FFCC80', '#FF9500'];
+    }
+    // Default: use theme colors
+    return [
+      theme.colors.accentLight || '#DBEAFE',
+      theme.colors.accent || '#2563EB',
+      theme.colors.accentDark || '#1E3A8A'
+    ] as [string, string, string];
+  };
+  
+  // Get content gradient overlay colors based on theme
+  const getContentGradientColors = (): [string, string, string] => {
+    // DOrSU theme (Royal Blue)
+    if (theme.colors.accent === '#2563EB') {
+      return isDarkMode
+        ? ['rgba(59, 130, 246, 0.08)', 'rgba(37, 99, 235, 0.03)', 'rgba(29, 78, 216, 0.01)']
+        : ['rgba(59, 130, 246, 0.1)', 'rgba(37, 99, 235, 0.05)', 'rgba(29, 78, 216, 0.02)'];
+    }
+    // Facet theme (Orange)
+    if (theme.colors.accent === '#FF9500') {
+      return isDarkMode
+        ? ['rgba(255, 204, 128, 0.08)', 'rgba(255, 167, 38, 0.03)', 'rgba(255, 149, 0, 0.01)']
+        : ['rgba(255, 204, 128, 0.1)', 'rgba(255, 167, 38, 0.05)', 'rgba(255, 149, 0, 0.02)'];
+    }
+    // Default: use theme colors with opacity
+    const lightColor = theme.colors.accentLight || '#93C5FD';
+    const mainColor = theme.colors.accent || '#2563EB';
+    const darkColor = theme.colors.accentDark || '#1E3A8A';
+    return isDarkMode
+      ? [`${lightColor}14`, `${mainColor}08`, `${darkColor}03`]
+      : [`${lightColor}1A`, `${mainColor}0D`, `${darkColor}05`] as [string, string, string];
+  };
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [query, setQuery] = useState('');
-  const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [updates, setUpdates] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'recent'>('all');
+  const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'recent' | 'thismonth'>('all');
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [isLoadingCalendarEvents, setIsLoadingCalendarEvents] = useState(false);
@@ -353,14 +418,22 @@ const SchoolUpdates = () => {
   const [retryCount, setRetryCount] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
-  const searchRef = useRef<TextInput>(null);
   const calendarEventsScrollRef = useRef<ScrollView>(null);
+  
+  // Content type filter - multiple selection: 'academic', 'institutional', 'event', 'announcement', 'news'
+  const [selectedLegendType, setSelectedLegendType] = useState<string | null>(null);
+  const selectedContentTypes = useMemo(() => (
+    selectedLegendType ? [selectedLegendType] : ['academic', 'institutional', 'event', 'announcement', 'news']
+  ), [selectedLegendType]);
   
   // Event Modal state (view-only) - used for both calendar events and updates
   const [showEventDrawer, setShowEventDrawer] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   const [selectedDateForDrawer, setSelectedDateForDrawer] = useState<Date | null>(null);
   const [selectedDateEvents, setSelectedDateEvents] = useState<any[]>([]);
+  
+  // Notification modal state
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
 
 
   // Memoize safe area insets to prevent recalculation during navigation
@@ -377,7 +450,16 @@ const SchoolUpdates = () => {
   // Auth state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
-  const userName = useMemo(() => currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User', [currentUser]);
+  const [backendUserName, setBackendUserName] = useState<string | null>(null);
+  const [backendUserFirstName, setBackendUserFirstName] = useState<string | null>(null);
+  const [backendUserLastName, setBackendUserLastName] = useState<string | null>(null);
+  const userName = useMemo(() => {
+    // Priority: Backend firstName + lastName -> Backend userName -> Firebase displayName -> Firebase email username -> Default
+    if (backendUserFirstName && backendUserLastName) {
+      return `${backendUserFirstName} ${backendUserLastName}`.trim();
+    }
+    return backendUserName || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
+  }, [backendUserName, backendUserFirstName, backendUserLastName, currentUser]);
 
   // Animated floating background orb (Copilot-style)
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -422,7 +504,19 @@ const SchoolUpdates = () => {
         try {
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const userPhoto = await AsyncStorage.getItem('userPhoto');
+          const storedUserName = await AsyncStorage.getItem('userName');
+          const firstName = await AsyncStorage.getItem('userFirstName');
+          const lastName = await AsyncStorage.getItem('userLastName');
           setBackendUserPhoto(userPhoto);
+          if (storedUserName) {
+            setBackendUserName(storedUserName);
+          }
+          if (firstName) {
+            setBackendUserFirstName(firstName);
+          }
+          if (lastName) {
+            setBackendUserLastName(lastName);
+          }
         } catch (error) {
           console.error('Failed to load backend user data:', error);
         }
@@ -432,6 +526,10 @@ const SchoolUpdates = () => {
   );
 
   const getUserInitials = () => {
+    // Use firstName and lastName directly if available
+    if (backendUserFirstName && backendUserLastName) {
+      return (backendUserFirstName[0] + backendUserLastName[0]).toUpperCase();
+    }
     if (!userName) return '?';
     const names = userName.split(' ');
     if (names.length >= 2) {
@@ -458,17 +556,8 @@ const SchoolUpdates = () => {
     ).start();
   }, [floatAnim1]);
 
-  const handleSearchPress = useCallback(() => {
-    setIsSearchVisible(prev => {
-      if (prev) {
-        setQuery(''); // Clear search when closing
-      }
-      return !prev;
-    });
-  }, []);
-
   const handleNotificationsPress = useCallback(() => {
-    Alert.alert('Notifications', 'Notifications feature coming soon.');
+    setShowNotificationModal(true);
   }, []);
 
   // Track last fetch time to prevent unnecessary refetches
@@ -547,50 +636,62 @@ const SchoolUpdates = () => {
     }
   }, []);
 
-  // Fetch updates on mount only
+  // Fetch updates on mount
   useEffect(() => {
-    fetchUpdates(true); // Force refresh on mount
+    fetchUpdates(true);
+  }, []);
+
+  // Request notification permissions and check notifications on mount
+  useEffect(() => {
+    const setupNotifications = async () => {
+      try {
+        await NotificationService.requestPermissions();
+        // Check notifications after a short delay to allow data to load
+        setTimeout(() => {
+          NotificationService.checkAllNotifications();
+        }, 2000);
+      } catch (error) {
+        console.error('Error setting up notifications:', error);
+      }
+    };
+    
+    setupNotifications();
   }, []); // Empty deps - only run on mount
 
-  // Refresh updates when screen comes into focus (with smart refresh)
+  // Refresh updates when screen comes into focus (always refresh to show new posts)
+  // Note: This is defined before refreshCalendarEvents, so we'll refresh calendar events separately
   useFocusEffect(
     useCallback(() => {
-      // Only refresh if data is older than 30 seconds
-      const timeSinceLastFetch = Date.now() - lastFetchTime.current;
-      const shouldRefresh = timeSinceLastFetch > 30 * 1000; // 30 seconds
+      // Add a small delay to ensure backend has processed any updates
+      // This is especially important when coming back from PostUpdate screen
+      const refreshTimer = setTimeout(() => {
+        // Always refresh when screen comes into focus to ensure new posts appear immediately
+        // Force refresh (bypass cache) to get the latest data including newly created posts
+        // The fetchUpdates function has its own cooldown to prevent too many requests
+        fetchUpdates(true); // Force refresh to bypass cache and get latest posts
+      }, 100); // Small delay to ensure backend has processed updates
       
-      if (shouldRefresh) {
-        fetchUpdates(false); // Use cache if available
-      }
+      return () => {
+        clearTimeout(refreshTimer);
+      };
     }, [fetchUpdates])
   );
 
-  // Debounce search query
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-  
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(query);
-    }, 300); // 300ms debounce
-
-    return () => clearTimeout(timer);
-  }, [query]);
-
   const filtered = useMemo(() => {
     const result = updates.filter(u => {
-      const q = debouncedQuery.trim().toLowerCase();
+      const q = searchQuery.trim().toLowerCase();
       const byQuery = q.length === 0 || u.title.toLowerCase().includes(q) || (u.body && u.body.toLowerCase().includes(q));
       return byQuery;
     });
     if (__DEV__) {
       console.log('🔍 Filtered updates:', { 
         total: updates.length, 
-        query: debouncedQuery.trim(), 
+        query: searchQuery.trim(), 
         filtered: result.length 
       });
     }
     return result;
-  }, [updates, debouncedQuery]);
+  }, [updates, searchQuery]);
 
   // Upcoming updates (future dates)
   const upcomingUpdates = useMemo(() => {
@@ -612,25 +713,136 @@ const SchoolUpdates = () => {
     });
   }, [filtered]);
 
-  // Filtered by time (all, upcoming, or recent)
+  // Filtered by time (all, upcoming, or recent) and content type
+  // Includes both posts and calendar events
+  // Only show Event, Announcement, and News entries that are in the current month or next month
   const displayedUpdates = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const todayKey = getPHDateKey(now);
+    
+    // Calculate next month and year (handle year rollover)
+    const nextMonth = currentMonth + 1;
+    const nextYear = nextMonth > 11 ? currentYear + 1 : currentYear;
+    const normalizedNextMonth = nextMonth > 11 ? 0 : nextMonth;
+    
+    // Categories that should be filtered by current month and next month
+    const monthFilteredCategories = new Set(['event', 'announcement', 'news']);
+    
     console.log('🔍 Computing displayedUpdates:', {
       timeFilter,
+      selectedContentTypes,
       updatesCount: updates.length,
       filteredCount: filtered.length,
       upcomingCount: upcomingUpdates.length,
       recentCount: recentUpdates.length,
     });
     
+    // Start with posts based on time filter
     let result;
     if (timeFilter === 'upcoming') {
       result = [...upcomingUpdates];
     } else if (timeFilter === 'recent') {
       result = [...recentUpdates];
+    } else if (timeFilter === 'thismonth') {
+      // Filter by current month only
+      result = filtered.filter(u => {
+        if (!u.isoDate) return false;
+        try {
+          const updateDate = new Date(u.isoDate);
+          const updateYear = updateDate.getFullYear();
+          const updateMonth = updateDate.getMonth();
+          return updateYear === currentYear && updateMonth === currentMonth;
+        } catch {
+          return false;
+        }
+      });
     } else {
       // 'all' - show all posts, including those without dates
       result = [...filtered];
     }
+    
+    // Add calendar events based on time filter
+    const calendarEventsForUpdates = calendarEvents
+      .filter(event => {
+        const eventDate = event.isoDate || event.date;
+        if (!eventDate) return false;
+        
+        const eventDateObj = new Date(eventDate);
+        const eventKey = getPHDateKey(eventDate);
+        const eventYear = eventDateObj.getFullYear();
+        const eventMonth = eventDateObj.getMonth();
+        
+        // Apply time filter
+        if (timeFilter === 'upcoming') {
+          return eventKey > todayKey;
+        } else if (timeFilter === 'recent') {
+          return eventKey <= todayKey;
+        } else if (timeFilter === 'thismonth') {
+          return eventYear === currentYear && eventMonth === currentMonth;
+        } else {
+          // 'all' - include all calendar events
+          return true;
+        }
+      })
+      .map(event => ({
+        id: event._id || `calendar-${event.isoDate}-${event.title}`,
+        title: event.title,
+        date: new Date(event.isoDate || event.date).toLocaleDateString(),
+        tag: event.category || 'Event',
+        description: event.description || '',
+        image: undefined,
+        images: undefined,
+        pinned: false,
+        isoDate: event.isoDate || event.date,
+        source: 'calendar', // Mark as calendar event
+        _id: event._id,
+      }));
+    
+    // Combine posts and calendar events
+    result = [...result, ...calendarEventsForUpdates];
+    
+    // Remove duplicates (same ID or same title + date)
+    const seen = new Set<string>();
+    result = result.filter(update => {
+      const key = update.id || `${update.title}-${update.isoDate}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    
+    // Apply content type filter
+    result = result.filter(update => {
+      const updateType = String(update.tag || 'Announcement').toLowerCase();
+      return selectedContentTypes.includes(updateType);
+    });
+    
+    // Filter by current month or next month for Event, Announcement, and News categories
+    result = result.filter(update => {
+      const updateType = String(update.tag || 'Announcement').toLowerCase();
+      
+      // Only apply month filter to Event, Announcement, and News
+      if (monthFilteredCategories.has(updateType)) {
+        if (!update.isoDate) return false; // Exclude entries without dates
+        try {
+          const updateDate = new Date(update.isoDate);
+          const updateYear = updateDate.getFullYear();
+          const updateMonth = updateDate.getMonth();
+          
+          // Check if date is in current month or next month
+          const isCurrentMonth = updateYear === currentYear && updateMonth === currentMonth;
+          const isNextMonth = updateYear === nextYear && updateMonth === normalizedNextMonth;
+          
+          return isCurrentMonth || isNextMonth;
+        } catch {
+          return false; // Exclude entries with invalid dates
+        }
+      }
+      
+      // For other categories (Academic, Institutional), show all (no month filter)
+      return true;
+    });
     
     console.log('📋 Result before sorting:', result.length, 'items');
     
@@ -655,44 +867,97 @@ const SchoolUpdates = () => {
       console.log('📝 First update:', { id: result[0].id, title: result[0].title, isoDate: result[0].isoDate });
     }
     return result;
-  }, [timeFilter, upcomingUpdates, recentUpdates, filtered, updates.length]);
+  }, [timeFilter, selectedContentTypes, upcomingUpdates, recentUpdates, filtered, updates.length, calendarEvents]);
 
-  // Current month calendar events (separate from posts/announcements)
-  // Sorted chronologically by date (day 1 to 31), then by time if same date
+  // Current month events - combines calendar events and posts/updates
+  // Filtered by selectedContentTypes and search query
   const currentMonthEvents = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
     
-    // Filter and map events for current month
-    const monthEvents = calendarEvents
+    const events: any[] = [];
+    
+    // Add calendar events for current month
+    calendarEvents
       .filter(event => {
         const eventDate = event.isoDate || event.date;
         if (!eventDate) return false;
         const eventDateObj = new Date(eventDate);
-        return eventDateObj.getFullYear() === currentYear &&
-               eventDateObj.getMonth() === currentMonth;
+        const isCurrentMonth = eventDateObj.getFullYear() === currentYear &&
+                               eventDateObj.getMonth() === currentMonth;
+        
+        if (!isCurrentMonth) return false;
+        
+        // Apply content type filter
+        const eventType = String(event.category || 'Event').toLowerCase();
+        return selectedContentTypes.includes(eventType);
       })
-      .map(event => ({
-        id: event._id || `calendar-${event.isoDate}-${event.title}`,
-        title: event.title,
-        date: new Date(event.isoDate || event.date).toLocaleDateString(),
-        tag: event.category || 'Event',
-        description: event.description || '',
-        image: undefined,
-        images: undefined,
-        pinned: false,
-        isoDate: event.isoDate || event.date,
-        time: event.time, // Preserve time for sorting
-      }));
+      .forEach(event => {
+        events.push({
+          id: event._id || `calendar-${event.isoDate}-${event.title}`,
+          title: event.title,
+          date: new Date(event.isoDate || event.date).toLocaleDateString(),
+          tag: event.category || 'Event',
+          description: event.description || '',
+          image: undefined,
+          images: undefined,
+          pinned: false,
+          isoDate: event.isoDate || event.date,
+          time: event.time, // Preserve time for sorting
+          source: 'calendar', // Mark as calendar event
+          _id: event._id,
+        });
+      });
+    
+    // Add posts/updates for current month (events, announcements, news)
+    updates
+      .filter(update => {
+        if (!update.isoDate) return false;
+        const updateDate = new Date(update.isoDate);
+        const isCurrentMonth = updateDate.getFullYear() === currentYear &&
+                              updateDate.getMonth() === currentMonth;
+        
+        if (!isCurrentMonth) return false;
+        
+        // Apply content type filter
+        const updateType = String(update.tag || 'Announcement').toLowerCase();
+        return selectedContentTypes.includes(updateType);
+      })
+      .forEach(update => {
+        events.push({
+          id: update.id,
+          title: update.title,
+          date: new Date(update.isoDate || update.date).toLocaleDateString(),
+          tag: update.tag || 'Announcement',
+          description: update.description || '',
+          image: update.image,
+          images: update.images,
+          pinned: update.pinned || false,
+          isoDate: update.isoDate || update.date,
+          source: 'post', // Mark as post/update
+        });
+      });
+    
+    // Apply search filter if search query exists
+    let filteredEvents = events;
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filteredEvents = events.filter(event => {
+        const title = (event.title || '').toLowerCase();
+        const description = (event.description || '').toLowerCase();
+        const tag = (event.tag || '').toLowerCase();
+        return title.includes(query) || description.includes(query) || tag.includes(query);
+      });
+    }
     
     // Sort chronologically by date (day 1 to 31), then by time if same date
-    monthEvents.sort((a, b) => {
+    filteredEvents.sort((a, b) => {
       const dateA = new Date(a.isoDate || a.date).getTime();
       const dateB = new Date(b.isoDate || b.date).getTime();
       
       // If dates are the same, sort by time if available
-      if (dateA === dateB) {
+      if (dateA === dateB && a.time && b.time) {
         // Parse time strings (e.g., "8:00 AM" or "14:30")
         const parseTime = (timeStr: string | undefined): number => {
           if (!timeStr) return 9999; // Events without time go to the end
@@ -731,8 +996,8 @@ const SchoolUpdates = () => {
       return dateA - dateB;
     });
     
-    return monthEvents;
-  }, [calendarEvents]);
+    return filteredEvents;
+  }, [calendarEvents, updates, selectedContentTypes, searchQuery]);
 
   // Calculate available height for scrollable cards section (after currentMonthEvents is defined)
   const cardsScrollViewHeight = useMemo(() => {
@@ -798,6 +1063,20 @@ const SchoolUpdates = () => {
   useEffect(() => {
     refreshCalendarEvents();
   }, [refreshCalendarEvents]);
+
+  // Also refresh calendar events when screen comes into focus (after refreshCalendarEvents is defined)
+  useFocusEffect(
+    useCallback(() => {
+      // Add a small delay to ensure backend has processed any updates
+      const refreshTimer = setTimeout(() => {
+        refreshCalendarEvents();
+      }, 150); // Slightly longer delay to ensure posts refresh first
+      
+      return () => {
+        clearTimeout(refreshTimer);
+      };
+    }, [refreshCalendarEvents])
+  );
 
   // Auto-scroll to center today's events when events load
   // Layout: Past events (left) -> Today's events (center) -> Future events (right)
@@ -941,17 +1220,16 @@ const SchoolUpdates = () => {
     }
   }, [currentMonthEvents.length]); // Use length to avoid unnecessary re-renders
 
-  // Open event modal (view-only)
+  // Open event modal (view-only) - optimized for performance
   const openEventDrawer = useCallback((event: CalendarEvent, date?: Date) => {
-    setSelectedEvent(event);
+    // Batch state updates for better performance
     if (date) {
-      setSelectedDateForDrawer(date);
       // Find all events on this date
       const eventsOnDate = calendarEvents.filter(e => {
         const eventDate = new Date(e.isoDate || e.date);
         return eventDate.toDateString() === date.toDateString();
       });
-      setSelectedDateEvents(eventsOnDate.map(e => ({
+      const mappedEvents = eventsOnDate.map(e => ({
         id: e._id || `calendar-${e.isoDate}-${e.title}`,
         title: e.title,
         color: categoryToColors(e.category || 'Event').dot,
@@ -963,12 +1241,20 @@ const SchoolUpdates = () => {
         time: e.time,
         startDate: e.startDate,
         endDate: e.endDate,
-      })));
+      }));
+      
+      // Batch all state updates together
+      setSelectedEvent(event);
+      setSelectedDateForDrawer(date);
+      setSelectedDateEvents(mappedEvents);
+      setShowEventDrawer(true);
     } else {
+      // Batch all state updates together
+      setSelectedEvent(event);
       setSelectedDateForDrawer(null);
       setSelectedDateEvents([]);
+      setShowEventDrawer(true);
     }
-    setShowEventDrawer(true);
   }, [calendarEvents]);
   
   // Close event modal
@@ -1017,7 +1303,7 @@ const SchoolUpdates = () => {
   
       {/* Animated Floating Background Orb (Copilot-style) */}
       <View style={styles.floatingBgContainer} pointerEvents="none" collapsable={false}>
-        {/* Orb 1 - Soft Orange Glow (Center area) */}
+        {/* Orb 1 - Soft Blue Glow (Center area) */}
         <Animated.View
           style={[
             styles.floatingOrbWrapper,
@@ -1050,7 +1336,7 @@ const SchoolUpdates = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[theme.colors.orbColors.orange1, theme.colors.orbColors.orange2, theme.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -1064,9 +1350,9 @@ const SchoolUpdates = () => {
         </Animated.View>
       </View>
 
-      {/* Orange Header Area with Profile Section */}
+      {/* Blue Header Area with Profile Section */}
       <LinearGradient
-        colors={['#FFD699', '#FFB84D', '#FF9500']}
+        colors={getHeaderGradientColors()}
         start={{ x: 1, y: 0 }}
         end={{ x: 0, y: 1 }}
         style={[styles.orangeHeader, { 
@@ -1081,6 +1367,7 @@ const SchoolUpdates = () => {
           source={require('../../../../assets/DOrSU_STATUE.png')}
           style={styles.headerStatueImage}
           resizeMode="cover"
+          defaultSource={require('../../../../assets/DOrSU_STATUE.png')}
         />
         
         <View style={styles.headerTopRow}>
@@ -1095,9 +1382,16 @@ const SchoolUpdates = () => {
               <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: '#FFF' }]} />
             </View>
           </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={handleNotificationsPress} 
+            style={styles.notificationButton}
+            accessibilityLabel="Notifications"
+          >
+            <Ionicons name="notifications-outline" size={24} color="#FFF" />
+          </TouchableOpacity>
         </View>
         
-        {/* Welcome Section inside Orange Header */}
+        {/* Welcome Section inside Blue Header */}
         <View style={styles.welcomeSectionInHeader}>
           <View style={styles.welcomeContent}>
             {backendUserPhoto ? (
@@ -1107,13 +1401,13 @@ const SchoolUpdates = () => {
               />
             ) : (
               <View style={[styles.welcomeProfileIconCircle, { backgroundColor: '#FFF' }]}>
-                <Text style={styles.welcomeProfileInitials}>{getUserInitials()}</Text>
+                <Text style={[styles.welcomeProfileInitials, { color: theme.colors.accent, fontSize: theme.fontSize.scaleSize(20) }]}>{getUserInitials()}</Text>
               </View>
             )}
             <View style={styles.welcomeText}>
-              <Text style={styles.welcomeGreetingInHeader}>Hello!</Text>
-              <Text style={styles.welcomeTitleInHeader}>{userName}</Text>
-              <Text style={styles.welcomeSubtitleInHeader}>Here are your latest campus updates</Text>
+              <Text style={[styles.welcomeGreetingInHeader, { fontSize: theme.fontSize.scaleSize(14) }]}>Hello!</Text>
+              <Text style={[styles.welcomeTitleInHeader, { fontSize: theme.fontSize.scaleSize(18) }]}>{userName}</Text>
+              <Text style={[styles.welcomeSubtitleInHeader, { fontSize: theme.fontSize.scaleSize(13) }]}>Here are your latest campus updates</Text>
             </View>
           </View>
         </View>
@@ -1127,13 +1421,9 @@ const SchoolUpdates = () => {
 
       {/* Main Content - Scrollable with Curved Top */}
       <View style={styles.contentWrapper}>
-        {/* Orange Gradient Background */}
+        {/* Blue Gradient Background */}
         <LinearGradient
-          colors={
-            isDarkMode
-              ? ['rgba(255, 237, 213, 0.08)', 'rgba(255, 237, 213, 0.03)', 'rgba(255, 237, 213, 0.01)']
-              : ['rgba(255, 237, 213, 0.4)', 'rgba(255, 237, 213, 0.25)', 'rgba(255, 237, 213, 0.1)']
-          }
+          colors={getContentGradientColors()}
           style={styles.orangeGradientBackground}
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 1 }}
@@ -1188,12 +1478,154 @@ const SchoolUpdates = () => {
         }
       >
 
+        {/* Search Bar */}
+        <View style={styles.sectionContainer}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.searchBarContainer, {
+              backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+            }]}
+          >
+            <Ionicons name="search-outline" size={20} color={theme.colors.textMuted} style={styles.searchIcon} />
+            <TextInput
+              style={[styles.searchInput, {
+                color: theme.colors.text,
+                fontSize: theme.fontSize.scaleSize(14),
+              }]}
+              placeholder="Search updates..."
+              placeholderTextColor={theme.colors.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={() => {
+                  setSearchQuery('');
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                style={styles.searchClearButton}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close-circle" size={20} color={theme.colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </BlurView>
+        </View>
+
         {/* Events This Month Section */}
-        {currentMonthEvents.length > 0 && (
-          <View style={styles.sectionContainer}>
-            <View style={styles.sectionDivider}>
-              <Text style={styles.sectionDividerLabel}>EVENTS THIS MONTH</Text>
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionDivider}>
+            <Text style={[styles.sectionDividerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>EVENTS THIS MONTH</Text>
+          </View>
+
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.legendContainer, {
+              backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+            }]}
+          >
+            <View style={styles.legendHeaderRow}>
+              <Text style={[styles.eventCountText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>
+                {currentMonthEvents.length} {currentMonthEvents.length === 1 ? 'event' : 'events'} this month
+              </Text>
             </View>
+            <View style={styles.legendItems}>
+              {legendRows.map((rowItems, rowIndex) => (
+                <View
+                  key={`legend-row-${rowIndex}`}
+                  style={[
+                    styles.legendRow,
+                    rowIndex === 0 ? styles.legendRowThree : styles.legendRowTwo,
+                  ]}
+                >
+                  {rowItems.map((item, colIndex) => {
+                    if (!item) {
+                      return (
+                        <View
+                          key={`legend-placeholder-${rowIndex}-${colIndex}`}
+                          style={[
+                            styles.legendItem,
+                            styles.legendItemThird,
+                            styles.legendItemPlaceholder,
+                          ]}
+                        />
+                      );
+                    }
+                    const isSelected = selectedLegendType === item.key;
+                    return (
+                      <TouchableOpacity
+                        key={`${item.type}-${rowIndex}-${colIndex}`}
+                        style={[
+                          styles.legendItem,
+                          styles.legendItemThird,
+                          isSelected && styles.legendItemSelected,
+                          isSelected && { 
+                            backgroundColor: item.color + '20',
+                            borderColor: item.color
+                          }
+                        ]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setSelectedLegendType(isSelected ? null : item.key);
+                        }}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${item.type} event type - ${isSelected ? 'selected, tap to hide' : 'tap to show'}`}
+                      >
+                        <View style={[
+                          styles.legendColorDot,
+                          { backgroundColor: item.color },
+                          isSelected && styles.legendColorDotSelected
+                        ]} />
+                        <Text
+                          style={[
+                            styles.legendItemText,
+                            { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(11) },
+                            isSelected && { fontWeight: '700', color: item.color }
+                          ]}
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                        >
+                          {item.type}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+          </BlurView>
+
+          {isLoadingCalendarEvents ? (
+            <View style={[styles.eventsLoadingContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <ActivityIndicator size="small" color={theme.colors.accent} />
+              <Text style={[styles.eventsLoadingText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }]}>
+                Loading events...
+              </Text>
+            </View>
+          ) : calendarEventsError ? (
+            <View style={[styles.eventsErrorContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <Ionicons name="alert-circle-outline" size={20} color="#DC2626" />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.eventsErrorText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(12) }]}>
+                  {calendarEventsError}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => refreshCalendarEvents()}
+                  style={[styles.eventsRetryButton, { backgroundColor: theme.colors.accent }]}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.eventsRetryText, { fontSize: theme.fontSize.scaleSize(11) }]}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : currentMonthEvents.length > 0 ? (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -1213,11 +1645,28 @@ const SchoolUpdates = () => {
                   accentColor = colors.dot || '#93C5FD';
                 }
                 
-                // Find the full CalendarEvent object
-                const fullEvent = calendarEvents.find(e => 
-                  e._id === event.id || 
-                  `calendar-${e.isoDate}-${e.title}` === event.id
-                ) || null;
+                // Find the full event object (calendar event or post)
+                let fullEvent: any = null;
+                if (event.source === 'calendar') {
+                  // Calendar event
+                  fullEvent = calendarEvents.find(e => 
+                    e._id === event.id || 
+                    `calendar-${e.isoDate}-${e.title}` === event.id
+                  ) || null;
+                } else if (event.source === 'post') {
+                  // Post/Update - create event data format
+                  fullEvent = {
+                    id: event.id,
+                    title: event.title,
+                    description: event.description,
+                    category: event.tag,
+                    type: event.tag,
+                    date: event.isoDate || event.date,
+                    isoDate: event.isoDate || event.date,
+                    image: event.image,
+                    images: event.images,
+                  };
+                }
                 
                 // Create a subtle background color based on accent color
                 const cardBackgroundColor = isDarkMode 
@@ -1236,10 +1685,34 @@ const SchoolUpdates = () => {
                     delayPressIn={0}
                     onPress={() => {
                       if (fullEvent) {
-                        const eventDate = fullEvent.isoDate || fullEvent.date 
-                          ? new Date(fullEvent.isoDate || fullEvent.date)
-                          : new Date();
-                        openEventDrawer(fullEvent, eventDate);
+                        if (event.source === 'calendar') {
+                          // Calendar event
+                          const eventDate = fullEvent.isoDate || fullEvent.date 
+                            ? new Date(fullEvent.isoDate || fullEvent.date)
+                            : new Date();
+                          openEventDrawer(fullEvent, eventDate);
+                        } else if (event.source === 'post') {
+                          // Post/Update - use ViewEventModal format
+                          const eventDate = fullEvent.isoDate || fullEvent.date 
+                            ? new Date(fullEvent.isoDate || fullEvent.date)
+                            : new Date();
+                          setSelectedEvent(fullEvent);
+                          setSelectedDateForDrawer(eventDate);
+                          setSelectedDateEvents([{
+                            id: fullEvent.id,
+                            title: fullEvent.title,
+                            color: accentColor,
+                            type: fullEvent.category,
+                            category: fullEvent.category,
+                            description: fullEvent.description,
+                            isoDate: fullEvent.isoDate || fullEvent.date,
+                            date: fullEvent.isoDate || fullEvent.date,
+                            image: fullEvent.image,
+                            images: fullEvent.images,
+                          }]);
+                          setShowEventDrawer(true);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }
                       }
                     }}
                   >
@@ -1247,21 +1720,25 @@ const SchoolUpdates = () => {
                     <View style={styles.calendarEventContent} collapsable={false}>
                       <View style={styles.calendarEventHeader}>
                         <View style={[styles.calendarEventIconWrapper, { backgroundColor: accentColor + '20' }]}>
-                          <Ionicons name="calendar" size={16} color={accentColor} />
+                          <Ionicons 
+                            name={event.source === 'post' ? 'document-text' : 'calendar'} 
+                            size={16} 
+                            color={accentColor} 
+                          />
                         </View>
-                        <Text style={[styles.calendarEventTag, { color: accentColor }]}>{event.tag}</Text>
+                        <Text style={[styles.calendarEventTag, { color: accentColor, fontSize: theme.fontSize.scaleSize(9) }]}>{event.tag}</Text>
                       </View>
-                      <Text style={[styles.calendarEventTitle, { color: theme.colors.text }]} numberOfLines={2}>
+                      <Text style={[styles.calendarEventTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]} numberOfLines={2}>
                         {event.title}
                       </Text>
                       <View style={styles.calendarEventDateRow}>
                         <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-                        <Text style={[styles.calendarEventDate, { color: theme.colors.textMuted }]}>
+                        <Text style={[styles.calendarEventDate, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]}>
                           {event.date}
                         </Text>
                       </View>
                       {event.description && (
-                        <Text style={[styles.calendarEventDescription, { color: theme.colors.textMuted }]} numberOfLines={2}>
+                        <Text style={[styles.calendarEventDescription, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]} numberOfLines={2}>
                           {event.description}
                         </Text>
                       )}
@@ -1270,34 +1747,79 @@ const SchoolUpdates = () => {
                 );
               })}
             </ScrollView>
-          </View>
-        )}
+          ) : (
+            <View style={[styles.emptyEventsContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <Ionicons name="calendar-outline" size={24} color={theme.colors.textMuted} />
+              <Text style={[styles.emptyEventsText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }]}>
+                No events match your filters this month
+              </Text>
+            </View>
+          )}
+        </View>
 
         {/* Updates Section */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionDivider}>
-            <Text style={styles.sectionDividerLabel}>UPDATES</Text>
+              <Text style={[styles.sectionDividerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>UPDATES</Text>
           </View>
           
           {/* Time Filter Pills */}
           <View style={[styles.filtersContainer, { flexShrink: 0, marginBottom: 12 }]} collapsable={false}>
             <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'all' && styles.filterPillActive]}
+              style={[
+                styles.filterPill, 
+                { borderColor: theme.colors.border }, 
+                timeFilter === 'all' && {
+                  backgroundColor: theme.colors.accent,
+                  borderColor: theme.colors.accent,
+                  shadowColor: theme.colors.accent,
+                }
+              ]}
               onPress={() => setTimeFilter('all')}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'all' && styles.filterPillTextActive]}>All</Text>
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'all' && { color: '#FFF' }]}>All</Text>
             </Pressable>
             <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'upcoming' && styles.filterPillActive]}
-              onPress={() => setTimeFilter('upcoming')}
+              style={[
+                styles.filterPill, 
+                { borderColor: theme.colors.border }, 
+                timeFilter === 'thismonth' && {
+                  backgroundColor: theme.colors.accent,
+                  borderColor: theme.colors.accent,
+                  shadowColor: theme.colors.accent,
+                }
+              ]}
+              onPress={() => setTimeFilter('thismonth')}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'upcoming' && styles.filterPillTextActive]}>Upcoming</Text>
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'thismonth' && { color: '#FFF' }]}>This month</Text>
             </Pressable>
             <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'recent' && styles.filterPillActive]}
+              style={[
+                styles.filterPill, 
+                { borderColor: theme.colors.border }, 
+                timeFilter === 'recent' && {
+                  backgroundColor: theme.colors.accent,
+                  borderColor: theme.colors.accent,
+                  shadowColor: theme.colors.accent,
+                }
+              ]}
               onPress={() => setTimeFilter('recent')}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'recent' && styles.filterPillTextActive]}>Recent</Text>
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'recent' && { color: '#FFF' }]}>Recent</Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.filterPill, 
+                { borderColor: theme.colors.border }, 
+                timeFilter === 'upcoming' && {
+                  backgroundColor: theme.colors.accent,
+                  borderColor: theme.colors.accent,
+                  shadowColor: theme.colors.accent,
+                }
+              ]}
+              onPress={() => setTimeFilter('upcoming')}
+            >
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'upcoming' && { color: '#FFF' }]}>Upcoming</Text>
             </Pressable>
           </View>
           
@@ -1306,22 +1828,22 @@ const SchoolUpdates = () => {
             {error && (
               <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                 <Ionicons name="alert-circle-outline" size={40} color="#DC2626" />
-                <Text style={{ marginTop: 6, fontSize: 12, color: '#DC2626', fontWeight: '600' }}>{error}</Text>
+                <Text style={{ marginTop: 6, fontSize: theme.fontSize.scaleSize(12), color: '#DC2626', fontWeight: '600' }}>{error}</Text>
               </View>
             )}
 
             {isLoading && (
               <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                 <Ionicons name="hourglass-outline" size={40} color={theme.colors.textMuted} />
-                <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>Loading updates...</Text>
+                <Text style={{ marginTop: 6, fontSize: theme.fontSize.scaleSize(12), color: theme.colors.textMuted, fontWeight: '600' }}>Loading updates...</Text>
               </View>
             )}
 
             {!isLoading && !error && displayedUpdates.length === 0 && (
               <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                 <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
-                <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>
-                  {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : 'No updates found'}
+                <Text style={{ marginTop: 6, fontSize: theme.fontSize.scaleSize(12), color: theme.colors.textMuted, fontWeight: '600' }}>
+                  {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : timeFilter === 'thismonth' ? 'No updates this month' : 'No updates found'}
                 </Text>
               </View>
             )}
@@ -1348,7 +1870,25 @@ const SchoolUpdates = () => {
                   activeOpacity={0.7}
                   delayPressIn={0}
                   onPress={() => {
-                    // Convert to CalendarEvent format for ViewEventModal
+                    // Check if it's a calendar event (has _id) or a post
+                    if (update.source === 'calendar' && update._id) {
+                      // Calendar event - find the full event object
+                      const fullEvent = calendarEvents.find(e => 
+                        e._id === update._id || 
+                        e._id === update.id ||
+                        `calendar-${e.isoDate}-${e.title}` === update.id
+                      );
+                      if (fullEvent) {
+                        const eventDate = fullEvent.isoDate || fullEvent.date 
+                          ? new Date(fullEvent.isoDate || fullEvent.date)
+                          : new Date();
+                        openEventDrawer(fullEvent, eventDate);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        return;
+                      }
+                    }
+                    
+                    // Post/Update - convert to CalendarEvent format for ViewEventModal
                     const eventDate = update.isoDate || update.date 
                       ? new Date(update.isoDate || update.date)
                       : new Date();
@@ -1360,7 +1900,6 @@ const SchoolUpdates = () => {
                       category: update.tag,
                       date: update.isoDate || update.date,
                       isoDate: update.isoDate || update.date,
-                      time: 'All Day', // Updates don't have specific time
                       image: update.image,
                       images: update.images,
                     };
@@ -1376,7 +1915,7 @@ const SchoolUpdates = () => {
                       description: update.description,
                       isoDate: update.isoDate || update.date,
                       date: update.isoDate || update.date,
-                      time: 'All Day',
+                      time: update.time || undefined, // Pass through time if available
                       image: update.image,
                       images: update.images,
                     }]);
@@ -1398,22 +1937,20 @@ const SchoolUpdates = () => {
                       />
                     )}
                     <View style={styles.updateTextContent}>
-                      <Text style={[styles.updateTitle, { color: theme.colors.text }]} numberOfLines={2}>{update.title}</Text>
-                      <View style={styles.updateDateRow}>
-                        <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-                        <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
+                      <View style={styles.updateTitleRow}>
+                        <Text style={[styles.updateTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]} numberOfLines={2}>{update.title}</Text>
+                        <View style={[styles.updateCategoryBadge, { backgroundColor: accentColor + '20' }]}>
+                          <Text style={[styles.updateCategoryText, { color: accentColor, fontSize: theme.fontSize.scaleSize(10) }]}>{update.tag}</Text>
+                        </View>
                       </View>
+                      <Text style={[styles.updateSubtitle, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>
+                        {update.date}
+                      </Text>
                       {update.description && (
-                        <Text style={[styles.updateDescription, { color: theme.colors.textMuted }]} numberOfLines={2}>
+                        <Text style={[styles.updateDescription, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]} numberOfLines={2}>
                           {update.description}
                         </Text>
                       )}
-                      <View style={styles.updateTagRow}>
-                        <View style={styles.statusItem}>
-                          <Ionicons name="pricetag-outline" size={12} color={accentColor} />
-                          <Text style={[styles.updateTagText, { color: accentColor }]}>{update.tag}</Text>
-                        </View>
-                      </View>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -1446,6 +1983,12 @@ const SchoolUpdates = () => {
         onClose={closeEventDrawer}
         selectedEvent={selectedEvent}
         selectedDateEvents={selectedDateEvents}
+      />
+
+      {/* Notification Modal */}
+      <NotificationModal
+        visible={showNotificationModal}
+        onClose={() => setShowNotificationModal(false)}
       />
 
       {/* Bottom Navigation Bar - Fixed position */}
@@ -1496,20 +2039,20 @@ const styles = StyleSheet.create({
   },
   headerStatueImage: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: '100%',
-    height: '100%',
-    opacity: 0.15,
+    top: -30,
+    left: -50,
+    right: -10,
+    bottom: -100,
+    width: '130%',
+    height: '320%',
+    opacity: 0.35,
     zIndex: 0,
     pointerEvents: 'none',
   },
   headerTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
     marginBottom: 16,
     position: 'relative',
     zIndex: 1,
@@ -1520,7 +2063,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+  },
+  notificationButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   customHamburger: {
     width: 24,
@@ -1586,7 +2135,7 @@ const styles = StyleSheet.create({
   welcomeProfileInitials: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#FF9500',
+    color: 'transparent', // Will be set dynamically via theme
     letterSpacing: -0.3,
   },
   contentWrapper: {
@@ -1685,9 +2234,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   filterPillActive: {
-    backgroundColor: '#FF9500',
-    borderColor: '#FF9500',
-    shadowColor: '#FF9500',
+    backgroundColor: 'transparent', // Will be set dynamically via theme
+    borderColor: 'transparent', // Will be set dynamically via theme
+    shadowColor: 'transparent', // Will be set dynamically via theme
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -1699,6 +2248,30 @@ const styles = StyleSheet.create({
   },
   filterPillTextActive: {
     color: '#FFF',
+  },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    marginBottom: 12,
+    minHeight: 52,
+    width: '100%',
+    overflow: 'hidden',
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    padding: 0,
+    fontSize: 14,
+  },
+  searchClearButton: {
+    padding: 4,
+    marginLeft: 8,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -1759,11 +2332,6 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     overflow: 'hidden',
     backgroundColor: 'transparent',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
   },
   calendarEventAccent: {
     width: 3,
@@ -1813,6 +2381,130 @@ const styles = StyleSheet.create({
     fontSize: 10,
     lineHeight: 14,
     opacity: 0.8,
+  },
+  legendContainer: {
+    gap: 8,
+    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  legendHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  legendItems: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 8,
+  },
+  legendRowThree: {
+    justifyContent: 'space-between',
+  },
+  legendRowTwo: {
+    justifyContent: 'space-between',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    minWidth: 0,
+    borderWidth: 0,
+  },
+  legendItemThird: {
+    flex: 1,
+  },
+  legendItemPlaceholder: {
+    opacity: 0,
+  },
+  legendItemSelected: {
+    borderWidth: 1,
+  },
+  legendColorDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  legendColorDotSelected: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  legendItemText: {
+    fontSize: 12,
+    fontWeight: '600',
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  eventCountText: {
+    fontSize: 11,
+    fontWeight: '500',
+    fontStyle: 'italic',
+    opacity: 0.7,
+  },
+  emptyEventsContainer: {
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyEventsText: {
+    fontWeight: '600',
+  },
+  eventsLoadingContainer: {
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  eventsLoadingText: {
+    fontWeight: '600',
+  },
+  eventsErrorContainer: {
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+  eventsErrorText: {
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  eventsRetryButton: {
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  eventsRetryText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   calendarErrorContainer: {
     alignItems: 'center',
@@ -1867,11 +2559,6 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     overflow: 'hidden',
     backgroundColor: 'transparent',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
   },
   updateAccent: {
     width: 3,
@@ -1893,12 +2580,38 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 10,
   },
+  updateTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 4,
+  },
   updateTitle: {
     fontSize: 14,
     fontWeight: '700',
-    marginBottom: 6,
     lineHeight: 18,
     letterSpacing: -0.2,
+    flex: 1,
+  },
+  updateCategoryBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    flexShrink: 0,
+  },
+  updateCategoryText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  updateSubtitle: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginBottom: 6,
+    opacity: 0.8,
   },
   updateDateRow: {
     flexDirection: 'row',
@@ -1929,29 +2642,6 @@ const styles = StyleSheet.create({
   updateTagText: {
     fontSize: 11,
     fontWeight: '700',
-  },
-  searchContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-  },
-  searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-  },
-  clearButton: {
-    padding: 4,
   },
   noEventsContainer: {
     borderWidth: 1,

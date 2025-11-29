@@ -43,8 +43,8 @@ const CalendarHelpScreen = () => {
           </TouchableOpacity>
         </View>
         <View style={styles.headerCenter}>
-          <View style={[styles.headerIconContainer, { backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.2)' : 'rgba(255, 149, 0, 0.1)' }]}>
-            <Ionicons name="information-circle" size={20} color="#FF9500" />
+          <View style={[styles.headerIconContainer, { backgroundColor: isDarkMode ? 'rgba(37, 99, 235, 0.2)' : 'rgba(37, 99, 235, 0.1)' }]}>
+            <Ionicons name="information-circle" size={20} color="#2563EB" />
           </View>
           <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>
             Calendar Help
@@ -126,10 +126,10 @@ const CalendarHelpScreen = () => {
           </View>
           
           <View style={[styles.noteBox, { 
-            backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.1)' : 'rgba(255, 149, 0, 0.08)',
-            borderColor: isDarkMode ? 'rgba(255, 149, 0, 0.3)' : 'rgba(255, 149, 0, 0.2)',
+            backgroundColor: isDarkMode ? 'rgba(37, 99, 235, 0.1)' : 'rgba(37, 99, 235, 0.08)',
+            borderColor: isDarkMode ? 'rgba(37, 99, 235, 0.3)' : 'rgba(37, 99, 235, 0.2)',
           }]}>
-            <Ionicons name="bulb" size={16} color="#FF9500" />
+            <Ionicons name="bulb" size={16} color="#2563EB" />
             <Text style={[styles.noteText, { color: t.colors.text }]}>
               Field names are flexible (case-insensitive). Missing fields can be added later using the Edit button.
             </Text>

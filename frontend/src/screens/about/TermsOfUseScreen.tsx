@@ -2,8 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Animated, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../../contexts/ThemeContext';
-import { theme } from '../../config/theme';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,7 +17,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'TermsOfUse'
 
 const TermsOfUseScreen = () => {
   const insets = useSafeAreaInsets();
-  const { theme, isDarkMode } = useTheme();
+  const { isDarkMode, theme: t } = useThemeValues();
   const navigation = useNavigation<NavigationProp>();
 
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -40,7 +39,7 @@ const TermsOfUseScreen = () => {
     );
     animation.start();
     return () => animation.stop();
-  }, [floatAnim1]);
+  }, []);
 
   const sections = [
     {
@@ -131,7 +130,7 @@ const TermsOfUseScreen = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[t.colors.orbColors.orange1, t.colors.orbColors.orange2, t.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -148,15 +147,15 @@ const TermsOfUseScreen = () => {
         <View style={styles.headerLeft}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} accessibilityLabel="Go back"><Ionicons name="chevron-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} /></TouchableOpacity>
         </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Terms of Use</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}>Terms of Use</Text>
         <View style={styles.headerRight} />
       </View>
       <ScrollView style={styles.content} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
         <View style={styles.descriptionContainer}>
-          <View style={[styles.descriptionCard, { borderColor: theme.colors.border }]}>
+          <View style={[styles.descriptionCard, { borderColor: t.colors.border }]}>
             <BlurView intensity={Platform.OS === 'ios' ? 20 : 15} tint={isDarkMode ? 'dark' : 'light'} style={styles.descriptionBlur}>
               <View style={[styles.descriptionContent, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
-                <Text style={[styles.description, { color: theme.colors.textMuted }]}>Please read these Terms of Use carefully before using DOrSU Connect. By using this application, you agree to be bound by these terms.</Text>
+                <Text style={[styles.description, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(14) }]}>Please read these Terms of Use carefully before using DOrSU Connect. By using this application, you agree to be bound by these terms.</Text>
               </View>
             </BlurView>
           </View>
@@ -164,11 +163,11 @@ const TermsOfUseScreen = () => {
         
         <View style={styles.sectionsContainer}>
           {sections.map((section, index) => (
-            <View key={index} style={[styles.sectionCardWrapper, { borderColor: theme.colors.border }]}>
+            <View key={index} style={[styles.sectionCardWrapper, { borderColor: t.colors.border }]}>
               <BlurView intensity={Platform.OS === 'ios' ? 20 : 15} tint={isDarkMode ? 'dark' : 'light'} style={styles.sectionCardBlur}>
                 <View style={[styles.sectionCard, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
-                  <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>{section.title}</Text>
-                  <Text style={[styles.sectionContent, { color: theme.colors.textMuted }]}>{section.content}</Text>
+                  <Text style={[styles.sectionTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>{section.title}</Text>
+                  <Text style={[styles.sectionContent, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(14) }]}>{section.content}</Text>
                 </View>
               </BlurView>
             </View>
@@ -176,14 +175,14 @@ const TermsOfUseScreen = () => {
         </View>
 
         {/* Last Updated */}
-        <View style={[styles.lastUpdatedBoxWrapper, { borderColor: theme.colors.border }]}>
+        <View style={[styles.lastUpdatedBoxWrapper, { borderColor: t.colors.border }]}>
           <BlurView intensity={Platform.OS === 'ios' ? 20 : 15} tint={isDarkMode ? 'dark' : 'light'} style={styles.lastUpdatedBoxBlur}>
             <View style={[styles.lastUpdatedBox, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
               <View style={styles.lastUpdatedHeader}>
-                <Ionicons name="information-circle-outline" size={20} color={theme.colors.accent} />
-                <Text style={[styles.lastUpdatedTitle, { color: theme.colors.text }]}>Last Updated</Text>
+                <Ionicons name="information-circle-outline" size={20} color={t.colors.accent} />
+                <Text style={[styles.lastUpdatedTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(15) }]}>Last Updated</Text>
               </View>
-              <Text style={[styles.lastUpdatedText, { color: theme.colors.textMuted }]}>These Terms of Use were last updated on January 1, 2024.</Text>
+              <Text style={[styles.lastUpdatedText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(13) }]}>These Terms of Use were last updated on January 1, 2024.</Text>
             </View>
           </BlurView>
         </View>

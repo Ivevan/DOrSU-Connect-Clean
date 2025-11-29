@@ -14,9 +14,10 @@ import {
   Pressable,
   Animated,
   Platform,
+  InteractionManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ConfirmationModal from '../../modals/ConfirmationModal';
@@ -88,7 +89,6 @@ const ManagePosts: React.FC = () => {
   // Action modals
   const [isPinConfirmOpen, setIsPinConfirmOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-  const [isDeleteSuccessOpen, setIsDeleteSuccessOpen] = useState(false);
   const [isRefreshSuccessOpen, setIsRefreshSuccessOpen] = useState(false);
   const [actionPost, setActionPost] = useState<Post | null>(null);
   
@@ -158,54 +158,54 @@ const ManagePosts: React.FC = () => {
   const isFetching = useRef<boolean>(false);
   const FETCH_COOLDOWN = 1000; // 1 second cooldown
 
-  // Load posts on mount only (filtering is done client-side, no need to refetch on filter changes)
-  useEffect(() => {
-    let isCancelled = false;
-    
+  // Fetch posts function - reusable for both mount and focus
+  const fetchPosts = useCallback(async (forceRefresh: boolean = false) => {
     // Prevent duplicate simultaneous fetches
-    if (isFetching.current) {
+    if (isFetching.current && !forceRefresh) {
       return;
     }
 
-    // Cooldown check
+    // Cooldown check - skip if not forcing refresh
     const now = Date.now();
-    if (now - lastFetchTime.current < FETCH_COOLDOWN) {
+    if (!forceRefresh && now - lastFetchTime.current < FETCH_COOLDOWN) {
       return;
     }
 
     isFetching.current = true;
     lastFetchTime.current = now;
 
-    const fetchPosts = async () => {
-      try {
-        setIsLoadingPosts(true);
-        setPostsError(null);
-        // Use cache if available (filtering is client-side)
-        const json = await AdminDataService.getPosts(false);
-        if (!isCancelled) {
-          // Map the API response to include isPinned and isUrgent fields
-          const mappedPosts: Post[] = json.map((post: any) => ({
-            ...post,
-            isPinned: post.isPinned || false,
-            isUrgent: post.isUrgent || false,
-          }));
-          setPosts(mappedPosts);
-        }
-      } catch (e: any) {
-        if (!isCancelled) setPostsError(e?.message || 'Failed to load posts');
-      } finally {
-        if (!isCancelled) {
-          setIsLoadingPosts(false);
-          isFetching.current = false;
-        }
-      }
-    };
-    fetchPosts();
-    return () => { 
-      isCancelled = true;
+    try {
+      setIsLoadingPosts(true);
+      setPostsError(null);
+      // Fetch posts from backend (always fresh data)
+      const json = await AdminDataService.getPosts();
+      // Map the API response to include isPinned and isUrgent fields
+      const mappedPosts: Post[] = json.map((post: any) => ({
+        ...post,
+        isPinned: post.isPinned || false,
+        isUrgent: post.isUrgent || false,
+      }));
+      setPosts(mappedPosts);
+    } catch (e: any) {
+      setPostsError(e?.message || 'Failed to load posts');
+    } finally {
+      setIsLoadingPosts(false);
       isFetching.current = false;
-    };
-  }, []); // Empty deps - only fetch on mount, filtering is client-side
+    }
+  }, []);
+
+  // Load posts on mount
+  useEffect(() => {
+    fetchPosts(true); // Force refresh on mount
+  }, [fetchPosts]);
+
+  // Refresh posts when screen comes into focus (e.g., after editing)
+  useFocusEffect(
+    useCallback(() => {
+      // Force refresh when screen comes into focus to show updated posts
+      fetchPosts(true);
+    }, [fetchPosts])
+  );
 
   const handleNewPost = useCallback(() => {
     // Prevent rapid tapping during animation
@@ -284,7 +284,9 @@ const ManagePosts: React.FC = () => {
 
   const closePinConfirm = () => {
     Animated.timing(pinSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setIsPinConfirmOpen(false);
+      InteractionManager.runAfterInteractions(() => {
+        setIsPinConfirmOpen(false);
+      });
     });
   };
 
@@ -462,8 +464,14 @@ const ManagePosts: React.FC = () => {
       
       {/* Warm Gradient Background */}
       <LinearGradient
-        colors={isDarkMode ? ['#1F1F1F', '#2A2A2A', '#1A1A1A'] : ['#FBF8F3', '#F8F5F0', '#F5F2ED']}
+        colors={[
+          isDarkMode ? '#0B1220' : '#FBF8F3',
+          isDarkMode ? '#111827' : '#F8F5F0',
+          isDarkMode ? '#1F2937' : '#F5F2ED'
+        ]}
         style={styles.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
       />
       
       {/* Simplified Animated Background */}
@@ -481,7 +489,7 @@ const ManagePosts: React.FC = () => {
           ]}
         >
           <LinearGradient
-            colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.2)', 'transparent']}
+            colors={[theme.colors.orbColors.orange5, theme.colors.orbColors.orange2, 'transparent']}
             style={StyleSheet.absoluteFillObject}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -500,7 +508,7 @@ const ManagePosts: React.FC = () => {
           ]}
         >
           <LinearGradient
-            colors={['transparent', 'rgba(255, 180, 130, 0.3)', 'rgba(255, 200, 160, 0.15)']}
+            colors={['transparent', theme.colors.orbColors.orange4, theme.colors.orbColors.orange1]}
             style={StyleSheet.absoluteFillObject}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -542,11 +550,11 @@ const ManagePosts: React.FC = () => {
             <Ionicons name="arrow-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
           </TouchableOpacity>
         </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]} numberOfLines={1}>Manage Posts</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(20) }]} numberOfLines={1}>Manage Posts</Text>
         <View style={styles.headerRight} collapsable={false}>
           <TouchableOpacity style={[styles.newButton, { backgroundColor: theme.colors.primary }]} onPress={handleNewPost}>
             <Ionicons name="add" size={20} color="#fff" />
-            <Text style={[styles.newButtonText, { color: '#fff' }]}>New</Text>
+            <Text style={[styles.newButtonText, { color: '#fff', fontSize: theme.fontSize.scaleSize(13) }]}>New</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -576,7 +584,7 @@ const ManagePosts: React.FC = () => {
           }]}
         >
           <View style={styles.filterHeaderRow}>
-            <Text style={[styles.filterTitle, { color: theme.colors.text }]}>Filter Posts</Text>
+            <Text style={[styles.filterTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>Filter Posts</Text>
             <View style={styles.filterActions}>
               <TouchableOpacity 
                 style={[styles.demoLoadingBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, isLoading && { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.primary }]} 
@@ -588,14 +596,14 @@ const ManagePosts: React.FC = () => {
                   size={14} 
                   color={isLoading ? theme.colors.primary : theme.colors.textMuted} 
                 />
-                  <Text style={[styles.demoLoadingText, { color: theme.colors.textMuted }, isLoading && { color: theme.colors.primary, fontWeight: '600' }]}>
+                  <Text style={[styles.demoLoadingText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }, isLoading && { color: theme.colors.primary, fontWeight: '600' }]}>
                   {isLoading ? "Refreshing..." : "Refresh Posts"}
                 </Text>
               </TouchableOpacity>
               {hasActiveFilters && (
                 <TouchableOpacity style={[styles.clearFiltersBtn, { backgroundColor: isDarkMode ? '#7F1D1D' : '#FEF2F2' }]} onPress={clearAllFilters}>
                   <Ionicons name="close-circle" size={16} color={isDarkMode ? '#FCA5A5' : '#DC2626'} />
-                  <Text style={[styles.clearFiltersText, { color: isDarkMode ? '#FCA5A5' : '#DC2626' }]}>Clear All</Text>
+                  <Text style={[styles.clearFiltersText, { color: isDarkMode ? '#FCA5A5' : '#DC2626', fontSize: theme.fontSize.scaleSize(12) }]}>Clear All</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -607,7 +615,7 @@ const ManagePosts: React.FC = () => {
           }]}>
             <Ionicons name="search" size={20} color={theme.colors.textMuted} style={styles.searchIcon} />
             <TextInput
-              style={[styles.searchInput, { color: theme.colors.text }]}
+              style={[styles.searchInput, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}
               placeholder="Search posts..."
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -641,7 +649,7 @@ const ManagePosts: React.FC = () => {
                 </View>
                 <Text style={[
                   styles.categoryText, 
-                  { color: theme.colors.text },
+                  { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) },
                   selectedCategory !== 'All Categories' && { color: theme.colors.primary, fontWeight: '700' }
                 ]}>
                   {selectedCategory}
@@ -676,7 +684,7 @@ const ManagePosts: React.FC = () => {
               />
               <Text style={[
                 styles.dateFilterText,
-                { color: theme.colors.text },
+                { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) },
                 filterDate !== '' && { color: theme.colors.primary, fontWeight: '700' }
               ]}>
                 {filterDate || 'Filter by date'}
@@ -707,7 +715,7 @@ const ManagePosts: React.FC = () => {
                 </View>
                 <Text style={[
                   styles.sortText, 
-                  { color: theme.colors.text },
+                  { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) },
                   selectedSort !== 'Newest' && { color: theme.colors.primary, fontWeight: '700' }
                 ]}>
                   Sort by: {selectedSort}
@@ -729,7 +737,7 @@ const ManagePosts: React.FC = () => {
 
         {/* Posts List */}
         <View style={styles.postsContainer} collapsable={false}>
-          <Text style={[styles.postsTitle, { color: theme.colors.text }]}>Posts ({sortedPosts.length})</Text>
+          <Text style={[styles.postsTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>Posts ({sortedPosts.length})</Text>
           
           {isLoading ? (
             // Skeleton Loaders
@@ -772,7 +780,7 @@ const ManagePosts: React.FC = () => {
             ))
           ) : postsError ? (
             <View style={styles.emptyStateContainer}>
-              <Text style={[styles.emptyStateSubtitle, { color: '#DC2626' }]}>Failed to load posts</Text>
+              <Text style={[styles.emptyStateSubtitle, { color: '#DC2626', fontSize: theme.fontSize.scaleSize(14) }]}>Failed to load posts</Text>
             </View>
           ) : filteredPosts.length === 0 ? (
             // Empty State
@@ -780,10 +788,10 @@ const ManagePosts: React.FC = () => {
             <View style={styles.emptyStateIcon}>
               <Ionicons name="document-text-outline" size={48} color={theme.colors.textMuted} />
             </View>
-            <Text style={[styles.emptyStateTitle, { color: theme.colors.text }]}>
+            <Text style={[styles.emptyStateTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(18) }]}>
                 {hasActiveFilters ? 'No posts found' : 'No posts yet'}
               </Text>
-            <Text style={[styles.emptyStateSubtitle, { color: theme.colors.textMuted }]}>
+            <Text style={[styles.emptyStateSubtitle, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(14) }]}>
                 {hasActiveFilters 
                   ? 'Try adjusting your filters or search terms'
                   : 'Create your first post to get started'
@@ -792,7 +800,7 @@ const ManagePosts: React.FC = () => {
               {!hasActiveFilters && (
               <TouchableOpacity style={[styles.emptyStateButton, { backgroundColor: theme.colors.primary }]} onPress={handleNewPost}>
                   <Ionicons name="add" size={20} color="#fff" />
-                  <Text style={styles.emptyStateButtonText}>Create First Post</Text>
+                  <Text style={[styles.emptyStateButtonText, { fontSize: theme.fontSize.scaleSize(14) }]}>Create First Post</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -812,23 +820,23 @@ const ManagePosts: React.FC = () => {
             >
               <View style={styles.postHeader}>
                   <View style={styles.postTitleContainer}>
-                  <Text style={[styles.postTitle, { color: theme.colors.text }]}>{post.title}</Text>
+                  <Text style={[styles.postTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>{post.title}</Text>
                     <View style={styles.tagsContainer}>
                       {post.isPinned && (
                         <View style={styles.pinnedTag}>
                           <Ionicons name="pin" size={10} color="#fff" />
-                          <Text style={styles.pinnedText}>Pinned</Text>
+                          <Text style={[styles.pinnedText, { fontSize: theme.fontSize.scaleSize(11) }]}>Pinned</Text>
                         </View>
                       )}
                       {post.isUrgent && (
                         <View style={styles.urgentTag}>
                           <Ionicons name="alert-circle" size={10} color="#fff" />
-                          <Text style={styles.urgentText}>Urgent</Text>
+                          <Text style={[styles.urgentText, { fontSize: theme.fontSize.scaleSize(11) }]}>Urgent</Text>
                         </View>
                       )}
                       <View style={[styles.categoryTag, { backgroundColor: categoryOption.color }]}>
                         <Ionicons name={categoryOption.icon as any} size={10} color="#fff" />
-                        <Text style={styles.categoryTagText}>{post.category}</Text>
+                        <Text style={[styles.categoryTagText, { fontSize: theme.fontSize.scaleSize(11) }]}>{post.category}</Text>
                       </View>
                     </View>
                   </View>
@@ -844,7 +852,7 @@ const ManagePosts: React.FC = () => {
                 </View>
                 
                 <View style={styles.postMetadata}>
-                <Text style={[styles.postDate, { color: theme.colors.textMuted }]}>Posted: {post.date}</Text>
+                <Text style={[styles.postDate, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(13) }]}>Posted: {post.date}</Text>
                 </View>
               </BlurView>
             );
@@ -913,11 +921,8 @@ const ManagePosts: React.FC = () => {
         onClose={closeDeleteConfirm}
         onConfirm={() => {
           if (actionPost) {
+            handleDeletePost(actionPost.id);
             closeDeleteConfirm();
-            setTimeout(() => {
-              handleDeletePost(actionPost.id);
-              setIsDeleteSuccessOpen(true);
-            }, 50);
           }
         }}
         title="Delete post?"
@@ -927,28 +932,6 @@ const ManagePosts: React.FC = () => {
         iconColor="#DC2626"
         confirmButtonColor="#DC2626"
         sheetY={deleteSheetY}
-      />
-
-      {/* Delete Success Modal */}
-      <InfoModal
-        visible={isDeleteSuccessOpen}
-        onClose={() => setIsDeleteSuccessOpen(false)}
-        title="Successfully Deleted!"
-        subtitle="The post has been removed from your posts list."
-        cards={[
-          {
-            icon: 'time-outline',
-            iconColor: '#059669',
-            iconBgColor: '#ECFDF5',
-            text: `Action completed at ${new Date().toLocaleTimeString()}`
-          },
-          {
-            icon: 'information-circle-outline',
-            iconColor: '#059669',
-            iconBgColor: '#ECFDF5',
-            text: 'You can create a new post anytime'
-          }
-        ]}
       />
 
       {/* Refresh Success Modal */}
@@ -978,7 +961,7 @@ const ManagePosts: React.FC = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.categoryMenuCard}>
             <View style={styles.modalHeaderRow}>
-              <Text style={styles.categoryMenuTitle}>Select Category</Text>
+              <Text style={[styles.categoryMenuTitle, { fontSize: theme.fontSize.scaleSize(14) }]}>Select Category</Text>
               <TouchableOpacity onPress={closeCategoryMenu} style={styles.modalCloseBtn}>
                 <Ionicons name="close" size={20} color="#555" />
               </TouchableOpacity>
@@ -992,8 +975,8 @@ const ManagePosts: React.FC = () => {
                       <Ionicons name={opt.icon as any} size={18} color={opt.color} />
                     </View>
                     <View style={styles.categoryTextWrap}>
-                      <Text style={[styles.categoryRowTitle, active && { color: '#111' }]}>{opt.key}</Text>
-                      <Text style={styles.categoryRowSub}>{opt.description}</Text>
+                      <Text style={[styles.categoryRowTitle, { fontSize: theme.fontSize.scaleSize(13) }, active && { color: '#111' }]}>{opt.key}</Text>
+                      <Text style={[styles.categoryRowSub, { fontSize: theme.fontSize.scaleSize(11) }]}>{opt.description}</Text>
                     </View>
                     {active && (
                       <Ionicons name="checkmark-circle" size={20} color={opt.color} />
@@ -1011,7 +994,7 @@ const ManagePosts: React.FC = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.categoryMenuCard}>
             <View style={styles.modalHeaderRow}>
-              <Text style={styles.categoryMenuTitle}>Sort Posts</Text>
+              <Text style={[styles.categoryMenuTitle, { fontSize: theme.fontSize.scaleSize(14) }]}>Sort Posts</Text>
               <TouchableOpacity onPress={closeSortMenu} style={styles.modalCloseBtn}>
                 <Ionicons name="close" size={20} color="#555" />
               </TouchableOpacity>
@@ -1025,8 +1008,8 @@ const ManagePosts: React.FC = () => {
                       <Ionicons name={opt.icon as any} size={18} color={opt.color} />
                     </View>
                     <View style={styles.categoryTextWrap}>
-                      <Text style={[styles.categoryRowTitle, active && { color: '#111' }]}>{opt.key}</Text>
-                      <Text style={styles.categoryRowSub}>{opt.description}</Text>
+                      <Text style={[styles.categoryRowTitle, { fontSize: theme.fontSize.scaleSize(13) }, active && { color: '#111' }]}>{opt.key}</Text>
+                      <Text style={[styles.categoryRowSub, { fontSize: theme.fontSize.scaleSize(11) }]}>{opt.description}</Text>
                     </View>
                     {active && (
                       <Ionicons name="checkmark-circle" size={20} color={opt.color} />
@@ -1044,37 +1027,37 @@ const ManagePosts: React.FC = () => {
         <Modal transparent animationType="fade" onRequestClose={cancelTmpDate}>
           <View style={styles.modalOverlay}>
             <View style={styles.dateModal}>
-              <Text style={styles.dateModalTitle}>Select Date</Text>
+              <Text style={[styles.dateModalTitle, { fontSize: theme.fontSize.scaleSize(16) }]}>Select Date</Text>
               <View style={styles.datePickersRow}>
                 {/* Month */}
                 <View style={styles.datePickerCol}>
-                  <Text style={styles.datePickerLabel}>Month</Text>
+                  <Text style={[styles.datePickerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>Month</Text>
                   <ScrollView style={styles.datePickerList}>
                     {months.map((m, idx) => (
                       <TouchableOpacity key={m} style={[styles.datePickerItem, tmpMonth === idx && styles.datePickerItemActive]} onPress={() => setTmpMonth(idx)}>
-                        <Text style={[styles.datePickerText, tmpMonth === idx && styles.datePickerTextActive]} numberOfLines={1}>{m}</Text>
+                        <Text style={[styles.datePickerText, { fontSize: theme.fontSize.scaleSize(13) }, tmpMonth === idx && styles.datePickerTextActive]} numberOfLines={1}>{m}</Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
                 </View>
                 {/* Day */}
                 <View style={styles.datePickerCol}>
-                  <Text style={styles.datePickerLabel}>Day</Text>
+                  <Text style={[styles.datePickerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>Day</Text>
                   <ScrollView style={styles.datePickerList}>
                     {dayOptions.map((d) => (
                       <TouchableOpacity key={d} style={[styles.datePickerItem, tmpDay === d && styles.datePickerItemActive]} onPress={() => setTmpDay(d)}>
-                        <Text style={[styles.datePickerText, tmpDay === d && styles.datePickerTextActive]}>{d}</Text>
+                        <Text style={[styles.datePickerText, { fontSize: theme.fontSize.scaleSize(13) }, tmpDay === d && styles.datePickerTextActive]}>{d}</Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
                 </View>
                 {/* Year */}
                 <View style={styles.datePickerCol}>
-                  <Text style={styles.datePickerLabel}>Year</Text>
+                  <Text style={[styles.datePickerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>Year</Text>
                   <ScrollView style={styles.datePickerList}>
                     {yearOptions.map((y) => (
                       <TouchableOpacity key={y} style={[styles.datePickerItem, tmpYear === y && styles.datePickerItemActive]} onPress={() => setTmpYear(y)}>
-                        <Text style={[styles.datePickerText, tmpYear === y && styles.datePickerTextActive]}>{y}</Text>
+                        <Text style={[styles.datePickerText, { fontSize: theme.fontSize.scaleSize(13) }, tmpYear === y && styles.datePickerTextActive]}>{y}</Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
@@ -1082,10 +1065,10 @@ const ManagePosts: React.FC = () => {
               </View>
               <View style={styles.dateModalActions}>
                 <TouchableOpacity style={styles.cancelBtn} onPress={cancelTmpDate}>
-                  <Text style={styles.cancelText}>Cancel</Text>
+                  <Text style={[styles.cancelText, { fontSize: theme.fontSize.scaleSize(14) }]}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.publishBtn} onPress={confirmTmpDate}>
-                  <Text style={styles.publishText}>Done</Text>
+                  <Text style={[styles.publishText, { fontSize: theme.fontSize.scaleSize(14) }]}>Done</Text>
                 </TouchableOpacity>
                 </View>
             </View>

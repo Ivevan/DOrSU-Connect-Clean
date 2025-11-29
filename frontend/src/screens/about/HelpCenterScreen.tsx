@@ -1,9 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, StatusBar, Animated, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../../contexts/ThemeContext';
-import { theme } from '../../config/theme';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -18,7 +17,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'HelpCenter'
 
 const HelpCenterScreen = () => {
   const insets = useSafeAreaInsets();
-  const { theme, isDarkMode } = useTheme();
+  const { isDarkMode, theme: t } = useThemeValues();
   const navigation = useNavigation<NavigationProp>();
 
   // Animated floating background orb (Copilot-style)
@@ -42,7 +41,7 @@ const HelpCenterScreen = () => {
     );
     animation.start();
     return () => animation.stop();
-  }, [floatAnim1]);
+  }, []);
 
   const faqItems = [
     {
@@ -109,7 +108,7 @@ const HelpCenterScreen = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[t.colors.orbColors.orange1, t.colors.orbColors.orange2, t.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -126,15 +125,15 @@ const HelpCenterScreen = () => {
         <View style={styles.headerLeft}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} accessibilityLabel="Go back"><Ionicons name="chevron-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} /></TouchableOpacity>
         </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>Help Center</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}>Help Center</Text>
         <View style={styles.headerRight} />
       </View>
       <ScrollView style={styles.content} contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
         <View style={styles.descriptionContainer}>
-          <View style={[styles.descriptionCard, { borderColor: theme.colors.border }]}>
+          <View style={[styles.descriptionCard, { borderColor: t.colors.border }]}>
             <BlurView intensity={Platform.OS === 'ios' ? 20 : 15} tint={isDarkMode ? 'dark' : 'light'} style={styles.descriptionBlur}>
               <View style={[styles.descriptionContent, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
-                <Text style={[styles.description, { color: theme.colors.textMuted }]}>Find answers to common questions about DOrSU Connect.</Text>
+                <Text style={[styles.description, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(14) }]}>Find answers to common questions about DOrSU Connect.</Text>
               </View>
             </BlurView>
           </View>
@@ -142,14 +141,14 @@ const HelpCenterScreen = () => {
         
         <View style={styles.faqContainer}>
           {faqItems.map((item, index) => (
-            <View key={index} style={[styles.faqCardWrapper, { borderColor: theme.colors.border }]}>
+            <View key={index} style={[styles.faqCardWrapper, { borderColor: t.colors.border }]}>
               <BlurView intensity={Platform.OS === 'ios' ? 20 : 15} tint={isDarkMode ? 'dark' : 'light'} style={styles.faqCardBlur}>
                 <View style={[styles.faqCard, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
                   <View style={styles.faqQuestionRow}>
-                    <Ionicons name="help-circle-outline" size={20} color={theme.colors.accent} style={styles.faqIcon} />
-                    <Text style={[styles.faqQuestion, { color: theme.colors.text }]}>{item.question}</Text>
+                    <Ionicons name="help-circle-outline" size={20} color={t.colors.accent} style={styles.faqIcon} />
+                    <Text style={[styles.faqQuestion, { color: t.colors.text, fontSize: t.fontSize.scaleSize(15) }]}>{item.question}</Text>
                   </View>
-                  <Text style={[styles.faqAnswer, { color: theme.colors.textMuted }]}>{item.answer}</Text>
+                  <Text style={[styles.faqAnswer, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(13) }]}>{item.answer}</Text>
                 </View>
               </BlurView>
             </View>
@@ -157,14 +156,14 @@ const HelpCenterScreen = () => {
         </View>
 
         {/* Help Section */}
-        <View style={[styles.helpBoxWrapper, { borderColor: theme.colors.border }]}>
+        <View style={[styles.helpBoxWrapper, { borderColor: t.colors.border }]}>
           <BlurView intensity={Platform.OS === 'ios' ? 20 : 15} tint={isDarkMode ? 'dark' : 'light'} style={styles.helpBoxBlur}>
             <View style={[styles.helpBox, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.7)' : 'rgba(255, 255, 255, 0.7)' }]}>
               <View style={styles.helpBoxHeader}>
-                <Ionicons name="information-circle-outline" size={20} color={theme.colors.accent} />
-                <Text style={[styles.helpBoxTitle, { color: theme.colors.text }]}>Need more help?</Text>
+                <Ionicons name="information-circle-outline" size={20} color={t.colors.accent} />
+                <Text style={[styles.helpBoxTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(15) }]}>Need more help?</Text>
               </View>
-              <Text style={[styles.helpBoxText, { color: theme.colors.textMuted }]}>Contact our support team for personalized assistance.</Text>
+              <Text style={[styles.helpBoxText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(13) }]}>Contact our support team for personalized assistance.</Text>
             </View>
           </BlurView>
         </View>

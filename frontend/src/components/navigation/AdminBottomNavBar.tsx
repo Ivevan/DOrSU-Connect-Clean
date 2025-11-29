@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useTheme } from '../../contexts/ThemeContext';
+import { useThemeValues } from '../../contexts/ThemeContext';
+import { BlurView } from 'expo-blur';
 
 interface AdminBottomNavBarProps {
   onDashboardPress?: () => void;
@@ -18,7 +19,7 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
   activeTab = 'chat',
 }) => {
   const insets = useSafeAreaInsets();
-  const { isDarkMode } = useTheme();
+  const { isDarkMode, theme: t } = useThemeValues();
 
   return (
     <View style={[
@@ -27,9 +28,11 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
         paddingBottom: insets.bottom,
       }
     ]} collapsable={false}>
-      <View style={[styles.blurBackground, {
-        backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.85)',
-      }]}>
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 50 : 40}
+        tint={isDarkMode ? 'dark' : 'light'}
+        style={styles.blurBackground}
+      >
         <View style={[styles.navContent, {
           backgroundColor: 'transparent',
         }]}>
@@ -37,7 +40,7 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
             <Ionicons 
               name={activeTab === 'chat' ? 'home' : 'home-outline'} 
               size={28} 
-              color={activeTab === 'chat' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
+              color={activeTab === 'chat' ? t.colors.accent : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
 
@@ -45,7 +48,7 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
             <Ionicons 
               name={activeTab === 'dashboard' ? 'newspaper' : 'newspaper-outline'} 
               size={28} 
-              color={activeTab === 'dashboard' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
+              color={activeTab === 'dashboard' ? t.colors.accent : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
 
@@ -53,11 +56,11 @@ const AdminBottomNavBar: React.FC<AdminBottomNavBarProps> = ({
             <Ionicons 
               name={activeTab === 'calendar' ? 'calendar' : 'calendar-outline'} 
               size={28} 
-              color={activeTab === 'calendar' ? '#FF9500' : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
+              color={activeTab === 'calendar' ? t.colors.accent : (isDarkMode ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.5)')} 
             />
           </TouchableOpacity>
         </View>
-      </View>
+      </BlurView>
     </View>
   );
 };
@@ -66,6 +69,11 @@ const styles = StyleSheet.create({
   container: {
     position: 'relative',
     backgroundColor: 'transparent',
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   blurBackground: {
     borderTopLeftRadius: 20,
@@ -73,12 +81,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 0,
     borderBottomWidth: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 8,
-    backdropFilter: 'blur(10px)',
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   navContent: {
     flexDirection: 'row',

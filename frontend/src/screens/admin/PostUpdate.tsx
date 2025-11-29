@@ -14,6 +14,7 @@ import {
   Image,
   FlatList,
   Animated,
+  InteractionManager,
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -28,6 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import PreviewModal from '../../modals/PreviewModal';
 import BottomSheet from '../../components/common/BottomSheet';
+import MonthPickerModal from '../../modals/MonthPickerModal';
 
 type RootStackParamList = {
   AdminDashboard: undefined;
@@ -59,7 +61,6 @@ const PostUpdate: React.FC = () => {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Announcement');
   const [date, setDate] = useState('');
-  const [time, setTime] = useState('');
   const [description, setDescription] = useState('');
   // removed: scheduleForLater, pinToTop, markAsUrgent
 
@@ -72,23 +73,34 @@ const PostUpdate: React.FC = () => {
     cachedUri?: string | null;
   } | null>(null);
 
+  // Track original values to detect changes when editing
+  const [originalValues, setOriginalValues] = useState<{
+    title: string;
+    category: string;
+    date: string;
+    description: string;
+    hasFile: boolean;
+  }>({
+    title: '',
+    category: 'Announcement',
+    date: '',
+    description: '',
+    hasFile: false,
+  });
+
   // Category and Date picker state
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDateObj, setSelectedDateObj] = useState<Date | null>(null);
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
   
-  // Time picker state
-  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
-  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
-  const [tmpHour, setTmpHour] = useState<number>(9);
-  const [tmpMinute, setTmpMinute] = useState<number>(0);
-  const [tmpPeriod, setTmpPeriod] = useState<'AM' | 'PM'>('AM');
   
   // Custom Alert Modals
   const [isCancelAlertOpen, setIsCancelAlertOpen] = useState(false);
   const [isPublishAlertOpen, setIsPublishAlertOpen] = useState(false);
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
 
   // Animation values - DISABLED FOR PERFORMANCE DEBUGGING
   const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
@@ -105,10 +117,12 @@ const PostUpdate: React.FC = () => {
   // Bottom sheet animation refs
   const categorySheetY = useRef(new Animated.Value(300)).current;
   const datePickerSheetY = useRef(new Animated.Value(300)).current;
-  const startTimePickerSheetY = useRef(new Animated.Value(300)).current;
-  const endTimePickerSheetY = useRef(new Animated.Value(300)).current;
   const cancelAlertSheetY = useRef(new Animated.Value(300)).current;
   const publishAlertSheetY = useRef(new Animated.Value(300)).current;
+  
+  // Month picker animation refs
+  const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
+  const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
 
   // Inline, dependency-free date data
   const months = useMemo(() => [
@@ -197,16 +211,180 @@ const PostUpdate: React.FC = () => {
     return new Date(year, monthIdx + 1, 0).getDate();
   };
 
+  // Calendar grid helper functions
+  const getFirstDayOfMonth = (year: number, monthIdx: number) => {
+    return new Date(year, monthIdx, 1).getDay();
+  };
+
+  const generateCalendarGrid = useMemo(() => {
+    const daysInMonth = getDaysInMonth(tmpYear, tmpMonth);
+    const firstDay = getFirstDayOfMonth(tmpYear, tmpMonth);
+    const grid: (number | null)[] = [];
+    
+    // Add empty cells for days before the first day of the month
+    for (let i = 0; i < firstDay; i++) {
+      grid.push(null);
+    }
+    
+    // Add all days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      grid.push(day);
+    }
+    
+    return grid;
+  }, [tmpYear, tmpMonth]);
+
   const daysInTmpMonth = getDaysInMonth(tmpYear, tmpMonth);
   const dayOptions = Array.from({ length: daysInTmpMonth }, (_, i) => i + 1);
   const yearOptions = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 2 + i); // [y-2..y+3]
 
-  const formatDate = (date: Date) => {
-    const dd = String(date.getDate()).padStart(2, '0');
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const yyyy = date.getFullYear();
+  // Month navigation functions
+  const goToPreviousMonth = useCallback(() => {
+    if (tmpMonth === 0) {
+      setTmpMonth(11);
+      setTmpYear(tmpYear - 1);
+    } else {
+      setTmpMonth(tmpMonth - 1);
+    }
+    // Reset day if it's invalid for the new month
+    const daysInNewMonth = getDaysInMonth(tmpMonth === 0 ? tmpYear - 1 : tmpYear, tmpMonth === 0 ? 11 : tmpMonth - 1);
+    if (tmpDay > daysInNewMonth) {
+      setTmpDay(daysInNewMonth);
+    }
+  }, [tmpMonth, tmpYear, tmpDay]);
+
+  const goToNextMonth = useCallback(() => {
+    if (tmpMonth === 11) {
+      setTmpMonth(0);
+      setTmpYear(tmpYear + 1);
+    } else {
+      setTmpMonth(tmpMonth + 1);
+    }
+    // Reset day if it's invalid for the new month
+    const daysInNewMonth = getDaysInMonth(tmpMonth === 11 ? tmpYear + 1 : tmpYear, tmpMonth === 11 ? 0 : tmpMonth + 1);
+    if (tmpDay > daysInNewMonth) {
+      setTmpDay(daysInNewMonth);
+    }
+  }, [tmpMonth, tmpYear, tmpDay]);
+
+  // Month picker handlers
+  const openMonthPicker = useCallback(() => {
+    setShowMonthPicker(true);
+    Animated.parallel([
+      Animated.spring(monthPickerScaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }),
+      Animated.timing(monthPickerOpacityAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [monthPickerScaleAnim, monthPickerOpacityAnim]);
+
+  const closeMonthPicker = useCallback(() => {
+    Animated.parallel([
+      Animated.spring(monthPickerScaleAnim, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 100,
+        friction: 8,
+      }),
+      Animated.timing(monthPickerOpacityAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      InteractionManager.runAfterInteractions(() => {
+        setShowMonthPicker(false);
+      });
+    });
+  }, [monthPickerScaleAnim, monthPickerOpacityAnim]);
+
+  const selectMonth = useCallback((monthIndex: number, year?: number) => {
+    const targetYear = year || tmpYear;
+    setTmpMonth(monthIndex);
+    setTmpYear(targetYear);
+    // Reset day if it's invalid for the new month
+    const daysInNewMonth = getDaysInMonth(targetYear, monthIndex);
+    if (tmpDay > daysInNewMonth) {
+      setTmpDay(daysInNewMonth);
+    }
+    closeMonthPicker();
+    Haptics.selectionAsync();
+  }, [tmpYear, tmpDay, closeMonthPicker]);
+
+  // Single tap handler for month/year
+  const handleMonthYearTap = useCallback(() => {
+    openMonthPicker();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [openMonthPicker]);
+
+  // Helper to format date as dd/mm/yyyy for display
+  const formatDateForDisplay = (date: Date | string | null | undefined): string => {
+    if (!date) return '';
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(dateObj.getTime())) return '';
+    const dd = String(dateObj.getDate()).padStart(2, '0');
+    const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const yyyy = dateObj.getFullYear();
     return `${dd}/${mm}/${yyyy}`;
   };
+
+  const MONTH_NAME_MAP = useMemo<Record<string, number>>(() => ({
+    january: 0, jan: 0,
+    february: 1, feb: 1,
+    march: 2, mar: 2,
+    april: 3, apr: 3,
+    may: 4,
+    june: 5, jun: 5,
+    july: 6, jul: 6,
+    august: 7, aug: 7,
+    september: 8, sep: 8, sept: 8,
+    october: 9, oct: 9,
+    november: 10, nov: 10,
+    december: 11, dec: 11
+  }), []);
+
+  // Helper to parse date from various formats (ISO, dd/mm/yyyy, textual, etc.)
+  const parseDate = (dateStr: string | null | undefined): Date | null => {
+    if (!dateStr) return null;
+    
+    // Try ISO format first
+    const isoDate = new Date(dateStr);
+    if (!isNaN(isoDate.getTime())) return isoDate;
+    
+    // Try dd/mm/yyyy format
+    const ddmmyyyyMatch = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (ddmmyyyyMatch) {
+      const [, dd, mm, yyyy] = ddmmyyyyMatch;
+      const parsed = new Date(parseInt(yyyy, 10), parseInt(mm, 10) - 1, parseInt(dd, 10));
+      if (!isNaN(parsed.getTime())) return parsed;
+    }
+
+    // Try formats with month names e.g., "February 12, 2025" or "Feb 12 2025"
+    const monthNameMatch = dateStr.match(/^([A-Za-z]+)\s+(\d{1,2})(?:,)?\s+(\d{4})$/);
+    if (monthNameMatch) {
+      const [, monthNameRaw, dayRaw, yearRaw] = monthNameMatch;
+      const monthIndex = MONTH_NAME_MAP[monthNameRaw.toLowerCase()];
+      const day = parseInt(dayRaw, 10);
+      const year = parseInt(yearRaw, 10);
+      if (monthIndex !== undefined && !isNaN(day) && !isNaN(year)) {
+        const parsed = new Date(year, monthIndex, day);
+        if (!isNaN(parsed.getTime())) return parsed;
+      }
+    }
+    
+    return null;
+  };
+  const resolvedDateForSubmission = useMemo(() => {
+    if (selectedDateObj) return selectedDateObj;
+    return parseDate(date);
+  }, [selectedDateObj, date]);
 
   const openCategoryMenu = useCallback(() => {
     setIsCategoryOpen(true);
@@ -216,7 +394,9 @@ const PostUpdate: React.FC = () => {
   }, [categorySheetY]);
   const closeCategoryMenu = useCallback(() => {
     Animated.timing(categorySheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setIsCategoryOpen(false);
+      InteractionManager.runAfterInteractions(() => {
+        setIsCategoryOpen(false);
+      });
     });
   }, [categorySheetY]);
   const selectCategory = useCallback((value: string) => {
@@ -239,78 +419,22 @@ const PostUpdate: React.FC = () => {
     const safeDay = Math.min(tmpDay, getDaysInMonth(tmpYear, tmpMonth));
     const next = new Date(tmpYear, tmpMonth, safeDay);
     setSelectedDateObj(next);
-    setDate(formatDate(next));
+    setDate(formatDateForDisplay(next));
     Animated.timing(datePickerSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setShowDatePicker(false);
+      InteractionManager.runAfterInteractions(() => {
+        setShowDatePicker(false);
+      });
     });
   }, [tmpDay, tmpYear, tmpMonth, datePickerSheetY]);
 
   const cancelTmpDate = useCallback(() => {
     Animated.timing(datePickerSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setShowDatePicker(false);
+      InteractionManager.runAfterInteractions(() => {
+        setShowDatePicker(false);
+      });
     });
   }, [datePickerSheetY]);
 
-  // Time picker functions
-  const onPressStartTime = useCallback(() => {
-    const startTime = time.split(' - ')[0] || '';
-    if (startTime) {
-      const match = startTime.match(/(\d+):(\d+)\s*(AM|PM)?/i);
-      if (match) {
-        setTmpHour(parseInt(match[1]));
-        setTmpMinute(parseInt(match[2]));
-        setTmpPeriod(match[3]?.toUpperCase() as 'AM' | 'PM' || 'AM');
-      }
-    }
-    setShowStartTimePicker(true);
-    setTimeout(() => {
-      Animated.timing(startTimePickerSheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
-    }, 0);
-  }, [time, startTimePickerSheetY]);
-
-  const onPressEndTime = useCallback(() => {
-    const endTime = time.split(' - ')[1] || '';
-    if (endTime) {
-      const match = endTime.match(/(\d+):(\d+)\s*(AM|PM)?/i);
-      if (match) {
-        setTmpHour(parseInt(match[1]));
-        setTmpMinute(parseInt(match[2]));
-        setTmpPeriod(match[3]?.toUpperCase() as 'AM' | 'PM' || 'AM');
-      }
-    }
-    setShowEndTimePicker(true);
-    setTimeout(() => {
-      Animated.timing(endTimePickerSheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
-    }, 0);
-  }, [time, endTimePickerSheetY]);
-
-  const confirmStartTime = useCallback(() => {
-    const formattedTime = `${tmpHour}:${String(tmpMinute).padStart(2, '0')} ${tmpPeriod}`;
-    const endTime = time.split(' - ')[1] || '';
-    setTime(endTime ? `${formattedTime} - ${endTime}` : formattedTime);
-    Animated.timing(startTimePickerSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setShowStartTimePicker(false);
-    });
-  }, [tmpHour, tmpMinute, tmpPeriod, time, startTimePickerSheetY]);
-
-  const confirmEndTime = useCallback(() => {
-    const formattedTime = `${tmpHour}:${String(tmpMinute).padStart(2, '0')} ${tmpPeriod}`;
-    const startTime = time.split(' - ')[0] || '';
-    setTime(startTime ? `${startTime} - ${formattedTime}` : formattedTime);
-    Animated.timing(endTimePickerSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setShowEndTimePicker(false);
-    });
-  }, [tmpHour, tmpMinute, tmpPeriod, time, endTimePickerSheetY]);
-
-  const cancelTimePicker = useCallback(() => {
-    Animated.parallel([
-      Animated.timing(startTimePickerSheetY, { toValue: 300, duration: 200, useNativeDriver: true }),
-      Animated.timing(endTimePickerSheetY, { toValue: 300, duration: 200, useNativeDriver: true }),
-    ]).start(() => {
-      setShowStartTimePicker(false);
-      setShowEndTimePicker(false);
-    });
-  }, [startTimePickerSheetY, endTimePickerSheetY]);
 
   const handlePublish = useCallback(() => {
     // Prevent rapid tapping during animation
@@ -341,6 +465,25 @@ const PostUpdate: React.FC = () => {
       return;
     }
     
+    // Check if there are any changes compared to original values
+    const hasChanges = 
+      title.trim() !== originalValues.title.trim() ||
+      description.trim() !== originalValues.description.trim() ||
+      date !== originalValues.date ||
+      category !== originalValues.category ||
+      pickedFile !== null; // New file always counts as a change
+    
+    // If no changes, cancel immediately without showing modal
+    if (!hasChanges) {
+      if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
+        navigation.goBack();
+      } else {
+        (navigation as any).navigate('AdminDashboard');
+      }
+      return;
+    }
+    
+    // If there are changes, show confirmation modal
     setIsAnimating(true);
     setIsCancelAlertOpen(true);
     setTimeout(() => {
@@ -348,7 +491,7 @@ const PostUpdate: React.FC = () => {
     }, 0);
     // Reset animation state after a short delay
     setTimeout(() => setIsAnimating(false), 300);
-  }, [isAnimating, cancelAlertSheetY]);
+  }, [isAnimating, cancelAlertSheetY, title, description, date, category, pickedFile, originalValues, navigation]);
 
   const handleShowPreview = useCallback(() => {
     // Prevent rapid tapping during animation
@@ -393,82 +536,145 @@ const PostUpdate: React.FC = () => {
   React.useEffect(() => {
     let isCancelled = false;
     const load = async () => {
-      if (!editingPostId) return;
+      if (!editingPostId) {
+        // For new posts, reset original values
+        setOriginalValues({
+          title: '',
+          category: 'Announcement',
+          date: '',
+          description: '',
+          hasFile: false,
+        });
+        setSelectedDateObj(null);
+        setDate('');
+        return;
+      }
       const post = await AdminDataService.getPostById(editingPostId);
       if (isCancelled || !post) return;
-      setTitle(post.title || '');
-      setCategory(post.category || 'Announcement');
-      setDate(post.date || '');
-      setTime(post.time || '');
-      setDescription(post.description || '');
+      const loadedTitle = post.title || '';
+      const loadedCategory = post.category || 'Announcement';
+      const loadedDescription = post.description || '';
+      
+      // Parse and format the date properly
+      // Use isoDate if available (more reliable), otherwise use date
+      const dateSource = post.isoDate || post.date || '';
+      const parsedDate = parseDate(dateSource);
+      const formattedDate = parsedDate ? formatDateForDisplay(parsedDate) : '';
+      
+      setTitle(loadedTitle);
+      setCategory(loadedCategory);
+      setDate(formattedDate);
+      setDescription(loadedDescription);
+      
+      // Initialize selectedDateObj for the date picker
+      if (parsedDate) {
+        setSelectedDateObj(parsedDate);
+        // Also initialize tmp values for the date picker
+        setTmpMonth(parsedDate.getMonth());
+        setTmpYear(parsedDate.getFullYear());
+        setTmpDay(parsedDate.getDate());
+      }
+      
+      // Store original values for change detection (use formatted date for comparison)
+      setOriginalValues({
+        title: loadedTitle,
+        category: loadedCategory,
+        date: formattedDate,
+        description: loadedDescription,
+        hasFile: false, // We don't track file changes from existing posts
+      });
     };
     load();
     return () => { isCancelled = true; };
   }, [editingPostId]);
 
   const confirmPublish = useCallback(() => {
-    Animated.timing(publishAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setIsPublishAlertOpen(false);
-    });
-    // Simulate publishing then go to ManagePosts
-    setTimeout(() => {
-      const now = new Date();
-      // Use ISO date string for backend consistency
-      const isoDate = selectedDateObj ? selectedDateObj.toISOString() : (date ? new Date(date).toISOString() : now.toISOString());
-      const displayDate = now.toLocaleString('en-US', { month: 'short', day: '2-digit', year: 'numeric' });
-      
-      // Prepare payload with proper date format
-      const payload: any = {
-        title: title || 'Untitled',
-        category,
-        date: isoDate, // Use ISO date string for backend
-        isoDate: isoDate, // Include isoDate for consistency
-        time: time || '',
-        description,
-      };
+    // Prevent double submission
+    if (isPublishing) {
+      return;
+    }
 
-      // If new image is picked, include imageFile object for proper backend handling
-      if (pickedFile) {
-        payload.image = pickedFile.uri;
-        payload.images = [pickedFile.uri];
-        payload.imageFile = pickedFile; // Pass full file object for backend multipart upload
-        console.log('📸 Including imageFile in payload', { uri: pickedFile.uri.substring(0, 50) + '...', hasImageFile: !!pickedFile });
-      }
-      
-      console.log('📤 Calling AdminDataService', { 
-        isEdit: !!editingPostId, 
-        postId: editingPostId,
-        payload: { ...payload, imageFile: payload.imageFile ? 'present' : 'none' } 
+    setIsPublishing(true);
+    
+    // Close modal immediately for better UX
+    Animated.timing(publishAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
+      InteractionManager.runAfterInteractions(() => {
+        setIsPublishAlertOpen(false);
       });
-      
-      const op = editingPostId
-        ? AdminDataService.updatePost(editingPostId, payload)
-        : AdminDataService.createPost(payload);
-      
-      Promise.resolve(op)
-        .then((result) => {
-          console.log('✅ Post operation successful', { result: !!result });
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        })
-        .catch((error) => {
-          console.error('❌ Post operation failed:', error);
-          Alert.alert('Error', error.message || 'Failed to save post');
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        })
-        .finally(() => {
-          navigation.navigate('AdminDashboard');
+    });
+
+    // Prepare payload immediately (no delay)
+    const submissionDate = resolvedDateForSubmission || new Date();
+    const isoDate = submissionDate.toISOString();
+    
+    const payload: any = {
+      title: title || 'Untitled',
+      category,
+      date: isoDate,
+      isoDate,
+      description,
+    };
+
+    // If new image is picked, include imageFile object for proper backend handling
+    if (pickedFile) {
+      payload.image = pickedFile.uri;
+      payload.images = [pickedFile.uri];
+      payload.imageFile = pickedFile;
+      console.log('📸 Including imageFile in payload', { uri: pickedFile.uri.substring(0, 50) + '...', hasImageFile: !!pickedFile });
+    }
+    
+    console.log('📤 Calling AdminDataService', { 
+      isEdit: !!editingPostId, 
+      postId: editingPostId,
+      payload: { ...payload, imageFile: payload.imageFile ? 'present' : 'none' } 
+    });
+    
+    // Start the operation and wait for it to complete before navigating
+    const op = editingPostId
+      ? AdminDataService.updatePost(editingPostId, payload)
+      : AdminDataService.createPost(payload);
+    
+    // Wait for the operation to complete before navigating
+    // This ensures the backend has processed the update before we refresh the screens
+    Promise.resolve(op)
+      .then(async (result) => {
+        console.log('✅ Post operation successful', { result: !!result });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        
+        // Add a small delay to ensure backend has fully processed the update
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Navigate after update is complete
+        // Try to go back to previous screen, otherwise navigate to AdminDashboard
+        InteractionManager.runAfterInteractions(() => {
+          if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
+            navigation.goBack();
+          } else {
+            // Fallback to AdminDashboard if we can't go back
+            navigation.navigate('AdminDashboard');
+          }
         });
-    }, 500);
-  }, [title, category, date, time, description, pickedFile, editingPostId, navigation, selectedDateObj, publishAlertSheetY]);
+      })
+      .catch((error) => {
+        console.error('❌ Post operation failed:', error);
+        Alert.alert('Error', error.message || 'Failed to save post');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      })
+      .finally(() => {
+        setIsPublishing(false);
+      });
+  }, [title, category, date, description, pickedFile, editingPostId, navigation, resolvedDateForSubmission, publishAlertSheetY, isPublishing, parseDate]);
 
   const confirmCancel = useCallback(() => {
     Animated.timing(cancelAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      setIsCancelAlertOpen(false);
-      if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
-        navigation.goBack();
-      } else {
-        (navigation as any).navigate('AdminDashboard');
-      }
+      InteractionManager.runAfterInteractions(() => {
+        setIsCancelAlertOpen(false);
+        if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
+          navigation.goBack();
+        } else {
+          (navigation as any).navigate('AdminDashboard');
+        }
+      });
     });
   }, [navigation, cancelAlertSheetY]);
 
@@ -502,6 +708,7 @@ const PostUpdate: React.FC = () => {
         setIsAnimating(false);
         return;
       }
+      
       let cachedUri: string | null = null;
       try {
         const source = (asset.fileCopyUri || asset.uri) as string;
@@ -529,6 +736,7 @@ const PostUpdate: React.FC = () => {
       setIsAnimating(false);
     }
   }, [isAnimating]);
+
 
   const handleUpload = useCallback(async () => {
     // Prevent rapid tapping during animation
@@ -569,8 +777,14 @@ const PostUpdate: React.FC = () => {
       
       {/* Warm Gradient Background */}
       <LinearGradient
-        colors={isDarkMode ? ['#1F1F1F', '#2A2A2A', '#1A1A1A'] : ['#FBF8F3', '#F8F5F0', '#F5F2ED']}
+        colors={[
+          isDarkMode ? '#0B1220' : '#FBF8F3',
+          isDarkMode ? '#111827' : '#F8F5F0',
+          isDarkMode ? '#1F2937' : '#F5F2ED'
+        ]}
         style={styles.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
       />
       
       {/* Simplified Animated Background */}
@@ -588,7 +802,7 @@ const PostUpdate: React.FC = () => {
           ]}
         >
           <LinearGradient
-            colors={['rgba(255, 200, 150, 0.4)', 'rgba(255, 210, 170, 0.2)', 'transparent']}
+            colors={[theme.colors.orbColors.orange5, theme.colors.orbColors.orange2, 'transparent']}
             style={StyleSheet.absoluteFillObject}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -607,7 +821,7 @@ const PostUpdate: React.FC = () => {
           ]}
         >
           <LinearGradient
-            colors={['transparent', 'rgba(255, 180, 130, 0.3)', 'rgba(255, 200, 160, 0.15)']}
+            colors={['transparent', theme.colors.orbColors.orange4, theme.colors.orbColors.orange1]}
             style={StyleSheet.absoluteFillObject}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -642,17 +856,20 @@ const PostUpdate: React.FC = () => {
             }}
             style={styles.backButton}
             accessibilityLabel="Go back"
+            accessibilityRole="button"
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Ionicons name="arrow-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
           </TouchableOpacity>
         </View>
-        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]} numberOfLines={1}>Post Update</Text>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]} numberOfLines={1} pointerEvents="none">Post Update</Text>
         <View style={styles.headerRight}>
           <View style={[styles.categoryBadgeHeader, {
             backgroundColor: isDarkMode ? `${currentCategory.color}30` : `${currentCategory.color}20`,
             borderColor: isDarkMode ? `${currentCategory.color}50` : `${currentCategory.color}40`,
           }]}>
-            <Text style={[styles.categoryBadgeLabel, { color: currentCategory.color }]} numberOfLines={1} ellipsizeMode="tail">{category}</Text>
+            <Text style={[styles.categoryBadgeLabel, { color: currentCategory.color, fontSize: theme.fontSize.scaleSize(11) }]} numberOfLines={1} ellipsizeMode="tail">{category}</Text>
           </View>
         </View>
       </View>
@@ -684,17 +901,17 @@ const PostUpdate: React.FC = () => {
           }]}
         >
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: theme.colors.text }]}>Title <Text style={{ color: '#E53935' }}>*</Text></Text>
+            <Text style={[styles.label, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }]}>Title <Text style={{ color: '#E53935', fontSize: theme.fontSize.scaleSize(13) }}>*</Text></Text>
             <View style={styles.inputWrapper}>
               <TextInput
-                style={[styles.textInput, styles.textInputElevated, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)', color: theme.colors.text }]}
+                style={[styles.textInput, styles.textInputElevated, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)', color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}
                 placeholder="Enter announcement title"
                 value={title}
                 onChangeText={setTitle}
                 placeholderTextColor={theme.colors.textMuted}
                 maxLength={100}
               />
-              <Text style={[styles.charCounter, { color: theme.colors.textMuted }]}>{title.length}/100</Text>
+              <Text style={[styles.charCounter, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>{title.length}/100</Text>
             </View>
           </View>
         </BlurView>
@@ -711,52 +928,24 @@ const PostUpdate: React.FC = () => {
           <View style={styles.rowContainer}>
           {/* Category Dropdown */}
           <View style={styles.halfInputContainer}>
-            <Text style={[styles.label, { color: theme.colors.text }]}>Category</Text>
+            <Text style={[styles.label, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }]}>Category</Text>
             <TouchableOpacity style={[styles.dropdownContainer, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)' }]} onPress={openCategoryMenu}>
-              <Text style={[styles.dropdownText, { color: theme.colors.text }]} numberOfLines={1}>{category}</Text>
+              <Text style={[styles.dropdownText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]} numberOfLines={1}>{category}</Text>
               <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
             </TouchableOpacity>
           </View>
 
           {/* Date Field */}
           <View style={styles.halfInputContainer}>
-            <Text style={[styles.label, { color: theme.colors.text }]}>Date</Text>
+            <Text style={[styles.label, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }]}>Date</Text>
             <TouchableOpacity style={[styles.dateContainer, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)' }]} onPress={onPressDate}>
-              <Text style={[styles.dateText, { color: theme.colors.text }]}>{date || 'dd/mm/yyyy'}</Text>
+              <Text style={[styles.dateText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>{date || 'dd/mm/yyyy'}</Text>
               <Ionicons name="calendar" size={18} color={theme.colors.textMuted} />
             </TouchableOpacity>
           </View>
           </View>
         </BlurView>
 
-        {/* Event Time Available */}
-        <BlurView
-          intensity={Platform.OS === 'ios' ? 50 : 40}
-          tint={isDarkMode ? 'dark' : 'light'}
-          style={[styles.cardContainer, {
-            backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.6)',
-            borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-          }]}
-        >
-          <View style={styles.inputContainer}>
-          <Text style={[styles.label, { color: theme.colors.text }]}>Event Time Available</Text>
-          <View style={styles.timeRangeContainer}>
-            <TouchableOpacity style={[styles.timeInputWrapper, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)' }]} onPress={onPressStartTime}>
-              <Text style={[styles.timeText, { color: time.split(' - ')[0] ? theme.colors.text : theme.colors.textMuted }]}>
-                {time.split(' - ')[0] || 'Start Time'}
-              </Text>
-              <Ionicons name="time-outline" size={18} color={theme.colors.textMuted} />
-            </TouchableOpacity>
-            <Text style={[styles.timeSeparator, { color: theme.colors.textMuted }]}>-</Text>
-            <TouchableOpacity style={[styles.timeInputWrapper, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)' }]} onPress={onPressEndTime}>
-              <Text style={[styles.timeText, { color: time.split(' - ')[1] ? theme.colors.text : theme.colors.textMuted }]}>
-                {time.split(' - ')[1] || 'End Time'}
-              </Text>
-              <Ionicons name="time-outline" size={18} color={theme.colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-        </View>
-        </BlurView>
 
         {/* Category Menu (enhanced) */}
         <BottomSheet
@@ -767,7 +956,7 @@ const PostUpdate: React.FC = () => {
           maxHeight="70%"
         >
           <View style={styles.modalHeaderRow}>
-            <Text style={[styles.categoryMenuTitle, { color: theme.colors.text }]}>Select Category</Text>
+            <Text style={[styles.categoryMenuTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>Select Category</Text>
             <TouchableOpacity onPress={closeCategoryMenu} style={styles.modalCloseBtn}>
               <Ionicons name="close" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
@@ -781,8 +970,8 @@ const PostUpdate: React.FC = () => {
                     <Ionicons name={opt.icon as any} size={18} color={opt.color} />
                   </View>
                   <View style={styles.categoryTextWrap}>
-                    <Text style={[styles.categoryRowTitle, { color: theme.colors.text }, active && { color: theme.colors.text }]}>{opt.key}</Text>
-                    <Text style={[styles.categoryRowSub, { color: theme.colors.textMuted }]}>{opt.description}</Text>
+                    <Text style={[styles.categoryRowTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }, active && { color: theme.colors.text }]}>{opt.key}</Text>
+                    <Text style={[styles.categoryRowSub, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>{opt.description}</Text>
                   </View>
                   {active && (
                     <Ionicons name="checkmark-circle" size={20} color={opt.color} />
@@ -793,51 +982,124 @@ const PostUpdate: React.FC = () => {
           </ScrollView>
         </BottomSheet>
 
-        {/* Native Date Picker replaced by custom modal */}
+        {/* Calendar Date Picker */}
         <BottomSheet
           visible={showDatePicker}
           onClose={cancelTmpDate}
           sheetY={datePickerSheetY}
           backgroundColor={theme.colors.card}
-          maxHeight="60%"
+          maxHeight="75%"
         >
-          <Text style={[styles.dateModalTitle, { color: theme.colors.text }]}>Select Date</Text>
-          <View style={styles.datePickersRow}>
-            {/* Month */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted }]}>Month</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {months.map((m, idx) => (
-                  <TouchableOpacity key={m} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpMonth === idx && styles.datePickerItemActive]} onPress={() => setTmpMonth(idx)}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text }, tmpMonth === idx && styles.datePickerTextActive]} numberOfLines={1}>{m}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+          <ScrollView 
+            style={styles.calendarScrollView}
+            contentContainerStyle={styles.calendarScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Month/Year Header with Navigation */}
+            <View style={styles.calendarHeader}>
+              <TouchableOpacity onPress={goToPreviousMonth} style={styles.calendarNavButton}>
+                <Ionicons name="chevron-back" size={20} color={theme.colors.text} />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.calendarHeaderCenter}
+                onPress={handleMonthYearTap}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.calendarMonthYear, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>
+                  {months[tmpMonth]} {tmpYear}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={goToNextMonth} style={styles.calendarNavButton}>
+                <Ionicons name="chevron-forward" size={20} color={theme.colors.text} />
+              </TouchableOpacity>
             </View>
-            {/* Day */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted }]}>Day</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {dayOptions.map((d) => (
-                  <TouchableOpacity key={d} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpDay === d && styles.datePickerItemActive]} onPress={() => setTmpDay(d)}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text }, tmpDay === d && styles.datePickerTextActive]}>{d}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+
+            {/* Weekday Headers */}
+            <View style={[styles.calendarWeekdays, { backgroundColor: theme.colors.surface }]}>
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+                <View key={index} style={[styles.calendarWeekday, { borderRightColor: theme.colors.border }]}>
+                  <Text style={[styles.calendarWeekdayText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }]}>{day}</Text>
+                </View>
+              ))}
             </View>
-            {/* Year */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted }]}>Year</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {yearOptions.map((y) => (
-                  <TouchableOpacity key={y} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpYear === y && styles.datePickerItemActive]} onPress={() => setTmpYear(y)}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text }, tmpYear === y && styles.datePickerTextActive]}>{y}</Text>
+
+            {/* Calendar Grid */}
+            <View style={styles.calendarGrid}>
+              {generateCalendarGrid.map((day, index) => {
+                const currentDate = day ? new Date(tmpYear, tmpMonth, day) : null;
+                const isCurrentDay = currentDate ? (
+                  day === new Date().getDate() &&
+                  tmpMonth === new Date().getMonth() &&
+                  tmpYear === new Date().getFullYear()
+                ) : false;
+                const isSelectedDay = day === tmpDay;
+                
+                if (!day) {
+                  return (
+                    <View
+                      key={`empty-${index}`}
+                      style={[
+                        styles.calendarDayCell,
+                        {
+                          backgroundColor: theme.colors.surfaceAlt,
+                          borderRightColor: theme.colors.border,
+                          borderBottomColor: theme.colors.border,
+                          borderRightWidth: (index % 7) === 6 ? 0 : StyleSheet.hairlineWidth,
+                        },
+                      ]}
+                    />
+                  );
+                }
+                
+                const isLastColumn = (index % 7) === 6;
+                
+                return (
+                  <TouchableOpacity
+                    key={day}
+                    style={[
+                      styles.calendarDayCell,
+                      { 
+                        backgroundColor: theme.colors.card,
+                        borderTopWidth: isSelectedDay ? 2 : 0,
+                        borderTopColor: isSelectedDay ? '#2563EB' : 'transparent',
+                        borderLeftWidth: isSelectedDay ? 2 : 0,
+                        borderLeftColor: isSelectedDay ? '#2563EB' : 'transparent',
+                        borderRightWidth: isLastColumn ? (isSelectedDay ? 2 : 0) : (isSelectedDay ? 2 : StyleSheet.hairlineWidth),
+                        borderRightColor: isSelectedDay ? '#2563EB' : theme.colors.border,
+                        borderBottomWidth: isSelectedDay ? 2 : StyleSheet.hairlineWidth,
+                        borderBottomColor: isSelectedDay ? '#2563EB' : theme.colors.border,
+                      }
+                    ]}
+                    onPress={() => setTmpDay(day)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.calendarDayContent}>
+                      <View style={[
+                        styles.calendarDayNumberContainer,
+                        isCurrentDay && { backgroundColor: '#2563EB' },
+                      ]}>
+                        <Text
+                          style={[
+                            styles.calendarDayText,
+                            { 
+                              fontSize: theme.fontSize.scaleSize(12) 
+                            },
+                            isCurrentDay && { color: '#FFFFFF', fontWeight: '700' },
+                            !isCurrentDay && { color: theme.colors.text },
+                          ]}
+                        >
+                          {day}
+                        </Text>
+                      </View>
+                    </View>
                   </TouchableOpacity>
-                ))}
-              </ScrollView>
+                );
+              })}
             </View>
-          </View>
-          <View style={styles.dateModalActions}>
+          </ScrollView>
+
+          {/* Action Buttons - Fixed at bottom */}
+          <View style={[styles.dateModalActions, { borderTopColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)' }]}>
             <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={cancelTmpDate}>
               <Text style={[styles.cancelText, { color: theme.colors.text }]}>Cancel</Text>
             </TouchableOpacity>
@@ -847,141 +1109,51 @@ const PostUpdate: React.FC = () => {
           </View>
         </BottomSheet>
 
-        {/* Time Picker Modal - Start Time */}
-        <BottomSheet
-          visible={showStartTimePicker}
-          onClose={cancelTimePicker}
-          sheetY={startTimePickerSheetY}
-          backgroundColor={theme.colors.card}
-          maxHeight="60%"
-        >
-          <Text style={[styles.dateModalTitle, { color: theme.colors.text }]}>Select Start Time</Text>
-          <View style={styles.datePickersRow}>
-            {/* Hour */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted }]}>Hour</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
-                  <TouchableOpacity key={h} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpHour === h && styles.datePickerItemActive]} onPress={() => setTmpHour(h)}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text }, tmpHour === h && styles.datePickerTextActive]}>{h}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-            {/* Minute */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted }]}>Minute</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {Array.from({ length: 60 }, (_, i) => i).map((m) => (
-                  <TouchableOpacity key={m} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpMinute === m && styles.datePickerItemActive]} onPress={() => setTmpMinute(m)}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text }, tmpMinute === m && styles.datePickerTextActive]}>{String(m).padStart(2, '0')}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-            {/* AM/PM */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted }]}>Period</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {['AM', 'PM'].map((p) => (
-                  <TouchableOpacity key={p} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpPeriod === p && styles.datePickerItemActive]} onPress={() => setTmpPeriod(p as 'AM' | 'PM')}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text }, tmpPeriod === p && styles.datePickerTextActive]}>{p}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-          <View style={styles.dateModalActions}>
-            <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={cancelTimePicker}>
-              <Text style={[styles.cancelText, { color: theme.colors.text }]}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.publishBtn, { backgroundColor: theme.colors.primary }]} onPress={confirmStartTime}>
-              <Text style={[styles.publishText, { color: '#fff' }]}>Done</Text>
-            </TouchableOpacity>
-          </View>
-        </BottomSheet>
+        {/* Month Picker Modal */}
+        <MonthPickerModal
+          visible={showMonthPicker}
+          currentMonth={new Date(tmpYear, tmpMonth, 1)}
+          onClose={closeMonthPicker}
+          onSelectMonth={selectMonth}
+          scaleAnim={monthPickerScaleAnim}
+          opacityAnim={monthPickerOpacityAnim}
+          minYear={new Date().getFullYear() - 2}
+          maxYear={new Date().getFullYear() + 3}
+        />
 
-        {/* Time Picker Modal - End Time */}
-        <BottomSheet
-          visible={showEndTimePicker}
-          onClose={cancelTimePicker}
-          sheetY={endTimePickerSheetY}
-          backgroundColor={theme.colors.card}
-          maxHeight="60%"
-        >
-          <Text style={[styles.dateModalTitle, { color: theme.colors.text }]}>Select End Time</Text>
-          <View style={styles.datePickersRow}>
-            {/* Hour */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted }]}>Hour</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
-                  <TouchableOpacity key={h} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpHour === h && styles.datePickerItemActive]} onPress={() => setTmpHour(h)}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text }, tmpHour === h && styles.datePickerTextActive]}>{h}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-            {/* Minute */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted }]}>Minute</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {Array.from({ length: 60 }, (_, i) => i).map((m) => (
-                  <TouchableOpacity key={m} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpMinute === m && styles.datePickerItemActive]} onPress={() => setTmpMinute(m)}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text }, tmpMinute === m && styles.datePickerTextActive]}>{String(m).padStart(2, '0')}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-            {/* AM/PM */}
-            <View style={styles.datePickerCol}>
-              <Text style={[styles.datePickerLabel, { color: theme.colors.textMuted }]}>Period</Text>
-              <ScrollView style={[styles.datePickerList, { borderColor: theme.colors.border }]}>
-                {['AM', 'PM'].map((p) => (
-                  <TouchableOpacity key={p} style={[styles.datePickerItem, { backgroundColor: theme.colors.surface }, tmpPeriod === p && styles.datePickerItemActive]} onPress={() => setTmpPeriod(p as 'AM' | 'PM')}>
-                    <Text style={[styles.datePickerText, { color: theme.colors.text }, tmpPeriod === p && styles.datePickerTextActive]}>{p}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </View>
-          <View style={styles.dateModalActions}>
-            <TouchableOpacity style={[styles.cancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={cancelTimePicker}>
-              <Text style={[styles.cancelText, { color: theme.colors.text }]}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.publishBtn, { backgroundColor: theme.colors.primary }]} onPress={confirmEndTime}>
-              <Text style={[styles.publishText, { color: '#fff' }]}>Done</Text>
-            </TouchableOpacity>
-          </View>
-        </BottomSheet>
 
         {/* Cancel Alert Modal */}
         <BottomSheet
           visible={isCancelAlertOpen}
           onClose={() => {
             Animated.timing(cancelAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-              setIsCancelAlertOpen(false);
+              InteractionManager.runAfterInteractions(() => {
+                setIsCancelAlertOpen(false);
+              });
             });
           }}
           sheetY={cancelAlertSheetY}
           backgroundColor={theme.colors.card}
-          maxHeight="50%"
+          maxHeight="40%"
+          contentStyle={styles.cancelAlertContent}
         >
           <View style={styles.alertIconWrapWarning}>
-            <Ionicons name="warning" size={24} color="#F59E0B" />
+            <Ionicons name="warning" size={20} color="#F59E0B" />
           </View>
-          <Text style={[styles.alertTitle, { color: theme.colors.text }]}>Discard Changes?</Text>
-          <Text style={[styles.alertSubtitle, { color: theme.colors.textMuted }]}>All your changes will be lost and cannot be recovered.</Text>
+          <Text style={[styles.alertTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(18) }]}>Discard Changes?</Text>
+          <Text style={[styles.alertSubtitle, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(13) }]}>All your changes will be lost and cannot be recovered.</Text>
           <View style={styles.alertActionsRow}>
             <TouchableOpacity style={[styles.alertCancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={() => {
               Animated.timing(cancelAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-                setIsCancelAlertOpen(false);
+                InteractionManager.runAfterInteractions(() => {
+                  setIsCancelAlertOpen(false);
+                });
               });
             }}>
-              <Text style={[styles.alertCancelText, { color: theme.colors.text }]}>Keep Editing</Text>
+              <Text style={[styles.alertCancelText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>Keep Editing</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.alertDangerBtn} onPress={confirmCancel}>
-              <Text style={styles.alertDangerText}>Discard</Text>
+              <Text style={[styles.alertDangerText, { fontSize: theme.fontSize.scaleSize(14) }]}>Discard</Text>
             </TouchableOpacity>
           </View>
         </BottomSheet>
@@ -991,7 +1163,9 @@ const PostUpdate: React.FC = () => {
           visible={isPublishAlertOpen}
           onClose={() => {
             Animated.timing(publishAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-              setIsPublishAlertOpen(false);
+              InteractionManager.runAfterInteractions(() => {
+                setIsPublishAlertOpen(false);
+              });
             });
           }}
           sheetY={publishAlertSheetY}
@@ -1001,29 +1175,31 @@ const PostUpdate: React.FC = () => {
           <View style={styles.alertIconWrapSuccess}>
             <Ionicons name="checkmark-circle" size={24} color="#059669" />
           </View>
-          <Text style={[styles.alertTitle, { color: theme.colors.text }]}>Ready to Publish?</Text>
-          <Text style={[styles.alertSubtitle, { color: theme.colors.textMuted }]}>Your update will be published and visible to all users.</Text>
+          <Text style={[styles.alertTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(20) }]}>Ready to Publish?</Text>
+          <Text style={[styles.alertSubtitle, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(14) }]}>Your update will be published and visible to all users.</Text>
           <View style={[styles.alertPreviewInfo, { backgroundColor: theme.colors.surfaceAlt }]}>
             <View style={styles.alertPreviewRow}>
               <Ionicons name="text" size={14} color={theme.colors.textMuted} />
-              <Text style={[styles.alertPreviewText, { color: theme.colors.text }]}>Title: {title || 'Untitled'}</Text>
+              <Text style={[styles.alertPreviewText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }]}>Title: {title || 'Untitled'}</Text>
             </View>
             <View style={styles.alertPreviewRow}>
               <Ionicons name="folder" size={14} color={theme.colors.textMuted} />
-              <Text style={[styles.alertPreviewText, { color: theme.colors.text }]}>Category: {category}</Text>
+              <Text style={[styles.alertPreviewText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }]}>Category: {category}</Text>
             </View>
           </View>
           <View style={styles.alertActionsRow}>
             <TouchableOpacity style={[styles.alertCancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={() => {
               Animated.timing(publishAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-                setIsPublishAlertOpen(false);
+                InteractionManager.runAfterInteractions(() => {
+                  setIsPublishAlertOpen(false);
+                });
               });
             }}>
-              <Text style={[styles.alertCancelText, { color: theme.colors.text }]}>Review</Text>
+              <Text style={[styles.alertCancelText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>Review</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.alertSuccessBtn} onPress={confirmPublish}>
               <Ionicons name="checkmark" size={16} color="#fff" />
-              <Text style={styles.alertSuccessText}>Publish Now</Text>
+              <Text style={[styles.alertSuccessText, { fontSize: theme.fontSize.scaleSize(14) }]}>Publish Now</Text>
             </TouchableOpacity>
           </View>
         </BottomSheet>
@@ -1035,7 +1211,6 @@ const PostUpdate: React.FC = () => {
             title: title || 'Your post title will appear here',
             date: date || new Date().toLocaleDateString(),
             tag: category,
-            time: time,
             description: description,
             images: previewImages,
           }}
@@ -1060,10 +1235,10 @@ const PostUpdate: React.FC = () => {
           }]}
         >
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: theme.colors.text }]}>Description</Text>
+            <Text style={[styles.label, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }]}>Description</Text>
             <View style={styles.textAreaWrapper}>
               <TextInput
-                style={[styles.textInput, styles.textArea, styles.textInputElevated, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)', color: theme.colors.text }]}
+                style={[styles.textInput, styles.textArea, styles.textInputElevated, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)', color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}
                 placeholder="Enter announcement details"
                 value={description}
                 onChangeText={setDescription}
@@ -1073,7 +1248,7 @@ const PostUpdate: React.FC = () => {
                 textAlignVertical="top"
                 maxLength={500}
               />
-              <Text style={[styles.charCounter, { bottom: 8, color: theme.colors.textMuted }]}>{description.length}/500</Text>
+              <Text style={[styles.charCounter, { bottom: 8, color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>{description.length}/500</Text>
             </View>
           </View>
         </BlurView>
@@ -1088,26 +1263,29 @@ const PostUpdate: React.FC = () => {
           }]}
         >
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: theme.colors.text }]}>Attachments</Text>
+            <Text style={[styles.label, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }]}>Attachments</Text>
             <TouchableOpacity style={[styles.dashedUpload, { borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.15)', backgroundColor: 'transparent' }]} onPress={handleAddAttachment}>
               <Ionicons name="attach" size={18} color={theme.colors.textMuted} />
-              <Text style={[styles.dashedUploadText, { color: theme.colors.textMuted }]}>Add Attachment</Text>
+              <Text style={[styles.dashedUploadText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(14) }]}>Add Attachment</Text>
             </TouchableOpacity>
 
             {pickedFile && (
               <View style={[styles.fileCard, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.3)' : 'rgba(249, 250, 251, 0.5)', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)' }]}>
                 <View style={styles.fileLeft}>
                   <View style={styles.fileIconWrap}>
-                    <Ionicons name="attach" size={14} color="#1976D2" />
+                    <Ionicons name="image" size={14} color="#1976D2" />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.fileName, { color: theme.colors.text }]} numberOfLines={1}>{pickedFile.name}</Text>
+                    <Text style={[styles.fileName, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(12) }]} numberOfLines={1}>{pickedFile.name}</Text>
                     {!!pickedFile.size && (
-                      <Text style={[styles.fileSize, { color: theme.colors.textMuted }]}>{(pickedFile.size / 1024).toFixed(0)} KB</Text>
+                      <Text style={[styles.fileSize, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>{(pickedFile.size / 1024).toFixed(0)} KB</Text>
                     )}
                   </View>
                 </View>
-                <TouchableOpacity onPress={() => setPickedFile(null)} style={[styles.removeBtn, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.6)' : 'rgba(255, 255, 255, 0.6)' }]}>
+                <TouchableOpacity 
+                  onPress={() => setPickedFile(null)} 
+                  style={[styles.removeBtn, { backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.6)' : 'rgba(255, 255, 255, 0.6)' }]}
+                >
                   <Ionicons name="close" size={16} color={theme.colors.textMuted} />
                 </TouchableOpacity>
               </View>
@@ -1144,7 +1322,7 @@ const PostUpdate: React.FC = () => {
             accessibilityHint="Opens a preview of your update"
           >
             <Ionicons name="eye" size={18} color="#6366F1" style={styles.previewIcon} />
-            <Text style={[styles.previewText, { color: '#6366F1' }]}>Show Preview</Text>
+            <Text style={[styles.previewText, { color: '#6366F1', fontSize: theme.fontSize.scaleSize(14) }]}>Show Preview</Text>
           </TouchableOpacity>
 
           {/* Action Buttons */}
@@ -1161,29 +1339,30 @@ const PostUpdate: React.FC = () => {
               accessibilityHint="Discard your changes and go back"
             >
               <Ionicons name="close-circle" size={18} color="#fff" style={styles.actionIcon} />
-              <Text style={[styles.buttonText, { color: '#fff' }]}>Cancel</Text>
+              <Text style={[styles.buttonText, { color: '#fff', fontSize: theme.fontSize.scaleSize(14) }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.actionBtn, {
-                backgroundColor: isFormValid ? '#2563EB' : (isDarkMode ? '#374151' : '#E5E7EB'),
+                backgroundColor: (isFormValid && !isPublishing) ? '#2563EB' : (isDarkMode ? '#374151' : '#E5E7EB'),
                 borderWidth: 0,
               }]} 
               onPress={handlePublish} 
-              activeOpacity={isFormValid ? 0.7 : 1}
-              disabled={!isFormValid}
+              activeOpacity={(isFormValid && !isPublishing) ? 0.7 : 1}
+              disabled={!isFormValid || isPublishing}
               accessibilityRole="button" 
-              accessibilityLabel="Publish" 
-              accessibilityHint={isFormValid ? "Publishes your update" : "Fill in title and description to enable publishing"}
+              accessibilityLabel={isPublishing ? "Publishing..." : "Publish"} 
+              accessibilityHint={(isFormValid && !isPublishing) ? "Publishes your update" : "Fill in title and description to enable publishing"}
             >
               <Ionicons 
-                name="checkmark-circle" 
+                name={isPublishing ? "hourglass" : "checkmark-circle"} 
                 size={18} 
-                color={isFormValid ? "#fff" : (isDarkMode ? '#6B7280' : '#9CA3AF')} 
+                color={(isFormValid && !isPublishing) ? "#fff" : (isDarkMode ? '#6B7280' : '#9CA3AF')} 
                 style={styles.actionIcon} 
               />
               <Text style={[styles.buttonText, {
-                color: isFormValid ? "#fff" : (isDarkMode ? '#6B7280' : '#9CA3AF')
-              }]}>Publish</Text>
+                color: (isFormValid && !isPublishing) ? "#fff" : (isDarkMode ? '#6B7280' : '#9CA3AF'),
+                fontSize: theme.fontSize.scaleSize(14)
+              }]}>{isPublishing ? 'Publishing...' : 'Publish'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1313,7 +1492,8 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   headerLeft: {
-    width: 40,
+    width: 44,
+    zIndex: 1000,
   },
   backButton: {
     width: 44,
@@ -1321,6 +1501,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 1000,
   },
   headerTitle: {
     fontSize: 17,
@@ -1330,6 +1511,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     textAlign: 'center',
+    pointerEvents: 'none',
   },
   headerSubtitle: {
     fontSize: 11,
@@ -1781,7 +1963,83 @@ const styles = StyleSheet.create({
   dateModalActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 12,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+  },
+  // Calendar Grid Styles
+  calendarScrollView: {
+    flex: 1,
+  },
+  calendarScrollContent: {
+    paddingBottom: 8,
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    marginBottom: 0,
+  },
+  calendarNavButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarHeaderCenter: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  calendarMonthYear: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  calendarWeekdays: {
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 0,
+  },
+  calendarWeekday: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRightWidth: 1,
+  },
+  calendarWeekdayText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 4,
+  },
+  calendarDayCell: {
+    width: '14.285%', // 100% / 7 days
+    aspectRatio: 1,
+  },
+  calendarDayContent: {
+    flex: 1,
+    padding: 2,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  calendarDayNumberContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  calendarDayText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   categoryChipsRow: {
     flexDirection: 'row',
@@ -1941,6 +2199,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   // Alert Modal Styles
+  cancelAlertContent: {
+    alignItems: 'center',
+    paddingTop: 4,
+    paddingBottom: 8,
+  },
   alertCard: {
     width: '100%',
     maxWidth: 360,
@@ -1955,13 +2218,14 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   alertIconWrapWarning: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#FEF3C7',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
+    alignSelf: 'center',
   },
   alertIconWrapSuccess: {
     width: 56,
@@ -1973,16 +2237,17 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   alertTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
-    marginBottom: 8,
+    marginBottom: 6,
     textAlign: 'center',
   },
   alertSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 20,
+    marginBottom: 16,
+    lineHeight: 18,
+    paddingHorizontal: 8,
   },
   alertPreviewInfo: {
     width: '100%',
@@ -2004,12 +2269,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
-    gap: 12,
+    gap: 10,
+    marginTop: 4,
   },
   alertCancelBtn: {
     flex: 1,
     borderWidth: 1,
-    paddingVertical: 12,
+    paddingVertical: 11,
     borderRadius: 12,
     alignItems: 'center',
   },
@@ -2020,7 +2286,7 @@ const styles = StyleSheet.create({
   alertDangerBtn: {
     flex: 1,
     backgroundColor: '#DC2626',
-    paddingVertical: 12,
+    paddingVertical: 11,
     borderRadius: 12,
     alignItems: 'center',
   },

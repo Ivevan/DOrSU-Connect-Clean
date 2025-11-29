@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { Logger } from '../utils/logger.js';
 
@@ -18,8 +19,16 @@ export class AuthService {
    */
   async register(username, email, password) {
     try {
+      const normalizedEmail = email.toLowerCase();
+
+      // Ensure email has been verified via confirmation link
+      const verification = await this.mongoService.getLatestEmailVerification(normalizedEmail);
+      if (!verification || !verification.verified) {
+        throw new Error('Email not verified. Please confirm the link we sent to your Gmail inbox.');
+      }
+
       // Check if user already exists
-      const existingUser = await this.mongoService.findUser(email);
+      const existingUser = await this.mongoService.findUser(normalizedEmail);
       if (existingUser) {
         throw new Error('User with this email already exists');
       }
@@ -31,11 +40,12 @@ export class AuthService {
       // Create user object
       const user = {
         username,
-        email: email.toLowerCase(),
+        email: normalizedEmail,
         password: hashedPassword,
         createdAt: new Date(),
         updatedAt: new Date(),
         isActive: true,
+        emailVerified: true,
       };
 
       // Save to database
@@ -61,6 +71,7 @@ export class AuthService {
       throw error;
     }
   }
+
 
   /**
    * Login user
@@ -104,6 +115,53 @@ export class AuthService {
       };
     } catch (error) {
       Logger.error('Login error:', error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Change user password
+   */
+  async changePassword(userId, currentPassword, newPassword) {
+    if (!userId) {
+      throw new Error('User not found');
+    }
+
+    if (!currentPassword || !newPassword) {
+      throw new Error('Current and new passwords are required');
+    }
+
+    if (newPassword.length < 8) {
+      throw new Error('New password must be at least 8 characters long');
+    }
+
+    try {
+      const user = await this.mongoService.findUserById(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      if (!user.password) {
+        throw new Error('Password changes are not supported for this account');
+      }
+
+      const isCurrentValid = await bcrypt.compare(currentPassword, user.password);
+      if (!isCurrentValid) {
+        throw new Error('Current password is incorrect');
+      }
+
+      const isSamePassword = await bcrypt.compare(newPassword, user.password);
+      if (isSamePassword) {
+        throw new Error('New password must be different from the current password');
+      }
+
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      await this.mongoService.updateUserPassword(userId, hashedPassword);
+
+      Logger.success(`✅ Password updated for user: ${user.email}`);
+      return { success: true, message: 'Password updated successfully' };
+    } catch (error) {
+      Logger.error('Change password error:', error.message);
       throw error;
     }
   }

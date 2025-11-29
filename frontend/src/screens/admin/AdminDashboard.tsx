@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Image, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Image, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // import AddPostDrawer from '../../components/dashboard/AddPostDrawer'; // Replaced with PostUpdate screen navigation
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
@@ -14,8 +14,10 @@ import { useThemeValues } from '../../contexts/ThemeContext';
 import ViewEventModal from '../../modals/ViewEventModal';
 import AdminDataService from '../../services/AdminDataService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
+import NotificationService from '../../services/NotificationService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
+import NotificationModal from '../../modals/NotificationModal';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -44,7 +46,8 @@ type DashboardUpdate = {
   description?: string; 
   source?: string; 
   pinned?: boolean; 
-  isoDate?: string 
+  isoDate?: string;
+  _id?: string; // For calendar events
 };
 
 // Helper function to get Philippines timezone date key (moved outside component for performance)
@@ -91,9 +94,57 @@ const formatDateSafe = (dateStr: string | Date | null | undefined): string => {
   }
 };
 
+type LegendItem = {
+  type: string;
+  key: string;
+  color: string;
+};
+
+const legendItemsData: LegendItem[] = [
+  { type: 'Academic', key: 'academic', color: '#10B981' },
+  { type: 'Institutional', key: 'institutional', color: '#2563EB' },
+  { type: 'News', key: 'news', color: '#8B5CF6' },
+  { type: 'Event', key: 'event', color: '#F59E0B' },
+  { type: 'Announcement', key: 'announcement', color: '#3B82F6' },
+];
+
 const AdminDashboard = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
+  const resolvedLegendItems = useMemo<LegendItem[]>(() => (
+    legendItemsData.map(item => {
+      if (item.key === 'institutional') {
+        return { ...item, color: theme.colors.accent };
+      }
+      return item;
+    })
+  ), [theme.colors.accent]);
+  const legendRows = useMemo<(LegendItem | null)[][]>(() => {
+    const firstRow: (LegendItem | null)[] = resolvedLegendItems.slice(0, 3);
+    const secondRow: (LegendItem | null)[] = resolvedLegendItems.slice(3, 5);
+    while (secondRow.length < 3) {
+      secondRow.push(null);
+    }
+    return [firstRow, secondRow];
+  }, [resolvedLegendItems]);
+  
+  // Get header gradient colors based on theme
+  const getHeaderGradientColors = (): [string, string, string] => {
+    // DOrSU theme (Royal Blue)
+    if (theme.colors.accent === '#2563EB') {
+      return ['#93C5FD', '#60A5FA', '#2563EB'];
+    }
+    // Facet theme (Orange)
+    if (theme.colors.accent === '#FF9500') {
+      return ['#FFCC80', '#FFA726', '#FF9500'];
+    }
+    // Default: use theme colors
+    return [
+      theme.colors.accentLight || '#93C5FD',
+      theme.colors.accent || '#2563EB',
+      theme.colors.accentDark || '#1E3A8A'
+    ] as [string, string, string];
+  };
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const scrollRef = useRef<ScrollView>(null);
   
@@ -109,11 +160,24 @@ const AdminDashboard = () => {
   // Auth state
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
+  const [backendUserFirstName, setBackendUserFirstName] = useState<string | null>(null);
+  const [backendUserLastName, setBackendUserLastName] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const userName = useMemo(() => currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Admin', [currentUser]);
+  const userName = useMemo(() => {
+    // Priority: Backend firstName + lastName -> Backend userName -> Firebase displayName -> Firebase email username -> Default
+    if (backendUserFirstName && backendUserLastName) {
+      return `${backendUserFirstName} ${backendUserLastName}`.trim();
+    }
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    // Try to get from AsyncStorage synchronously (will be updated by useFocusEffect)
+    try {
+      // This is a fallback - the actual value will be set by useFocusEffect
+    } catch {}
+    return currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Admin';
+  }, [currentUser, backendUserFirstName, backendUserLastName]);
   
   // Dashboard data
-  const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'recent'>('all');
+  const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'recent' | 'thismonth'>('all');
   const [dashboardData, setDashboardData] = useState({
     recentUpdates: [] as DashboardUpdate[],
   });
@@ -123,12 +187,28 @@ const AdminDashboard = () => {
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [isLoadingCalendarEvents, setIsLoadingCalendarEvents] = useState(false);
   
+  // Search state
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  
+  // Content type legend filter - matches AdminCalendar behavior (single select, null = show all)
+  const [selectedLegendType, setSelectedLegendType] = useState<string | null>(null);
+  const selectedContentTypes = useMemo(() => (
+    selectedLegendType ? [selectedLegendType] : ['academic', 'institutional', 'event', 'announcement', 'news']
+  ), [selectedLegendType]);
+  const selectedContentTypesSet = useMemo(
+    () => new Set(selectedContentTypes.map(type => type.toLowerCase())),
+    [selectedContentTypes]
+  );
+  
   // Event modal state
   const [showEventDrawer, setShowEventDrawer] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [selectedDateEvents, setSelectedDateEvents] = useState<any[]>([]);
   const [selectedDateForDrawer, setSelectedDateForDrawer] = useState<Date | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Notification modal state
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
   
   // Animated floating background orb (Copilot-style)
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -153,26 +233,68 @@ const AdminDashboard = () => {
     });
   }, [allUpdates]);
 
-  // Filtered updates based on selected time filter
+  // Filtered updates based on selected time filter, content type, and search query
+  // Includes both posts and calendar events
+  // Only show Event, Announcement, and News entries that are in the current month or next month
   const displayedUpdates = useMemo(() => {
-    if (timeFilter === 'upcoming') return upcomingUpdates;
-    if (timeFilter === 'recent') return recentUpdates;
-    return allUpdates; // 'all'
-  }, [timeFilter, upcomingUpdates, recentUpdates, allUpdates]);
-
-  // Current month calendar events (separate from posts/announcements)
-  const currentMonthEvents = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
+    const todayKey = getPHDateKey(now);
     
-    return calendarEvents
+    // Calculate next month and year (handle year rollover)
+    const nextMonth = currentMonth + 1;
+    const nextYear = nextMonth > 11 ? currentYear + 1 : currentYear;
+    const normalizedNextMonth = nextMonth > 11 ? 0 : nextMonth;
+    
+    // Categories that should be filtered by current month and next month
+    const monthFilteredCategories = new Set(['event', 'announcement', 'news']);
+    
+    // Start with posts based on time filter
+    let result;
+    if (timeFilter === 'upcoming') {
+      result = [...upcomingUpdates];
+    } else if (timeFilter === 'recent') {
+      result = [...recentUpdates];
+    } else if (timeFilter === 'thismonth') {
+      // Filter by current month only
+      result = allUpdates.filter(u => {
+        if (!u.isoDate) return false;
+        try {
+          const updateDate = new Date(u.isoDate);
+          const updateYear = updateDate.getFullYear();
+          const updateMonth = updateDate.getMonth();
+          return updateYear === currentYear && updateMonth === currentMonth;
+        } catch {
+          return false;
+        }
+      });
+    } else {
+      result = [...allUpdates]; // 'all'
+    }
+    
+    // Add calendar events based on time filter
+    const calendarEventsForUpdates = calendarEvents
       .filter(event => {
         const eventDate = event.isoDate || event.date;
         if (!eventDate) return false;
+        
         const eventDateObj = new Date(eventDate);
-        return eventDateObj.getFullYear() === currentYear &&
-               eventDateObj.getMonth() === currentMonth;
+        const eventKey = getPHDateKey(eventDate);
+        const eventYear = eventDateObj.getFullYear();
+        const eventMonth = eventDateObj.getMonth();
+        
+        // Apply time filter
+        if (timeFilter === 'upcoming') {
+          return eventKey > todayKey;
+        } else if (timeFilter === 'recent') {
+          return eventKey <= todayKey;
+        } else if (timeFilter === 'thismonth') {
+          return eventYear === currentYear && eventMonth === currentMonth;
+        } else {
+          // 'all' - include all calendar events
+          return true;
+        }
       })
       .map(event => ({
         id: event._id || `calendar-${event.isoDate}-${event.title}`,
@@ -184,13 +306,170 @@ const AdminDashboard = () => {
         images: undefined,
         pinned: false,
         isoDate: event.isoDate || event.date,
-      }))
-      .sort((a, b) => {
-        const dateA = new Date(a.isoDate || a.date).getTime();
-        const dateB = new Date(b.isoDate || b.date).getTime();
-        return dateA - dateB; // Sort ascending (earliest first)
+        source: 'calendar', // Mark as calendar event
+        _id: event._id,
+      }));
+    
+    // Combine posts and calendar events
+    result = [...result, ...calendarEventsForUpdates];
+    
+    // Remove duplicates (same ID or same title + date)
+    const seen = new Set<string>();
+    result = result.filter(update => {
+      const key = update.id || `${update.title}-${update.isoDate}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    
+    // Apply content type filter
+    result = result.filter(update => {
+      const updateType = String(update.tag || 'Announcement').toLowerCase();
+      return selectedContentTypesSet.has(updateType);
+    });
+    
+    // Filter by current month or next month for Event, Announcement, and News categories
+    result = result.filter(update => {
+      const updateType = String(update.tag || 'Announcement').toLowerCase();
+      
+      // Only apply month filter to Event, Announcement, and News
+      if (monthFilteredCategories.has(updateType)) {
+        if (!update.isoDate) return false; // Exclude entries without dates
+        try {
+          const updateDate = new Date(update.isoDate);
+          const updateYear = updateDate.getFullYear();
+          const updateMonth = updateDate.getMonth();
+          
+          // Check if date is in current month or next month
+          const isCurrentMonth = updateYear === currentYear && updateMonth === currentMonth;
+          const isNextMonth = updateYear === nextYear && updateMonth === normalizedNextMonth;
+          
+          return isCurrentMonth || isNextMonth;
+        } catch {
+          return false; // Exclude entries with invalid dates
+        }
+      }
+      
+      // For other categories (Academic, Institutional), show all (no month filter)
+      return true;
+    });
+    
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter(update => {
+        const title = (update.title || '').toLowerCase();
+        const description = (update.description || '').toLowerCase();
+        const tag = (update.tag || '').toLowerCase();
+        return title.includes(query) || description.includes(query) || tag.includes(query);
       });
-  }, [calendarEvents]);
+    }
+    
+    // Sort by date (newest first)
+    result.sort((a, b) => {
+      if (!a.isoDate && !b.isoDate) return 0;
+      if (!a.isoDate) return 1;
+      if (!b.isoDate) return -1;
+      try {
+        const dateA = new Date(a.isoDate).getTime();
+        const dateB = new Date(b.isoDate).getTime();
+        return dateB - dateA; // Newest first
+      } catch {
+        return 0;
+      }
+    });
+    
+    return result;
+  }, [timeFilter, selectedContentTypesSet, searchQuery, upcomingUpdates, recentUpdates, allUpdates, calendarEvents]);
+
+  // Current month events - combines calendar events and posts/updates
+  // Filtered by selectedContentTypes and search query
+  const currentMonthEvents = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    
+    const events: any[] = [];
+    
+    // Add calendar events for current month
+    calendarEvents
+      .filter(event => {
+        const eventDate = event.isoDate || event.date;
+        if (!eventDate) return false;
+        const eventDateObj = new Date(eventDate);
+        const isCurrentMonth = eventDateObj.getFullYear() === currentYear &&
+                               eventDateObj.getMonth() === currentMonth;
+        
+        if (!isCurrentMonth) return false;
+        
+        // Apply content type filter
+        const eventType = String(event.category || 'Event').toLowerCase();
+        return selectedContentTypesSet.has(eventType);
+      })
+      .forEach(event => {
+        events.push({
+          id: event._id || `calendar-${event.isoDate}-${event.title}`,
+          title: event.title,
+          date: new Date(event.isoDate || event.date).toLocaleDateString(),
+          tag: event.category || 'Event',
+          description: event.description || '',
+          image: undefined,
+          images: undefined,
+          pinned: false,
+          isoDate: event.isoDate || event.date,
+          source: 'calendar', // Mark as calendar event
+          _id: event._id,
+        });
+      });
+    
+    // Add posts/updates for current month
+    allUpdates
+      .filter(update => {
+        if (!update.isoDate) return false;
+        const updateDate = new Date(update.isoDate);
+        const isCurrentMonth = updateDate.getFullYear() === currentYear &&
+                              updateDate.getMonth() === currentMonth;
+        
+        if (!isCurrentMonth) return false;
+        
+        // Apply content type filter
+        const updateType = String(update.tag || 'Announcement').toLowerCase();
+        return selectedContentTypesSet.has(updateType);
+      })
+      .forEach(update => {
+        events.push({
+          id: update.id,
+          title: update.title,
+          date: new Date(update.isoDate || update.date).toLocaleDateString(),
+          tag: update.tag || 'Announcement',
+          description: update.description || '',
+          image: update.image,
+          images: update.images,
+          pinned: update.pinned || false,
+          isoDate: update.isoDate || update.date,
+          source: 'post', // Mark as post/update
+        });
+      });
+    
+    // Apply search filter if search query exists
+    let filteredEvents = events;
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filteredEvents = events.filter(event => {
+        const title = (event.title || '').toLowerCase();
+        const description = (event.description || '').toLowerCase();
+        const tag = (event.tag || '').toLowerCase();
+        return title.includes(query) || description.includes(query) || tag.includes(query);
+      });
+    }
+    
+    // Sort by date (earliest first)
+    return filteredEvents.sort((a, b) => {
+      const dateA = new Date(a.isoDate || a.date).getTime();
+      const dateB = new Date(b.isoDate || b.date).getTime();
+      return dateA - dateB;
+    });
+  }, [calendarEvents, allUpdates, selectedContentTypesSet, searchQuery]);
 
   // Load current user and subscribe to auth changes
   useEffect(() => {
@@ -207,7 +486,11 @@ const AdminDashboard = () => {
         try {
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const userPhoto = await AsyncStorage.getItem('userPhoto');
+          const firstName = await AsyncStorage.getItem('userFirstName');
+          const lastName = await AsyncStorage.getItem('userLastName');
           setBackendUserPhoto(userPhoto);
+          setBackendUserFirstName(firstName);
+          setBackendUserLastName(lastName);
         } catch (error) {
           if (__DEV__) console.error('Failed to load backend user data:', error);
         }
@@ -218,6 +501,10 @@ const AdminDashboard = () => {
   );
 
   const getUserInitials = () => {
+    // Use firstName and lastName directly if available
+    if (backendUserFirstName && backendUserLastName) {
+      return (backendUserFirstName[0] + backendUserLastName[0]).toUpperCase();
+    }
     if (!userName) return '?';
     const names = userName.split(' ');
     if (names.length >= 2) {
@@ -225,6 +512,10 @@ const AdminDashboard = () => {
     }
     return userName.substring(0, 2).toUpperCase();
   };
+
+  const handleNotificationsPress = useCallback(() => {
+    setShowNotificationModal(true);
+  }, []);
 
   // Animate floating background orb on mount
   useEffect(() => {
@@ -295,24 +586,23 @@ const AdminDashboard = () => {
   }, []);
 
   // Fetch calendar events for current month
-  // Fetch calendar events on mount only
   useEffect(() => {
-    refreshCalendarEvents(true); // Force refresh on mount
-  }, []); // Empty deps - only run on mount
+    refreshCalendarEvents(true);
+  }, []);
   
   
-  // Open event modal
+  // Open event modal - optimized for performance
   const openEventDrawer = useCallback((event: CalendarEvent, date?: Date) => {
-    setSelectedEvent(event);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
+    // Batch state updates for better performance
     if (date) {
-      setSelectedDateForDrawer(date);
-      // Find all events on this date
       const dateKey = formatDateKey(date);
       const eventsOnDate = calendarEvents.filter(e => {
         const eventDateKey = parseAnyDateToKey(e.isoDate || e.date);
         return eventDateKey === dateKey;
       });
-      setSelectedDateEvents(eventsOnDate.map(e => ({
+      const mappedEvents = eventsOnDate.map(e => ({
         id: e._id || `calendar-${e.isoDate}-${e.title}`,
         title: e.title,
         color: categoryToColors(e.category || 'Event').dot,
@@ -324,13 +614,20 @@ const AdminDashboard = () => {
         time: e.time,
         startDate: e.startDate,
         endDate: e.endDate,
-      })));
+      }));
+      
+      // Batch all state updates together
+      setSelectedEvent(event);
+      setSelectedDateForDrawer(date);
+      setSelectedDateEvents(mappedEvents);
+      setShowEventDrawer(true);
     } else {
+      // Batch all state updates together
+      setSelectedEvent(event);
       setSelectedDateForDrawer(null);
       setSelectedDateEvents([]);
+      setShowEventDrawer(true);
     }
-    setShowEventDrawer(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, [calendarEvents]);
   
   // Close event modal
@@ -425,19 +722,41 @@ const AdminDashboard = () => {
   // Fetch dashboard data on mount only
   useEffect(() => {
     fetchDashboardData(true); // Force refresh on mount
+    
+    // Request notification permissions and check notifications on mount
+    const setupNotifications = async () => {
+      try {
+        await NotificationService.requestPermissions();
+        // Check notifications after a short delay to allow data to load
+        setTimeout(() => {
+          NotificationService.checkAllNotifications();
+        }, 2000);
+      } catch (error) {
+        console.error('Error setting up notifications:', error);
+      }
+    };
+    
+    setupNotifications();
   }, []); // Empty deps - only run on mount
 
-  // Refresh dashboard data when screen comes into focus (with smart refresh)
+  // Refresh dashboard data when screen comes into focus (always refresh to show new posts)
   useFocusEffect(
     useCallback(() => {
-      // Only refresh if data is older than 30 seconds
-      const timeSinceLastFetch = Date.now() - lastFetchTime.current;
-      const shouldRefresh = timeSinceLastFetch > 30 * 1000; // 30 seconds
+      // Add a small delay to ensure backend has processed any updates
+      // This is especially important when coming back from PostUpdate screen
+      const refreshTimer = setTimeout(() => {
+        // Always refresh when screen comes into focus to ensure new posts appear immediately
+        // Force refresh (bypass cache) to get the latest data including newly created posts
+        // The fetchDashboardData function has its own cooldown to prevent too many requests
+        fetchDashboardData(true); // Force refresh to bypass cache and get latest posts
+        // Also refresh calendar events in case posts appear there
+        refreshCalendarEvents(true);
+      }, 100); // Small delay to ensure backend has processed updates
       
-      if (shouldRefresh) {
-        fetchDashboardData(false); // Use cache if available
-      }
-    }, [fetchDashboardData])
+      return () => {
+        clearTimeout(refreshTimer);
+      };
+    }, [fetchDashboardData, refreshCalendarEvents])
   );
 
   return (
@@ -466,7 +785,6 @@ const AdminDashboard = () => {
         end={{ x: 0, y: 1 }}
         pointerEvents="none"
       />
-        
       {/* Blur overlay on entire background - very subtle */}
       <BlurView
         intensity={Platform.OS === 'ios' ? 5 : 3}
@@ -477,7 +795,7 @@ const AdminDashboard = () => {
 
       {/* Animated Floating Background Orb (Copilot-style) */}
       <View style={styles.floatingBgContainer} pointerEvents="none" collapsable={false}>
-        {/* Orb 1 - Soft Orange Glow (Center area) */}
+        {/* Orb 1 - Soft Blue Glow (Center area) */}
         <Animated.View
           style={[
             styles.floatingOrbWrapper,
@@ -510,7 +828,7 @@ const AdminDashboard = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[theme.colors.orbColors.orange1, theme.colors.orbColors.orange2, theme.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -524,12 +842,12 @@ const AdminDashboard = () => {
         </Animated.View>
       </View>
 
-      {/* Orange Header Area with Profile Section */}
+      {/* Blue Header Area with Profile Section */}
       <LinearGradient
-        colors={['#FFD699', '#FFB84D', '#FF9500']}
+        colors={getHeaderGradientColors()}
         start={{ x: 1, y: 0 }}
         end={{ x: 0, y: 1 }}
-        style={[styles.orangeHeader, { 
+        style={[styles.blueHeader, { 
           paddingTop: safeInsets.top + 12,
           paddingLeft: Math.max(safeInsets.left, 20),
           paddingRight: Math.max(safeInsets.right, 20),
@@ -541,6 +859,7 @@ const AdminDashboard = () => {
           source={require('../../../../assets/DOrSU_STATUE.png')}
           style={styles.headerStatueImage}
           resizeMode="cover"
+          defaultSource={require('../../../../assets/DOrSU_STATUE.png')}
         />
         
         <View style={styles.headerTopRow}>
@@ -555,9 +874,16 @@ const AdminDashboard = () => {
               <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: '#FFF' }]} />
             </View>
           </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={handleNotificationsPress} 
+            style={styles.notificationButton}
+            accessibilityLabel="Notifications"
+          >
+            <Ionicons name="notifications-outline" size={24} color="#FFF" />
+          </TouchableOpacity>
         </View>
         
-        {/* Welcome Section inside Orange Header */}
+        {/* Welcome Section inside Blue Header */}
         <View style={styles.welcomeSectionInHeader}>
           <View style={styles.welcomeContent}>
             {backendUserPhoto ? (
@@ -567,13 +893,13 @@ const AdminDashboard = () => {
               />
             ) : (
               <View style={[styles.welcomeProfileIconCircle, { backgroundColor: '#FFF' }]}>
-                <Text style={styles.welcomeProfileInitials}>{getUserInitials()}</Text>
+                <Text style={[styles.welcomeProfileInitials, { color: theme.colors.accent, fontSize: theme.fontSize.scaleSize(20) }]}>{getUserInitials()}</Text>
               </View>
             )}
             <View style={styles.welcomeText}>
-              <Text style={styles.welcomeGreetingInHeader}>Hello!</Text>
-              <Text style={styles.welcomeTitleInHeader}>{userName}</Text>
-              <Text style={styles.welcomeSubtitleInHeader}>Here's your dashboard</Text>
+              <Text style={[styles.welcomeGreetingInHeader, { fontSize: theme.fontSize.scaleSize(14) }]}>Hello!</Text>
+              <Text style={[styles.welcomeTitleInHeader, { fontSize: theme.fontSize.scaleSize(18) }]}>{userName}</Text>
+              <Text style={[styles.welcomeSubtitleInHeader, { fontSize: theme.fontSize.scaleSize(13) }]}>Here's your dashboard</Text>
             </View>
           </View>
         </View>
@@ -587,34 +913,6 @@ const AdminDashboard = () => {
 
       {/* Main Content - Scrollable with Curved Top */}
       <View style={styles.contentWrapper}>
-        {/* Orange Gradient Background */}
-        <LinearGradient
-          colors={
-            isDarkMode
-              ? ['rgba(255, 237, 213, 0.08)', 'rgba(255, 237, 213, 0.03)', 'rgba(255, 237, 213, 0.01)']
-              : ['rgba(255, 237, 213, 0.4)', 'rgba(255, 237, 213, 0.25)', 'rgba(255, 237, 213, 0.1)']
-          }
-          style={styles.orangeGradientBackground}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          pointerEvents="none"
-        />
-        
-        {/* Curved Top of Body - Creates transition from header */}
-        <View style={styles.bodyCurveContainer}>
-          <View style={styles.bodyCurve}>
-            <LinearGradient
-              colors={
-                isDarkMode
-                  ? ['rgba(255, 237, 213, 0.08)', 'rgba(255, 237, 213, 0.08)']
-                  : ['rgba(255, 237, 213, 0.4)', 'rgba(255, 237, 213, 0.4)']
-              }
-              style={styles.bodyCurvePath}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-            />
-          </View>
-        </View>
         
         <ScrollView
           ref={scrollRef}
@@ -629,12 +927,138 @@ const AdminDashboard = () => {
           scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled"
         >
+        {/* Search Bar */}
+        <View style={styles.sectionContainer}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.searchBarContainer, {
+              backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+            }]}
+          >
+            <Ionicons name="search-outline" size={20} color={theme.colors.textMuted} style={styles.searchIcon} />
+            <TextInput
+              style={[styles.searchInput, {
+                color: theme.colors.text,
+                fontSize: theme.fontSize.scaleSize(14),
+              }]}
+              placeholder="Search updates..."
+              placeholderTextColor={theme.colors.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={() => {
+                  setSearchQuery('');
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                style={styles.searchClearButton}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close-circle" size={20} color={theme.colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </BlurView>
+        </View>
+
         {/* Events This Month Section */}
-        {currentMonthEvents.length > 0 && (
-          <View style={styles.sectionContainer}>
-            <View style={styles.sectionDivider}>
-              <Text style={styles.sectionDividerLabel}>EVENTS THIS MONTH</Text>
+        <View style={styles.sectionContainer}>
+          <View style={styles.sectionDivider}>
+            <Text style={[styles.sectionDividerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>EVENTS THIS MONTH</Text>
+          </View>
+
+          {/* Event Type Legend (merged into Events section) */}
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.legendContainer, {
+              backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+            }]}
+          >
+            <View style={styles.legendHeaderRow}>
+              <Text style={[styles.eventCountText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>
+                {currentMonthEvents.length} {currentMonthEvents.length === 1 ? 'event' : 'events'} this month
+              </Text>
             </View>
+            <View style={styles.legendItems}>
+              {legendRows.map((rowItems, rowIndex) => (
+                <View
+                  key={`legend-row-${rowIndex}`}
+                  style={[
+                    styles.legendRow,
+                    rowIndex === 0 ? styles.legendRowThree : styles.legendRowTwo,
+                  ]}
+                >
+                  {rowItems.map((item, colIndex) => {
+                    if (!item) {
+                      return (
+                        <View
+                          key={`legend-placeholder-${rowIndex}-${colIndex}`}
+                          style={[
+                            styles.legendItem,
+                            styles.legendItemThird,
+                            styles.legendItemPlaceholder,
+                          ]}
+                        />
+                      );
+                    }
+                    const isSelected = selectedLegendType === item.key;
+                    return (
+                      <TouchableOpacity
+                        key={`${item.type}-${rowIndex}-${colIndex}`}
+                        style={[
+                          styles.legendItem,
+                          styles.legendItemThird,
+                          isSelected && styles.legendItemSelected,
+                          isSelected && { 
+                            backgroundColor: item.color + '20',
+                            borderColor: item.color
+                          }
+                        ]}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setSelectedLegendType(isSelected ? null : item.key);
+                        }}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${item.type} event type - ${isSelected ? 'selected, tap to show all' : 'tap to filter'}`}
+                      >
+                        <View style={[
+                          styles.legendColorDot,
+                          { backgroundColor: item.color },
+                          isSelected && styles.legendColorDotSelected
+                        ]} />
+                        <Text
+                          style={[
+                            styles.legendItemText,
+                            { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(11) },
+                            isSelected && { fontWeight: '700', color: item.color }
+                          ]}
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                        >
+                          {item.type}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+          </BlurView>
+          {isLoadingCalendarEvents ? (
+            <View style={[styles.eventsLoadingContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <ActivityIndicator size="small" color={theme.colors.accent} />
+              <Text style={[styles.eventsLoadingText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }]}>
+                Loading events...
+              </Text>
+            </View>
+          ) : currentMonthEvents.length > 0 ? (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -654,11 +1078,28 @@ const AdminDashboard = () => {
                   accentColor = colors.dot || '#93C5FD';
                 }
                 
-                // Find the full CalendarEvent object
-                const fullEvent = calendarEvents.find(e => 
-                  e._id === event.id || 
-                  `calendar-${e.isoDate}-${e.title}` === event.id
-                ) || null;
+                // Find the full event object (calendar event or post)
+                let fullEvent: any = null;
+                if (event.source === 'calendar') {
+                  // Calendar event
+                  fullEvent = calendarEvents.find(e => 
+                    e._id === event.id || 
+                    `calendar-${e.isoDate}-${e.title}` === event.id
+                  ) || null;
+                } else if (event.source === 'post') {
+                  // Post/Update - create event data format
+                  fullEvent = {
+                    id: event.id,
+                    title: event.title,
+                    description: event.description,
+                    category: event.tag,
+                    type: event.tag,
+                    date: event.isoDate || event.date,
+                    isoDate: event.isoDate || event.date,
+                    image: event.image,
+                    images: event.images,
+                  };
+                }
                 
                 // Create a subtle background color based on accent color
                 const cardBackgroundColor = isDarkMode 
@@ -679,33 +1120,44 @@ const AdminDashboard = () => {
                     delayPressIn={0}
                     onPress={() => {
                       if (fullEvent) {
-                        const eventDate = fullEvent.isoDate || fullEvent.date 
-                          ? new Date(fullEvent.isoDate || fullEvent.date)
-                          : new Date();
-                        openEventDrawer(fullEvent, eventDate);
+                        if (event.source === 'calendar') {
+                          // Calendar event
+                          const eventDate = fullEvent.isoDate || fullEvent.date 
+                            ? new Date(fullEvent.isoDate || fullEvent.date)
+                            : new Date();
+                          openEventDrawer(fullEvent, eventDate);
+                        } else if (event.source === 'post') {
+                          // Post/Update - use ViewEventModal format
+                          setSelectedEvent(fullEvent);
+                          setSelectedDateEvents([fullEvent]);
+                          setShowEventDrawer(true);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }
                       }
                     }}
                   >
                     <View style={styles.calendarEventContent} collapsable={false}>
                       <View style={styles.calendarEventHeader}>
-                        <View style={[styles.calendarEventIconWrapper, { backgroundColor: accentColor + '15' }]}>
-                          <Ionicons name="calendar" size={18} color={accentColor} />
+                        <View style={[styles.calendarEventIconWrapper, { backgroundColor: accentColor + '20' }]}>
+                          <Ionicons 
+                            name={event.source === 'post' ? 'document-text' : 'calendar'} 
+                            size={16} 
+                            color={accentColor} 
+                          />
                         </View>
-                        <View style={[styles.calendarEventTagContainer, { backgroundColor: accentColor + '15' }]}>
-                          <Text style={[styles.calendarEventTag, { color: accentColor }]}>{event.tag}</Text>
-                        </View>
+                        <Text style={[styles.calendarEventTag, { color: accentColor, fontSize: theme.fontSize.scaleSize(9) }]}>{event.tag}</Text>
                       </View>
-                      <Text style={[styles.calendarEventTitle, { color: theme.colors.text }]} numberOfLines={2}>
+                      <Text style={[styles.calendarEventTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]} numberOfLines={2}>
                         {event.title}
                       </Text>
                       <View style={styles.calendarEventDateRow}>
-                        <Ionicons name="time-outline" size={14} color={theme.colors.textMuted} />
-                        <Text style={[styles.calendarEventDate, { color: theme.colors.textMuted }]}>
+                        <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
+                        <Text style={[styles.calendarEventDate, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]}>
                           {event.date}
                         </Text>
                       </View>
                       {event.description && (
-                        <Text style={[styles.calendarEventDescription, { color: theme.colors.textMuted }]} numberOfLines={2}>
+                        <Text style={[styles.calendarEventDescription, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]} numberOfLines={2}>
                           {event.description}
                         </Text>
                       )}
@@ -714,34 +1166,79 @@ const AdminDashboard = () => {
                 );
               })}
             </ScrollView>
-          </View>
-        )}
+          ) : (
+            <View style={[styles.emptyEventsContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+              <Ionicons name="calendar-outline" size={24} color={theme.colors.textMuted} />
+              <Text style={[styles.emptyEventsText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }]}>
+                No events match your filters this month
+              </Text>
+            </View>
+          )}
+        </View>
 
         {/* Updates Section */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionDivider}>
-            <Text style={styles.sectionDividerLabel}>UPDATES</Text>
+              <Text style={[styles.sectionDividerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>UPDATES</Text>
           </View>
           
           {/* Time Filter Pills */}
           <View style={[styles.filtersContainer, { flexShrink: 0, marginBottom: 12 }]} collapsable={false}>
             <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'all' && styles.filterPillActive]}
+              style={[
+                styles.filterPill, 
+                { borderColor: theme.colors.border }, 
+                timeFilter === 'all' && {
+                  backgroundColor: theme.colors.accent,
+                  borderColor: theme.colors.accent,
+                  shadowColor: theme.colors.accent,
+                }
+              ]}
               onPress={() => setTimeFilter('all')}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'all' && styles.filterPillTextActive]}>All</Text>
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'all' && { color: '#FFF' }]}>All</Text>
             </Pressable>
             <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'upcoming' && styles.filterPillActive]}
-              onPress={() => setTimeFilter('upcoming')}
+              style={[
+                styles.filterPill, 
+                { borderColor: theme.colors.border }, 
+                timeFilter === 'thismonth' && {
+                  backgroundColor: theme.colors.accent,
+                  borderColor: theme.colors.accent,
+                  shadowColor: theme.colors.accent,
+                }
+              ]}
+              onPress={() => setTimeFilter('thismonth')}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'upcoming' && styles.filterPillTextActive]}>Upcoming</Text>
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'thismonth' && { color: '#FFF' }]}>This month</Text>
             </Pressable>
             <Pressable
-              style={[styles.filterPill, { borderColor: theme.colors.border }, timeFilter === 'recent' && styles.filterPillActive]}
+              style={[
+                styles.filterPill, 
+                { borderColor: theme.colors.border }, 
+                timeFilter === 'recent' && {
+                  backgroundColor: theme.colors.accent,
+                  borderColor: theme.colors.accent,
+                  shadowColor: theme.colors.accent,
+                }
+              ]}
               onPress={() => setTimeFilter('recent')}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted }, timeFilter === 'recent' && styles.filterPillTextActive]}>Recent</Text>
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'recent' && { color: '#FFF' }]}>Recent</Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.filterPill, 
+                { borderColor: theme.colors.border }, 
+                timeFilter === 'upcoming' && {
+                  backgroundColor: theme.colors.accent,
+                  borderColor: theme.colors.accent,
+                  shadowColor: theme.colors.accent,
+                }
+              ]}
+              onPress={() => setTimeFilter('upcoming')}
+            >
+              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'upcoming' && { color: '#FFF' }]}>Upcoming</Text>
             </Pressable>
           </View>
           
@@ -750,22 +1247,22 @@ const AdminDashboard = () => {
             {dashboardError && (
               <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                 <Ionicons name="alert-circle-outline" size={40} color="#DC2626" />
-                <Text style={{ marginTop: 6, fontSize: 12, color: '#DC2626', fontWeight: '600' }}>{dashboardError}</Text>
+                <Text style={{ marginTop: 6, fontSize: theme.fontSize.scaleSize(12), color: '#DC2626', fontWeight: '600' }}>{dashboardError}</Text>
               </View>
             )}
 
             {isLoadingDashboard && (
               <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                 <Ionicons name="hourglass-outline" size={40} color={theme.colors.textMuted} />
-                <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>Loading dashboard...</Text>
+                <Text style={{ marginTop: 6, fontSize: theme.fontSize.scaleSize(12), color: theme.colors.textMuted, fontWeight: '600' }}>Loading dashboard...</Text>
               </View>
             )}
 
             {!isLoadingDashboard && !dashboardError && displayedUpdates.length === 0 && (
               <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                 <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
-                <Text style={{ marginTop: 6, fontSize: 12, color: theme.colors.textMuted, fontWeight: '600' }}>
-                  {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : 'No updates found'}
+                <Text style={{ marginTop: 6, fontSize: theme.fontSize.scaleSize(12), color: theme.colors.textMuted, fontWeight: '600' }}>
+                  {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : timeFilter === 'thismonth' ? 'No updates this month' : 'No updates found'}
                 </Text>
               </View>
             )}
@@ -792,7 +1289,25 @@ const AdminDashboard = () => {
                   activeOpacity={0.7}
                   delayPressIn={0}
                   onPress={() => {
-                    // Convert DashboardUpdate to Event format for ViewEventModal
+                    // Check if it's a calendar event (has _id) or a post
+                    if (update.source === 'calendar' && update._id) {
+                      // Calendar event - find the full event object
+                      const fullEvent = calendarEvents.find(e => 
+                        e._id === update._id || 
+                        e._id === update.id ||
+                        `calendar-${e.isoDate}-${e.title}` === update.id
+                      );
+                      if (fullEvent) {
+                        const eventDate = fullEvent.isoDate || fullEvent.date 
+                          ? new Date(fullEvent.isoDate || fullEvent.date)
+                          : new Date();
+                        openEventDrawer(fullEvent, eventDate);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        return;
+                      }
+                    }
+                    
+                    // Post/Update - convert to Event format for ViewEventModal
                     const eventData: any = {
                       id: update.id,
                       title: update.title,
@@ -801,10 +1316,15 @@ const AdminDashboard = () => {
                       type: update.tag,
                       date: update.isoDate || update.date,
                       isoDate: update.isoDate || update.date,
-                      time: undefined, // Updates don't have time, will show "All Day"
                       image: update.image,
                       images: update.images,
                     };
+                    console.log('📅 Event data for ViewEventModal:', { 
+                      title: eventData.title, 
+                      time: eventData.time, 
+                      updateTime: (update as any).time,
+                      hasTime: !!(update as any).time 
+                    });
                     setSelectedEvent(eventData);
                     setSelectedDateEvents([eventData]);
                     setShowEventDrawer(true);
@@ -825,22 +1345,20 @@ const AdminDashboard = () => {
                       />
                     )}
                     <View style={styles.updateTextContent}>
-                      <Text style={[styles.updateTitle, { color: theme.colors.text }]} numberOfLines={2}>{update.title}</Text>
-                      <View style={styles.updateDateRow}>
-                        <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-                        <Text style={[styles.updateDate, { color: theme.colors.textMuted }]}>{update.date}</Text>
+                      <View style={styles.updateTitleRow}>
+                        <Text style={[styles.updateTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]} numberOfLines={2}>{update.title}</Text>
+                        <View style={[styles.updateCategoryBadge, { backgroundColor: accentColor + '20' }]}>
+                          <Text style={[styles.updateCategoryText, { color: accentColor, fontSize: theme.fontSize.scaleSize(10) }]}>{update.tag}</Text>
+                        </View>
                       </View>
+                      <Text style={[styles.updateSubtitle, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>
+                        {update.date}
+                      </Text>
                       {update.description && (
-                        <Text style={[styles.updateDescription, { color: theme.colors.textMuted }]} numberOfLines={2}>
+                        <Text style={[styles.updateDescription, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]} numberOfLines={2}>
                           {update.description}
                         </Text>
                       )}
-                      <View style={styles.updateTagRow}>
-                        <View style={styles.statusItem}>
-                          <Ionicons name="pricetag-outline" size={12} color={accentColor} />
-                          <Text style={[styles.updateTagText, { color: accentColor }]}>{update.tag}</Text>
-                        </View>
-                      </View>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -849,22 +1367,6 @@ const AdminDashboard = () => {
           </View>
         </View>
         </ScrollView>
-        
-        {/* Curved Bottom of Body */}
-        <View style={styles.bodyCurveBottomContainer}>
-          <View style={styles.bodyCurveBottom}>
-            <LinearGradient
-              colors={
-                isDarkMode
-                  ? ['rgba(255, 237, 213, 0.01)', 'rgba(255, 237, 213, 0.01)']
-                  : ['rgba(255, 237, 213, 0.1)', 'rgba(255, 237, 213, 0.1)']
-              }
-              style={styles.bodyCurveBottomPath}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 0, y: 1 }}
-            />
-          </View>
-        </View>
       </View>
 
       {/* Floating Plus Icon Button - Bottom Right */}
@@ -878,7 +1380,7 @@ const AdminDashboard = () => {
         }}
         activeOpacity={0.8}
       >
-        <View style={[styles.floatingAddButtonIcon, { backgroundColor: '#FF9500' }]}>
+        <View style={[styles.floatingAddButtonIcon, { backgroundColor: theme.colors.accent }]}>
           <Ionicons name="add" size={28} color="#FFFFFF" />
         </View>
       </TouchableOpacity>
@@ -922,7 +1424,7 @@ const AdminDashboard = () => {
           // Check if it's a calendar event (has _id) or an update/post
           const event = selectedEvent as any;
           if (event._id) {
-            // Calendar event deletion
+            // Calendar event deletion - still use Alert for calendar events
             Alert.alert(
               'Delete Event',
               `Are you sure you want to delete "${selectedEvent.title}"?`,
@@ -949,11 +1451,30 @@ const AdminDashboard = () => {
                 },
               ]
             );
-          } else {
-            // Update/Post deletion - could implement post deletion here if needed
-            Alert.alert('Delete Post', 'Post deletion functionality can be added here');
+          } else if (event.id) {
+            // Post/Update deletion - modal handles confirmation, just execute deletion
+            try {
+              setIsDeleting(true);
+              await AdminDataService.deletePost(event.id);
+              // Refresh dashboard data after deletion
+              await fetchDashboardData(true);
+              closeEventDrawer();
+              setSelectedEvent(null);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete post');
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            } finally {
+              setIsDeleting(false);
+            }
           }
         }}
+      />
+
+      {/* Notification Modal */}
+      <NotificationModal
+        visible={showNotificationModal}
+        onClose={() => setShowNotificationModal(false)}
       />
     </View>
   );
@@ -987,7 +1508,7 @@ const styles = StyleSheet.create({
     borderRadius: 250,
     overflow: 'hidden',
   },
-  orangeHeader: {
+  blueHeader: {
     paddingBottom: 20,
     paddingHorizontal: 20,
     zIndex: 10,
@@ -1026,7 +1547,7 @@ const styles = StyleSheet.create({
   headerTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'flex-start',
+    justifyContent: 'space-between',
     marginBottom: 16,
     position: 'relative',
     zIndex: 1,
@@ -1049,7 +1570,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+  },
+  notificationButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   customHamburger: {
     width: 24,
@@ -1106,7 +1633,7 @@ const styles = StyleSheet.create({
     marginTop: -20,
     paddingTop: 20,
   },
-  orangeGradientBackground: {
+  blueGradientBackground: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 0,
   },
@@ -1175,13 +1702,13 @@ const styles = StyleSheet.create({
   },
   headerStatueImage: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: '100%',
-    height: '100%',
-    opacity: 0.15,
+    top: -30,
+    left: -50,
+    right: -10,
+    bottom: -100,
+    width: '130%',
+    height: '320%',
+    opacity: 0.35,
     zIndex: 0,
     pointerEvents: 'none',
   },
@@ -1253,7 +1780,7 @@ const styles = StyleSheet.create({
   welcomeProfileInitials: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#FF9500',
+    color: 'transparent', // Will be set dynamically via theme
     letterSpacing: -0.3,
   },
   floatingAddButton: {
@@ -1338,7 +1865,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#FF9500',
+    shadowColor: 'transparent', // Will be set dynamically via theme
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
@@ -1366,11 +1893,6 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     overflow: 'hidden',
     backgroundColor: 'transparent',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
   },
   updateAccent: {
     width: 3,
@@ -1392,12 +1914,38 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 10,
   },
+  updateTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 4,
+  },
   updateTitle: {
     fontSize: 14,
     fontWeight: '700',
-    marginBottom: 6,
     lineHeight: 18,
     letterSpacing: -0.2,
+    flex: 1,
+  },
+  updateCategoryBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    flexShrink: 0,
+  },
+  updateCategoryText: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  updateSubtitle: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginBottom: 6,
+    opacity: 0.8,
   },
   updateDateRow: {
     flexDirection: 'row',
@@ -1442,9 +1990,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   filterPillActive: {
-    backgroundColor: '#FF9500',
-    borderColor: '#FF9500',
-    shadowColor: '#FF9500',
+    backgroundColor: 'transparent', // Will be set dynamically via theme
+    borderColor: 'transparent', // Will be set dynamically via theme
+    shadowColor: 'transparent', // Will be set dynamically via theme
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -1457,6 +2005,30 @@ const styles = StyleSheet.create({
   filterPillTextActive: {
     color: '#FFF',
   },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    marginBottom: 12,
+    minHeight: 52,
+    width: '100%',
+    overflow: 'hidden',
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    padding: 0,
+    fontSize: 14,
+  },
+  searchClearButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
   calendarEventCard: {
     flexDirection: 'row',
     alignItems: 'stretch',
@@ -1464,12 +2036,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
     backgroundColor: 'transparent',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
-    marginRight: 12,
   },
   calendarEventAccent: {
     width: 3,
@@ -1524,6 +2090,110 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 16,
     opacity: 0.75,
+  },
+  calendarEventImage: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
+    marginBottom: 8,
+    resizeMode: 'cover',
+  },
+  emptyEventsContainer: {
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyEventsText: {
+    fontWeight: '600',
+  },
+  eventsLoadingContainer: {
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  eventsLoadingText: {
+    fontWeight: '600',
+  },
+  legendContainer: {
+    gap: 8,
+    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  legendHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  legendItems: {
+    flexDirection: 'column',
+    gap: 8,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 8,
+  },
+  legendRowThree: {
+    justifyContent: 'space-between',
+  },
+  legendRowTwo: {
+    justifyContent: 'space-between',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    minWidth: 0,
+  },
+  legendItemThird: {
+    flex: 1,
+  },
+  legendItemPlaceholder: {
+    opacity: 0,
+  },
+  legendItemSelected: {
+    borderWidth: 1,
+  },
+  legendColorDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  legendColorDotSelected: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  legendItemText: {
+    fontSize: 12,
+    fontWeight: '600',
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  eventCountText: {
+    fontSize: 11,
+    fontWeight: '500',
+    fontStyle: 'italic',
+    opacity: 0.7,
   },
 });
 

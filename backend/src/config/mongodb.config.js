@@ -17,7 +17,8 @@ export const mongoConfig = {
       analytics: process.env.MONGODB_COLLECTION_ANALYTICS || 'query_analytics',
       conversations: 'conversations',
       feedback: 'user_feedback',
-      users: 'users'
+      users: 'users',
+      emailVerifications: 'email_verifications'
     },
     
     // Connection options
@@ -25,11 +26,14 @@ export const mongoConfig = {
       maxPoolSize: 10,
       minPoolSize: 2,
       maxIdleTimeMS: 30000,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
+      serverSelectionTimeoutMS: 30000, // Increased from 5000 to 30000 (30 seconds)
+      socketTimeoutMS: 60000, // Increased from 45000 to 60000 (60 seconds)
+      connectTimeoutMS: 30000, // Added: 30 seconds to establish connection
       retryWrites: true,
       retryReads: true,
-      w: 'majority'
+      w: 'majority',
+      // Additional resilience options
+      heartbeatFrequencyMS: 10000 // Check connection health every 10 seconds
     }
   };
   

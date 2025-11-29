@@ -80,6 +80,8 @@ export interface DashboardStats {
 
 let postsStore: Post[] = [];
 let idCounter: number = 1;
+// Track recently updated posts to ensure they appear even if backend hasn't fully processed
+let recentlyUpdatedPosts: Map<string, Post> = new Map();
 
 // Reduced delay for better performance - can be removed in production
 const delay = (ms: number = __DEV__ ? 50 : 100): Promise<void> => 
@@ -173,11 +175,14 @@ const AdminDataService = {
       // Fetch from backend MongoDB (using unified schedule collection)
       // Filter for posts/announcements/news/events (exclude institutional/academic which go to calendar)
       // Use /api/admin/posts endpoint which is designed for dashboard posts
-      const response = await fetch(`${apiConfig.baseUrl}/api/admin/posts?limit=1000`, {
+      // Add cache-busting timestamp to ensure fresh data after edits
+      const cacheBuster = `&_t=${Date.now()}`;
+      const response = await fetch(`${apiConfig.baseUrl}/api/admin/posts?limit=1000${cacheBuster}`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
         },
       });
 
@@ -189,7 +194,14 @@ const AdminDataService = {
       // Filter posts to exclude institutional/academic (these go to calendar)
       // Only include Announcement, News, Event categories for dashboard Updates section
       if (data.success && Array.isArray(data.posts)) {
-        const filteredPosts = data.posts.filter((post: Post) => {
+        const filteredPosts = data.posts.map((post: any) => {
+          // Normalize ID format - handle both _id (MongoDB) and id formats
+          const normalizedId = String(post._id || post.id || '');
+          return {
+            ...post,
+            id: normalizedId, // Ensure consistent ID format
+          };
+        }).filter((post: Post) => {
           const category = (post.category || '').toLowerCase();
           // Include: Announcement, News, Event (general events)
           // Exclude: Institutional, Academic (these are calendar-only)
@@ -199,9 +211,34 @@ const AdminDataService = {
                  !category || // Include items with no category as fallback
                  (category !== 'institutional' && category !== 'academic');
         });
+        // Merge with recently updated posts to ensure updates appear immediately
+        // This handles the case where backend hasn't fully processed the update yet
+        const mergedPosts = [...filteredPosts];
+        recentlyUpdatedPosts.forEach((updatedPost, key) => {
+          // Check if this post is already in the list
+          const existingIndex = mergedPosts.findIndex(p => 
+            p.id === updatedPost.id || 
+            String(p.id) === String(updatedPost.id) ||
+            String(p.id) === key
+          );
+          
+          if (existingIndex >= 0) {
+            // Replace existing post with updated version
+            mergedPosts[existingIndex] = updatedPost;
+          } else {
+            // Add updated post if it's not in the list (shouldn't happen, but just in case)
+            mergedPosts.push(updatedPost);
+          }
+        });
+        
         // Update local store for offline access
-        postsStore = filteredPosts;
-        return filteredPosts;
+        postsStore = mergedPosts;
+        console.log('✅ Fetched posts from backend:', { 
+          count: filteredPosts.length, 
+          merged: mergedPosts.length,
+          recentlyUpdated: recentlyUpdatedPosts.size 
+        });
+        return mergedPosts;
       }
       
       // Fallback to local store
@@ -696,7 +733,6 @@ const AdminDataService = {
           category: updates.category,
           date: updates.date,
           isoDate: updates.isoDate,
-          time: updates.time,
           images: updates.images,
           image: updates.image,
           isPinned: updates.isPinned,
@@ -731,15 +767,17 @@ const AdminDataService = {
       const data = await response.json();
       console.log('📥 Update post response:', data);
       
-      // Backend returns { success: true, event: {...} } not { success: true, post: {...} }
+      // Backend returns { success: true, event: {...} } or { success: true, post: {...} }
       // Handle both formats for backward compatibility
       const updatedEvent = data.event || data.post;
       
       if (data.success && updatedEvent) {
         // Update local store
         // Map backend event format to Post format
+        // Handle both _id (MongoDB) and id formats
+        const eventId = String(updatedEvent._id || updatedEvent.id || id);
         const updatedPost: Post = {
-          id: String(updatedEvent._id || updatedEvent.id || id),
+          id: eventId,
           title: updatedEvent.title || '',
           description: updatedEvent.description || '',
           category: updatedEvent.category || 'Announcement',
@@ -752,9 +790,33 @@ const AdminDataService = {
           source: updatedEvent.source || 'Admin',
         };
         
-        postsStore = postsStore.map(p => 
-          p.id === String(id) ? updatedPost : p
-        );
+        // Update local store - match by both id and _id to handle ID format differences
+        const stringId = String(id);
+        postsStore = postsStore.map(p => {
+          // Match by id or _id (in case of format mismatch)
+          if (p.id === stringId || p.id === eventId || String(p.id) === stringId || String(p.id) === eventId) {
+            return updatedPost;
+          }
+          return p;
+        });
+        
+        // If post wasn't found in store, add it (shouldn't happen, but just in case)
+        const existsInStore = postsStore.some(p => p.id === eventId || p.id === stringId);
+        if (!existsInStore) {
+          postsStore = [updatedPost, ...postsStore];
+        }
+        
+        // Store in recently updated map to ensure it appears even if backend hasn't fully processed
+        recentlyUpdatedPosts.set(eventId, updatedPost);
+        recentlyUpdatedPosts.set(stringId, updatedPost);
+        
+        // Clear from recently updated after 5 seconds (backend should have processed by then)
+        setTimeout(() => {
+          recentlyUpdatedPosts.delete(eventId);
+          recentlyUpdatedPosts.delete(stringId);
+        }, 5000);
+        
+        console.log('✅ Local store updated with post:', { id: eventId, title: updatedPost.title });
         return updatedPost;
       }
       

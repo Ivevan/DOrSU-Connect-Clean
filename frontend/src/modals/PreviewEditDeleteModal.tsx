@@ -287,7 +287,7 @@ const PreviewEditDeleteModal: React.FC<PreviewEditDeleteModalProps> = ({
               {/* Edit Button */}
               {update?.id && onEdit && (
                 <Pressable 
-                  style={[styles.previewEditBtn, styles.previewButtonShadow, { backgroundColor: '#FF9500', borderColor: '#FF9500' }]} 
+                  style={[styles.previewEditBtn, styles.previewButtonShadow, { backgroundColor: '#2563EB', borderColor: '#2563EB' }]} 
                   onPress={handleEdit}
                   android_ripple={{ color: 'rgba(255,255,255,0.2)' }}
                 >

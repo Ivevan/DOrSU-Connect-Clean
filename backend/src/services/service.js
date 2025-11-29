@@ -31,6 +31,7 @@ export class LlamaService {
     }
     
     this.provider = 'groq';
+    this.modelFallbackPriority = (process.env.GROQ_MODEL_FALLBACK_PRIORITY || 'auto').toLowerCase();
     
     // Multi-model support: Parse models from environment variables
     // Default to llama-3.3-70b-versatile if not specified
@@ -346,6 +347,16 @@ export class LlamaService {
           
           this.markKeyExhausted(exhaustedKeyIndex, cooldownMs);
           
+          const preferModelFallback = this.modelFallbackPriority === 'model_first' || this.groqApiKeys.length === 1;
+          if (preferModelFallback && this.groqModels.length > 1 && modelAttempts < maxModelAttempts - 1) {
+            const switched = this.switchToNextModel('Rate limit detected.');
+            if (switched) {
+              modelAttempts++;
+              keyAttempts = 0;
+              continue;
+            }
+          }
+          
           // Try switching to next API key first (preferred over model switch)
           if (this.groqApiKeys.length > 1 && keyAttempts < maxKeyAttempts - 1) {
             // Find next available key (skip exhausted ones)
@@ -362,16 +373,10 @@ export class LlamaService {
           
           // If all keys exhausted, try switching models (if multiple models configured)
           if (keyAttempts >= maxKeyAttempts - 1 && this.groqModels.length > 1 && modelAttempts < maxModelAttempts - 1) {
-            const currentModel = this.groqModels[this.currentModelIndex];
-            const nextAvailableModel = this.findNextAvailableModel();
-            if (nextAvailableModel !== this.currentModelIndex) {
-              this.currentModelIndex = nextAvailableModel;
-              this.groqModel = this.groqModels[this.currentModelIndex];
-              this.modelSwitchCount++;
+            const switched = this.switchToNextModel('All keys exhausted.');
+            if (switched) {
               modelAttempts++;
-              // Reset key attempts to try all keys with new model
               keyAttempts = 0;
-              Logger.warn(`🔄 All keys exhausted for model ${currentModel}. Switching to model: ${this.groqModel}`);
               continue;
             }
           }
@@ -402,16 +407,10 @@ export class LlamaService {
         
         // If token limit error and multiple models, try switching models
         if (isTokenLimitError && this.groqModels.length > 1 && modelAttempts < maxModelAttempts - 1) {
-          const currentModel = this.groqModels[this.currentModelIndex];
-          const nextAvailableModel = this.findNextAvailableModel();
-          if (nextAvailableModel !== this.currentModelIndex) {
-            this.currentModelIndex = nextAvailableModel;
-            this.groqModel = this.groqModels[this.currentModelIndex];
-            this.modelSwitchCount++;
+          const switched = this.switchToNextModel('Model token limit reached.');
+          if (switched) {
             modelAttempts++;
-            // Reset key attempts to try all keys with new model
             keyAttempts = 0;
-            Logger.warn(`🔄 Model ${currentModel} token limit reached. Switching to model: ${this.groqModel}`);
             continue;
           }
         }
@@ -523,6 +522,33 @@ export class LlamaService {
     this.groqClient = this.groqClients[this.currentKeyIndex];
     
     Logger.info(`🔄 Switched API key: ${oldKeyIndex} → ${this.currentKeyIndex} (switch #${this.keySwitchCount})`);
+  }
+  
+  /**
+   * Switch to the next available model (if any)
+   * @param {string} reason - Optional log message prefix
+   * @returns {boolean} Whether a new model was selected
+   */
+  switchToNextModel(reason = '') {
+    if (this.groqModels.length <= 1) {
+      return false;
+    }
+    
+    const nextModelIndex = this.findNextAvailableModel();
+    if (nextModelIndex === this.currentModelIndex) {
+      return false;
+    }
+    
+    const previousModel = this.groqModel;
+    this.currentModelIndex = nextModelIndex;
+    this.groqModel = this.groqModels[this.currentModelIndex];
+    this.modelSwitchCount++;
+    
+    const message = reason
+      ? `🔄 ${reason} Switching model ${previousModel} → ${this.groqModel}`
+      : `🔄 Switching model ${previousModel} → ${this.groqModel}`;
+    Logger.warn(message);
+    return true;
   }
   
   /**

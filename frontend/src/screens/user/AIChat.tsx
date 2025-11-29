@@ -6,7 +6,9 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Image, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppState, AppStateStatus } from 'react-native';
+import { ActivityIndicator, Animated, BackHandler, Image, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
@@ -34,7 +36,7 @@ type RootStackParamList = {
 
 const AIChat = () => {
   const insets = useSafeAreaInsets();
-  const { isDarkMode, theme: t } = useTheme();
+  const { isDarkMode, theme: t, colorTheme } = useTheme();
   const { getUserToken, userEmail: authUserEmail, checkAuthStatus } = useAuth();
   const { isConnected, isInternetReachable } = useNetworkStatus();
   const isOnline = isConnected && isInternetReachable;
@@ -46,6 +48,7 @@ const AIChat = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
   const [topQueries, setTopQueries] = useState<string[]>([]);
   const [isLoadingTopQueries, setIsLoadingTopQueries] = useState(false);
@@ -55,6 +58,14 @@ const AIChat = () => {
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const sessionId = useRef<string>('');
+  const hasRestoredConversation = useRef<boolean>(false);
+  const isRestoringRef = useRef<boolean>(false);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const appWasInBackground = useRef<boolean>(false);
+  const hasInitialized = useRef<boolean>(false);
+  const isEditingRef = useRef<boolean>(false);
+  const originalMessagesRef = useRef<Message[]>([]);
+  const previousUserTypeRef = useRef<'student' | 'faculty'>('student');
 
   // Segmented control animation and width tracking
   const segmentAnim = useRef(new Animated.Value(0)).current;
@@ -101,6 +112,71 @@ const AIChat = () => {
       loadBackendUserData();
     }, [])
   );
+
+  // Prevent back navigation to GetStarted when logged in
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = async () => {
+        // Check if user is logged in
+        try {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const userToken = await AsyncStorage.getItem('userToken');
+          const userEmail = await AsyncStorage.getItem('userEmail');
+          
+          // If logged in, prevent navigation to GetStarted
+          if (userToken && userEmail) {
+            // On Android, exit app instead of going back
+            if (Platform.OS === 'android') {
+              BackHandler.exitApp();
+              return true;
+            }
+            // On iOS, prevent the back action
+            return true;
+          }
+        } catch (error) {
+          console.error('Error checking auth status:', error);
+        }
+        return false; // Allow default back behavior if not logged in
+      };
+
+      if (Platform.OS === 'android') {
+        const onBackPressWrapper = () => {
+          // onBackPress returns a Promise<boolean>, but hardwareBackPress expects sync return
+          // So we call async and handle result, but always return true to prevent default behavior
+          onBackPress();
+          return true;
+        };
+        const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPressWrapper);
+        return () => subscription.remove();
+      }
+    }, [])
+  );
+
+  // Handle navigation back button and iOS swipe back gesture
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', async (e) => {
+      // Check if user is logged in
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const userToken = await AsyncStorage.getItem('userToken');
+        const userEmail = await AsyncStorage.getItem('userEmail');
+        
+        // If logged in, prevent navigation to GetStarted
+        if (userToken && userEmail) {
+          e.preventDefault();
+          // On Android, exit app
+          if (Platform.OS === 'android') {
+            BackHandler.exitApp();
+          }
+          // On iOS, do nothing (prevent navigation)
+        }
+      } catch (error) {
+        console.error('Error checking auth status:', error);
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation]);
   
   // Get user display name, email, and photo (memoized) - Check backend first, then Firebase
   const userName = useMemo(() => {
@@ -150,14 +226,17 @@ const AIChat = () => {
     }
   }, [selectedUserType, segmentAnim]);
 
-  // Load top queries from backend
-  const loadTopQueries = async () => {
+  // Load top queries from backend with retry logic
+  const loadTopQueries = async (retryCount = 0, maxRetries = 3) => {
     try {
       setIsLoadingTopQueries(true);
       const token = await getUserToken();
       if (token) {
-        // Pass selectedUserType to filter FAQs (shared across all users)
-        const queries = await AIService.getTopQueries(token, selectedUserType);
+        // Only restrict FAQs when student mode is active; faculty sees all
+        const queries = await AIService.getTopQueries(
+          token,
+          selectedUserType === 'student' ? 'student' : undefined
+        );
         if (queries && queries.length > 0) {
           setTopQueries(queries);
         } else {
@@ -168,8 +247,17 @@ const AIChat = () => {
         // No default suggestions - leave empty
         setTopQueries([]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load top queries:', error);
+      // Retry on 404 errors (service not ready yet) with exponential backoff
+      if (error?.message?.includes('404') && retryCount < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Max 5 seconds
+        console.log(`Retrying top queries load in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+        setTimeout(() => {
+          loadTopQueries(retryCount + 1, maxRetries);
+        }, delay);
+        return;
+      }
       // No default suggestions - leave empty
       setTopQueries([]);
     } finally {
@@ -177,26 +265,52 @@ const AIChat = () => {
     }
   };
 
-  // Refresh auth status and load chat history on component mount
-  // This ensures we have the latest token, especially after Google sign-in
-  useEffect(() => {
-    const initializeChat = async () => {
-      try {
-        // Refresh auth status to ensure we have the latest token
-        await checkAuthStatus();
-        // Then load chat history and top queries
-        await Promise.all([
-          loadChatHistory(),
-          loadTopQueries()
-        ]);
-      } catch (error) {
-        console.error('Failed to initialize chat:', error);
+  // Initialize chat data when screen is focused (ensures backend services are ready)
+  // This runs on first focus and handles the initial load
+  useFocusEffect(
+    useCallback(() => {
+      // Only initialize once on first focus
+      if (hasInitialized.current) {
+        return;
       }
-    };
-    initializeChat();
-  }, []);
+
+      const initializeChat = async () => {
+        try {
+          // Wait a bit to ensure backend services are initialized
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          // Refresh auth status to ensure we have the latest token
+          await checkAuthStatus();
+          
+          // Wait for auth to be ready
+          let attempts = 0;
+          while (attempts < 10) {
+            const token = await getUserToken();
+            if (token) {
+              break;
+            }
+            await new Promise(resolve => setTimeout(resolve, 200));
+            attempts++;
+          }
+          
+          // Load chat history and top queries with retry logic
+          loadChatHistory();
+          loadTopQueries();
+          
+          hasInitialized.current = true;
+        } catch (error) {
+          console.error('Failed to initialize chat:', error);
+          // Mark as initialized even on error to prevent infinite retries
+          hasInitialized.current = true;
+        }
+      };
+      
+      initializeChat();
+    }, [checkAuthStatus, getUserToken])
+  );
 
   // Subscribe to auth changes when screen is focused and reload top queries
+  // This runs every time the screen is focused (after initial load)
   useFocusEffect(
     useCallback(() => {
       let unsubscribe: (() => void) | null = null;
@@ -211,8 +325,10 @@ const AIChat = () => {
         });
       }, 50);
       
-      // Reload top queries when screen is focused to get latest data
-      loadTopQueries();
+      // Refresh top queries when screen is focused (but only if already initialized)
+      if (hasInitialized.current) {
+        loadTopQueries();
+      }
       
       return () => {
         clearTimeout(timeoutId);
@@ -226,6 +342,59 @@ const AIChat = () => {
   // Reload top queries when userType changes
   useEffect(() => {
     loadTopQueries();
+  }, [selectedUserType]);
+
+  // Reset chat when userType changes
+  useEffect(() => {
+    // Skip on initial mount (when selectedUserType is first set)
+    if (!hasInitialized.current) {
+      previousUserTypeRef.current = selectedUserType;
+      return;
+    }
+
+    // Only reset if userType actually changed
+    if (previousUserTypeRef.current === selectedUserType) {
+      return;
+    }
+
+    // Save current conversation with previous userType before clearing
+    const saveAndReset = async () => {
+      try {
+        // Capture current messages and sessionId before clearing
+        const currentMessages = messages;
+        const currentSessionId = sessionId.current;
+        
+        // Save current conversation if there are messages, using the PREVIOUS userType
+        if (currentMessages.length > 0 && currentSessionId) {
+          const token = await getUserToken();
+          if (token) {
+            // Save with the previous userType before switching
+            await AIService.saveChatHistory(currentSessionId, currentMessages, token, previousUserTypeRef.current);
+            await loadChatHistory();
+          }
+        }
+        
+        // Clear current conversation
+        setMessages([]);
+        sessionId.current = '';
+        hasRestoredConversation.current = false;
+        await clearCurrentConversation();
+        setInputText('');
+        isEditingRef.current = false;
+        setIsEditing(false);
+        originalMessagesRef.current = [];
+        
+        // Update the previous userType ref
+        previousUserTypeRef.current = selectedUserType;
+      } catch (error) {
+        console.error('Failed to reset chat on userType change:', error);
+        // Still update the ref even on error
+        previousUserTypeRef.current = selectedUserType;
+      }
+    };
+
+    saveAndReset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUserType]);
 
   // Animate floating background orb on mount
@@ -304,22 +473,177 @@ const AIChat = () => {
     }
   }, [isLoading, typingDot1, typingDot2, typingDot3]);
 
-  // Save chat when messages change (only if there are messages)
-  useEffect(() => {
-    if (messages.length > 0) {
-      saveChatHistory();
+  // Save current conversation to AsyncStorage for persistence
+  const saveCurrentConversation = useCallback(async () => {
+    try {
+      if (messages.length > 0 && sessionId.current) {
+        const conversationData = {
+          messages: messages.map(msg => ({
+            ...msg,
+            timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : msg.timestamp,
+          })),
+          sessionId: sessionId.current,
+          selectedUserType,
+        };
+        await AsyncStorage.setItem('currentConversation', JSON.stringify(conversationData));
+        // Save timestamp to detect app close
+        lastSaveTime.current = Date.now();
+        await AsyncStorage.setItem('conversationLastSaveTime', lastSaveTime.current.toString());
+      }
+    } catch (error) {
+      console.error('Failed to save current conversation:', error);
     }
-  }, [messages]);
+  }, [messages, sessionId, selectedUserType]);
 
-  const loadChatHistory = async () => {
+  // Restore conversation from AsyncStorage
+  const restoreCurrentConversation = useCallback(async () => {
+    // Prevent multiple simultaneous restorations
+    if (isRestoringRef.current) return;
+    
+    // Only restore if there are no current messages (empty conversation)
+    if (messages.length > 0) return;
+    
+    // Only restore once per session
+    if (hasRestoredConversation.current) return;
+    
+    try {
+      isRestoringRef.current = true;
+      const conversationData = await AsyncStorage.getItem('currentConversation');
+      if (conversationData) {
+        const parsed = JSON.parse(conversationData);
+        if (parsed.messages && parsed.messages.length > 0 && parsed.sessionId) {
+          // Restore messages with proper Date objects
+          const restoredMessages = parsed.messages.map((msg: any) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp),
+          }));
+          setMessages(restoredMessages);
+          sessionId.current = parsed.sessionId;
+          if (parsed.selectedUserType) {
+            setSelectedUserType(parsed.selectedUserType);
+          }
+          hasRestoredConversation.current = true;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to restore current conversation:', error);
+    } finally {
+      isRestoringRef.current = false;
+    }
+  }, [messages.length]);
+
+  // Clear current conversation from AsyncStorage
+  const clearCurrentConversation = useCallback(async () => {
+    try {
+      await AsyncStorage.removeItem('currentConversation');
+      await AsyncStorage.removeItem('conversationLastSaveTime');
+      hasRestoredConversation.current = false; // Reset flag to allow future restoration
+      lastSaveTime.current = 0;
+    } catch (error) {
+      console.error('Failed to clear current conversation:', error);
+    }
+  }, []);
+
+  // Track app lifecycle to detect actual app close (not just navigation)
+  const appStartTime = useRef<number>(Date.now());
+  const lastSaveTime = useRef<number>(0);
+  
+  // Clear conversation only on actual app start (not on navigation)
+  useEffect(() => {
+    const checkIfAppWasClosed = async () => {
+      try {
+        // Check when conversation was last saved
+        const lastSave = await AsyncStorage.getItem('conversationLastSaveTime');
+        const currentTime = Date.now();
+        
+        // If last save was more than 3 seconds ago, assume app was closed
+        // This handles the case where app was closed and reopened
+        if (lastSave) {
+          const lastSaveTimestamp = parseInt(lastSave, 10);
+          const timeSinceLastSave = currentTime - lastSaveTimestamp;
+          
+          // If more than 3 seconds passed, app was likely closed
+          if (timeSinceLastSave > 3000) {
+            await clearCurrentConversation();
+            hasRestoredConversation.current = false;
+          }
+        } else {
+          // No previous save, this is a fresh start
+          await clearCurrentConversation();
+          hasRestoredConversation.current = false;
+        }
+      } catch (error) {
+        console.error('Failed to check app state:', error);
+      }
+    };
+    
+    // Only check on very first mount (app start)
+    if (Date.now() - appStartTime.current < 1000) {
+      checkIfAppWasClosed();
+    }
+  }, [clearCurrentConversation]);
+
+
+  // Track app state changes and save conversation when app goes to background
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      const previousState = appStateRef.current;
+      appStateRef.current = nextAppState;
+
+      if (previousState === 'active' && (nextAppState === 'background' || nextAppState === 'inactive')) {
+        // App is going to background - mark it and save conversation
+        appWasInBackground.current = true;
+        if (messages.length > 0 && sessionId.current) {
+          saveCurrentConversation();
+        }
+      } else if (previousState === 'background' && nextAppState === 'active') {
+        // App is returning from background - keep conversation (don't clear)
+        // Conversation will be restored by useFocusEffect if needed
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [messages, sessionId, saveCurrentConversation]);
+
+  // Restore conversation when screen comes into focus, save when navigating away
+  useFocusEffect(
+    useCallback(() => {
+      // Restore conversation when screen comes into focus (only if no active conversation)
+      // Use a small delay to ensure state is stable
+      const restoreTimeout = setTimeout(() => {
+        restoreCurrentConversation();
+      }, 100);
+      
+      // Save conversation when navigating away (on blur)
+      return () => {
+        clearTimeout(restoreTimeout);
+        if (messages.length > 0 && sessionId.current) {
+          saveCurrentConversation();
+        }
+      };
+    }, [restoreCurrentConversation, saveCurrentConversation, messages.length])
+  );
+
+  const loadChatHistory = async (retryCount = 0, maxRetries = 3) => {
     try {
       const token = await getUserToken();
       if (token) {
         const history = await AIService.getChatHistory(token);
         setChatHistory(history);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to load chat history:', error);
+      // Retry on 404 errors (service not ready yet) with exponential backoff
+      if (error?.message?.includes('404') && retryCount < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Max 5 seconds
+        console.log(`Retrying chat history load in ${delay}ms (attempt ${retryCount + 1}/${maxRetries})`);
+        setTimeout(() => {
+          loadChatHistory(retryCount + 1, maxRetries);
+        }, delay);
+        return;
+      }
     }
   };
 
@@ -376,6 +700,15 @@ const AIChat = () => {
     }
   };
 
+  // Save chat when messages change (only if there are messages)
+  useEffect(() => {
+    if (messages.length > 0) {
+      saveChatHistory();
+      // Also save to AsyncStorage for local persistence
+      saveCurrentConversation();
+    }
+  }, [messages, saveCurrentConversation]);
+
   const loadChatFromHistory = async (chatId: string) => {
     try {
       const token = await getUserToken();
@@ -385,6 +718,18 @@ const AIChat = () => {
       const chatMessages = await AIService.getChatSession(chatId, token);
       setMessages(chatMessages);
       sessionId.current = chatId; // Set the session ID to the loaded chat
+      // Save the loaded chat as current conversation
+      if (chatMessages.length > 0) {
+        const conversationData = {
+          messages: chatMessages.map(msg => ({
+            ...msg,
+            timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : msg.timestamp,
+          })),
+          sessionId: chatId,
+          selectedUserType,
+        };
+        await AsyncStorage.setItem('currentConversation', JSON.stringify(conversationData));
+      }
       setIsHistoryOpen(false);
     } catch (error) {
       console.error('Failed to load chat:', error);
@@ -445,7 +790,11 @@ const AIChat = () => {
       sessionId.current = Date.now().toString();
     }
 
-    // Create user message
+    // Capture current messages before adding the new one (for conversation history)
+    // This is the state after removing the edited message and subsequent messages
+    const currentMessages = messages;
+
+    // Create user message (this replaces the edited message)
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
@@ -453,15 +802,33 @@ const AIChat = () => {
       timestamp: new Date(),
     };
 
-    // Add user message to chat
+    // Add user message to chat (replaces the old one that was removed during edit)
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
+    // Clear edit mode after sending
+    isEditingRef.current = false;
+    setIsEditing(false);
+    originalMessagesRef.current = [];
     setIsLoading(true);
 
     try {
       // Call AI service with selected userType
       const token = await getUserToken();
-      const response = await AIService.sendMessage(textToSend, token || undefined, selectedUserType);
+      
+      // If there are previous messages, include conversation history in the prompt
+      // This ensures the AI can regenerate properly when a message is edited
+      // When editing, we want to regenerate based on the conversation up to the edited point
+      let promptToSend = textToSend;
+      if (currentMessages.length > 0) {
+        // Build conversation history from existing messages (before the new/edited one)
+        const conversationHistory = currentMessages
+          .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+          .join('\n\n');
+        // Include the new/edited message in the context
+        promptToSend = `${conversationHistory}\n\nUser: ${textToSend}`;
+      }
+      
+      const response = await AIService.sendMessage(promptToSend, token || undefined, selectedUserType);
 
       // Format the AI response with enhanced markdown formatting
       const formattedContent = formatAIResponse(response.reply);
@@ -476,6 +843,11 @@ const AIChat = () => {
 
       // Add assistant message to chat
       setMessages(prev => [...prev, assistantMessage]);
+      
+      // Scroll to bottom to show new message
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
     } catch (error: any) {
       // Show appropriate error message based on error type
       let errorContent = 'Sorry, I encountered an error. Please try again.';
@@ -487,11 +859,22 @@ const AIChat = () => {
         const queuedMessage = textToSend;
         const queuedUserType = selectedUserType;
         const queuedUserMessage = userMessage;
+        const queuedMessages = currentMessages; // Store messages before the new one for context
         
         ReconnectionService.queueRequest({
           execute: async () => {
             const token = await getUserToken();
-            const response = await AIService.sendMessage(queuedMessage, token || undefined, queuedUserType);
+            
+            // Include conversation history if there are previous messages
+            let promptToSend = queuedMessage;
+            if (queuedMessages.length > 0) {
+              const conversationHistory = queuedMessages
+                .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+                .join('\n\n');
+              promptToSend = `${conversationHistory}\n\nUser: ${queuedMessage}`;
+            }
+            
+            const response = await AIService.sendMessage(promptToSend, token || undefined, queuedUserType);
             
             // Format the AI response
             const formattedContent = formatAIResponse(response.reply);
@@ -568,7 +951,13 @@ const AIChat = () => {
     // Remove the message and its response from the messages list
     const messageIndex = messages.findIndex(msg => msg.id === messageId);
     if (messageIndex !== -1) {
+      // Store original messages state for cancel functionality (full conversation before edit)
+      originalMessagesRef.current = [...messages];
+      isEditingRef.current = true;
+      setIsEditing(true);
+      
       // Remove the user message and any assistant response that follows it
+      // This allows the user to edit and regenerate from this point
       const newMessages = messages.slice(0, messageIndex);
       setMessages(newMessages);
       
@@ -579,6 +968,18 @@ const AIChat = () => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   };
+
+  // Cancel edit and restore original conversation
+  const cancelEdit = useCallback(() => {
+    if (isEditingRef.current && originalMessagesRef.current.length > 0) {
+      setMessages(originalMessagesRef.current);
+      setInputText('');
+      isEditingRef.current = false;
+      setIsEditing(false);
+      originalMessagesRef.current = [];
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  }, []);
 
   // Show action menu for messages
   const handleMessageLongPress = (message: Message) => {
@@ -660,7 +1061,7 @@ const AIChat = () => {
 
       {/* Animated Floating Background Orb (Copilot-style) */}
       <View style={styles.floatingBgContainer} pointerEvents="none">
-        {/* Orb 1 - Soft Orange Glow (Center area) */}
+        {/* Orb 1 - Soft Blue Glow (Center area) */}
         <Animated.View
           style={[
             styles.floatingOrbWrapper,
@@ -693,7 +1094,7 @@ const AIChat = () => {
         >
           <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={['rgba(255, 165, 100, 0.45)', 'rgba(255, 149, 0, 0.3)', 'rgba(255, 180, 120, 0.18)']}
+              colors={[t.colors.orbColors.orange1, t.colors.orbColors.orange2, t.colors.orbColors.orange3]}
               style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -727,11 +1128,11 @@ const AIChat = () => {
           </TouchableOpacity>
         </View>
         <View style={styles.headerTitleContainer}>
-          <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>
+          <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}>
             {messages.length > 0 ? 'Conversation' : 'New Conversation'}
           </Text>
-          <View style={[styles.userTypeLabel, { backgroundColor: selectedUserType === 'student' ? '#10B981' : '#2563EB' }]}>
-            <Text style={styles.userTypeLabelText}>
+          <View style={[styles.userTypeLabel, { backgroundColor: selectedUserType === 'student' ? t.colors.accent : (colorTheme === 'dorsu' ? '#FBBF24' : '#6B7280') }]}>
+            <Text style={[styles.userTypeLabelText, { fontSize: t.fontSize.scaleSize(9) }]}>
               {selectedUserType === 'faculty' ? 'Faculty' : 'Student'}
             </Text>
           </View>
@@ -748,8 +1149,8 @@ const AIChat = () => {
                 style={styles.profileImage}
               />
             ) : (
-              <View style={[styles.profileIconCircle, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
-                <Text style={styles.profileInitials}>{getUserInitials()}</Text>
+              <View style={[styles.profileIconCircle, { backgroundColor: t.colors.accent }]}>
+                <Text style={[styles.profileInitials, { fontSize: t.fontSize.scaleSize(13) }]}>{getUserInitials()}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -764,9 +1165,11 @@ const AIChat = () => {
         onNewConversation={() => {
           sessionId.current = '';
           setMessages([]);
+          clearCurrentConversation();
         }}
         getUserToken={getUserToken}
         sessionId={sessionId.current}
+        selectedUserType={selectedUserType}
         onDeleteChat={async (chatId) => {
           try {
             const token = await getUserToken();
@@ -807,35 +1210,35 @@ const AIChat = () => {
         <View style={styles.infoModalOverlay}>
           <View style={[styles.infoCard, { backgroundColor: t.colors.card, borderColor: t.colors.border }]}>
             <View style={styles.infoHeader}>
-              <Text style={[styles.infoTitle, { color: t.colors.text }]}>About DOrSU AI</Text>
+              <Text style={[styles.infoTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>About DOrSU AI</Text>
               <Pressable onPress={() => setIsInfoOpen(false)} style={styles.infoCloseBtn} accessibilityLabel="Close info">
                 <Ionicons name="close" size={20} color={t.colors.textMuted} />
               </Pressable>
             </View>
-            <Text style={[styles.infoBodyText, { color: t.colors.textMuted }]}>DOrSU AI can help you:</Text>
+            <Text style={[styles.infoBodyText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(14) }]}>DOrSU AI can help you:</Text>
             <View style={styles.infoCards}>
               <View style={[styles.infoCardBox, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
                 <View style={[styles.infoCardIconWrap, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
                   <Ionicons name="help-circle" size={18} color={t.colors.primary} />
                 </View>
-                <Text style={[styles.infoCardText, { color: t.colors.text }]}>Answer questions about enrollment and policies</Text>
+                <Text style={[styles.infoCardText, { color: t.colors.text, fontSize: t.fontSize.scaleSize(13) }]}>Answer questions about enrollment and policies</Text>
               </View>
               <View style={[styles.infoCardBox, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
                 <View style={[styles.infoCardIconWrap, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
                   <Ionicons name="location" size={18} color={t.colors.primary} />
                 </View>
-                <Text style={[styles.infoCardText, { color: t.colors.text }]}>Find campus locations and facilities</Text>
+                <Text style={[styles.infoCardText, { color: t.colors.text, fontSize: t.fontSize.scaleSize(13) }]}>Find campus locations and facilities</Text>
               </View>
               <View style={[styles.infoCardBox, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
                 <View style={[styles.infoCardIconWrap, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
                   <Ionicons name="school" size={18} color={t.colors.primary} />
                 </View>
-                <Text style={[styles.infoCardText, { color: t.colors.text }]}>Get information about academic programs</Text>
+                <Text style={[styles.infoCardText, { color: t.colors.text, fontSize: t.fontSize.scaleSize(13) }]}>Get information about academic programs</Text>
               </View>
             </View>
             <View style={[styles.infoNote, { backgroundColor: t.colors.surfaceAlt, borderColor: t.colors.border }]}>
               <Ionicons name="shield-checkmark-outline" size={16} color={t.colors.textMuted} />
-              <Text style={[styles.infoNoteText, { color: t.colors.textMuted }]}>Avoid sharing sensitive or personal data.</Text>
+              <Text style={[styles.infoNoteText, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }]}>Avoid sharing sensitive or personal data.</Text>
             </View>
           </View>
         </View>
@@ -860,8 +1263,8 @@ const AIChat = () => {
             <View style={styles.centerIconContainer}>
               <MaterialIcons name="support-agent" size={80} color={t.colors.textMuted} style={styles.centerIcon} />
             </View>
-            <Text style={[styles.askTitle, { color: t.colors.text }]}>Ask DOrSU AI anything</Text>
-            <Text style={[styles.disclaimer, { color: t.colors.textMuted }]}>Responses are generated by AI and may be inaccurate.</Text>
+            <Text style={[styles.askTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(18) }]}>Ask DOrSU AI anything</Text>
+            <Text style={[styles.disclaimer, { color: t.colors.textMuted, fontSize: t.fontSize.scaleSize(12) }]}>Responses are generated by AI and may be inaccurate.</Text>
           </>
         ) : (
           // Chat messages
@@ -875,8 +1278,12 @@ const AIChat = () => {
                 ]}
               >
                 {message.role === 'assistant' && (
-                  <View style={[styles.aiAvatar, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
-                    <MaterialIcons name="auto-awesome" size={14} color="#FFF" />
+                  <View style={styles.aiAvatar}>
+                    <Image 
+                      source={require('../../../../assets/DOrSU.png')} 
+                      style={styles.aiAvatarImage}
+                      resizeMode="cover"
+                    />
                   </View>
                 )}
                 {message.role === 'user' ? (
@@ -884,10 +1291,10 @@ const AIChat = () => {
                     onLongPress={() => handleMessageLongPress(message)}
                     style={[
                       styles.messageBubble,
-                      { backgroundColor: isDarkMode ? '#2563EB' : '#2563EB' }
+                      { backgroundColor: t.colors.accent }
                     ]}
                   >
-                    <Text style={[styles.messageText, { color: '#FFFFFF' }]}>
+                    <Text style={[styles.messageText, { color: '#FFFFFF', fontSize: t.fontSize.scaleSize(15) }]}>
                       {message.content}
                     </Text>
                   </Pressable>
@@ -913,8 +1320,12 @@ const AIChat = () => {
             ))}
             {isLoading && (
               <View style={styles.assistantMessageRow}>
-                <View style={[styles.aiAvatar, { backgroundColor: isDarkMode ? '#FF9500' : '#FF9500' }]}>
-                  <MaterialIcons name="auto-awesome" size={14} color="#FFF" />
+                <View style={styles.aiAvatar}>
+                  <Image 
+                    source={require('../../../../assets/DOrSU.png')} 
+                    style={styles.aiAvatarImage}
+                    resizeMode="cover"
+                  />
                 </View>
                 <View style={[styles.typingBubbleContainer, { backgroundColor: 'rgba(255, 255, 255, 0.3)' }]}>
                   <BlurView
@@ -1004,7 +1415,7 @@ const AIChat = () => {
               activeOpacity={0.7}
             >
               <View style={styles.faqsHeader}>
-                <Text style={[styles.faqsLabel, { color: t.colors.text }]}>Top 5 FAQs</Text>
+                <Text style={[styles.faqsLabel, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>Top 5 FAQs</Text>
                 <Ionicons 
                   name={isFaqsExpanded ? "chevron-up" : "chevron-down"} 
                   size={20} 
@@ -1039,10 +1450,10 @@ const AIChat = () => {
                           style={styles.promptCardBlur}
                         >
                           <View style={styles.promptCardContent}>
-                            <View style={[styles.promptIconWrap, { backgroundColor: isDarkMode ? 'rgba(255, 149, 0, 0.15)' : 'rgba(255, 149, 0, 0.1)' }]}>
-                              <Ionicons name="reorder-three" size={16} color="#FF9500" />
+                            <View style={[styles.promptIconWrap, { backgroundColor: isDarkMode ? t.colors.accent + '26' : t.colors.accent + '1A' }]}>
+                              <Ionicons name="reorder-three" size={16} color={t.colors.accent} />
                             </View>
-                            <Text style={[styles.promptCardText, { color: isDarkMode ? '#F9FAFB' : '#1F2937' }]}>{txt}</Text>
+                            <Text style={[styles.promptCardText, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(14) }]}>{txt}</Text>
                           </View>
                         </BlurView>
                       </TouchableOpacity>
@@ -1064,7 +1475,7 @@ const AIChat = () => {
         {/* Student/Faculty Toggle - Perplexity style in input bar */}
         <View style={styles.userTypeToggleContainer}>
           <View 
-            style={[styles.userTypeToggle, { backgroundColor: selectedUserType === 'student' ? '#10B981' : '#2563EB' }]}
+            style={[styles.userTypeToggle, { backgroundColor: selectedUserType === 'student' ? t.colors.accent : (colorTheme === 'dorsu' ? '#FBBF24' : '#6B7280') }]}
             onLayout={(e) => {
               segmentWidth.current = e.nativeEvent.layout.width;
               const targetX = selectedUserType === 'faculty' 
@@ -1096,7 +1507,7 @@ const AIChat = () => {
               >
                 <Text style={[
                   styles.userTypeToggleText,
-                  { color: selectedUserType === 'student' ? '#10B981' : '#FFFFFF' }
+                  { color: selectedUserType === 'student' ? '#10B981' : '#FFFFFF', fontSize: t.fontSize.scaleSize(12) }
                 ]}>
                   Student
                 </Text>
@@ -1111,7 +1522,7 @@ const AIChat = () => {
               >
                 <Text style={[
                   styles.userTypeToggleText,
-                  { color: selectedUserType === 'faculty' ? '#2563EB' : '#FFFFFF' }
+                  { color: selectedUserType === 'faculty' ? t.colors.accent : '#FFFFFF', fontSize: t.fontSize.scaleSize(12) }
                 ]}>
                   Faculty
                 </Text>
@@ -1119,6 +1530,30 @@ const AIChat = () => {
             </View>
           </View>
         </View>
+
+        {/* Editing Message Indicator */}
+        {isEditing && (
+          <View style={[styles.editingIndicator, {
+            backgroundColor: isDarkMode ? '#374151' : '#F3F4F6',
+          }]}>
+            <View style={styles.editingIndicatorContent}>
+              <Ionicons name="create-outline" size={16} color={t.colors.accent} />
+              <Text style={[styles.editingIndicatorText, { 
+                color: isDarkMode ? '#F9FAFB' : '#1F2937',
+                fontSize: t.fontSize.scaleSize(13)
+              }]}>
+                Editing message
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={cancelEdit}
+              style={styles.editingCancelButton}
+              accessibilityLabel="Cancel edit"
+            >
+              <Ionicons name="close" size={18} color={t.colors.accent} />
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={[styles.inputBarOuter, {
           borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
@@ -1129,7 +1564,7 @@ const AIChat = () => {
             shadowColor: '#000',
           }]}>
             <TextInput
-              style={[styles.input, { color: isDarkMode ? '#F9FAFB' : '#111827' }]}
+              style={[styles.input, { color: isDarkMode ? '#F9FAFB' : '#111827', fontSize: t.fontSize.scaleSize(15) }]}
               placeholder="Message DOrSU AI"
               placeholderTextColor={isDarkMode ? '#6B7280' : '#9CA3AF'}
               value={inputText}
@@ -1143,7 +1578,7 @@ const AIChat = () => {
               <TouchableOpacity 
                 style={[
                   styles.sendBtn, 
-                  { backgroundColor: '#2563EB' },
+                  { backgroundColor: t.colors.accent },
                   isLoading && styles.sendBtnDisabled
                 ]}
                 onPress={() => handleSendMessage()}
@@ -1186,7 +1621,7 @@ const AIChat = () => {
             <View style={styles.actionMenuHeader}>
               <Text style={[
                 styles.actionMenuTitle,
-                { color: isDarkMode ? '#F9FAFB' : '#1F2937' }
+                { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(18) }
               ]}>
                 {selectedMessage?.role === 'user' ? 'Message Options' : 'AI Response Options'}
               </Text>
@@ -1204,7 +1639,7 @@ const AIChat = () => {
                 <Ionicons name="copy-outline" size={20} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
                 <Text style={[
                   styles.actionMenuButtonText,
-                  { color: isDarkMode ? '#F9FAFB' : '#1F2937' }
+                  { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(16) }
                 ]}>
                   Copy
                 </Text>
@@ -1222,7 +1657,7 @@ const AIChat = () => {
                   <Ionicons name="create-outline" size={20} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
                   <Text style={[
                     styles.actionMenuButtonText,
-                    { color: isDarkMode ? '#F9FAFB' : '#1F2937' }
+                    { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(16) }
                   ]}>
                     Edit
                   </Text>
@@ -1240,7 +1675,7 @@ const AIChat = () => {
             >
               <Text style={[
                 styles.actionMenuCancelText,
-                { color: isDarkMode ? '#F9FAFB' : '#1F2937' }
+                { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(16) }
               ]}>
                 Cancel
               </Text>
@@ -1527,6 +1962,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
+  editingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  editingIndicatorContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  editingIndicatorText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  editingCancelButton: {
+    padding: 4,
+    borderRadius: 12,
+  },
   inputBarOuter: {
     borderRadius: 30,
     borderWidth: 2,
@@ -1604,6 +2061,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 4,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+  },
+  aiAvatarImage: {
+    width: '100%',
+    height: '100%',
   },
   messageBubble: {
     maxWidth: '75%',

@@ -439,12 +439,15 @@ export const reloadUser = async (user: User): Promise<void> => {
     if (Platform.OS === 'web') {
       const { reload } = require('firebase/auth');
       await reload(user);
+      console.log('✅ User reloaded (web) - emailVerified:', user.emailVerified);
     } else {
       // Native - React Native Firebase
+      // Force reload to get latest data from Firebase (important for cross-device detection)
       await user.reload();
+      console.log('✅ User reloaded (native) - emailVerified:', user.emailVerified);
     }
   } catch (error: any) {
-    console.error('Reload user error:', error);
+    console.error('❌ Reload user error:', error);
     throw new Error(error.message || 'Failed to reload user');
   }
 };
@@ -455,26 +458,32 @@ export const reloadUser = async (user: User): Promise<void> => {
  */
 export const applyEmailVerificationCode = async (actionCode: string): Promise<void> => {
   try {
-    console.log('🔐 Applying email verification code...');
+    // Check if email is already verified before applying code
+    const currentUser = getCurrentUser();
+    if (currentUser?.emailVerified) {
+      // Email already verified, no need to apply code
+      return;
+    }
     
     if (Platform.OS === 'web') {
       const { applyActionCode, getAuth } = require('firebase/auth');
-      const auth = getAuth();
-      await applyActionCode(auth, actionCode);
-      console.log('✅ Email verification code applied successfully (web)');
+      const firebaseAuth = getAuth();
+      await applyActionCode(firebaseAuth, actionCode);
     } else {
-      // Native - React Native Firebase
-      const auth = require('@react-native-firebase/auth').default();
+      // Native - React Native Firebase - use the imported auth module
       await auth().applyActionCode(actionCode);
-      console.log('✅ Email verification code applied successfully (native)');
     }
   } catch (error: any) {
-    console.error('❌ Failed to apply verification code:', error);
-    
-    if (error?.code === 'auth/invalid-action-code') {
+    // If code is invalid/expired/already used, check if email is now verified
+    if (error?.code === 'auth/invalid-action-code' || error?.code === 'auth/expired-action-code') {
+      // Code might be invalid because email was already verified
+      const currentUser = getCurrentUser();
+      if (currentUser?.emailVerified) {
+        // Email is verified, silently return (code was already used successfully)
+        return;
+      }
+      // Email not verified, throw error
       throw new Error('Invalid or expired verification code. Please request a new verification email.');
-    } else if (error?.code === 'auth/expired-action-code') {
-      throw new Error('Verification code has expired. Please request a new verification email.');
     } else if (error?.message) {
       throw new Error(`Failed to verify email: ${error.message}`);
     } else {

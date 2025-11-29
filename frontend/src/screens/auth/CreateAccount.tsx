@@ -5,19 +5,19 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, BackHandler, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, AppState, BackHandler, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../config/api.config';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { createUserWithEmailAndPassword, sendEmailVerification, reloadUser, getCurrentUser, signInWithEmailAndPassword } from '../../services/authService';
-import SuccessModal from '../../modals/SuccessModal';
+import { createUserWithEmailAndPassword, sendEmailVerification, reloadUser, getCurrentUser, onAuthStateChange } from '../../services/authService';
 
 type RootStackParamList = {
   GetStarted: undefined;
   SignIn: undefined;
   CreateAccount: undefined;
   SchoolUpdates: undefined;
+  AIChat: undefined;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'CreateAccount'>;
@@ -45,29 +45,27 @@ const CreateAccount = () => {
   const loadingRotation = useRef(new Animated.Value(0)).current;
   
   // Form state
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isSendingVerification, setIsSendingVerification] = useState(false);
   const [emailVerificationStatus, setEmailVerificationStatus] = useState<'idle' | 'pending' | 'verified'>('idle');
   const [emailVerificationMessage, setEmailVerificationMessage] = useState('');
-  const [warningModalVisible, setWarningModalVisible] = useState(false);
-  const [warningModalMessage, setWarningModalMessage] = useState('');
-  const [errors, setErrors] = useState({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '', general: '' });
-  const [isCompletingAccount, setIsCompletingAccount] = useState(false);
+  const [showNameFields, setShowNameFields] = useState(false);
+  const [firebaseUser, setFirebaseUser] = useState<any>(null);
+  const [errors, setErrors] = useState({ email: '', password: '', confirmPassword: '', firstName: '', lastName: '', general: '' });
   
   // Input focus states
-  const firstNameFocus = useRef(new Animated.Value(0)).current;
-  const lastNameFocus = useRef(new Animated.Value(0)).current;
   const emailFocus = useRef(new Animated.Value(0)).current;
   const passwordFocus = useRef(new Animated.Value(0)).current;
   const confirmPasswordFocus = useRef(new Animated.Value(0)).current;
+  const firstNameFocus = useRef(new Animated.Value(0)).current;
+  const lastNameFocus = useRef(new Animated.Value(0)).current;
 
   // Handle back button/gesture to navigate to GetStarted
   useFocusEffect(
@@ -96,12 +94,6 @@ const CreateAccount = () => {
     return unsubscribe;
   }, [navigation]);
 
-  useEffect(() => {
-    if (!email.trim()) {
-      setEmailVerificationStatus('idle');
-      setEmailVerificationMessage('');
-    }
-  }, [email]);
 
   // Button press handler
   const handleButtonPress = (scaleRef: Animated.Value, callback: () => void) => {
@@ -128,9 +120,9 @@ const CreateAccount = () => {
       return 'Please enter a valid email address';
     }
     const emailDomain = value.toLowerCase().split('@')[1];
-    const allowedDomains = ['dorsu.edu.ph', 'gmail.com'];
+    const allowedDomains = ['dorsu.edu.ph', 'gmail.com', 'yahoo.com', 'outlook.com', 'ymail.com', 'hotmail.com'];
     if (!emailDomain || !allowedDomains.includes(emailDomain)) {
-      return 'Only @dorsu.edu.ph and @gmail.com addresses are supported';
+      return 'Only @dorsu.edu.ph, @gmail.com, @yahoo.com, @outlook.com, @ymail.com, and @hotmail.com addresses are supported';
     }
     if (TEMP_EMAIL_DOMAINS.includes(emailDomain)) {
       return 'Temporary emails not allowed';
@@ -141,7 +133,7 @@ const CreateAccount = () => {
   // Check Firebase email verification status
   const checkEmailVerificationStatus = useCallback(
     async (options: { showErrors?: boolean } = {}) => {
-      if (!email.trim()) {
+      if (!email.trim() || !firebaseUser) {
         return false;
       }
 
@@ -156,36 +148,83 @@ const CreateAccount = () => {
       }
 
       try {
-        const currentUser = getCurrentUser();
-        if (!currentUser || currentUser.email?.toLowerCase() !== email.trim().toLowerCase()) {
-          // User not signed in or different email
-          setEmailVerificationStatus('idle');
-          setEmailVerificationMessage('');
-          return false;
-        }
-
-        // Reload user to get latest verification status
-        await reloadUser(currentUser);
-        const updatedUser = getCurrentUser();
+        // Reload user to get latest verification status from Firebase
+        // This is critical for cross-device detection (phone app detecting desktop verification)
         
-        if (updatedUser?.emailVerified) {
+        // Get current user first to check if already verified
+        let finalUser = getCurrentUser();
+        
+        // Force token refresh first to ensure we get latest data
+        try {
+          await firebaseUser.getIdToken(true); // Force refresh token
+        } catch (tokenError) {
+          // Token refresh failed, continue anyway
+        }
+        
+        // Force reload the user to get fresh data from Firebase
+        await reloadUser(firebaseUser);
+        
+        // Small delay to ensure Firebase has updated the user object
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Get fresh user data after reload
+        finalUser = getCurrentUser();
+        
+        // If still not verified, try multiple reloads (for cross-device scenarios)
+        let attempts = 0;
+        const maxAttempts = 3;
+        while (!finalUser?.emailVerified && attempts < maxAttempts) {
+          attempts++;
+          
+          try {
+            // Force token refresh
+            await firebaseUser.getIdToken(true);
+            // Reload user
+            await reloadUser(firebaseUser);
+            // Wait a bit longer for cross-device sync
+            await new Promise(resolve => setTimeout(resolve, 500));
+            // Get fresh user
+            finalUser = getCurrentUser();
+            
+            if (finalUser?.emailVerified) {
+              break;
+            }
+          } catch (reloadError) {
+            // Reload failed, continue to next attempt
+          }
+        }
+        
+        if (finalUser?.emailVerified) {
+          // Check if this is a newly detected verification (status was pending before)
+          const wasPending = emailVerificationStatus === 'pending';
+          
+          // Always update status to verified if email is verified
           setEmailVerificationStatus('verified');
-          setEmailVerificationMessage('Email confirmed. You are good to go.');
+          setEmailVerificationMessage('✅ Email verified successfully! Please enter your name (optional) to complete your account.');
+          
+          // Update firebaseUser state with verified user
+          setFirebaseUser(finalUser);
+          
+          // Always show name fields when verified
+          setShowNameFields(true);
+          
+          // If verification was just detected, provide haptic feedback and clear any errors
+          if (wasPending) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setErrors(prev => ({ ...prev, general: '' }));
+          }
+          
           return true;
         } else {
-          setEmailVerificationStatus('pending');
-          setEmailVerificationMessage('Waiting for confirmation. Please tap the link we sent to your email.');
-          
-          if (options.showErrors) {
-            setErrors(prev => ({
-              ...prev,
-              general: 'Please confirm your email by opening the link we sent.',
-            }));
+          // Only update status if it's not already pending (to avoid unnecessary re-renders)
+          if (emailVerificationStatus !== 'pending') {
+            setEmailVerificationStatus('pending');
+            setEmailVerificationMessage('Waiting for email verification. Please check your inbox and click the verification link.');
+            setShowNameFields(false);
           }
           return false;
         }
       } catch (error) {
-        console.error('Email verification status error:', error);
         if (options.showErrors) {
           setErrors(prev => ({
             ...prev,
@@ -195,65 +234,36 @@ const CreateAccount = () => {
         return false;
       }
     },
-    [email, isOnline]
+    [email, firebaseUser, isOnline, emailVerificationStatus]
   );
 
-  const handleSendVerificationLink = async () => {
-    if (!isOnline) {
-      setErrors(prev => ({
-        ...prev,
-        general: 'No internet connection. Please check your network and try again.',
-      }));
-      return;
-    }
-
-    const emailError = validateEmailField(email);
-    if (emailError) {
-      setErrors(prev => ({ ...prev, email: emailError }));
-      return;
-    }
-
-    setIsSendingVerification(true);
-    setErrors(prev => ({ ...prev, general: '' }));
-
+  // Complete account creation after email verification and name entry
+  const completeAccountCreation = useCallback(async () => {
+    if (!firebaseUser || emailVerificationStatus !== 'verified') return;
+    
     try {
-      // Check if user is already signed in
-      let currentUser = getCurrentUser();
+      setIsLoading(true);
       
-      if (!currentUser || currentUser.email?.toLowerCase() !== email.trim().toLowerCase()) {
-        // User needs to create account first (will be done in handleSignUp)
-        setErrors(prev => ({
-          ...prev,
-          general: 'Please create your account first. The verification email will be sent automatically.',
-        }));
-        return;
+      // Use provided names or fallback to email username
+      const finalFirstName = firstName.trim() || email.split('@')[0].charAt(0).toUpperCase() + email.split('@')[0].slice(1);
+      const finalLastName = lastName.trim() || '';
+      const displayName = finalLastName 
+        ? `${finalFirstName} ${finalLastName}`.trim()
+        : finalFirstName;
+      
+      // Update Firebase user profile
+      try {
+        if (Platform.OS === 'web') {
+          const { updateProfile } = require('firebase/auth');
+          await updateProfile(firebaseUser, { displayName });
+        } else {
+          await firebaseUser.updateProfile({ displayName });
+        }
+      } catch (updateError) {
+        // Failed to update profile, continue anyway
       }
-
-      // Send verification email
-      await sendEmailVerification(currentUser);
-      setEmailVerificationStatus('pending');
-      setEmailVerificationMessage('Confirmation link sent. Please open the link from your email inbox.');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error: any) {
-      console.error('Failed to send verification link:', error);
-      setErrors(prev => ({
-        ...prev,
-        general: error?.message || 'Failed to send confirmation link. Please try again.',
-      }));
-    } finally {
-      setIsSendingVerification(false);
-    }
-  };
-
-  // Function to complete account creation after email verification
-  const completeAccountCreation = async (firebaseUser: any, firstName: string, lastName: string, email: string) => {
-    if (isCompletingAccount) return; // Prevent duplicate calls
-    
-    setIsCompletingAccount(true);
-    setIsLoading(true);
-    
-    try {
-      // Step 1: Sync user to backend MongoDB
+      
+      // Sync user to backend MongoDB
       const idToken = await firebaseUser.getIdToken();
       const response = await fetch(`${API_BASE_URL}/api/auth/register-firebase`, {
         method: 'POST',
@@ -262,9 +272,9 @@ const CreateAccount = () => {
           'Authorization': `Bearer ${idToken}`,
         },
         body: JSON.stringify({
-          username: `${firstName.trim()} ${lastName.trim()}`.trim(), // Combine for backward compatibility
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
+          username: displayName,
+          firstName: finalFirstName,
+          lastName: finalLastName,
           email: email.trim().toLowerCase(),
         }),
       });
@@ -275,301 +285,294 @@ const CreateAccount = () => {
         throw new Error(data.error || 'Failed to sync account with server');
       }
       
-      // Step 2: Store user data locally
+      // Store user data locally
       await AsyncStorage.setItem('userToken', data.token || idToken);
       await AsyncStorage.setItem('userEmail', firebaseUser.email || email);
-      await AsyncStorage.setItem('userName', `${firstName.trim()} ${lastName.trim()}`.trim()); // Full name for backward compatibility
-      await AsyncStorage.setItem('userFirstName', firstName.trim());
-      await AsyncStorage.setItem('userLastName', lastName.trim());
+      await AsyncStorage.setItem('userName', displayName);
+      await AsyncStorage.setItem('userFirstName', finalFirstName);
+      await AsyncStorage.setItem('userLastName', finalLastName);
       await AsyncStorage.setItem('userId', data.user?.id || firebaseUser.uid);
       await AsyncStorage.setItem('authProvider', 'email');
       
-      // Clear pending data
-      await AsyncStorage.multiRemove(['pendingEmail', 'pendingFirstName', 'pendingLastName', 'pendingPassword', 'pendingFirebaseUid']);
-      
       setIsLoading(false);
-      setIsCompletingAccount(false);
       
-      // Update verification status
-      setEmailVerificationStatus('verified');
-      setEmailVerificationMessage('Email verified! Your account has been created successfully.');
-      
-      // Show success modal
-      setShowSuccessModal(true);
-      
-      // Navigate after modal shows
-      setTimeout(() => {
-        setShowSuccessModal(false);
-        navigation.navigate('SchoolUpdates');
-      }, 2500);
+      // Navigate to AIChat
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      navigation.navigate('AIChat');
     } catch (error: any) {
       setIsLoading(false);
-      setIsCompletingAccount(false);
-      setErrors({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '', general: error.message || 'Failed to complete account creation' });
-      console.error('Complete account creation error:', error);
+      setErrors(prev => ({ ...prev, general: error.message || 'Failed to complete account creation' }));
     }
+  }, [firebaseUser, email, emailVerificationStatus, firstName, lastName, navigation]);
+
+  // When email is verified, show name fields instead of completing immediately
+  useEffect(() => {
+    if (emailVerificationStatus === 'verified' && firebaseUser) {
+      if (!showNameFields) {
+        setShowNameFields(true);
+        setEmailVerificationMessage('✅ Email verified successfully! Please enter your name (optional) to complete your account.');
+      }
+    } else if (emailVerificationStatus === 'pending') {
+      // Keep name fields hidden while pending
+      if (showNameFields) {
+        setShowNameFields(false);
+      }
+    }
+  }, [emailVerificationStatus, firebaseUser, showNameFields]);
+
+  // Handle continue button after name entry
+  const handleContinueAfterVerification = () => {
+    completeAccountCreation();
   };
 
-  // Check for pending account creation on mount and handle verification code from deep link
-  useEffect(() => {
-    const checkPendingAccount = async () => {
-      try {
-        const pendingEmail = await AsyncStorage.getItem('pendingEmail');
-        const pendingFirstName = await AsyncStorage.getItem('pendingFirstName');
-        const pendingLastName = await AsyncStorage.getItem('pendingLastName');
-        const pendingPassword = await AsyncStorage.getItem('pendingPassword');
-        const pendingFirebaseUid = await AsyncStorage.getItem('pendingFirebaseUid');
-        const pendingVerificationCode = await AsyncStorage.getItem('pendingVerificationCode');
-        const emailVerifiedViaDeepLink = await AsyncStorage.getItem('emailVerifiedViaDeepLink');
-        
-        if (pendingEmail && pendingFirstName && pendingLastName && pendingPassword && pendingFirebaseUid) {
-          // User has a pending account - check if email is verified
-          setEmail(pendingEmail);
-          setFirstName(pendingFirstName);
-          setLastName(pendingLastName);
-          
-          // Try to sign in to check verification status
-          try {
-            const firebaseUser = await signInWithEmailAndPassword(pendingEmail, pendingPassword);
-            
-            // If we have a verification code from deep link, apply it first
-            if (pendingVerificationCode) {
-              console.log('🔐 Applying verification code from deep link...');
-              try {
-                const { applyEmailVerificationCode } = require('../services/authService');
-                await applyEmailVerificationCode(pendingVerificationCode);
-                console.log('✅ Verification code applied successfully');
-                await AsyncStorage.removeItem('pendingVerificationCode');
-                // Reload user to get updated verification status
-                await reloadUser(firebaseUser);
-              } catch (applyError: any) {
-                console.error('❌ Failed to apply verification code:', applyError);
-                // Continue to check status anyway - might already be verified
-              }
-            }
-            
-            // Reload user to get latest verification status
-            await reloadUser(firebaseUser);
-            const currentUser = getCurrentUser();
-            
-            if (currentUser?.emailVerified) {
-              // Email is verified - complete account creation
-              console.log('✅ Email verified - completing account creation');
-              setEmailVerificationStatus('verified');
-              setEmailVerificationMessage('Email verified! Completing account creation...');
-              await completeAccountCreation(firebaseUser, pendingFirstName, pendingLastName, pendingEmail);
-            } else if (emailVerifiedViaDeepLink) {
-              // Deep link was processed but email not verified yet - check again after a moment
-              console.log('⏳ Deep link processed, checking verification status...');
-              setEmailVerificationStatus('pending');
-              setEmailVerificationMessage('Processing verification... Please wait.');
-              
-              // Wait a moment and check again
-              setTimeout(async () => {
-                try {
-                  await reloadUser(firebaseUser);
-                  const updatedUser = getCurrentUser();
-                  if (updatedUser?.emailVerified) {
-                    await AsyncStorage.removeItem('emailVerifiedViaDeepLink');
-                    await completeAccountCreation(firebaseUser, pendingFirstName, pendingLastName, pendingEmail);
-                  } else {
-                    setEmailVerificationStatus('pending');
-                    setEmailVerificationMessage('Please check your email and click the verification link to complete your account creation.');
-                  }
-                } catch (error) {
-                  console.error('Error checking verification status after deep link:', error);
-                }
-              }, 2000);
-            } else {
-              // Email not verified yet
-              setEmailVerificationStatus('pending');
-              setEmailVerificationMessage('Please check your email and click the verification link to complete your account creation.');
-              
-              // Start checking verification status periodically, but less frequently
-              const verificationCheckInterval = setInterval(async () => {
-                try {
-                  await reloadUser(firebaseUser);
-                  const updatedUser = getCurrentUser();
-                  
-                  if (updatedUser?.emailVerified) {
-                    clearInterval(verificationCheckInterval);
-                    if ((global as any).verificationCheckInterval === verificationCheckInterval) {
-                      delete (global as any).verificationCheckInterval;
-                    }
-                    await completeAccountCreation(firebaseUser, pendingFirstName, pendingLastName, pendingEmail);
-                  }
-                } catch (error) {
-                  console.error('Error checking verification status:', error);
-                }
-              }, 10000); // Check every 10 seconds instead of 3 to avoid quota issues
-              
-              (global as any).verificationCheckInterval = verificationCheckInterval;
-            }
-          } catch (signInError) {
-            console.error('Failed to sign in with pending account:', signInError);
-            // Clear pending data if sign in fails
-            await AsyncStorage.multiRemove(['pendingEmail', 'pendingFirstName', 'pendingLastName', 'pendingPassword', 'pendingFirebaseUid']);
-          }
-        }
-      } catch (error) {
-        console.error('Error checking pending account:', error);
-      }
-    };
-    
-    checkPendingAccount();
-  }, []);
-
+  // Handle deep link verification when screen is focused
   useFocusEffect(
     useCallback(() => {
-      if (email && emailVerificationStatus === 'pending' && !isCompletingAccount) {
-        // Check verification status periodically, but less frequently to avoid quota issues
-        const interval = setInterval(() => {
-          checkEmailVerificationStatus();
-        }, 10000); // Check every 10 seconds instead of 3 to avoid quota issues
-        
-        return () => clearInterval(interval);
-      }
-    }, [email, emailVerificationStatus, checkEmailVerificationStatus, isCompletingAccount])
+      const handleDeepLinkVerification = async () => {
+        try {
+          const pendingVerificationCode = await AsyncStorage.getItem('pendingVerificationCode');
+          const emailVerifiedViaDeepLink = await AsyncStorage.getItem('emailVerifiedViaDeepLink');
+          const verificationError = await AsyncStorage.getItem('verificationError');
+          
+          // Show error if verification failed
+          if (verificationError) {
+            setErrors(prev => ({ ...prev, general: verificationError }));
+            await AsyncStorage.removeItem('verificationError');
+          }
+          
+          // If verification code was applied via deep link, check status
+          if (emailVerifiedViaDeepLink && firebaseUser) {
+            const isVerified = await checkEmailVerificationStatus({ showErrors: true });
+            
+            if (isVerified) {
+              await AsyncStorage.removeItem('emailVerifiedViaDeepLink');
+              await AsyncStorage.removeItem('pendingVerificationCode');
+            }
+          } else if (pendingVerificationCode && firebaseUser) {
+            // Check if email is already verified before trying to apply code
+            const currentUser = getCurrentUser();
+            if (currentUser?.emailVerified) {
+              // Email already verified, just clean up and check status
+              await AsyncStorage.removeItem('pendingVerificationCode');
+              await checkEmailVerificationStatus();
+            } else {
+              // If we have a verification code but haven't applied it yet, try to apply it
+              try {
+                const { applyEmailVerificationCode, reloadUser } = require('../../services/authService');
+                await applyEmailVerificationCode(pendingVerificationCode);
+                await reloadUser(firebaseUser);
+                await AsyncStorage.removeItem('pendingVerificationCode');
+                await AsyncStorage.setItem('emailVerifiedViaDeepLink', 'true');
+                // Check verification status
+                await checkEmailVerificationStatus();
+              } catch (applyError: any) {
+                // If code is invalid/expired/already used, check if email is already verified
+                if (applyError?.code === 'auth/invalid-action-code' || applyError?.code === 'auth/expired-action-code') {
+                  // Code might be invalid because email was already verified on another device
+                  await reloadUser(firebaseUser);
+                  const updatedUser = getCurrentUser();
+                  if (updatedUser?.emailVerified) {
+                    // Email is verified, just clean up
+                    await AsyncStorage.removeItem('pendingVerificationCode');
+                    await checkEmailVerificationStatus();
+                  } else {
+                    // Email not verified, show error
+                    setErrors(prev => ({
+                      ...prev,
+                      general: 'Verification code is invalid or expired. Please request a new verification email.',
+                    }));
+                  }
+                } else {
+                  setErrors(prev => ({
+                    ...prev,
+                    general: applyError.message || 'Failed to verify email. Please try again.',
+                  }));
+                }
+              }
+            }
+          } else if (emailVerificationStatus === 'pending' && firebaseUser) {
+            // User might have verified on web/desktop - check status immediately when screen is focused
+            const isVerified = await checkEmailVerificationStatus({ showErrors: false });
+            
+            // On web, also check URL parameters in case verification link was clicked
+            if (Platform.OS === 'web' && typeof window !== 'undefined' && !isVerified) {
+              const urlParams = new URLSearchParams(window.location.search);
+              const oobCode = urlParams.get('oobCode') || urlParams.get('actionCode');
+              if (oobCode) {
+                try {
+                  // Check if already verified first
+                  const currentUser = getCurrentUser();
+                  if (currentUser?.emailVerified) {
+                    // Already verified, just clean up URL
+                    if (window.history && window.history.replaceState) {
+                      const cleanUrl = window.location.origin + window.location.pathname;
+                      window.history.replaceState({}, document.title, cleanUrl);
+                    }
+                    await checkEmailVerificationStatus({ showErrors: true });
+                  } else {
+                    const { applyEmailVerificationCode, reloadUser } = require('../../services/authService');
+                    await applyEmailVerificationCode(oobCode);
+                    await reloadUser(firebaseUser);
+                    await checkEmailVerificationStatus({ showErrors: true });
+                    
+                    // Clean up URL
+                    if (window.history && window.history.replaceState) {
+                      const cleanUrl = window.location.origin + window.location.pathname;
+                      window.history.replaceState({}, document.title, cleanUrl);
+                    }
+                  }
+                } catch (applyError: any) {
+                  // If code is invalid/expired/already used, check if email is already verified
+                  if (applyError?.code === 'auth/invalid-action-code' || applyError?.code === 'auth/expired-action-code') {
+                    await reloadUser(firebaseUser);
+                    const updatedUser = getCurrentUser();
+                    if (updatedUser?.emailVerified) {
+                      // Email is verified, just clean up URL and check status
+                      if (window.history && window.history.replaceState) {
+                        const cleanUrl = window.location.origin + window.location.pathname;
+                        window.history.replaceState({}, document.title, cleanUrl);
+                      }
+                      await checkEmailVerificationStatus({ showErrors: true });
+                    }
+                  }
+                }
+              }
+            }
+          }
+        } catch (error) {
+          // Error handling deep link verification
+        }
+      };
+      
+      handleDeepLinkVerification();
+    }, [firebaseUser, checkEmailVerificationStatus, emailVerificationStatus])
   );
 
-  // Cleanup interval on unmount
+  // Listen to Firebase auth state changes to automatically detect verification
+  // This is the PRIMARY method for cross-device detection
   useEffect(() => {
-    return () => {
-      if ((global as any).verificationCheckInterval) {
-        clearInterval((global as any).verificationCheckInterval);
-        delete (global as any).verificationCheckInterval;
-      }
-    };
-  }, []);
-
-  // Handle app state changes to check verification when app comes to foreground or deep link
-  useEffect(() => {
-      const checkVerificationOnFocus = async () => {
-      const pendingEmail = await AsyncStorage.getItem('pendingEmail');
-      const pendingPassword = await AsyncStorage.getItem('pendingPassword');
-      const pendingFirstName = await AsyncStorage.getItem('pendingFirstName');
-      const pendingLastName = await AsyncStorage.getItem('pendingLastName');
-      const pendingVerificationCode = await AsyncStorage.getItem('pendingVerificationCode');
-      const emailVerifiedViaDeepLink = await AsyncStorage.getItem('emailVerifiedViaDeepLink');
-      
-      if (pendingEmail && pendingPassword && pendingFirstName && pendingLastName) {
-        try {
-          console.log('🔍 Checking email verification status...');
-          
-          // First, check if user is already signed in
-          let firebaseUser = getCurrentUser();
-          let needsSignIn = false;
-          
-          // Only sign in if not already signed in or if email doesn't match
-          if (!firebaseUser || firebaseUser.email?.toLowerCase() !== pendingEmail.toLowerCase()) {
-            needsSignIn = true;
-          }
-          
-          if (needsSignIn) {
-            try {
-              firebaseUser = await signInWithEmailAndPassword(pendingEmail, pendingPassword);
-            } catch (signInError: any) {
-              // Handle quota exceeded error gracefully
-              if (signInError?.code === 'auth/quota-exceeded') {
-                console.warn('⚠️ Firebase quota exceeded, will retry later');
-                return; // Exit early, don't retry immediately
-              }
-              throw signInError; // Re-throw other errors
-            }
-          }
-          
-          // Ensure we have a valid user before proceeding
-          if (!firebaseUser) {
-            console.warn('⚠️ No Firebase user available, skipping verification check');
-            return;
-          }
-          
-          // If we have a verification code from deep link, apply it first
-          if (pendingVerificationCode) {
-            console.log('🔐 Applying verification code from deep link...');
-            try {
-              const { applyEmailVerificationCode } = require('../services/authService');
-              await applyEmailVerificationCode(pendingVerificationCode);
-              console.log('✅ Verification code applied successfully');
-              await AsyncStorage.removeItem('pendingVerificationCode');
-              // Reload user to get updated verification status
-              await reloadUser(firebaseUser);
-            } catch (applyError: any) {
-              console.error('❌ Failed to apply verification code:', applyError);
-              // Continue to check status anyway - might already be verified
-            }
-          }
-          
-          await reloadUser(firebaseUser);
-          const currentUser = getCurrentUser();
-          
-          console.log('📧 Email verified:', currentUser?.emailVerified);
-          
-          if (currentUser?.emailVerified && firebaseUser) {
-            // Clear the deep link flag
-            if (emailVerifiedViaDeepLink) {
-              await AsyncStorage.removeItem('emailVerifiedViaDeepLink');
-            }
+    if (emailVerificationStatus === 'pending' && firebaseUser) {
+      const unsubscribe = onAuthStateChange(async (user) => {
+        if (user && user.uid === firebaseUser.uid) {
+          // Force reload to get latest verification status
+          try {
+            await reloadUser(user);
+            // Small delay to ensure data is updated
+            await new Promise(resolve => setTimeout(resolve, 300));
             
-            // Complete account creation
-            console.log('✅ Email verified - completing account creation');
-            setEmailVerificationStatus('verified');
-            setEmailVerificationMessage('Email verified! Completing account creation...');
-            await completeAccountCreation(firebaseUser, pendingFirstName, pendingLastName, pendingEmail);
-          } else if (emailVerificationStatus === 'pending') {
-            // Still pending, update status
-            if (emailVerifiedViaDeepLink) {
-              setEmailVerificationMessage('Processing verification... Please wait a moment.');
+            // Get fresh user data
+            const currentUser = getCurrentUser();
+            
+            // Check if verified directly from the user object
+            if (currentUser?.emailVerified) {
+              // Update state directly
+              setEmailVerificationStatus('verified');
+              setEmailVerificationMessage('✅ Email verified successfully! Please enter your name (optional) to complete your account.');
+              setFirebaseUser(currentUser); // Update firebaseUser state
+              setShowNameFields(true);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              setErrors(prev => ({ ...prev, general: '' }));
             } else {
-              setEmailVerificationMessage('Please check your email and click the verification link.');
+              // Still not verified, trigger check
+              checkEmailVerificationStatus({ showErrors: false });
             }
-          }
-        } catch (error: any) {
-          console.error('❌ Error checking verification on focus:', error);
-          // Don't log quota errors repeatedly
-          if (error?.code !== 'auth/quota-exceeded') {
-            console.error('Error details:', error);
+          } catch (error) {
+            // Fallback to regular check
+            checkEmailVerificationStatus({ showErrors: false });
           }
         }
-      }
-    };
-
-    // Check when component mounts or when coming back to this screen
-    checkVerificationOnFocus();
-    
-    // Also check periodically if verification is pending, but with longer intervals to avoid quota issues
-    if (emailVerificationStatus === 'pending') {
-      const interval = setInterval(() => {
-        checkVerificationOnFocus();
-      }, 10000); // Check every 10 seconds instead of 2 to avoid quota issues
+      });
       
-      return () => clearInterval(interval);
+      return () => {
+        unsubscribe();
+      };
     }
-  }, [emailVerificationStatus]);
+  }, [emailVerificationStatus, firebaseUser, checkEmailVerificationStatus]);
 
-  const handleSignUp = async () => {
-    // Check network status first
+  // Check verification status periodically when pending (PRIMARY method for cross-device)
+  // This is critical for cross-device detection (detecting verification on desktop from phone)
+  // Firebase auth state listener doesn't always fire for emailVerified changes, so we poll aggressively
+  useEffect(() => {
+    if (emailVerificationStatus === 'pending' && firebaseUser) {
+      // Check immediately first
+      checkEmailVerificationStatus();
+      
+      // Check every 0.5 seconds for very fast detection when user clicks link on desktop
+      const interval = setInterval(() => {
+        checkEmailVerificationStatus();
+      }, 500); // Check every 0.5 seconds for very fast response
+      
+      return () => {
+        clearInterval(interval);
+      };
+    }
+  }, [emailVerificationStatus, firebaseUser, checkEmailVerificationStatus]);
+
+  // Check verification status when app comes back into focus (user verified on web/desktop)
+  useEffect(() => {
+    if (emailVerificationStatus === 'pending' && firebaseUser) {
+      // On web, also listen for visibility changes (tab focus)
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        const handleVisibilityChange = () => {
+          if (document.visibilityState === 'visible') {
+            // Check immediately and also after a short delay
+            checkEmailVerificationStatus({ showErrors: false });
+            setTimeout(() => {
+              checkEmailVerificationStatus({ showErrors: false });
+            }, 500);
+          }
+        };
+        
+        // Also check on focus event
+        const handleFocus = () => {
+          checkEmailVerificationStatus({ showErrors: false });
+        };
+        
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleFocus);
+        
+        return () => {
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+          window.removeEventListener('focus', handleFocus);
+        };
+      } else {
+        // On mobile, listen for AppState changes
+        // This detects when user returns to app after verifying on desktop
+        const subscription = AppState.addEventListener('change', (nextAppState: string) => {
+          if (nextAppState === 'active') {
+            // App came to foreground - check if user verified email on desktop/web
+            // Check immediately and also after a short delay to ensure we get fresh data
+            checkEmailVerificationStatus({ showErrors: false });
+            setTimeout(() => {
+              checkEmailVerificationStatus({ showErrors: false });
+            }, 500);
+            // One more check after 1 second to catch any delayed updates
+            setTimeout(() => {
+              checkEmailVerificationStatus({ showErrors: false });
+            }, 1000);
+          }
+        });
+
+        return () => {
+          subscription.remove();
+        };
+      }
+    }
+  }, [emailVerificationStatus, firebaseUser, checkEmailVerificationStatus]);
+
+  // Create account and send verification email
+  const handleCreateAccount = async () => {
     if (!isOnline) {
-      setErrors({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '', general: 'No internet connection. Please check your network and try again.' });
+      setErrors({ email: '', password: '', confirmPassword: '', firstName: '', lastName: '', general: 'No internet connection. Please check your network and try again.' });
       return;
     }
 
     // Clear previous errors
-    setErrors({ firstName: '', lastName: '', email: '', password: '', confirmPassword: '', general: '' });
+    setErrors({ email: '', password: '', confirmPassword: '', firstName: '', lastName: '', general: '' });
     
     // Validation
     let hasErrors = false;
-    const newErrors = { firstName: '', lastName: '', email: '', password: '', confirmPassword: '', general: '' };
-    
-    if (!firstName.trim()) {
-      newErrors.firstName = 'Please enter your first name';
-      hasErrors = true;
-    }
-    
-    if (!lastName.trim()) {
-      newErrors.lastName = 'Please enter your last name';
-      hasErrors = true;
-    }
+    const newErrors = { email: '', password: '', confirmPassword: '', firstName: '', lastName: '', general: '' };
     
     const emailValidationMessage = validateEmailField(email);
     if (emailValidationMessage) {
@@ -577,7 +580,6 @@ const CreateAccount = () => {
       hasErrors = true;
     }
     
-    // Strong password validation
     if (!password.trim()) {
       newErrors.password = 'Please enter your password';
       hasErrors = true;
@@ -585,7 +587,7 @@ const CreateAccount = () => {
       newErrors.password = 'Password must be at least 8 characters';
       hasErrors = true;
     } else {
-      // Check for alphanumeric (letters + numbers + special chars)
+      // Check for strong password requirements
       const hasUpperCase = /[A-Z]/.test(password);
       const hasLowerCase = /[a-z]/.test(password);
       const hasNumber = /[0-9]/.test(password);
@@ -621,79 +623,38 @@ const CreateAccount = () => {
     
     try {
       // Step 1: Create Firebase user account
-      const firebaseUser = await createUserWithEmailAndPassword(email.trim().toLowerCase(), password);
+      const user = await createUserWithEmailAndPassword(email.trim().toLowerCase(), password);
+      setFirebaseUser(user);
       
-      // Step 2: Update Firebase user profile with full name
-      const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+      // Step 2: Send email verification link
+      setIsSendingVerification(true);
       try {
-        if (Platform.OS === 'web') {
-          const { updateProfile } = require('firebase/auth');
-          await updateProfile(firebaseUser, { displayName: fullName });
-        } else {
-          await firebaseUser.updateProfile({ displayName: fullName });
-        }
-      } catch (updateError) {
-        console.warn('Failed to update profile:', updateError);
-        // Continue anyway - profile update is not critical
-      }
-      
-      // Step 3: Send email verification with deep link
-      console.log('Attempting to send email verification...');
-      try {
-        await sendEmailVerification(firebaseUser);
-        console.log('Email verification sent successfully');
+        await sendEmailVerification(user);
+        setEmailVerificationStatus('pending');
+        setEmailVerificationMessage('Verification email sent! Please check your inbox and click the link to verify your email. Your account will be activated once verified.');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch (verificationError: any) {
-        console.error('Failed to send verification email:', verificationError);
         // If verification email fails, delete the Firebase user to keep things clean
         try {
           if (Platform.OS === 'web') {
             const { deleteUser } = require('firebase/auth');
-            await deleteUser(firebaseUser);
+            await deleteUser(user);
           } else {
-            await firebaseUser.delete();
+            await user.delete();
           }
         } catch (deleteError) {
-          console.error('Failed to delete Firebase user after verification error:', deleteError);
+          // Failed to delete Firebase user
         }
         throw new Error(verificationError.message || 'Failed to send verification email. Please try again.');
+      } finally {
+        setIsSendingVerification(false);
       }
-      
-      // Step 4: Store temporary user data locally (not synced to backend yet)
-      await AsyncStorage.setItem('pendingEmail', email.trim().toLowerCase());
-      await AsyncStorage.setItem('pendingFirstName', firstName.trim());
-      await AsyncStorage.setItem('pendingLastName', lastName.trim());
-      await AsyncStorage.setItem('pendingPassword', password); // Temporary, will be cleared after verification
-      await AsyncStorage.setItem('pendingFirebaseUid', firebaseUser.uid);
       
       setIsLoading(false);
       loadingRotation.stopAnimation();
       
-      // Set verification status to pending
-      setEmailVerificationStatus('pending');
-      setEmailVerificationMessage('Verification email sent! Please check your inbox and click the link to verify your email. The link will open this app automatically.');
-      
-      // Don't navigate yet - wait for email verification
-      // Start checking verification status periodically
-      const verificationCheckInterval = setInterval(async () => {
-        try {
-          await reloadUser(firebaseUser);
-          const updatedUser = getCurrentUser();
-          
-          if (updatedUser?.emailVerified) {
-            clearInterval(verificationCheckInterval);
-            if ((global as any).verificationCheckInterval === verificationCheckInterval) {
-              delete (global as any).verificationCheckInterval;
-            }
-            // Email verified - now sync to backend
-            await completeAccountCreation(firebaseUser, firstName.trim(), lastName.trim(), email.trim().toLowerCase());
-          }
-        } catch (error) {
-          console.error('Error checking verification status:', error);
-        }
-      }, 3000); // Check every 3 seconds
-      
-      // Store interval ID to clear it if component unmounts
-      (global as any).verificationCheckInterval = verificationCheckInterval;
+      // Start checking verification status
+      checkEmailVerificationStatus();
     } catch (error: any) {
       setIsLoading(false);
       loadingRotation.stopAnimation();
@@ -701,35 +662,82 @@ const CreateAccount = () => {
       let errorMessage = 'Failed to create account';
       
       if (error.message.includes('already registered') || error.message.includes('email-already-in-use')) {
-        setErrors({ username: '', email: 'This email is already registered', password: '', confirmPassword: '', general: '' });
+        setErrors({ email: 'This email is already registered', password: '', confirmPassword: '', firstName: '', lastName: '', general: '' });
       } else if (error.message.includes('Invalid') || error.message.includes('invalid-email')) {
-        setErrors({ username: '', email: 'Invalid email format', password: '', confirmPassword: '', general: '' });
+        setErrors({ email: 'Invalid email format', password: '', confirmPassword: '', firstName: '', lastName: '', general: '' });
       } else if (error.message.includes('weak-password')) {
-        setErrors({ username: '', email: '', password: 'Password is too weak', confirmPassword: '', general: '' });
+        setErrors({ email: '', password: 'Password is too weak', confirmPassword: '', firstName: '', lastName: '', general: '' });
       } else if (error.message.includes('operation-not-allowed') || error.message.includes('Email/Password authentication is not enabled')) {
         setErrors({ 
-          username: '', 
           email: '', 
           password: '', 
           confirmPassword: '', 
+          firstName: '',
+          lastName: '',
           general: 'Email/Password authentication is not enabled in Firebase. Please enable it in Firebase Console under Authentication > Sign-in method, then try again.' 
         });
       } else {
-        setErrors({ username: '', email: '', password: '', confirmPassword: '', general: error.message || errorMessage });
+        setErrors({ email: '', password: '', confirmPassword: '', firstName: '', lastName: '', general: error.message || errorMessage });
       }
-      
-      console.error('Sign up error:', error);
     }
   };
 
+
   const KeyboardWrapper = Platform.OS === 'ios' ? KeyboardAvoidingView : View;
   const keyboardProps = Platform.OS === 'ios' ? { behavior: 'padding' as const, keyboardVerticalOffset: 0 } : {};
+
+  // Resend verification email
+  const handleResendVerification = async () => {
+    if (!firebaseUser) return;
+    
+    setIsSendingVerification(true);
+    setErrors(prev => ({ ...prev, general: '' }));
+    
+    try {
+      await sendEmailVerification(firebaseUser);
+      setEmailVerificationMessage('Verification email resent! Please check your inbox.');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error: any) {
+      setErrors(prev => ({
+        ...prev,
+        general: error?.message || 'Failed to resend verification email. Please try again.',
+      }));
+    } finally {
+      setIsSendingVerification(false);
+    }
+  };
+
+  // Manually check verification status (for cross-device verification)
+  const handleCheckVerificationStatus = async () => {
+    if (!firebaseUser) return;
+    
+    setIsSendingVerification(true);
+    setErrors(prev => ({ ...prev, general: '' }));
+    
+    try {
+      const isVerified = await checkEmailVerificationStatus({ showErrors: true });
+      
+      if (isVerified) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setEmailVerificationMessage('✅ Email verified! Please enter your name to continue.');
+      } else {
+        setEmailVerificationMessage('Email not yet verified. Please check your inbox and click the verification link.');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }
+    } catch (error: any) {
+      setErrors(prev => ({
+        ...prev,
+        general: error?.message || 'Failed to check verification status. Please try again.',
+      }));
+    } finally {
+      setIsSendingVerification(false);
+    }
+  };
 
   // Render form content
   const renderFormContent = () => {
     return (
       <>
-        {/* Logo and Title Section */}
         <View style={styles.logoSection}>
           <Image 
             source={require('../../../../assets/DOrSU.png')} 
@@ -742,14 +750,27 @@ const CreateAccount = () => {
           </View>
         </View>
 
-        {/* Welcome Text */}
         <Text style={styles.welcomeText}>Create your account</Text>
+        
+        {emailVerificationStatus === 'verified' && (
+          <View style={styles.verificationSuccessBox}>
+            <MaterialIcons name="check-circle" size={20} color="#10B981" style={{ marginRight: 8 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.verificationSuccessTitle}>Email Verified Successfully!</Text>
+              <Text style={styles.verificationSuccessText}>
+                {emailVerificationMessage || 'Your email has been confirmed. Please enter your name (optional) to complete your account.'}
+              </Text>
+            </View>
+          </View>
+        )}
 
-        {/* Form Section */}
         <View style={styles.formSection}>
+          {/* Show name fields after verification, otherwise show email/password fields */}
+          {showNameFields && emailVerificationStatus === 'verified' ? (
+            <>
           {/* First Name Input */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>First Name</Text>
+                <Text style={styles.inputLabel}>First Name (Optional)</Text>
             <Animated.View style={[
               styles.inputWrapper,
               {
@@ -765,7 +786,7 @@ const CreateAccount = () => {
             ]}>
               <MaterialIcons 
                 name="person" 
-                size={20} 
+                    size={18} 
                 color={errors.firstName ? '#EF4444' : '#9CA3AF'} 
                 style={styles.inputIcon} 
               />
@@ -774,6 +795,7 @@ const CreateAccount = () => {
                 placeholder="Enter your first name"
                 placeholderTextColor="#9CA3AF"
                 autoCapitalize="words"
+                    autoCorrect={false}
                 value={firstName}
                 onChangeText={(text) => {
                   setFirstName(text);
@@ -805,7 +827,7 @@ const CreateAccount = () => {
 
           {/* Last Name Input */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Last Name</Text>
+                <Text style={styles.inputLabel}>Last Name (Optional)</Text>
             <Animated.View style={[
               styles.inputWrapper,
               {
@@ -820,8 +842,8 @@ const CreateAccount = () => {
               }
             ]}>
               <MaterialIcons 
-                name="person" 
-                size={20} 
+                    name="person-outline" 
+                    size={18} 
                 color={errors.lastName ? '#EF4444' : '#9CA3AF'} 
                 style={styles.inputIcon} 
               />
@@ -830,6 +852,7 @@ const CreateAccount = () => {
                 placeholder="Enter your last name"
                 placeholderTextColor="#9CA3AF"
                 autoCapitalize="words"
+                    autoCorrect={false}
                 value={lastName}
                 onChangeText={(text) => {
                   setLastName(text);
@@ -858,17 +881,12 @@ const CreateAccount = () => {
               ) : null}
             </View>
           </View>
-
+            </>
+          ) : (
+            <>
           {/* Email Input */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Registered E-mail Address</Text>
-            {/* Warning about Gmail recommendation */}
-            <View style={styles.emailWarningContainer}>
-              <MaterialIcons name="info-outline" size={14} color="#F59E0B" style={{ marginRight: 4 }} />
-              <Text style={styles.emailWarningText}>
-                For best compatibility with email verification, please use a Gmail address (@gmail.com)
-              </Text>
-            </View>
+            <Text style={styles.inputLabel}>Email Address</Text>
             <Animated.View style={[
               styles.inputWrapper,
               {
@@ -884,7 +902,7 @@ const CreateAccount = () => {
             ]}>
               <MaterialIcons 
                 name="email" 
-                size={20} 
+                size={18} 
                 color={errors.email ? '#EF4444' : '#9CA3AF'} 
                 style={styles.inputIcon} 
               />
@@ -914,7 +932,8 @@ const CreateAccount = () => {
                     useNativeDriver: false,
                   }).start();
                 }}
-                accessibilityLabel="Registered E-mail Address"
+                accessibilityLabel="Email Address"
+                editable={emailVerificationStatus === 'idle'}
               />
             </Animated.View>
             <View style={styles.errorContainer}>
@@ -922,107 +941,6 @@ const CreateAccount = () => {
                 <Text style={styles.errorText}>{errors.email}</Text>
               ) : null}
             </View>
-          {/* Email verification status (shown after account creation) */}
-          {emailVerificationStatus === 'pending' ? (
-            <View style={styles.verificationActions}>
-              <View style={styles.verificationInfoBox}>
-                <MaterialIcons name="info-outline" size={16} color="#2563EB" style={{ marginRight: 6 }} />
-                <Text style={styles.verificationInfoText}>
-                  Verification email sent! Please check your inbox (and spam folder) and click the verification link. The link will open this app automatically. Your account will be created once your email is verified.
-                </Text>
-              </View>
-              <View style={styles.spamWarningBox}>
-                <MaterialIcons name="warning-amber" size={14} color="#F59E0B" style={{ marginRight: 6 }} />
-                <Text style={styles.spamWarningText}>
-                  <Text style={styles.spamWarningBold}>Email in spam?</Text> Mark it as "Not Spam" and add noreply@firebaseapp.com to your contacts to prevent future emails from going to spam.
-                </Text>
-              </View>
-              <View style={styles.verificationButtonRow}>
-                <TouchableOpacity
-                  style={[styles.verificationRefreshButton, styles.verificationButton]}
-                  onPress={async () => {
-                    const pendingEmail = await AsyncStorage.getItem('pendingEmail');
-                    const pendingPassword = await AsyncStorage.getItem('pendingPassword');
-                    if (pendingEmail && pendingPassword) {
-                      try {
-                        setIsSendingVerification(true);
-                        const firebaseUser = await signInWithEmailAndPassword(pendingEmail, pendingPassword);
-                        // Resend verification email
-                        await sendEmailVerification(firebaseUser);
-                        setEmailVerificationMessage('Verification email resent! Please check your inbox.');
-                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                      } catch (error: any) {
-                        setErrors(prev => ({
-                          ...prev,
-                          general: error.message || 'Failed to resend verification email.',
-                        }));
-                      } finally {
-                        setIsSendingVerification(false);
-                      }
-                    }
-                  }}
-                  accessibilityLabel="Resend verification email"
-                  disabled={isSendingVerification}
-                >
-                  <MaterialIcons name="email" size={16} color="#2563EB" style={{ marginRight: 4 }} />
-                  <Text style={styles.verificationRefreshText}>
-                    {isSendingVerification ? 'Sending...' : 'Resend Email'}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.verificationRefreshButton, styles.verificationButton]}
-                  onPress={async () => {
-                    const pendingEmail = await AsyncStorage.getItem('pendingEmail');
-                    const pendingPassword = await AsyncStorage.getItem('pendingPassword');
-                    if (pendingEmail && pendingPassword) {
-                      try {
-                        const firebaseUser = await signInWithEmailAndPassword(pendingEmail, pendingPassword);
-                        await reloadUser(firebaseUser);
-                        const currentUser = getCurrentUser();
-                        if (currentUser?.emailVerified) {
-                          const pendingFirstName = await AsyncStorage.getItem('pendingFirstName');
-                          const pendingLastName = await AsyncStorage.getItem('pendingLastName');
-                          if (pendingFirstName && pendingLastName) {
-                            await completeAccountCreation(firebaseUser, pendingFirstName, pendingLastName, pendingEmail);
-                          }
-                        } else {
-                          setErrors(prev => ({
-                            ...prev,
-                            general: 'Email not verified yet. Please click the link in your email.',
-                          }));
-                        }
-                      } catch (error: any) {
-                        setErrors(prev => ({
-                          ...prev,
-                          general: error.message || 'Failed to check verification status.',
-                        }));
-                      }
-                    }
-                  }}
-                  accessibilityLabel="Refresh email confirmation status"
-                >
-                  <MaterialIcons name="refresh" size={16} color="#2563EB" style={{ marginRight: 4 }} />
-                  <Text style={styles.verificationRefreshText}>I confirmed – Refresh</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : null}
-          {emailVerificationStatus === 'verified' ? (
-            <View style={styles.verificationBadge}>
-              <MaterialIcons name="check-circle" size={16} color="#10B981" style={{ marginRight: 4 }} />
-              <Text style={styles.verificationBadgeText}>Email verified</Text>
-            </View>
-          ) : null}
-          {emailVerificationMessage ? (
-            <Text
-              style={[
-                styles.verificationMessage,
-                emailVerificationStatus === 'verified' && styles.verificationMessageSuccess
-              ]}
-            >
-              {emailVerificationMessage}
-            </Text>
-          ) : null}
           </View>
 
           {/* Password Input */}
@@ -1043,7 +961,7 @@ const CreateAccount = () => {
             ]}>
               <MaterialIcons 
                 name="lock" 
-                size={20} 
+                size={18} 
                 color={errors.password ? '#EF4444' : '#9CA3AF'} 
                 style={styles.inputIcon} 
               />
@@ -1072,6 +990,7 @@ const CreateAccount = () => {
                   }).start();
                 }}
                 accessibilityLabel="Password"
+                editable={emailVerificationStatus === 'idle'}
               />
               <TouchableOpacity
                 onPress={() => setShowPassword(!showPassword)}
@@ -1081,7 +1000,7 @@ const CreateAccount = () => {
               >
                 <MaterialIcons 
                   name={showPassword ? "visibility-off" : "visibility"} 
-                  size={20} 
+                  size={18} 
                   color="#9CA3AF" 
                 />
               </TouchableOpacity>
@@ -1111,7 +1030,7 @@ const CreateAccount = () => {
             ]}>
               <MaterialIcons 
                 name="lock-outline" 
-                size={20} 
+                size={18} 
                 color={errors.confirmPassword ? '#EF4444' : '#9CA3AF'} 
                 style={styles.inputIcon} 
               />
@@ -1140,6 +1059,7 @@ const CreateAccount = () => {
                   }).start();
                 }}
                 accessibilityLabel="Confirm Password"
+                editable={emailVerificationStatus === 'idle'}
               />
               <TouchableOpacity
                 onPress={() => setShowConfirmPassword(!showConfirmPassword)}
@@ -1149,7 +1069,7 @@ const CreateAccount = () => {
               >
                 <MaterialIcons 
                   name={showConfirmPassword ? "visibility-off" : "visibility"} 
-                  size={20} 
+                  size={18} 
                   color="#9CA3AF" 
                 />
               </TouchableOpacity>
@@ -1160,6 +1080,9 @@ const CreateAccount = () => {
               ) : null}
             </View>
           </View>
+
+            </>
+          )}
 
           {/* General Error Message */}
           <View style={[
@@ -1174,19 +1097,22 @@ const CreateAccount = () => {
             ) : null}
           </View>
 
-          {/* Sign Up Button */}
+          {/* Create Account / Continue Button */}
           <Animated.View style={{ transform: [{ scale: signUpButtonScale }] }}>
             <TouchableOpacity 
-              style={[styles.signUpButton, (isLoading || !isOnline || emailVerificationStatus === 'pending') && styles.signUpButtonDisabled]}
-              onPress={() => handleButtonPress(signUpButtonScale, handleSignUp)}
-              disabled={isLoading || !isOnline || emailVerificationStatus === 'pending'}
+              style={[
+                styles.signUpButton, 
+                (isLoading || !isOnline || (emailVerificationStatus === 'pending' && !showNameFields)) && styles.signUpButtonDisabled
+              ]}
+              onPress={() => {
+                if (showNameFields && emailVerificationStatus === 'verified') {
+                  handleButtonPress(signUpButtonScale, handleContinueAfterVerification);
+                } else {
+                  handleButtonPress(signUpButtonScale, handleCreateAccount);
+                }
+              }}
+              disabled={isLoading || !isOnline || (emailVerificationStatus === 'pending' && !showNameFields)}
               accessibilityRole="button"
-              accessibilityLabel={
-                isLoading ? "Creating account..." : 
-                !isOnline ? "Sign up (No internet connection)" : 
-                emailVerificationStatus === 'pending' ? "Please verify your email first" :
-                "Sign up"
-              }
               activeOpacity={0.8}
             >
               {isLoading ? (
@@ -1204,10 +1130,10 @@ const CreateAccount = () => {
                   ]}>
                     <MaterialIcons name="refresh" size={20} color="#FFFFFF" />
                   </Animated.View>
-                  <Text style={styles.signUpButtonText}>
-                    {isCompletingAccount ? 'Completing Account...' : 'Creating Account'}
-                  </Text>
+                  <Text style={styles.signUpButtonText}>Creating Account...</Text>
                 </>
+              ) : showNameFields && emailVerificationStatus === 'verified' ? (
+                <Text style={styles.signUpButtonText}>CONTINUE</Text>
               ) : emailVerificationStatus === 'pending' ? (
                 <Text style={styles.signUpButtonText}>VERIFY EMAIL TO CONTINUE</Text>
               ) : (
@@ -1272,39 +1198,6 @@ const CreateAccount = () => {
         </View>
       </View>
       
-      {/* Success Modal */}
-      <SuccessModal
-        visible={showSuccessModal}
-        onClose={() => setShowSuccessModal(false)}
-        title="Account Created!"
-        message="Welcome to DOrSU Connect. Your account has been successfully created."
-        icon="checkmark-circle"
-        iconColor="#10B981"
-      />
-
-      <Modal
-        visible={warningModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setWarningModalVisible(false)}
-      >
-        <View style={styles.warningModalOverlay}>
-          <View style={styles.warningModalCard}>
-            <MaterialIcons name="warning-amber" size={32} color="#F97316" style={styles.warningModalIcon} />
-            <Text style={styles.warningModalTitle}>Email not found</Text>
-            <Text style={styles.warningModalMessage}>
-              {warningModalMessage || 'We could not reach that email address. Please use an existing email account.'}
-            </Text>
-            <TouchableOpacity
-              style={styles.warningModalButton}
-              onPress={() => setWarningModalVisible(false)}
-              accessibilityLabel="Close warning modal"
-            >
-              <Text style={styles.warningModalButtonText}>Got it</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 };
@@ -1320,7 +1213,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingVertical: 20,
+    paddingVertical: 12,
   },
   gradientOverlay: {
     position: 'absolute',
@@ -1334,238 +1227,94 @@ const styles = StyleSheet.create({
   logoSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   logoImage: {
-    width: 50,
-    height: 50,
-    marginRight: 10,
+    width: 40,
+    height: 40,
+    marginRight: 8,
   },
   logoTextContainer: {
     flex: 1,
   },
   logoTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#2563EB',
-    marginBottom: 2,
-  },
-  logoSubtitle: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '500',
-    marginTop: 2,
-  },
-  welcomeText: {
     fontSize: 18,
     fontWeight: '700',
+    color: '#2563EB',
+    marginBottom: 1,
+  },
+  logoSubtitle: {
+    fontSize: 11,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginTop: 1,
+  },
+  welcomeText: {
+    fontSize: 16,
+    fontWeight: '700',
     color: '#1F2937',
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  subtitleText: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 16,
+    textAlign: 'center',
   },
   // Form Section
   formSection: {
     width: '100%',
   },
   inputGroup: {
-    marginBottom: 10,
+    marginBottom: 6,
   },
   inputLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: '#374151',
-    marginBottom: 4,
-  },
-  emailWarningContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#FEF3C7',
-    padding: 8,
-    borderRadius: 6,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#FCD34D',
-  },
-  emailWarningText: {
-    color: '#92400E',
-    fontSize: 11,
-    fontWeight: '500',
-    flex: 1,
-    lineHeight: 16,
+    marginBottom: 3,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderRadius: 8,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    minHeight: 44,
+    minHeight: 40,
   },
   inputIcon: {
-    marginRight: 10,
+    marginRight: 8,
   },
   input: {
     flex: 1,
-    paddingVertical: 12,
-    fontSize: 15,
+    paddingVertical: 8,
+    fontSize: 14,
     color: '#1F2937',
   },
   passwordToggle: {
     padding: 4,
-    marginLeft: 6,
+    marginLeft: 4,
   },
   errorContainer: {
-    minHeight: 16,
-    marginTop: 2,
+    minHeight: 14,
+    marginTop: 1,
   },
   errorText: {
     color: '#EF4444',
-    fontSize: 11,
+    fontSize: 10,
     marginLeft: 4,
-  },
-  verificationActions: {
-    marginTop: 4,
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  verificationInfoBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(37, 99, 235, 0.08)',
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#2563EB',
-    width: '100%',
-  },
-  verificationInfoText: {
-    color: '#2563EB',
-    fontSize: 12,
-    fontWeight: '500',
-    flex: 1,
-  },
-  spamWarningBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: '#FEF3C7',
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#FCD34D',
-    width: '100%',
-    marginTop: 4,
-  },
-  spamWarningText: {
-    color: '#92400E',
-    fontSize: 11,
-    fontWeight: '400',
-    flex: 1,
-    lineHeight: 16,
-  },
-  spamWarningBold: {
-    fontWeight: '600',
-  },
-  verificationButtonRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 8,
-    flexWrap: 'wrap',
-  },
-  verificationButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    backgroundColor: 'rgba(37, 99, 235, 0.1)',
-  },
-  verificationRefreshButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  verificationRefreshText: {
-    color: '#2563EB',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  verificationBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    backgroundColor: '#ECFDF5',
-  },
-  verificationBadgeText: {
-    color: '#065F46',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  verificationMessage: {
-    marginTop: 6,
-    fontSize: 12,
-    color: '#2563EB',
-    fontWeight: '500',
-  },
-  verificationMessageSuccess: {
-    color: '#059669',
-  },
-  warningModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  warningModalCard: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 10,
-  },
-  warningModalIcon: {
-    marginBottom: 12,
-  },
-  warningModalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 8,
-  },
-  warningModalMessage: {
-    fontSize: 14,
-    color: '#4B5563',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  warningModalButton: {
-    backgroundColor: '#2563EB',
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 32,
-  },
-  warningModalButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
   },
   generalErrorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FEF2F2',
-    padding: 8,
+    padding: 6,
     borderRadius: 8,
-    marginBottom: 16,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: '#FCA5A5',
-    minHeight: 40,
+    minHeight: 36,
   },
   generalErrorContainerHidden: {
     opacity: 0,
@@ -1577,20 +1326,20 @@ const styles = StyleSheet.create({
   },
   generalErrorText: {
     color: '#DC2626',
-    fontSize: 12,
-    marginLeft: 8,
+    fontSize: 11,
+    marginLeft: 6,
     flex: 1,
   },
   // Sign Up Button
   signUpButton: {
     backgroundColor: '#2563EB',
     borderRadius: 8,
-    paddingVertical: 12,
+    paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    marginTop: 8,
-    marginBottom: 8,
+    marginTop: 6,
+    marginBottom: 6,
     shadowColor: '#2563EB',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -1612,13 +1361,85 @@ const styles = StyleSheet.create({
   },
   // Links Section
   linksSection: {
-    marginTop: 16,
+    marginTop: 10,
     alignItems: 'center',
   },
   linkText: {
     color: '#2563EB',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
+  },
+  linkTextBold: {
+    fontWeight: '700',
+  },
+  verificationInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(37, 99, 235, 0.08)',
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2563EB',
+    marginBottom: 12,
+  },
+  verificationInfoText: {
+    color: '#2563EB',
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+    lineHeight: 16,
+  },
+  verificationSuccessBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#ECFDF5',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#10B981',
+    marginBottom: 12,
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  verificationSuccessTitle: {
+    color: '#065F46',
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  verificationSuccessText: {
+    color: '#065F46',
+    fontSize: 12,
+    fontWeight: '500',
+    flex: 1,
+    lineHeight: 16,
+  },
+  verificationActions: {
+    marginTop: 8,
+    marginBottom: 8,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  resendButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: 'rgba(37, 99, 235, 0.1)',
+  },
+  checkButton: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+  },
+  resendButtonText: {
+    color: '#2563EB',
+    fontSize: 12,
+    fontWeight: '600',
   },
   mobileContainer: {
     flex: 1,
@@ -1635,9 +1456,9 @@ const styles = StyleSheet.create({
   },
   mobileFormCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    margin: 16,
+    margin: 12,
     borderRadius: 16,
-    padding: 18,
+    padding: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,

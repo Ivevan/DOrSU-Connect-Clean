@@ -343,7 +343,7 @@ export class OptimizedRAGService {
 
   // Get context for specific topics using optimized chunking
   // SIMPLIFIED: Now uses VectorSearchService for all retrieval
-  async getContextForTopic(query, maxTokens = 500, maxSections = 10, suggestMore = false, scheduleService = null, userType = null) {
+  async getContextForTopic(query, maxTokens = 500, maxSections = 6, suggestMore = false, scheduleService = null, userType = null) {
     // Debug: Verify we have optimized data
     if (!this.faissOptimizedData || !this.faissOptimizedData.chunks) {
       Logger.warn('RAG: No optimized data available');
@@ -494,7 +494,8 @@ export class OptimizedRAGService {
     if (isHistoryQuery) queryType = 'history';
     // CRITICAL: Dean queries MUST be checked BEFORE leadership to avoid misrouting
     // "dean|deans" is included in isLeadershipQuery pattern, so this must come first
-    else if (/\b(dean|deans|who\s+(is|are)\s+the\s+dean|dean\s+of)\b/i.test(query)) queryType = 'deans';
+    // CRITICAL FIX: Also check for "deans of" or "faculties" with "dean" to catch queries like "What are the deans of the different faculties"
+    else if (/\b(dean|deans|who\s+(is|are)\s+the\s+dean|dean\s+of|deans\s+of|faculties?.*dean|dean.*faculties?)\b/i.test(query)) queryType = 'deans';
     else if (isLeadershipQuery || isOfficeHeadQuery) {
       if (isOfficeHeadQuery) queryType = 'office';
       else queryType = 'leadership';
@@ -503,8 +504,22 @@ export class OptimizedRAGService {
     // CRITICAL: Values/Outcomes queries MUST be checked BEFORE programs - "graduate" matches programs pattern
     // Values/Outcomes queries (must be checked before comprehensive - "values" is in comprehensive pattern)
     else if (/\b(core\s+values?|values?\s+of|graduate\s+outcomes?|outcomes?|quality\s+policy|mandate|charter)\b/i.test(query)) queryType = 'values';
-    else if (isProgramQuery) queryType = 'programs';
-    else if (isFacultyQuery) queryType = 'faculties';
+    // CRITICAL FIX: Program queries MUST be checked BEFORE faculty queries
+    // If query asks "what programs" or "programs offered", prioritize programs over faculties
+    else if (isProgramQuery && (/\b(what\s+programs?|programs?\s+offered|programs?\s+in|programs?\s+under)\b/i.test(query) || 
+                                 (/\bprograms?\b/i.test(query) && /\bfaculty|faculties|facet|fals|fbm\b/i.test(query)))) {
+      queryType = 'programs';
+      Logger.info(`🎯 [QUERY ROUTING] Program query detected - routing to 'programs' | Query: "${query.substring(0, 60)}..." | isProgramQuery: ${isProgramQuery}`);
+    }
+    else if (isFacultyQuery) {
+      queryType = 'faculties';
+      Logger.info(`🎯 [QUERY ROUTING] Faculty query detected - routing to 'faculties' | Query: "${query.substring(0, 60)}..." | isFacultyQuery: ${isFacultyQuery}`);
+    }
+    // Fallback: If query mentions programs but wasn't caught above, still route to programs
+    else if (isProgramQuery) {
+      queryType = 'programs';
+      Logger.info(`🎯 [QUERY ROUTING] Program query (fallback) - routing to 'programs' | Query: "${query.substring(0, 60)}..." | isProgramQuery: ${isProgramQuery}`);
+    }
     else if (isAdmissionRequirementsQuery) queryType = 'admission_requirements';
     // Hymn/Anthem queries (must be checked before comprehensive/general)
     else if (/\b(hymn|anthem|university\s+hymn|university\s+anthem|dorsu\s+hymn|dorsu\s+anthem|lyrics|song|composer)\b/i.test(query)) queryType = 'hymn';
@@ -514,8 +529,15 @@ export class OptimizedRAGService {
     else if (isScheduleQuery) queryType = 'schedule';
     else if (isComprehensive || isListingQuery || hasPluralKeyword) queryType = 'comprehensive';
     
-    // For admission requirements queries, increase maxResults to get all requirement chunks
-    const adjustedMaxResults = isAdmissionRequirementsQuery ? maxSections * 5 : maxSections * 3;
+    // Adjust maxResults based on query type
+    // History queries need more results to find all timeline events
+    // Admission requirements need more to ensure all student categories are included
+    let adjustedMaxResults = maxSections * 2;
+    if (isHistoryQuery) {
+      adjustedMaxResults = maxSections * 3; // Increased for history to find all timeline events
+    } else if (isAdmissionRequirementsQuery) {
+      adjustedMaxResults = maxSections * 2; // For admission requirements
+    }
     
     // Get relevant data using VectorSearchService
     let relevantData = [];
@@ -528,6 +550,19 @@ export class OptimizedRAGService {
       });
       
       Logger.debug(`✅ VectorSearchService returned ${relevantData.length} chunks for query type: ${queryType || 'general'}`);
+      
+      // CRITICAL LOGGING: Log chunk types for program queries to debug routing issues
+      if (queryType === 'programs' && relevantData.length > 0) {
+        const chunkTypes = relevantData.slice(0, 5).map(chunk => ({
+          type: chunk.type || 'unknown',
+          section: chunk.section || 'unknown',
+          category: chunk.category || 'unknown',
+          hasProgramCodes: /BSAM|BSA|BSBio|BSES|BSIT|BSCE|BSMath|BITM|BSBA|BSHM|BSC/i.test(chunk.content || chunk.text || ''),
+          hasFacultyOnly: /faculty|FACET|FALS|FTED|FBM/i.test(chunk.content || chunk.text || '') && !/BSAM|BSA|BSBio|BSES|BSIT|BSCE|BSMath|BITM|BSBA|BSHM|BSC/i.test(chunk.content || chunk.text || ''),
+          preview: (chunk.content || chunk.text || '').substring(0, 80)
+        }));
+        Logger.info(`📊 [PROGRAM QUERY CHUNKS] Top 5 chunks: ${JSON.stringify(chunkTypes, null, 2)}`);
+      }
       
       // For admission requirements, prioritize chunks with type 'admission_requirements'
       if (isAdmissionRequirementsQuery && relevantData.length > 0) {
@@ -839,7 +874,38 @@ export class OptimizedRAGService {
             // Create searchable text from event
             let eventText = `${event.title || 'Untitled Event'}. `;
             if (event.description) eventText += `${event.description}. `;
-            eventText += `Date: ${dateStr}. `;
+            
+            // Handle different date types
+            if (event.dateType === 'month_only' || event.isMonthOnly) {
+              // Month-only event - format as month name
+              const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                                'July', 'August', 'September', 'October', 'November', 'December'];
+              const monthNum = event.month || (eventDate ? new Date(eventDate).getMonth() + 1 : null);
+              const monthName = event.monthName || (monthNum ? monthNames[monthNum - 1] : null);
+              const year = event.year || (eventDate ? new Date(eventDate).getFullYear() : null);
+              if (monthName) {
+                eventText += `Scheduled for ${monthName}${year ? ` ${year}` : ''} (month-only event, no specific date). `;
+              } else {
+                eventText += `Date: ${dateStr} (month-only event). `;
+              }
+            } else if (event.dateType === 'week_in_month' || event.isWeekInMonth) {
+              // Week-in-month event - format as week of month
+              const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                                'July', 'August', 'September', 'October', 'November', 'December'];
+              const monthNum = event.month || (eventDate ? new Date(eventDate).getMonth() + 1 : null);
+              const monthName = event.monthName || (monthNum ? monthNames[monthNum - 1] : null);
+              const weekOfMonth = event.weekOfMonth;
+              const year = event.year || (eventDate ? new Date(eventDate).getFullYear() : null);
+              if (weekOfMonth && monthName) {
+                const weekOrdinal = weekOfMonth === 1 ? '1st' : weekOfMonth === 2 ? '2nd' : weekOfMonth === 3 ? '3rd' : `${weekOfMonth}th`;
+                eventText += `Scheduled for ${weekOrdinal} week of ${monthName}${year ? ` ${year}` : ''} (week-in-month event, no specific date). `;
+              } else {
+                eventText += `Date: ${dateStr} (week-in-month event). `;
+              }
+            } else {
+              eventText += `Date: ${dateStr}. `;
+            }
+            
             if (event.time) eventText += `Time: ${event.time}. `;
             if (event.category) eventText += `Category: ${event.category}. `;
             // Include semester information in event text for better searchability
@@ -889,7 +955,13 @@ export class OptimizedRAGService {
                 startDate: event.startDate,
                 endDate: event.endDate,
                 semester: event.semester, // Include semester in metadata
-                userType: event.userType || 'all'
+                userType: event.userType || 'all',
+                month: event.month,
+                monthName: event.monthName,
+                weekOfMonth: event.weekOfMonth,
+                year: event.year,
+                isMonthOnly: event.isMonthOnly || event.dateType === 'month_only',
+                isWeekInMonth: event.isWeekInMonth || event.dateType === 'week_in_month'
               },
               keywords: [...new Set(keywords)], // Remove duplicates
               source: 'schedule_database'
@@ -1391,7 +1463,11 @@ export class OptimizedRAGService {
       isEnrollmentQuery: /\b(enrollment|enrolment|enroll|enrol|schedule|enrollment schedule|student count|total students|campus enrollment)\b/i.test(query) && 
         !/\b(admission\s+requirements?|requirements?\s+for\s+admission)\b/i.test(query),
       isFacultyQuery: /\b(faculty|faculties|FACET|FALS|FTED|FBM|FCJE|FNAHS|FHUSOCOM|college|colleges)\b/i.test(query),
-      isProgramQuery: /\b(program|programs|programme|course|courses|degree|degrees|undergraduate|graduate|masters|doctorate|bachelor|BS|BA|MA|MS|PhD|EdD)\b/i.test(query),
+      // CRITICAL FIX: Program queries - must exclude "graduate outcomes" to avoid matching values queries
+      // Also prioritize queries that ask "what programs" or "programs offered" over just mentioning "program"
+      isProgramQuery: (/\b(program|programs|programme|course|courses|degree|degrees|undergraduate|graduate\s+(program|programs|degree|degrees)|masters|doctorate|bachelor|BS|BA|MA|MS|PhD|EdD)\b/i.test(query) && 
+                      !/\bgraduate\s+outcomes?\b/i.test(query)) ||
+                     /\b(what\s+programs?|programs?\s+offered|programs?\s+in|programs?\s+under|list\s+programs?)\b/i.test(query),
       isCampusQuery: /\b(campus|campuses|extension|main campus|baganga|banaybanay|cateel|san isidro|tarragona|location|locations)\b/i.test(query),
       isOfficeQuery: /\b(office|offices|unit|units|service|services)\b/i.test(query),
       isStudentOrgQuery: /\b(usc|university student council|ang.*sidlakan|catalyst|student organization|student organizations|student publication|yearbook)\b/i.test(query),

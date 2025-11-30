@@ -49,9 +49,13 @@ export function buildSystemInstructions(conversationContext = null, intentClassi
       '❌ ABSOLUTELY FORBIDDEN: Never say "not available", "not mentioned", "not explicitly stated", "can be inferred", or "inferred from context" if the information exists in the chunks.',
       '📋 For leadership queries: Extract ALL details from chunks (name, title, education, degrees, expertise, achievements, current role, etc.). ABSOLUTELY FORBIDDEN to say "not provided", "does not provide", "not available", or "not specified" - if information exists in chunks, state it directly.',
       '📚 For history queries: Extract ALL dates, events, Republic Acts, and key persons from timeline. Dates may be in ISO format (1989-12-13) or natural language (December 13, 1989) - both are EXPLICIT. Convert ISO to natural language when presenting. Focus ONLY on timeline and key persons - do NOT include conversion process, heritage sites, or current mission.',
+      '🎓 For program queries: Extract ALL program details including codes, full names, majors, AND accreditation levels (Level I, Level II, Level III, Level IV) if mentioned in chunks. Include ALL variations and formats.',
+      '📊 For enrollment/statistics queries: Include ALL number formats - both with and without commas (e.g., "12009" AND "12,009"). Extract complete statistics including breakdowns if available.',
+      '📋 For admission requirements queries: Extract ALL requirements from chunks. List them clearly as numbered or bulleted list. ABSOLUTELY FORBIDDEN to say "not available", "not in the knowledge base", or "please check with the university" if requirements exist in chunks.',
       'Position holders: Include "as of 2025". Programs: 38 total (29 undergrad + 9 grad) from knowledge base only.',
       'Vision: "A university of excellence, innovation and inclusion." URLs: Copy exactly from knowledge base.',
       '⚠️ OFFICE ACRONYMS: If user asks about a specific office acronym (e.g., "OSPAT", "OSA"), ONLY use chunks matching that EXACT acronym. Do NOT confuse similar acronyms (e.g., OSPAT ≠ OSA).',
+      '🔍 EXTRACTION RULE: When chunks contain multiple formats or variations of the same information (e.g., "12009" and "12,009", or "Level III" and "Level 3"), include ALL formats in your response to ensure completeness.',
       ''
     ];
     
@@ -292,6 +296,53 @@ export function buildSystemInstructions(conversationContext = null, intentClassi
       '• Include ALL lines from each section - do not skip any lines\n' +
       '• DO NOT present lyrics out of order\n' +
       '• DO NOT say verses or choruses are missing if they exist in the chunks\n';
+  }
+
+  /**
+   * Get admission requirements query instructions
+   * Returns instructions for formatting admission requirements by student category
+   */
+  export function getAdmissionRequirementsInstructions() {
+    return '\n📚 DATA SOURCE FOR THIS QUERY:\n' +
+      '• For admission requirements → Use ONLY the "KNOWLEDGE BASE" section above (from "knowledge_chunks" collection)\n' +
+      '• DO NOT use training data or general knowledge\n' +
+      '• CRITICAL: Extract ALL requirements from chunks - if chunks contain requirements, you MUST list them ALL\n' +
+      '• ABSOLUTELY FORBIDDEN: DO NOT say "not available", "not mentioned", "not in the knowledge base", "please check with the university", or ANY hedging language if requirements exist in chunks\n' +
+      '• If chunks contain requirements, extract and list EVERY requirement from the chunks\n' +
+      '• Requirements may be formatted as numbered lists (1., 2., 3.) or bullet points in chunks - extract ALL of them\n' +
+      '• If the query asks for a specific student category (transferring, returning, continuing, second-degree, incoming first-year), extract requirements for THAT category from chunks\n' +
+      '• If chunks contain requirements for multiple categories, focus on the category mentioned in the query\n' +
+      '• Format requirements as a clear numbered or bulleted list\n' +
+      '• Include ALL requirements from chunks - do not skip any\n' +
+      '• Common requirements include: SUAST Examination Result, Transcript of Record, Certificate of Transfer Credential, Good Moral Character, PSA Birth Certificate, Medical certificate, Drug Test Result, Form 138, Student\'s Profile Form\n' +
+      '• If chunks mention "Original copy" or other specifications, include those details\n' +
+      '• NEVER say "I don\'t have that information" or "not available" if requirements exist in the chunks above\n\n' +
+      '📖 ADMISSION REQUIREMENTS RESPONSE GUIDELINES:\n' +
+      '• Extract ALL requirements from the chunks provided above\n' +
+      '• List requirements clearly, numbered or bulleted\n' +
+      '• If the query specifies a student category, only show requirements for that category\n' +
+      '• Include any specifications mentioned in chunks (e.g., "Original copy", "Photocopy", etc.)\n' +
+      '• Format example:\n' +
+      '  "Admission Requirements for Transferring Students:\n' +
+      '  1. SUAST Examination Result (Original copy)\n' +
+      '  2. Informative copy of Transcript of Record (TOR) (Original copy)\n' +
+      '  3. Certificate of Transfer Credential / Honorable Dismissal (Original copy)\n' +
+      '  ..."\n' +
+      '• If chunks contain requirements, you MUST present them - never claim they are not available\n\n';
+  }
+
+  /**
+   * Get admission requirements critical rules
+   * Returns rules for admission requirements queries
+   */
+  export function getAdmissionRequirementsCriticalRules() {
+    return '• For admission requirements queries: Extract ALL requirements from chunks\n' +
+      '• List requirements clearly as numbered or bulleted list\n' +
+      '• If query specifies student category (transferring, returning, continuing, second-degree, incoming first-year), extract requirements for THAT category\n' +
+      '• Include ALL requirements from chunks - do not skip any\n' +
+      '• Include specifications from chunks (e.g., "Original copy", "Photocopy")\n' +
+      '• ABSOLUTELY FORBIDDEN: Never say "not available", "not in the knowledge base", "please check with the university", or claim information is missing if requirements exist in chunks\n' +
+      '• If chunks contain requirements, you MUST extract and present them ALL\n';
   }
 
   /**

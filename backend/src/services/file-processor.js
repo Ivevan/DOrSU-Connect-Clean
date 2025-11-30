@@ -264,8 +264,59 @@ class FileProcessorService {
           // Format based on field name
           if (key.includes('date') || key.includes('time')) {
             entryParts.push(`${key}: ${value}`);
+          } else if (key.includes('datetype') || key === 'datetype') {
+            // Handle dateType field - format as natural language
+            const dateTypeValue = String(value).toLowerCase();
+            if (dateTypeValue === 'month_only' || dateTypeValue === 'month') {
+              // Month-only event - format with month information
+              const month = rowObj.month || rowObj.monthnum;
+              const year = rowObj.year;
+              if (month) {
+                const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                                  'July', 'August', 'September', 'October', 'November', 'December'];
+                const monthNum = parseInt(month, 10);
+                const monthName = monthNames[monthNum - 1] || month;
+                const yearStr = year ? ` ${year}` : '';
+                entryParts.push(`Scheduled for ${monthName}${yearStr} (month-only event)`);
+              }
+            } else if (dateTypeValue === 'week_in_month' || dateTypeValue === 'week') {
+              // Week-in-month event - format with week and month information
+              const weekOfMonth = rowObj.weekofmonth || rowObj.week_of_month || rowObj.weekinmonth || rowObj.week_in_month;
+              const month = rowObj.month || rowObj.monthnum;
+              const year = rowObj.year;
+              if (weekOfMonth && month) {
+                const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                                  'July', 'August', 'September', 'October', 'November', 'December'];
+                const monthNum = parseInt(month, 10);
+                const monthName = monthNames[monthNum - 1] || month;
+                const weekNum = parseInt(weekOfMonth, 10);
+                const weekOrdinal = weekNum === 1 ? '1st' : weekNum === 2 ? '2nd' : weekNum === 3 ? '3rd' : `${weekNum}th`;
+                const yearStr = year ? ` ${year}` : '';
+                entryParts.push(`Scheduled for ${weekOrdinal} week of ${monthName}${yearStr} (week-in-month event)`);
+              }
+            } else {
+              entryParts.push(`${key}: ${value}`);
+            }
           } else if (key.includes('description') || key.includes('details') || key.includes('content')) {
             entryParts.push(`${value}`);
+          } else if (key === 'month' || key === 'monthnum') {
+            // Month field - format as month name if not already handled by dateType
+            const dateType = rowObj.datetype || rowObj.date_type;
+            if (!dateType || (dateType.toLowerCase() !== 'month_only' && dateType.toLowerCase() !== 'month')) {
+              const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                                'July', 'August', 'September', 'October', 'November', 'December'];
+              const monthNum = parseInt(value, 10);
+              const monthName = monthNames[monthNum - 1] || value;
+              entryParts.push(`Month: ${monthName}`);
+            }
+          } else if (key === 'weekofmonth' || key === 'week_of_month' || key === 'weekinmonth' || key === 'week_in_month') {
+            // Week of month field - format as ordinal if not already handled by dateType
+            const dateType = rowObj.datetype || rowObj.date_type;
+            if (!dateType || (dateType.toLowerCase() !== 'week_in_month' && dateType.toLowerCase() !== 'week')) {
+              const weekNum = parseInt(value, 10);
+              const weekOrdinal = weekNum === 1 ? '1st' : weekNum === 2 ? '2nd' : weekNum === 3 ? '3rd' : `${weekNum}th`;
+              entryParts.push(`Week: ${weekOrdinal} week of month`);
+            }
           } else {
             entryParts.push(`${key}: ${value}`);
           }
@@ -587,8 +638,22 @@ class FileProcessorService {
           }
         }
         
+        // Auto-detect date type if not explicitly set or if dates are missing
+        let detectedDateType = dateType;
+        if (!startDate && !endDate) {
+          // No dates provided - check what we have
+          if (weekOfMonth && month) {
+            // Has week and month but no dates - treat as week_in_month
+            detectedDateType = 'week_in_month';
+          } else if (month) {
+            // Has month but no dates - treat as month_only
+            detectedDateType = 'month_only';
+          }
+        }
+        
         // Handle different date types - check dateType first
-        if (dateType === 'month_only' || dateType === 'month') {
+        if (detectedDateType === 'month_only' || detectedDateType === 'month' || 
+            (dateType === 'month_only' || dateType === 'month')) {
           // Month-only event (no specific date, just month)
           if (!month) {
             Logger.warn(`Skipping row ${i + 1}: Month-only event requires Month column`);
@@ -597,6 +662,10 @@ class FileProcessorService {
           const monthNum = parseInt(month, 10) - 1; // 0-indexed
           const yearNum = parseInt(year, 10);
           const placeholderDate = new Date(yearNum, monthNum, 1);
+          
+          const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                            'July', 'August', 'September', 'October', 'November', 'December'];
+          const monthName = monthNames[monthNum];
           
           events.push({
             title,
@@ -607,12 +676,15 @@ class FileProcessorService {
             description,
             source: 'CSV Upload',
             userType: normalizedUserType,
-            dateType: 'month',
+            dateType: 'month_only', // Explicitly set as month_only for frontend
             month: parseInt(month, 10),
+            monthName: monthName,
             year: yearNum,
-            semester: semester
+            semester: semester,
+            isMonthOnly: true // Flag for frontend display
           });
-        } else if (dateType === 'week_in_month' || dateType === 'week') {
+        } else if (detectedDateType === 'week_in_month' || detectedDateType === 'week' ||
+                   dateType === 'week_in_month' || dateType === 'week') {
           // Week-only event (no specific date, just week of month)
           if (!weekOfMonth || !month) {
             Logger.warn(`Skipping row ${i + 1}: Week-in-month event requires WeekOfMonth and Month columns`);
@@ -625,6 +697,10 @@ class FileProcessorService {
           const dayApprox = (weekNum - 1) * 7 + 1;
           const placeholderDate = new Date(yearNum, monthNum, Math.min(dayApprox, 28));
           
+          const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                            'July', 'August', 'September', 'October', 'November', 'December'];
+          const monthName = monthNames[monthNum];
+          
           events.push({
             title,
             date: this.formatDate(placeholderDate),
@@ -634,11 +710,13 @@ class FileProcessorService {
             description,
             source: 'CSV Upload',
             userType: normalizedUserType,
-            dateType: 'week',
+            dateType: 'week_in_month', // Explicitly set as week_in_month for frontend
             weekOfMonth: weekNum,
             month: parseInt(month, 10),
+            monthName: monthName,
             year: yearNum,
-            semester: semester
+            semester: semester,
+            isWeekInMonth: true // Flag for frontend display
           });
         } else if (dateType === 'date_range' && startDate && endDate) {
           // Date range: create events for all dates in the range to mark them on calendar
@@ -710,10 +788,88 @@ class FileProcessorService {
             semester: semester
           });
         } else {
-          // If we can't parse the date type, log a warning but don't skip if we have dates
-          if (!startDate && !endDate && !month) {
-            Logger.warn(`Skipping row ${i + 1}: Invalid date format - dateType: ${dateType}, startDate: ${startDateStr}, endDate: ${endDateStr}, month: ${month}`);
-            continue;
+          // If we can't parse the date type, try to infer from available fields
+          if (!startDate && !endDate) {
+            // No dates available - check if we have month or week
+            if (weekOfMonth && month) {
+              // Has week and month - treat as week_in_month
+              const monthNum = parseInt(month, 10) - 1;
+              const weekNum = parseInt(weekOfMonth, 10);
+              const yearNum = parseInt(year, 10);
+              const dayApprox = (weekNum - 1) * 7 + 1;
+              const placeholderDate = new Date(yearNum, monthNum, Math.min(dayApprox, 28));
+              
+              const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                                'July', 'August', 'September', 'October', 'November', 'December'];
+              const monthName = monthNames[monthNum];
+              
+              events.push({
+                title,
+                date: this.formatDate(placeholderDate),
+                isoDate: new Date(placeholderDate),
+                time,
+                category,
+                description,
+                source: 'CSV Upload',
+                userType: normalizedUserType,
+                dateType: 'week_in_month',
+                weekOfMonth: weekNum,
+                month: parseInt(month, 10),
+                monthName: monthName,
+                year: yearNum,
+                semester: semester,
+                isWeekInMonth: true
+              });
+            } else if (month) {
+              // Has month only - treat as month_only
+              const monthNum = parseInt(month, 10) - 1;
+              const yearNum = parseInt(year, 10);
+              const placeholderDate = new Date(yearNum, monthNum, 1);
+              
+              const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                                'July', 'August', 'September', 'October', 'November', 'December'];
+              const monthName = monthNames[monthNum];
+              
+              events.push({
+                title,
+                date: this.formatDate(placeholderDate),
+                isoDate: new Date(placeholderDate),
+                time,
+                category,
+                description,
+                source: 'CSV Upload',
+                userType: normalizedUserType,
+                dateType: 'month_only',
+                month: parseInt(month, 10),
+                monthName: monthName,
+                year: yearNum,
+                semester: semester,
+                isMonthOnly: true
+              });
+            } else {
+              // No dates, no month, no week - can't create event
+              Logger.warn(`Skipping row ${i + 1}: Invalid date format - dateType: ${dateType}, startDate: ${startDateStr}, endDate: ${endDateStr}, month: ${month}, weekOfMonth: ${weekOfMonth}`);
+              continue;
+            }
+          } else if (startDate) {
+            // Has start date but dateType might be wrong - treat as single date
+            events.push({
+              title,
+              date: this.formatDate(startDate),
+              isoDate: new Date(startDate),
+              time,
+              category,
+              description,
+              source: 'CSV Upload',
+              userType: normalizedUserType,
+              dateType: 'date',
+              startDate: new Date(startDate),
+              endDate: endDate ? new Date(endDate) : new Date(startDate),
+              weekOfMonth: weekOfMonth ? parseInt(weekOfMonth, 10) : null,
+              month: month ? parseInt(month, 10) : null,
+              year: parseInt(year, 10),
+              semester: semester
+            });
           }
         }
       } else {

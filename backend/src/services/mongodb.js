@@ -288,7 +288,7 @@ class MongoDBService {
             index: 'DOrSUAI',
             path: 'embedding',
             queryVector: queryEmbedding,
-            numCandidates: Math.max(limit * 10, 100), // Search more candidates for better results
+            numCandidates: Math.max(limit * 15, 150), // Increased from 100 to 150 for better recall
             limit: limit
           }
         },

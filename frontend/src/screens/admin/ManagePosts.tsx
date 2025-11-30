@@ -1,30 +1,28 @@
-import React, { useEffect, useState, useMemo, useRef, useCallback, memo, useLayoutEffect } from 'react';
-import { useThemeValues } from '../../contexts/ThemeContext';
-import AdminDataService from '../../services/AdminDataService';
+import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  View,
+  Animated,
+  InteractionManager,
+  Modal,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  StatusBar,
-  Alert,
-  Modal,
-  Pressable,
-  Animated,
-  Platform,
-  InteractionManager,
+  View
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import ConfirmationModal from '../../modals/ConfirmationModal';
-import OptionsModal from '../../modals/OptionsModal';
 import InfoModal from '../../modals/InfoModal';
-import { LinearGradient } from 'expo-linear-gradient';
-import { BlurView } from 'expo-blur';
+import OptionsModal from '../../modals/OptionsModal';
+import AdminDataService from '../../services/AdminDataService';
 
 type RootStackParamList = {
   AdminDashboard: undefined;
@@ -317,9 +315,39 @@ const ManagePosts: React.FC = () => {
 
   const handleTogglePin = async (postId: string) => {
     const updated = await AdminDataService.togglePin(postId);
-    setPosts(prev => prev.map(p => p.id === postId ? (updated || { ...p, isPinned: !p.isPinned }) : p));
+    setPosts(prev => prev.map(p => {
+      if (p.id === postId) {
+        if (updated) {
+          const convertedPost: Post = {
+            id: updated.id,
+            title: updated.title,
+            category: updated.category,
+            date: updated.date,
+            description: updated.description,
+            isPinned: updated.isPinned ?? false,
+            isUrgent: updated.isUrgent ?? false,
+          };
+          return convertedPost;
+        }
+        return { ...p, isPinned: !p.isPinned };
+      }
+      return p;
+    }));
     if (activePostForOptions && activePostForOptions.id === postId) {
-      setActivePostForOptions(updated || { ...activePostForOptions, isPinned: !activePostForOptions.isPinned });
+      if (updated) {
+        const convertedPost: Post = {
+          id: updated.id,
+          title: updated.title,
+          category: updated.category,
+          date: updated.date,
+          description: updated.description,
+          isPinned: updated.isPinned ?? false,
+          isUrgent: updated.isUrgent ?? false,
+        };
+        setActivePostForOptions(convertedPost);
+      } else {
+        setActivePostForOptions({ ...activePostForOptions, isPinned: !activePostForOptions.isPinned });
+      }
     }
   };
 

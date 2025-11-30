@@ -6,20 +6,48 @@
  * - Upcoming Events
  */
 
-import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import AdminDataService, { Post } from './AdminDataService';
 import CalendarService, { CalendarEvent } from './CalendarService';
 
-// Configure notification handler
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+// Lazy getter for expo-notifications (not available on web)
+// This prevents Metro from trying to resolve the module at bundle time on web
+let _notificationsModule: any = null;
+let _notificationsInitialized = false;
+
+function getNotifications(): any {
+  // Return null on web immediately
+  if (Platform.OS === 'web') {
+    return null;
+  }
+
+  // Lazy load the module only when needed
+  if (!_notificationsInitialized) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      _notificationsModule = require('expo-notifications');
+      
+      // Configure notification handler (only on native platforms)
+      if (_notificationsModule && _notificationsModule.setNotificationHandler) {
+        _notificationsModule.setNotificationHandler({
+          handleNotification: async () => ({
+            shouldShowAlert: true,
+            shouldPlaySound: true,
+            shouldSetBadge: true,
+          }),
+        });
+      }
+    } catch (error) {
+      console.warn('expo-notifications not available:', error);
+      _notificationsModule = null;
+    } finally {
+      _notificationsInitialized = true;
+    }
+  }
+
+  return _notificationsModule;
+}
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -58,6 +86,14 @@ class NotificationService {
    * Request notification permissions
    */
   async requestPermissions(): Promise<boolean> {
+    const Notifications = getNotifications();
+    
+    // Notifications not available on web
+    if (!Notifications) {
+      console.log('Notifications not available on web platform');
+      return false;
+    }
+
     try {
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
@@ -234,6 +270,14 @@ class NotificationService {
     body: string,
     data?: any
   ): Promise<string | null> {
+    const Notifications = getNotifications();
+    
+    // Notifications not available on web
+    if (!Notifications) {
+      console.log('Notifications not available on web platform');
+      return null;
+    }
+
     try {
       const enabled = await this.areNotificationsEnabled();
       if (!enabled) {
@@ -249,13 +293,19 @@ class NotificationService {
       }
 
       // Use presentNotificationAsync for immediate notifications
-      const identifier = await Notifications.presentNotificationAsync({
+      const notificationContent: any = {
         title,
         body,
         data: data || {},
         sound: true,
-        priority: Notifications.AndroidNotificationPriority.HIGH,
-      });
+      };
+
+      // Add Android-specific priority
+      if (Platform.OS === 'android') {
+        notificationContent.priority = Notifications.AndroidNotificationPriority.HIGH;
+      }
+
+      const identifier = await Notifications.presentNotificationAsync(notificationContent);
 
       console.log('Notification sent:', { title, body, identifier });
       return identifier;
@@ -530,6 +580,12 @@ class NotificationService {
    * Cancel all notifications
    */
   async cancelAllNotifications(): Promise<void> {
+    const Notifications = getNotifications();
+    
+    if (!Notifications) {
+      return;
+    }
+
     try {
       await Notifications.cancelAllScheduledNotificationsAsync();
     } catch (error) {
@@ -541,6 +597,12 @@ class NotificationService {
    * Get notification count (for badge)
    */
   async getNotificationCount(): Promise<number> {
+    const Notifications = getNotifications();
+    
+    if (!Notifications) {
+      return 0;
+    }
+
     try {
       const notifications = await Notifications.getAllScheduledNotificationsAsync();
       return notifications.length;

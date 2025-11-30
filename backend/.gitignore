@@ -29,3 +29,6 @@ build/
 
 # Test coverage
 coverage/
+
+# Benchmark results (keep README.md)
+benchmark-results/*.json

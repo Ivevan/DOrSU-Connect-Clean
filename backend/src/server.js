@@ -4,26 +4,26 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AuthService, authMiddleware } from './services/auth.js';
-import { getScheduleService } from './services/schedule.js';
+import { buildClarificationMessage, isConversationResetRequest } from './services/chat-guardrails.js';
 import { getChatHistoryService } from './services/chat-history.js';
 import conversationService from './services/conversation.js';
-import { getDataRefreshService } from './services/data-refresh.js';
+import { getDataRefreshService } from './services/dataset-setup.js';
+import { handleVerificationRedirect } from './services/email-verification-redirect.js';
 import { getFileProcessorService } from './services/file-processor.js';
 import responseFormatter from './services/formatter.js';
 import { getGridFSService } from './services/gridfs.js';
 import { getMongoDBService } from './services/mongodb.js';
+import { buildNewsContext } from './services/news-context.js';
 import { OptimizedRAGService } from './services/rag.js';
+import { getScheduleService } from './services/schedule.js';
 import { getNewsScraperService } from './services/scraper.js';
 import { LlamaService } from './services/service.js';
-import { buildSystemInstructions, getCalendarEventsInstructions, getHistoryCriticalRules, getHistoryDataSummary, getHistoryInstructions, getHymnCriticalRules, getHymnInstructions, getLeadershipCriticalRules, getLeadershipInstructions, getPresidentInstructions, getProgramInstructions, getProgramCriticalRules } from './services/system.js';
-import { isConversationResetRequest, buildClarificationMessage } from './services/chat-guardrails.js';
-import { buildNewsContext } from './services/news-context.js';
+import { buildSystemInstructions, getAdmissionRequirementsInstructions, getCalendarEventsInstructions, getHistoryCriticalRules, getHistoryDataSummary, getHistoryInstructions, getHymnCriticalRules, getHymnInstructions, getLeadershipCriticalRules, getLeadershipInstructions, getPresidentInstructions, getProgramCriticalRules, getProgramInstructions } from './services/system.js';
 import { IntentClassifier } from './utils/intent-classifier.js';
 import { Logger } from './utils/logger.js';
 import { parseMultipartFormData } from './utils/multipart-parser.js';
 import QueryAnalyzer from './utils/query-analyzer.js';
 import ResponseCleaner from './utils/response-cleaner.js';
-import { handleVerificationRedirect } from './services/email-verification-redirect.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1148,8 +1148,18 @@ const server = http.createServer(async (req, res) => {
         const historyPattern = /\b(history|historical|founded|established|background|evolution|development|kasaysayan|itinatag|pinagmulan|gitukod|timeline|narrative|heritage|conversion)\b/i;
         let isHistoryQuery = historyPattern.test(prompt);
         if (isHistoryQuery) {
-          processedPrompt = 'What is the history of DOrSU? Provide timeline of major events with key persons involved, including founding dates and Republic Acts.';
-          Logger.debug(`🔍 History query detected - normalized`);
+          // CRITICAL FIX: Preserve specific history keywords (UNESCO, heritage, campus names, dates) for vector search
+          const hasSpecificHistory = /\b(unesco|heritage|mt\.?\s*hamiguitan|mhrws|san isidro|cateel|banaybanay|baganga|1972|1989|2018|doscst|mcc|mati community college)\b/i.test(prompt);
+          
+          if (hasSpecificHistory) {
+            // Preserve original query with specific keywords
+            processedPrompt = prompt + ' - Provide detailed information from the knowledge base.';
+            Logger.debug(`🔍 History query with specific keywords detected - preserving: "${prompt.substring(0, 50)}..."`);
+          } else {
+            // Generic history query - can normalize
+            processedPrompt = 'What is the history of DOrSU? Provide timeline of major events with key persons involved, including founding dates and Republic Acts.';
+            Logger.debug(`🔍 History query detected - normalized`);
+          }
         }
         
         // Admission requirements queries (SPECIFIC - must be checked before general enrollment)
@@ -1157,9 +1167,29 @@ const server = http.createServer(async (req, res) => {
         const isAdmissionRequirementsQuery = admissionRequirementsPattern.test(prompt) || 
           (/\b(admission|admissions)\b/i.test(prompt) && /\b(requirements?|required|need|needed|what.*need)\b/i.test(prompt));
         
+        // Detect specific student category to preserve in query
+        let studentCategory = null;
         if (isAdmissionRequirementsQuery) {
-          processedPrompt = 'What are the admission requirements for DOrSU? Include requirements for returning students, continuing students, transferring students, second-degree students, and incoming first-year students.';
-          Logger.debug(`🔍 Admission requirements query detected - normalized`);
+          if (/\b(transferring|transfer|transferee)\b/i.test(prompt)) {
+            studentCategory = 'transferring students';
+          } else if (/\b(returning|returnee)\b/i.test(prompt)) {
+            studentCategory = 'returning students';
+          } else if (/\b(continuing)\b/i.test(prompt)) {
+            studentCategory = 'continuing students';
+          } else if (/\b(second.*degree|second.*course)\b/i.test(prompt)) {
+            studentCategory = 'second-degree students';
+          } else if (/\b(incoming.*first.*year|first.*year|freshman|freshmen|new.*student)\b/i.test(prompt)) {
+            studentCategory = 'incoming first-year students';
+          }
+          
+          // Preserve student category if detected, otherwise ask for all
+          if (studentCategory) {
+            processedPrompt = `What are the admission requirements for ${studentCategory} at DOrSU?`;
+            Logger.debug(`🔍 Admission requirements query detected - preserving category: ${studentCategory}`);
+          } else {
+            processedPrompt = 'What are the admission requirements for DOrSU? Include requirements for returning students, continuing students, transferring students, second-degree students, and incoming first-year students.';
+            Logger.debug(`🔍 Admission requirements query detected - normalized (all categories)`);
+          }
         }
         
         // CRITICAL: Exam schedule queries MUST be checked BEFORE general enrollment/schedule queries
@@ -1183,11 +1213,11 @@ const server = http.createServer(async (req, res) => {
         // CRITICAL: Enrollment queries MUST have BOTH enrollment AND registration keywords together
         // Examples: "when is the registration enrollment period", "enrollment and registration schedule"
         // This prevents general schedule queries like "when is siglakass schedule" from being misclassified
-        const enrollmentKeywords = /\b(enrollment|enrolment|enroll)\b/i;
+        const enrollmentKeywords = /\b(enrollment|enrolment|enroll|student.*population|population)\b/i;
         const registrationKeywords = /\b(registration|register|enrollment period|enrollment schedule)\b/i;
         // Only match if query has BOTH enrollment AND registration keywords together
         const isEnrollmentQuery = enrollmentKeywords.test(prompt) && 
-                                  registrationKeywords.test(prompt) &&
+                                  (registrationKeywords.test(prompt) || /\b(as of|2024|2025|main campus|campus)\b/i.test(prompt)) &&
                                   !isAdmissionRequirementsQuery && 
                                   !isExamScheduleQuery;
         
@@ -1197,8 +1227,29 @@ const server = http.createServer(async (req, res) => {
           processedPrompt = prompt; // Keep original query with exam type keywords
           Logger.debug(`🔍 Exam schedule query detected - preserving original query with exam keywords`);
         } else if (isEnrollmentQuery) {
-          processedPrompt = 'What are the enrollment information and schedule for DOrSU? Include enrollment by campus and enrollment schedule.';
-          Logger.debug(`🔍 Enrollment query detected - normalized`);
+          // CRITICAL: Detect "total enrollment" queries - these should refer to GRAND TOTAL for 2025-2026
+          const isTotalEnrollmentQuery = /\b(total\s+enrollment|enrollment\s+total|grand\s+total|total\s+students|overall\s+enrollment)\b/i.test(prompt) &&
+                                         !/\b(main campus|baganga|banaybanay|cateel|san isidro|tarragona)\b/i.test(prompt) && // Not campus-specific
+                                         (/\b(2025|2026|2025-2026)\b/i.test(prompt) || /\b(semester\s*1|semester\s*2|first\s+semester|second\s+semester)\b/i.test(prompt));
+          
+          if (isTotalEnrollmentQuery) {
+            // Normalize to ask for GRAND TOTAL enrollment for 2025-2026 semester 1
+            processedPrompt = 'What is the Grand Total enrollment for DOrSU in academic year 2025-2026, 1st semester? Provide the total enrollment number from the GRAND TOTAL entry.';
+            Logger.debug(`🔍 Total enrollment query detected - routing to GRAND TOTAL for 2025-2026 semester 1`);
+          } else {
+            // CRITICAL FIX: Preserve specific enrollment keywords (campus names, years, "as of") for vector search
+            const hasSpecificEnrollment = /\b(main campus|baganga|banaybanay|cateel|san isidro|tarragona|as of|2024|2025|17251|17,251|17629|17,629)\b/i.test(prompt);
+            
+            if (hasSpecificEnrollment) {
+              // Preserve original query with specific keywords
+              processedPrompt = prompt + ' - Provide the enrollment data from the knowledge base.';
+              Logger.debug(`🔍 Enrollment query with specific keywords detected - preserving: "${prompt.substring(0, 50)}..."`);
+            } else {
+              // Generic enrollment query - can normalize
+              processedPrompt = 'What are the enrollment information and schedule for DOrSU? Include enrollment by campus and enrollment schedule.';
+              Logger.debug(`🔍 Enrollment query detected - normalized`);
+            }
+          }
         }
         // General schedule queries (like "when is siglakass schedule") are NOT transformed here
         // They will be handled by the general schedule pattern detection later and preserve original query
@@ -1280,13 +1331,27 @@ const server = http.createServer(async (req, res) => {
         }
         
         // Handle programs/courses list queries - ensure complete list
+        // CRITICAL: Program queries MUST be checked BEFORE faculty queries to avoid misrouting
         const programPattern = /\b(program|programs|course|courses)\s+(offered|available|in|at|of|does|do)\b/i;
+        const isProgramQuery = programPattern.test(prompt);
+        
         // Vision/Mission queries
         const visionMissionPattern = /\b(vision|mission|what\s+is\s+.*\s+(vision|mission)|dorsu.*\s+(vision|mission)|university.*\s+(vision|mission))\b/i;
         const isVisionMissionQuery = visionMissionPattern.test(prompt);
         if (isVisionMissionQuery) {
-          processedPrompt = 'Provide the vision and mission of DOrSU from the knowledge base. Include the vision statement and all mission statements. Format: "Vision:" followed by the vision, then "Mission:" followed by all mission statements as a list.';
-          Logger.debug(`🔍 Vision/Mission query detected - normalized`);
+          // CRITICAL FIX: Check if query is about library vision (must preserve "library" keyword)
+          const isLibraryVisionQuery = /\b(library|learning.*information.*resource|ulirc).*vision\b/i.test(prompt) ||
+                                     /\bvision.*(library|learning.*information.*resource|ulirc)\b/i.test(prompt);
+          
+          if (isLibraryVisionQuery) {
+            // Preserve library vision query with keywords for vector search
+            processedPrompt = prompt + ' - Provide the vision from the knowledge base.';
+            Logger.debug(`🔍 Library vision query detected - preserving keywords: "${prompt.substring(0, 50)}..."`);
+          } else {
+            // Generic vision/mission query - can normalize
+            processedPrompt = 'Provide the vision and mission of DOrSU from the knowledge base. Include the vision statement and all mission statements. Format: "Vision:" followed by the vision, then "Mission:" followed by all mission statements as a list.';
+            Logger.debug(`🔍 Vision/Mission query detected - normalized`);
+          }
         }
         
         // Values/Outcomes/Mandate queries
@@ -1317,14 +1382,29 @@ const server = http.createServer(async (req, res) => {
           Logger.debug(`🔍 Hymn query detected - normalized`);
         }
         
-        const isProgramQuery = programPattern.test(prompt);
+        // CRITICAL: Program queries MUST be checked BEFORE faculty queries
+        // If query asks "what programs" or "programs offered", prioritize programs over faculties
         if (isProgramQuery) {
-          processedPrompt = 'Organize and list the programs offered by DOrSU from the knowledge base, grouped by faculty category. For each faculty, show the faculty name and list the programs under that faculty with their codes and full names. Format: "Faculty of [Name] (Code)" followed by the programs. DO NOT list programs from your training data - ONLY from knowledge base chunks. At the end, ask if the user would like to know about programs from other faculties.';
+          // CRITICAL FIX: Preserve faculty-specific keywords (FACET, FALS, etc.) for vector search
+          // Only normalize if query doesn't mention a specific faculty
+          const hasSpecificFaculty = /\b(FACET|FALS|FTED|FBM|FCJE|FNAHS|FHUSOCOM|Faculty of Computing|Faculty of Agriculture|Faculty of Teacher|Faculty of Business|Faculty of Criminal|Faculty of Nursing|Faculty of Humanities)\b/i.test(prompt);
+          
+          if (hasSpecificFaculty) {
+            // CRITICAL FIX: Preserve original query WITHOUT adding suffix that might confuse query type detection
+            // The suffix was causing the query to be misrouted or not match program chunks correctly
+            // Vector search will handle the faculty-specific matching based on the original query
+            processedPrompt = prompt; // Keep original query intact for better vector search matching
+            Logger.info(`🔍 [QUERY NORMALIZATION] Program query with specific faculty - PRESERVING original query: "${prompt.substring(0, 60)}..."`);
+          } else {
+            // Generic program query - can normalize but keep "programs" keyword
+            processedPrompt = 'What programs are offered by DOrSU? List all programs with their codes and full names, organized by faculty.';
+            Logger.info(`🔍 [QUERY NORMALIZATION] Generic program query - normalized: "${processedPrompt.substring(0, 60)}..."`);
+          }
         }
         
-        // Faculty queries
+        // Faculty queries (checked AFTER program queries to avoid misrouting)
         const facultyPattern = /\b(faculty|faculties|FACET|FALS|FTED|FBM|FCJE|FNAHS|FHUSOCOM|college|colleges)\s+(of|in|at)?\b/i;
-        const isFacultyQuery = facultyPattern.test(prompt) && !isDeanQuery;
+        const isFacultyQuery = facultyPattern.test(prompt) && !isDeanQuery && !isProgramQuery;
         if (isFacultyQuery) {
           processedPrompt = 'What are the faculties of DOrSU? List all faculties with their codes and full names.';
           Logger.debug(`🔍 Faculty query detected - normalized`);
@@ -1457,18 +1537,46 @@ const server = http.createServer(async (req, res) => {
           processedPrompt = conversationService.resolvePronouns(processedPrompt, conversationContext);
         }
 
+        // CRITICAL FIX: Only block queries if they're truly vague AND have no context
+        // Don't block if query has specific entities, DOrSU keywords, or question words
+        // This prevents blocking valid queries that just don't match topic categories
         if (queryAnalysis.needsClarification) {
-          const clarificationMessage = buildClarificationMessage(queryAnalysis);
-          sendJson(res, 200, {
-            reply: clarificationMessage,
-            source: 'guardrail',
-            requiresClarification: true
-          });
-          return;
+          // Double-check: Even if marked as needing clarification, allow through if:
+          // 1. Query has extracted entities (acronyms, years, names, numbers, dates)
+          // 2. Query has DOrSU-specific keywords
+          // 3. Query has question words and sufficient length
+          const hasEntities = queryAnalysis.extractedEntities && (
+            queryAnalysis.extractedEntities.officeAcronyms?.length > 0 ||
+            queryAnalysis.extractedEntities.years?.length > 0 ||
+            queryAnalysis.extractedEntities.names?.length > 0 ||
+            queryAnalysis.extractedEntities.numbers?.length > 0 ||
+            queryAnalysis.extractedEntities.dates?.length > 0
+          );
+          
+          const hasDorsuKeywords = /\b(dorsu|davao oriental|facet|fals|fted|fbm|fcje|fnahs|fhusocom|bsit|bsce|bsmath|bitm|mba|maed|mst|mses|phd|edd|suast|fhe|ospat|osa|oscd|baganga|banaybanay|cateel|san isidro|tarragona|main campus|unesco|heritage|mt\.?\s*hamiguitan|mhrws|library|learning.*information.*resource|ulirc|roy.*ponce|president|vice president|dean|director|scholarship|enrollment|student.*population|17251|17,251|17629|17,629)\b/i.test(processedPrompt);
+          
+          const hasQuestionWords = /\b(what|who|when|where|why|how|which|when\s+is|what\s+is|who\s+is|where\s+is|how\s+many|how\s+to|list|tell|show|provide|give)\b/i.test(processedPrompt.toLowerCase());
+          const hasSufficientLength = processedPrompt.trim().length >= 20;
+          
+          // Only block if truly vague (no entities, no keywords, no question words, or too short)
+          if (hasEntities || hasDorsuKeywords || (hasQuestionWords && hasSufficientLength)) {
+            Logger.debug(`🔓 Guardrail bypass: Query has entities/keywords/question words - allowing through: "${processedPrompt.substring(0, 50)}..."`);
+            // Override needsClarification to allow query through
+            queryAnalysis.needsClarification = false;
+          } else {
+            // Truly vague query - block it
+            const clarificationMessage = buildClarificationMessage(queryAnalysis);
+            sendJson(res, 200, {
+              reply: clarificationMessage,
+              source: 'guardrail',
+              requiresClarification: true
+            });
+            return;
+          }
         }
         
         const options = {
-          maxTokens: json.maxTokens ?? (isUSCQuery ? 800 : isProgramQuery ? 900 : smartSettings.maxTokens), // Reduced to minimize token usage
+          maxTokens: json.maxTokens ?? (isUSCQuery ? 400 : isProgramQuery ? 400 : Math.min(smartSettings.maxTokens, 400)), // Reduced for chatbot - max 400 tokens output
           temperature: json.temperature ?? smartSettings.temperature,
           numCtx: smartSettings.numCtx,
           topP: 0.5,
@@ -1536,51 +1644,50 @@ const server = http.createServer(async (req, res) => {
             retrievalType = '(Faculty query - comprehensive retrieval)';
             Logger.debug(`🔍 Faculty query detected - using enhanced retrieval: ${ragSections} sections, ${ragTokens} tokens`);
           } else if (isProgramQuery) {
-            ragSections = 25;       // Increased to ensure all faculties are represented (7 faculties * 3-4 programs each)
-            ragTokens = 1600;       // Increased to accommodate programs from all faculties
-            retrievalType = '(Program list query - comprehensive retrieval)';
-            Logger.debug(`🔍 Program query detected - using enhanced retrieval: ${ragSections} sections, ${ragTokens} tokens`);
+            ragSections = 12;       // Reduced for chatbot - focus on specific faculty programs
+            ragTokens = 1000;       // Reduced to fit model limits
+            retrievalType = '(Program list query - optimized retrieval)';
+            Logger.debug(`🔍 Program query detected - using optimized retrieval: ${ragSections} sections, ${ragTokens} tokens`);
           } else if (isPresidentQuery) {
-            // CRITICAL FIX: Increase retrieval for president queries to ensure comprehensive data
-            ragSections = 25;       // Increased from 15 - need even more chunks for comprehensive president info (education, expertise, achievements)
-            ragTokens = 2000;      // Increased from 1200 - need more tokens for detailed president information (all fields)
-            retrievalType = '(President query - comprehensive retrieval)';
-            Logger.debug(`🔍 President query detected - using enhanced retrieval: ${ragSections} sections, ${ragTokens} tokens`);
+            ragSections = 8;        // Reduced for chatbot - focus on key president info
+            ragTokens = 800;        // Reduced to fit model limits
+            retrievalType = '(President query - optimized retrieval)';
+            Logger.debug(`🔍 President query detected - using optimized retrieval: ${ragSections} sections, ${ragTokens} tokens`);
           } else if (isVPQuery) {
-            ragSections = 20;       // Increased from 12 - need to get ALL vice presidents
-            ragTokens = 1500;       // Increased from 1000 - need more tokens for multiple VPs
-            retrievalType = '(VP query - comprehensive retrieval)';
-            Logger.debug(`🔍 VP query detected - using enhanced retrieval: ${ragSections} sections, ${ragTokens} tokens`);
+            ragSections = 8;        // Reduced for chatbot - focus on key VP info
+            ragTokens = 800;        // Reduced to fit model limits
+            retrievalType = '(VP query - optimized retrieval)';
+            Logger.debug(`🔍 VP query detected - using optimized retrieval: ${ragSections} sections, ${ragTokens} tokens`);
           } else if (isSUASTQuery) {
             ragSections = 10;       // SUAST statistics
             ragTokens = 800;
             retrievalType = '(SUAST query - statistics retrieval)';
           } else if (isHistoryQuery) {
-            ragSections = 60;       // History needs comprehensive timeline data (increased to match chunk retrieval)
-            ragTokens = 3000;       // Increased token limit to ensure all history chunks are included
+            ragSections = 10;       // Increased to find all timeline events
+            ragTokens = 1000;       // Increased to accommodate more timeline events
             retrievalType = '(History query - comprehensive retrieval)';
           } else if (isAdmissionRequirementsQuery) {
-            ragSections = 15;       // Admission requirements - need all student categories
-            ragTokens = 2000;       // Need enough tokens for all requirements lists
-            retrievalType = '(Admission requirements query - comprehensive retrieval)';
-            Logger.debug(`🔍 Admission requirements query detected - using enhanced retrieval: ${ragSections} sections, ${ragTokens} tokens`);
+            ragSections = 8;        // Reduced for chatbot - focus on specific student category
+            ragTokens = 1000;       // Reduced to fit model limits
+            retrievalType = '(Admission requirements query - optimized retrieval)';
+            Logger.debug(`🔍 Admission requirements query detected - using optimized retrieval: ${ragSections} sections, ${ragTokens} tokens`);
           } else if (isEnrollmentQuery) {
-            ragSections = 12;       // Enrollment data (schedules, counts)
-            ragTokens = 1000;
-            retrievalType = '(Enrollment query - comprehensive retrieval)';
+            ragSections = 6;        // Reduced for chatbot - focus on specific campus/year
+            ragTokens = 600;        // Reduced to fit model limits
+            retrievalType = '(Enrollment query - optimized retrieval)';
           } else if (isOfficeHeadQuery) {
-            ragSections = 15;       // Office head queries - need specific office info
-            ragTokens = 1200;       // Need enough tokens for office head details
-            retrievalType = '(Office head query - specific office retrieval)';
-            Logger.debug(`🔍 Office head query detected - using enhanced retrieval: ${ragSections} sections, ${ragTokens} tokens`);
+            ragSections = 6;        // Reduced for chatbot - focus on specific office
+            ragTokens = 600;        // Reduced to fit model limits
+            retrievalType = '(Office head query - optimized retrieval)';
+            Logger.debug(`🔍 Office head query detected - using optimized retrieval: ${ragSections} sections, ${ragTokens} tokens`);
           } else if (isDeanQuery) {
-            ragSections = 15;       // Increased from 10 - need to get ALL deans
-            ragTokens = 1200;       // Increased from 800 - need more tokens for multiple deans
-            retrievalType = '(Dean query - comprehensive retrieval)';
+            ragSections = 8;        // Reduced for chatbot - focus on key deans
+            ragTokens = 700;        // Reduced to fit model limits
+            retrievalType = '(Dean query - optimized retrieval)';
           } else if (isDirectorQuery) {
-            ragSections = 20;       // Increased from 15 - need to get ALL directors
-            ragTokens = 1500;       // Increased from 1200 - need more tokens for multiple directors
-            retrievalType = '(Director query - comprehensive retrieval)';
+            ragSections = 8;        // Reduced for chatbot - focus on key directors
+            ragTokens = 700;        // Reduced to fit model limits
+            retrievalType = '(Director query - optimized retrieval)';
           }
           
           relevantContext = await ragService.getContextForTopic(
@@ -2162,6 +2269,8 @@ const server = http.createServer(async (req, res) => {
             dataSourceInstructions = getLeadershipInstructions(false, false, false);
           } else if (isProgramQuery) {
             dataSourceInstructions = getProgramInstructions();
+          } else if (isAdmissionRequirementsQuery) {
+            dataSourceInstructions = getAdmissionRequirementsInstructions();
           } else if (isVisionMissionQuery) {
             dataSourceInstructions = '\n🎯 DATA SOURCE FOR THIS QUERY:\n' +
               '• For vision and mission → Use ONLY the "KNOWLEDGE BASE" section above (from "knowledge_chunks" collection)\n' +

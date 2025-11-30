@@ -1,6 +1,6 @@
 /**
- * Data Refresh Service
- * Handles automatic refresh of knowledge base when new data is added
+ * Dataset Setup Service
+ * Handles parsing and chunking of knowledge base data from dorsu_data.json
  */
 
 import fs from 'node:fs';
@@ -13,7 +13,7 @@ import { getMongoDBService } from './mongodb.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-class DataRefreshService {
+class DatasetSetupService {
   constructor() {
     this.isRefreshing = false;
     this.lastRefresh = null;
@@ -132,9 +132,559 @@ class DataRefreshService {
       
       keywords.push(...topWords);
       
+      // 7. ENHANCEMENT: Extract campus names explicitly
+      const campusNames = [
+        'baganga', 'banaybanay', 'cateel', 'san isidro', 'tarragona',
+        'main campus', 'extension campus'
+      ];
+      campusNames.forEach(campus => {
+        if (text.toLowerCase().includes(campus)) {
+          keywords.push(campus);
+        }
+      });
+      
+      // 8. ENHANCEMENT: Extract program codes more aggressively
+      const programCodes = text.match(/\b(BSIT|BSCE|BSMath|BITM|MBA|MAED|MST|MSES|PhD|EdD|BSA|BSAM|BSBio|BSES|BSBA|BSHM|BSC|BEED|BCED|BSNED|BPED|BTLED|BSED|BSN|BSDevCom|AB PolSci|BS Psych|BSMRS)\b/gi);
+      if (programCodes) {
+        keywords.push(...programCodes.map(c => c.toLowerCase()));
+      }
+      
+      // 9. ENHANCEMENT: Extract email addresses
+      const emails = text.match(/\b[\w.-]+@[\w.-]+\.\w+\b/g);
+      if (emails) {
+        keywords.push(...emails.map(e => e.toLowerCase()));
+      }
+      
+      // 10. ENHANCEMENT: Extract specific numbers with context
+      if (text.includes('17251') || text.includes('17,251')) {
+        keywords.push('17251', '17,251', 'total enrollment', 'enrollment 2025');
+      }
+      
+      // 11. ENHANCEMENT: Extract month names for dates
+      const months = ['january', 'february', 'march', 'april', 'may', 'june',
+                      'july', 'august', 'september', 'october', 'november', 'december'];
+      months.forEach(month => {
+        if (text.toLowerCase().includes(month)) {
+          keywords.push(month);
+        }
+      });
+      
+      // 12. ENHANCEMENT: Extract specific location terms
+      if (text.toLowerCase().includes('guang-guang') || text.toLowerCase().includes('dahican')) {
+        keywords.push('guang-guang', 'dahican', 'mati');
+      }
+      
       // 5. REMOVE DUPLICATES and return
       return [...new Set(keywords)];
     };
+    
+    // ===== ENHANCEMENT 1: Create explicit dedicated chunks for critical data =====
+    // This ensures these important facts are always retrievable
+    
+    // ENHANCEMENT 1.1: Location information
+    if (data.organization?.location) {
+      chunks.push({
+        id: `location_explicit_${Date.now()}_${uniqueCounter++}`,
+        content: `DOrSU is located at ${data.organization.location.address}, ${data.organization.location.city}, ${data.organization.location.province}, ${data.organization.location.country}. The campus is in Guang-guang, Dahican area of Mati City, Davao Oriental, Philippines.`,
+        section: 'organization',
+        type: 'location',
+        category: 'location',
+        keywords: extractKeywords(`DOrSU location Mati Davao Oriental Guang-guang Dahican ${data.organization.location.address}`, {
+          city: data.organization.location.city,
+          province: data.organization.location.province
+        }),
+        metadata: { 
+          ...data.organization.location,
+          source: 'dorsu_data.json',
+          updated_at: new Date()
+        }
+      });
+    }
+    
+    // ENHANCEMENT 1.2: Student Population/Enrollment statistics as separate chunks
+    const studentPopulation = data['studentPopulation (as of 2024-2025)'] || 
+                              data['population (as of 2024-2025)'] || 
+                              data['enrollment (as of 2025)'];
+    
+    if (studentPopulation) {
+      if (studentPopulation.total) {
+        chunks.push({
+          id: `studentpopulation_total_explicit_${Date.now()}_${uniqueCounter++}`,
+          content: `As of 2024-2025, DOrSU has a total student population of ${studentPopulation.total} students (17,251 students). The total number of enrolled students is 17251.`,
+          section: 'studentPopulation',
+          type: 'statistics',
+          category: 'studentpopulation_2024_2025',
+          keywords: extractKeywords(`student population 2024 2025 enrollment ${studentPopulation.total} 17251 17,251 students total`, {
+            year: '2024-2025',
+            total: studentPopulation.total,
+            students: studentPopulation.total
+          }),
+          metadata: { 
+            year: '2024-2025', 
+            total: studentPopulation.total,
+            source: 'dorsu_data.json',
+            updated_at: new Date()
+          }
+        });
+      }
+      
+      // Individual campus populations (handles both campusPopulation and campusEnrollments)
+      const campusData = studentPopulation.campusPopulation || studentPopulation.campusEnrollments;
+      if (campusData && Array.isArray(campusData)) {
+        campusData.forEach(campus => {
+          chunks.push({
+            id: `studentpopulation_${campus.campus.toLowerCase().replace(/\s+/g, '_')}_explicit_${Date.now()}_${uniqueCounter++}`,
+            content: `${campus.campus} has ${campus.students} enrolled students.`,
+            section: 'studentPopulation',
+            type: 'campus_statistics',
+            category: campus.campus.toLowerCase().replace(/\s+/g, '_'),
+            keywords: extractKeywords(`${campus.campus} ${campus.students} enrollment students population`, {
+              campus: campus.campus,
+              students: campus.students
+            }),
+            metadata: { 
+              campus: campus.campus, 
+              students: campus.students,
+              source: 'dorsu_data.json',
+              updated_at: new Date()
+            }
+          });
+        });
+      }
+    }
+    
+    // ENHANCEMENT 1.3: Extension campuses as explicit chunk
+    const studentPopForCampuses = data['studentPopulation (as of 2024-2025)'] || 
+                                   data['population (as of 2024-2025)'] || 
+                                   data['enrollment (as of 2025)'];
+    const campusDataForList = studentPopForCampuses?.campusPopulation || studentPopForCampuses?.campusEnrollments;
+    
+    if (campusDataForList) {
+      const campuses = campusDataForList
+        .filter(c => c.campus !== 'Main Campus')
+        .map(c => c.campus);
+      
+      if (campuses.length > 0) {
+        chunks.push({
+          id: `extension_campuses_explicit_${Date.now()}_${uniqueCounter++}`,
+          content: `DOrSU has ${campuses.length} extension campuses: ${campuses.join(', ')}. The extension campuses are Baganga Campus, Banaybanay Campus, Cateel Campus, San Isidro Campus, and Tarragona Campus.`,
+          section: 'organization',
+          type: 'campuses',
+          category: 'extension_campuses',
+          keywords: extractKeywords(`extension campuses ${campuses.join(' ')} baganga banaybanay cateel san isidro tarragona`, {
+            campuses: campuses
+          }),
+          metadata: { 
+            campuses,
+            source: 'dorsu_data.json',
+            updated_at: new Date()
+          }
+        });
+      }
+    }
+    
+    // ENHANCEMENT 1.4: Programs by faculty as explicit chunks
+    if (data.programs) {
+      Object.entries(data.programs).forEach(([facultyCode, facultyData]) => {
+        if (facultyData.programs && Array.isArray(facultyData.programs)) {
+          const programCodes = facultyData.programs.map(p => p.code).filter(Boolean).join(', ');
+          const programNames = facultyData.programs.map(p => p.name).filter(Boolean).join(', ');
+          
+          chunks.push({
+            id: `programs_${facultyCode}_explicit_${Date.now()}_${uniqueCounter++}`,
+            content: `${facultyData.faculty || facultyCode} (${facultyCode}) offers the following programs: ${programNames}. Program codes include: ${programCodes}.`,
+            section: 'programs',
+            type: 'faculty_programs',
+            category: facultyCode.toLowerCase(),
+            keywords: extractKeywords(`${facultyCode} ${facultyData.faculty || ''} ${programCodes} ${programNames}`, {
+              facultyCode: facultyCode,
+              faculty: facultyData.faculty,
+              programs: facultyData.programs
+            }),
+            metadata: { 
+              facultyCode, 
+              faculty: facultyData.faculty, 
+              programs: facultyData.programs,
+              source: 'dorsu_data.json',
+              updated_at: new Date()
+            }
+          });
+        }
+      });
+    }
+    
+    // ENHANCEMENT 1.5: Graduate programs as explicit chunk
+    if (data.graduatePrograms) {
+      const masters = data.graduatePrograms.masters?.map(p => p.code).filter(Boolean).join(', ') || '';
+      const doctorates = data.graduatePrograms.doctorate?.map(p => p.code).filter(Boolean).join(', ') || '';
+      
+      if (masters || doctorates) {
+        chunks.push({
+          id: `graduate_programs_explicit_${Date.now()}_${uniqueCounter++}`,
+          content: `DOrSU offers graduate programs. Master's programs include: ${masters || 'MBA, MAED, MST, MSES'}. Doctorate programs include: ${doctorates || 'PhD Bio, EdD, PhD ES'}.`,
+          section: 'programs',
+          type: 'graduate_programs',
+          category: 'graduate_programs',
+          keywords: extractKeywords(`graduate programs masters doctorate ${masters} ${doctorates} mba maed mst mses phd edd`, {
+            masters: data.graduatePrograms.masters,
+            doctorates: data.graduatePrograms.doctorate
+          }),
+          metadata: { 
+            masters: data.graduatePrograms.masters, 
+            doctorates: data.graduatePrograms.doctorate,
+            source: 'dorsu_data.json',
+            updated_at: new Date()
+          }
+        });
+      }
+    }
+    
+    // ENHANCEMENT 1.6: Contact information chunk
+    if (data.organization?.contacts) {
+      chunks.push({
+        id: `contacts_explicit_${Date.now()}_${uniqueCounter++}`,
+        content: `DOrSU contact information: General email: ${data.organization.contacts.generalEmail || 'op@dorsu.edu.ph'}. ${data.organization.contacts.ictUnitEmail ? `ICT Unit email: ${data.organization.contacts.ictUnitEmail}.` : ''}`,
+        section: 'organization',
+        type: 'contacts',
+        category: 'contact_information',
+        keywords: extractKeywords(`contact email ${data.organization.contacts.generalEmail || 'op@dorsu.edu.ph'} ${data.organization.contacts.ictUnitEmail || ''}`, {
+          generalEmail: data.organization.contacts.generalEmail,
+          ictUnitEmail: data.organization.contacts.ictUnitEmail
+        }),
+        metadata: { 
+          ...data.organization.contacts,
+          source: 'dorsu_data.json',
+          updated_at: new Date()
+        }
+      });
+    }
+    
+    // ENHANCEMENT 1.7: Dean information chunk
+    if (data['organizationalStructure/DOrSUOfficials2025']?.deans) {
+      const deansList = data['organizationalStructure/DOrSUOfficials2025'].deans
+        .map(d => `${d.faculty}: ${d.name}`)
+        .join('. ');
+      
+      chunks.push({
+        id: `deans_explicit_${Date.now()}_${uniqueCounter++}`,
+        content: `DOrSU deans: ${deansList}.`,
+        section: 'leadership',
+        type: 'deans',
+        category: 'deans',
+        keywords: extractKeywords(`deans faculty ${deansList}`, {
+          deans: data['organizationalStructure/DOrSUOfficials2025'].deans
+        }),
+        metadata: { 
+          deans: data['organizationalStructure/DOrSUOfficials2025'].deans,
+          source: 'dorsu_data.json',
+          updated_at: new Date()
+        }
+      });
+    }
+    
+    // ENHANCEMENT 1.8: Library vision chunk
+    if (data.detailedOfficeServices?.library) {
+      chunks.push({
+        id: `library_vision_explicit_${Date.now()}_${uniqueCounter++}`,
+        content: `The University Learning and Information Resource Center (DOrSU Library) vision is: "${data.detailedOfficeServices.library.vision}".`,
+        section: 'offices',
+        type: 'library',
+        category: 'library',
+        keywords: extractKeywords(`library learning information resource center vision ${data.detailedOfficeServices.library.vision}`, {
+          vision: data.detailedOfficeServices.library.vision
+        }),
+        metadata: { 
+          vision: data.detailedOfficeServices.library.vision,
+          source: 'dorsu_data.json',
+          updated_at: new Date()
+        }
+      });
+    }
+    
+    // ENHANCEMENT 1.9: UNESCO sites chunk
+    if (data.history?.heritage?.sites) {
+      const sites = data.history.heritage.sites
+        .map(s => `${s.name} (${s.designation})`)
+        .join(', ');
+      
+      chunks.push({
+        id: `unesco_sites_explicit_${Date.now()}_${uniqueCounter++}`,
+        content: `DOrSU is an academic steward of world-renowned natural heritage sites: ${sites}. Mt. Hamiguitan Range Wildlife Sanctuary (MHRWS) is a UNESCO World Heritage Site, the only one in Mindanao.`,
+        section: 'history',
+        type: 'heritage',
+        category: 'heritage_sites',
+        keywords: extractKeywords(`unesco world heritage mt. hamiguitan mhrws heritage sites ${sites}`, {
+          sites: data.history.heritage.sites
+        }),
+        metadata: { 
+          sites: data.history.heritage.sites,
+          source: 'dorsu_data.json',
+          updated_at: new Date()
+        }
+      });
+    }
+    
+    // ENHANCEMENT 1.10: International partnerships chunk
+    if (data.additionalOfficesAndCenters?.IRO?.notableAchievementsAndPartnerships) {
+      const partnerships = data.additionalOfficesAndCenters.IRO.notableAchievementsAndPartnerships
+        .slice(0, 10) // Limit to top 10 for chunk size
+        .map(p => `${p.institution} (${p.country})`)
+        .join(', ');
+      
+      chunks.push({
+        id: `partnerships_explicit_${Date.now()}_${uniqueCounter++}`,
+        content: `DOrSU has international partnerships including: ${partnerships}. Notable partners include Universiti Teknologi Malaysia, Hiroshima University, The University of Tokyo, and many others.`,
+        section: 'partnerships',
+        type: 'international',
+        category: 'international_partnerships',
+        keywords: extractKeywords(`partnerships international universiti teknologi malaysia hiroshima university university of tokyo linkages`, {
+          partnerships: data.additionalOfficesAndCenters.IRO.notableAchievementsAndPartnerships
+        }),
+        metadata: { 
+          partnerships: data.additionalOfficesAndCenters.IRO.notableAchievementsAndPartnerships,
+          source: 'dorsu_data.json',
+          updated_at: new Date()
+        }
+      });
+    }
+    
+    // ENHANCEMENT 1.11: Core values and graduate outcomes chunk
+    if (data.valuesAndOutcomes) {
+      const coreValues = data.valuesAndOutcomes.coreValues?.join(', ') || '';
+      const graduateOutcomes = data.valuesAndOutcomes.graduateOutcomes?.join(', ') || '';
+      
+      if (coreValues || graduateOutcomes) {
+        chunks.push({
+          id: `values_outcomes_explicit_${Date.now()}_${uniqueCounter++}`,
+          content: `DOrSU Core Values: ${coreValues}. Graduate Outcomes: ${graduateOutcomes}.`,
+          section: 'valuesAndOutcomes',
+          type: 'values',
+          category: 'core_values',
+          keywords: extractKeywords(`core values graduate outcomes ${coreValues} ${graduateOutcomes}`, {
+            coreValues: data.valuesAndOutcomes.coreValues,
+            graduateOutcomes: data.valuesAndOutcomes.graduateOutcomes
+          }),
+          metadata: { 
+            coreValues: data.valuesAndOutcomes.coreValues,
+            graduateOutcomes: data.valuesAndOutcomes.graduateOutcomes,
+            source: 'dorsu_data.json',
+            updated_at: new Date()
+          }
+        });
+      }
+    }
+    
+    // ENHANCEMENT 1.12: Extension campus programs chunk
+    if (data.extensionCampusPrograms) {
+      Object.entries(data.extensionCampusPrograms).forEach(([campusKey, campusData]) => {
+        if (campusData.programs && Array.isArray(campusData.programs)) {
+          const programCodes = campusData.programs.map(p => p.code).filter(Boolean).join(', ');
+          const programNames = campusData.programs.map(p => p.name).filter(Boolean).join(', ');
+          
+          chunks.push({
+            id: `extension_campus_programs_${campusKey}_explicit_${Date.now()}_${uniqueCounter++}`,
+            content: `${campusData.campus || campusKey} offers the following programs: ${programNames}. Program codes: ${programCodes}.`,
+            section: 'extensionCampusPrograms',
+            type: 'extension_campus_programs',
+            category: campusKey.toLowerCase(),
+            keywords: extractKeywords(`${campusData.campus || campusKey} ${programCodes} ${programNames} extension campus programs`, {
+              campus: campusData.campus,
+              programs: campusData.programs
+            }),
+            metadata: { 
+              campus: campusData.campus,
+              programs: campusData.programs,
+              source: 'dorsu_data.json',
+              updated_at: new Date()
+            }
+          });
+        }
+      });
+    }
+    
+    // ENHANCEMENT 1.13: Identity (logo and hymn) chunk
+    if (data.identity) {
+      let identityText = 'DOrSU Identity. ';
+      
+      if (data.identity.logo) {
+        const logoElements = data.identity.logo.elements?.map(e => `${e.name}: ${e.meaning}`).join('. ') || '';
+        const logoColors = data.identity.logo.colors ? Object.entries(data.identity.logo.colors)
+          .map(([color, meaning]) => `${color}: ${meaning}`).join('. ') : '';
+        identityText += `Logo Elements: ${logoElements}. Logo Colors: ${logoColors}. `;
+      }
+      
+      if (data.identity.hymn) {
+        const hymnTitle = data.identity.hymn.title || 'Davao Oriental State University';
+        const composers = data.identity.hymn.composers ? 
+          `Words: ${data.identity.hymn.composers.words}, Music: ${data.identity.hymn.composers.music}` : '';
+        const themes = data.identity.hymn.themes?.join(', ') || '';
+        identityText += `University Hymn: ${hymnTitle}. Composers: ${composers}. Themes: ${themes}.`;
+      }
+      
+      chunks.push({
+        id: `identity_explicit_${Date.now()}_${uniqueCounter++}`,
+        content: identityText.trim(),
+        section: 'identity',
+        type: 'identity',
+        category: 'university_identity',
+        keywords: extractKeywords(identityText, {
+          logo: data.identity.logo,
+          hymn: data.identity.hymn
+        }),
+        metadata: { 
+          ...data.identity,
+          source: 'dorsu_data.json',
+          updated_at: new Date()
+        }
+      });
+    }
+    
+    // ENHANCEMENT 1.14: SUAST Statistics chunk
+    if (data.suastStatistics) {
+      const stats = data.suastStatistics.statistics || [];
+      const statsText = stats.map(s => 
+        `Year ${s.year}: ${s.numberOfApplicants} applicants, ${s.numberOfPassers} passers (${s.passingRate} passing rate), ${s.numberOfEnrolledApplicants} enrolled`
+      ).join('. ');
+      
+      chunks.push({
+        id: `suast_statistics_explicit_${Date.now()}_${uniqueCounter++}`,
+        content: `SUAST (State University Aptitude and Scholarship Test) Statistics: ${statsText}. ${data.suastStatistics.description || ''}`,
+        section: 'suastStatistics',
+        type: 'statistics',
+        category: 'suast',
+        keywords: extractKeywords(`suast statistics ${statsText} passing rate applicants passers`, {
+          statistics: data.suastStatistics.statistics
+        }),
+        metadata: { 
+          ...data.suastStatistics,
+          source: 'dorsu_data.json',
+          updated_at: new Date()
+        }
+      });
+    }
+    
+    // ENHANCEMENT 1.15: All Programs Offered chunk (consolidated list)
+    if (data.allProgramsOffered) {
+      const undergraduate = data.allProgramsOffered.undergraduate || [];
+      const programCodes = undergraduate.map(p => p.code).filter(Boolean).join(', ');
+      const programNames = undergraduate.map(p => p.name).filter(Boolean).slice(0, 20).join(', '); // Limit to first 20 for size
+      
+      if (programCodes) {
+        chunks.push({
+          id: `all_programs_explicit_${Date.now()}_${uniqueCounter++}`,
+          content: `DOrSU offers the following undergraduate programs: ${programNames}. Program codes include: ${programCodes}. Total undergraduate programs: ${undergraduate.length}.`,
+          section: 'allProgramsOffered',
+          type: 'programs_list',
+          category: 'all_programs',
+          keywords: extractKeywords(`all programs offered ${programCodes} undergraduate programs`, {
+            programs: undergraduate
+          }),
+          metadata: { 
+            undergraduate: undergraduate,
+            source: 'dorsu_data.json',
+            updated_at: new Date()
+          }
+        });
+      }
+    }
+    
+    // ENHANCEMENT 1.16: Scholarships 2024 chunk
+    if (data.scholarships2024) {
+      const semester1 = data.scholarships2024['1'] || [];
+      const semester2 = data.scholarships2024['2'] || [];
+      const offSemester = data.scholarships2024['off'] || [];
+      const overallTotal = data.scholarships2024.overallTotal || {};
+      
+      // Create summary chunk for 2024 scholarships
+      if (overallTotal.Total_Students) {
+        const summaryText = `DOrSU Scholarship Statistics for 2024: Total students with scholarships/grants: ${overallTotal.Total_Students}. Breakdown by campus: Main Campus ${overallTotal.Main}, Banaybanay ${overallTotal.Banaybanay}, Baganga ${overallTotal.Baganga}, Cateel ${overallTotal.Cateel}, San Isidro ${overallTotal.San_Isidro}, Taragonna ${overallTotal.Taragonna}.`;
+        
+        chunks.push({
+          id: `scholarships2024_summary_${Date.now()}_${uniqueCounter++}`,
+          content: summaryText,
+          section: 'scholarships2024',
+          type: 'scholarship_statistics',
+          category: 'scholarships_2024',
+          keywords: extractKeywords(`scholarships 2024 ${overallTotal.Total_Students} grants financial aid`, {
+            year: 2024,
+            totalStudents: overallTotal.Total_Students
+          }),
+          metadata: { 
+            year: 2024,
+            overallTotal: overallTotal,
+            semester1Count: semester1.length,
+            semester2Count: semester2.length,
+            offSemesterCount: offSemester.length,
+            source: 'dorsu_data.json',
+            updated_at: new Date()
+          }
+        });
+      }
+    }
+    
+    // ENHANCEMENT 1.17: Scholarships 2025 chunk
+    if (data.scholarships2025 && Array.isArray(data.scholarships2025)) {
+      const scholarships = data.scholarships2025.filter(s => s.Grant_Scholarship !== 'TOTAL');
+      const totalEntry = data.scholarships2025.find(s => s.Grant_Scholarship === 'TOTAL');
+      
+      if (totalEntry && totalEntry.Total_Students) {
+        const summaryText = `DOrSU Scholarship Statistics for 2025: Total students with scholarships/grants: ${totalEntry.Total_Students}. Breakdown by campus: Main Campus ${totalEntry.Main}, Banaybanay ${totalEntry.Banaybanay}, Baganga ${totalEntry.Baganga}, Cateel ${totalEntry.Cateel}, San Isidro ${totalEntry.San_Isidro}, Taragonna ${totalEntry.Taragonna}. Available scholarships include: ${scholarships.slice(0, 10).map(s => s.Grant_Scholarship).join(', ')}.`;
+        
+        chunks.push({
+          id: `scholarships2025_summary_${Date.now()}_${uniqueCounter++}`,
+          content: summaryText,
+          section: 'scholarships2025',
+          type: 'scholarship_statistics',
+          category: 'scholarships_2025',
+          keywords: extractKeywords(`scholarships 2025 ${totalEntry.Total_Students} grants financial aid ${scholarships.map(s => s.Grant_Scholarship).join(' ')}`, {
+            year: 2025,
+            totalStudents: totalEntry.Total_Students
+          }),
+          metadata: { 
+            year: 2025,
+            totalEntry: totalEntry,
+            scholarshipCount: scholarships.length,
+            source: 'dorsu_data.json',
+            updated_at: new Date()
+          }
+        });
+      }
+    }
+    
+    // ENHANCEMENT 1.18: Enrollment 2025-2026 chunk
+    if (data['enrollment2025-2026'] && data['enrollment2025-2026'].semester1) {
+      const enrollmentData = data['enrollment2025-2026'].semester1 || [];
+      const grandTotal = enrollmentData.find(e => e.program === 'GRAND TOTAL');
+      const mainCampusTotal = enrollmentData.find(e => e.program === 'Subtotal MAIN (Grad+Degree)');
+      
+      if (grandTotal) {
+        const summaryText = `DOrSU Enrollment Statistics for Academic Year 2025-2026, 1st Semester: Total enrollment: ${grandTotal.total} students (${grandTotal.male} male, ${grandTotal.female} female). Year level breakdown: Year I ${grandTotal.year_level_I}, Year II ${grandTotal.year_level_II}, Year III ${grandTotal.year_level_III}, Year IV ${grandTotal.year_level_IV}. Main Campus: ${mainCampusTotal ? mainCampusTotal.total : 'N/A'} students.`;
+        
+        chunks.push({
+          id: `enrollment2025-2026_summary_${Date.now()}_${uniqueCounter++}`,
+          content: summaryText,
+          section: 'enrollment2025-2026',
+          type: 'enrollment_statistics',
+          category: 'enrollment_2025_2026',
+          keywords: extractKeywords(`enrollment 2025-2026 semester 1 ${grandTotal.total} students ${grandTotal.male} male ${grandTotal.female} female`, {
+            schoolYear: '2025-2026',
+            semester: '1st',
+            totalStudents: grandTotal.total,
+            male: grandTotal.male,
+            female: grandTotal.female
+          }),
+          metadata: { 
+            schoolYear: '2025-2026',
+            semester: '1st',
+            grandTotal: grandTotal,
+            mainCampusTotal: mainCampusTotal,
+            totalRecords: enrollmentData.length,
+            source: 'dorsu_data.json',
+            updated_at: new Date()
+          }
+        });
+      }
+    }
     
     // Convert object/array to readable text format (IMPROVED: Natural language format)
     const objectToText = (obj, prefix = '', returnMetadata = false) => {
@@ -497,7 +1047,10 @@ class DataRefreshService {
         const isStatisticsArray = key.includes('statistics') || key.includes('Statistics') ||
                                    key.includes('enrollment') || key.includes('Enrollment') ||
                                    (value.length > 0 && typeof value[0] === 'object' && 
-                                    (value[0].year || value[0].campus || value[0].semester));
+                                    (value[0].year || value[0].campus || value[0].semester || 
+                                     value[0].Year || value[0].Campus || value[0].Semester ||
+                                     value[0].school_year || value[0].Grant_Scholarship || 
+                                     value[0]['Grant/Scholarship']));
         
         // Special handling for timeline/history events - process individually by date/event
         const isTimelineArray = key.includes('timeline') || key.includes('Timeline') ||
@@ -586,17 +1139,105 @@ class DataRefreshService {
               let statsType = 'statistics';
               let category = currentSection;
               
-              if (item.year) {
+              // Handle different field name variations
+              const year = item.year || item.Year;
+              const campus = item.campus || item.Campus;
+              const semester = item.semester || item.Semester;
+              const grantScholarship = item['Grant/Scholarship'] || item.Grant_Scholarship;
+              const program = item.program || item.Program;
+              const level = item.level || item.Level;
+              
+              if (year) {
                 statsType = 'yearly_statistics';
-                category = `year_${item.year}`;
-              } else if (item.campus) {
+                category = `year_${year}`;
+              } else if (campus) {
                 statsType = 'campus_statistics';
-                category = item.campus.toLowerCase().replace(/\s+/g, '_');
-              } else if (item.semester) {
+                category = campus.toLowerCase().replace(/\s+/g, '_');
+              } else if (semester) {
                 statsType = 'semester_statistics';
-                category = `semester_${item.semester}`;
+                category = `semester_${semester}`;
               }
               
+              // Special handling for scholarship entries
+              if (grantScholarship) {
+                statsType = 'scholarship_entry';
+                category = grantScholarship.toLowerCase().replace(/\s+/g, '_');
+                // Create natural language text for scholarship
+                const scholarshipText = `${grantScholarship} (${year || '2024/2025'}): ${item.Total_Students || item.total || 0} students. Classification: ${item.Classification || 'N/A'}. Sponsor: ${item.Sponsor || 'N/A'}. Campus breakdown: Main ${item.Main || 0}, Banaybanay ${item.Banaybanay || 0}, Baganga ${item.Baganga || 0}, Cateel ${item.Cateel || 0}, San Isidro ${item.San_Isidro || item['San Isidro'] || 0}, Taragonna ${item.Taragonna || 0}.`;
+                
+                chunks.push({
+                  id: `${currentSection}_${key}_${index}_${Date.now()}_${uniqueCounter++}`,
+                  content: scholarshipText,
+                  text: scholarshipText,
+                  section: currentSection,
+                  type: statsType,
+                  category: category,
+                  keywords: extractKeywords(scholarshipText, {
+                    grantScholarship: grantScholarship,
+                    year: year,
+                    totalStudents: item.Total_Students || item.total,
+                    classification: item.Classification,
+                    sponsor: item.Sponsor
+                  }),
+                  metadata: {
+                    source: 'dorsu_data.json',
+                    field: key,
+                    index: index,
+                    grantScholarship: grantScholarship,
+                    year: year,
+                    semester: semester,
+                    totalStudents: item.Total_Students || item.total,
+                    classification: item.Classification,
+                    sponsor: item.Sponsor,
+                    ...item, // Preserve all scholarship fields
+                    updated_at: new Date()
+                  }
+                });
+                return; // Skip default processing
+              }
+              
+              // Special handling for enrollment entries
+              if (program && (level === 'Graduate' || level === 'Degree' || level === 'Subtotal' || level === 'GrandTotal')) {
+                statsType = 'enrollment_entry';
+                const campusName = campus || 'Main';
+                category = `${campusName.toLowerCase().replace(/\s+/g, '_')}_${level.toLowerCase()}`;
+                
+                // Create natural language text for enrollment
+                const enrollmentText = `${program} (${campusName}, ${level}): ${item.total || 0} students (${item.male || 0} male, ${item.female || 0} female). Year levels: I ${item.year_level_I || 0}, II ${item.year_level_II || 0}, III ${item.year_level_III || 0}, IV ${item.year_level_IV || 0}.`;
+                
+                chunks.push({
+                  id: `${currentSection}_${key}_${index}_${Date.now()}_${uniqueCounter++}`,
+                  content: enrollmentText,
+                  text: enrollmentText,
+                  section: currentSection,
+                  type: statsType,
+                  category: category,
+                  keywords: extractKeywords(enrollmentText, {
+                    program: program,
+                    campus: campusName,
+                    level: level,
+                    total: item.total,
+                    male: item.male,
+                    female: item.female,
+                    schoolYear: item.school_year
+                  }),
+                  metadata: {
+                    source: 'dorsu_data.json',
+                    field: key,
+                    index: index,
+                    program: program,
+                    campus: campusName,
+                    level: level,
+                    schoolYear: item.school_year,
+                    semester: semester,
+                    ...item, // Preserve all enrollment fields
+                    updated_at: new Date()
+                  }
+                });
+                return; // Skip default processing
+              }
+              
+              // Default statistics processing
               chunks.push({
                 id: `${currentSection}_${key}_${index}_${Date.now()}_${uniqueCounter++}`,
                 content: result.text,
@@ -799,7 +1440,11 @@ class DataRefreshService {
            'visionMission', 'mandate', 'qualityPolicy', 'studentOrganizations',
            'annualAccomplishmentReports', 'studentResources', 'offices',
            'detailedOfficeServices', 'additionalOfficesAndCenters',
-           'organizationalStructure/DOrSUOfficials2025', 'importantLinks'].includes(k)
+           'organizationalStructure/DOrSUOfficials2025', 'importantLinks',
+           'valuesAndOutcomes', 'extensionCampusPrograms', 'identity',
+           'admissionEnrollmentRequirements2025', 'suastStatistics', 'developers',
+           'allProgramsOffered', 'population (as of 2024-2025)', 'studentPopulation (as of 2024-2025)', 'organization',
+           'scholarships2024', 'scholarships2025', 'enrollment2025-2026'].includes(k)
         );
         if (sectionKey) {
           effectiveSection = sectionKey;
@@ -814,7 +1459,11 @@ class DataRefreshService {
              'visionMission', 'mandate', 'qualityPolicy', 'studentOrganizations',
              'annualAccomplishmentReports', 'studentResources', 'offices',
              'detailedOfficeServices', 'additionalOfficesAndCenters',
-             'organizationalStructure/DOrSUOfficials2025', 'importantLinks'].includes(key)) {
+             'organizationalStructure/DOrSUOfficials2025', 'importantLinks',
+             'valuesAndOutcomes', 'extensionCampusPrograms', 'identity',
+             'admissionEnrollmentRequirements2025', 'suastStatistics', 'developers',
+             'allProgramsOffered', 'population (as of 2024-2025)', 'studentPopulation (as of 2024-2025)', 'organization',
+             'scholarships2024', 'scholarships2025', 'enrollment2025-2026'].includes(key)) {
           newSection = key;
         }
         
@@ -902,6 +1551,38 @@ class DataRefreshService {
               }
             });
             continue; // Skip recursive processing
+          }
+        }
+        
+        // SPECIAL HANDLING: Scholarships 2024 nested structure (semester keys "1", "2", "off")
+        if (newSection === 'scholarships2024' && typeof value === 'object' && value !== null) {
+          // Handle semester arrays ("1", "2", "off") and overallTotal
+          if (Array.isArray(value)) {
+            // This is a semester array - process each scholarship entry
+            // The statistics array handler will process these individually
+            processValue(value, fullKey, newSection);
+            continue;
+          } else if (key === 'overallTotal') {
+            // Overall total is already handled in explicit chunk creation
+            // But we can still process it for completeness
+            const totalText = `Scholarships 2024 Overall Total: ${value.Total_Students || 0} students. Main: ${value.Main || 0}, Banaybanay: ${value.Banaybanay || 0}, Baganga: ${value.Baganga || 0}, Cateel: ${value.Cateel || 0}, San Isidro: ${value.San_Isidro || 0}, Taragonna: ${value.Taragonna || 0}.`;
+            chunks.push({
+              id: `${newSection}_overallTotal_${Date.now()}_${uniqueCounter++}`,
+              content: totalText,
+              text: totalText,
+              section: newSection,
+              type: 'scholarship_statistics',
+              category: 'overall_total_2024',
+              keywords: extractKeywords(totalText, value),
+              metadata: {
+                source: 'dorsu_data.json',
+                field: fullKey,
+                section: newSection,
+                ...value,
+                updated_at: new Date()
+              }
+            });
+            continue;
           }
         }
         
@@ -1209,7 +1890,7 @@ class DataRefreshService {
       // For immediate sync, call ragService.forceSyncMongoDB() after refresh
       Logger.info('💡 RAG service will sync automatically within 30 seconds');
       Logger.info('   For immediate sync, use the /api/refresh-knowledge endpoint or call forceSyncMongoDB()');
-
+      
       return {
         success: true,
         message: 'Knowledge base refreshed successfully',
@@ -1259,14 +1940,19 @@ class DataRefreshService {
 }
 
 // Singleton instance
-let dataRefreshServiceInstance = null;
+let datasetSetupServiceInstance = null;
 
-export function getDataRefreshService() {
-  if (!dataRefreshServiceInstance) {
-    dataRefreshServiceInstance = new DataRefreshService();
+export function getDatasetSetupService() {
+  if (!datasetSetupServiceInstance) {
+    datasetSetupServiceInstance = new DatasetSetupService();
   }
-  return dataRefreshServiceInstance;
+  return datasetSetupServiceInstance;
 }
 
-export { DataRefreshService };
+// Alias for backward compatibility
+export function getDataRefreshService() {
+  return getDatasetSetupService();
+}
+
+export { DatasetSetupService };
 

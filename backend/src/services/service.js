@@ -34,9 +34,9 @@ export class LlamaService {
     this.modelFallbackPriority = (process.env.GROQ_MODEL_FALLBACK_PRIORITY || 'auto').toLowerCase();
     
     // Multi-model support: Parse models from environment variables
-    // Default to llama-3.3-70b-versatile if not specified
-    const model1 = process.env.GROQ_MODEL_1 || 'llama-3.3-70b-versatile';
-    const model2 = process.env.GROQ_MODEL_2 || null;
+    // Default to llama-3.1-8b-instant as primary (faster, more token-efficient)
+    const model1 = process.env.GROQ_MODEL_1 || 'llama-3.1-8b-instant';
+    const model2 = process.env.GROQ_MODEL_2 || 'llama-3.3-70b-versatile';
     
     this.groqModels = [model1];
     if (model2) {
@@ -63,12 +63,13 @@ export class LlamaService {
     
     // Multi-key management
     this.currentKeyIndex = 0; // Current API key index (round-robin)
-    this.keyUsageStats = {}; // Track usage per key: { keyIndex: { requests: 0, rateLimits: 0, tokensUsed: 0, tokensRemaining: 100000, lastUsed: null, exhausted: false, exhaustedUntil: null } }
+    this.keyUsageStats = {}; // Track usage per key: { keyIndex: { requests: 0, rateLimits: 0, tokensUsed: 0, tokensRemaining: 100000, organizationId: null, lastUsed: null, exhausted: false, exhaustedUntil: null } }
     this.keySwitchCount = 0; // Track total key switches
     this.groqClients = []; // Array of Groq client instances (one per key)
     this.dailyTokenLimit = 100000; // Groq free tier: 100,000 tokens per day per key
     this.tokenSafetyMargin = 5000; // Safety margin: Stop using key when 5k tokens remain to prevent hitting limit
     this.effectiveTokenLimit = this.dailyTokenLimit - this.tokenSafetyMargin; // 95k effective limit per key
+    this.organizationMap = {}; // Track which organization each key belongs to: { organizationId: [keyIndex1, keyIndex2, ...] }
     
     // Create Groq client for each API key
     this.groqClients = this.groqApiKeys.map((apiKey, index) => {
@@ -80,6 +81,7 @@ export class LlamaService {
         tokensUsed: 0,
         tokensRemaining: this.dailyTokenLimit,
         effectiveRemaining: this.effectiveTokenLimit, // Remaining with safety margin
+        organizationId: null, // Will be populated when we encounter rate limit errors
         lastUsed: null,
         exhausted: false,
         exhaustedUntil: null,
@@ -260,15 +262,17 @@ export class LlamaService {
             Logger.warn(`⚠️  Key ${failedKeyIndex + 1} failed after ${maxServerErrorRetries} retries due to server error (${httpStatus})`);
             
             if (this.groqApiKeys.length > 1 && keyAttempts < maxKeyAttempts - 1) {
-              const nextAvailableKey = this.findNextAvailableKey();
+              const nextAvailableKey = this.findNextAvailableKey(failedKeyIndex);
               if (nextAvailableKey !== failedKeyIndex) {
+                const nextKeyStats = this.keyUsageStats[nextAvailableKey];
+                const nextKeyOrg = nextKeyStats?.organizationId ? ` (org: ${nextKeyStats.organizationId.substring(0, 15)}...)` : '';
                 this.currentKeyIndex = nextAvailableKey;
                 this.groqClient = this.groqClients[this.currentKeyIndex];
                 this.keySwitchCount++;
                 keyAttempts++;
                 // Reset retry count for new key
                 serverErrorRetries[this.currentKeyIndex] = 0;
-                Logger.info(`🔄 Switching to key ${this.currentKeyIndex + 1}/${this.groqApiKeys.length} due to server error`);
+                Logger.info(`🔄 Switching to key ${this.currentKeyIndex + 1}/${this.groqApiKeys.length} due to server error${nextKeyOrg}`);
                 // Wait a bit before retrying with new key
                 await new Promise(resolve => setTimeout(resolve, 1000));
                 continue;
@@ -324,22 +328,47 @@ export class LlamaService {
           const orgMatch = errorMessage.match(/organization `([^`]+)`/);
           const organizationId = orgMatch ? orgMatch[1] : null;
           
+          // Track organization ID for this key
+          if (organizationId && this.keyUsageStats[exhaustedKeyIndex]) {
+            this.keyUsageStats[exhaustedKeyIndex].organizationId = organizationId;
+            
+            // Build organization map: track which keys belong to which organization
+            if (!this.organizationMap[organizationId]) {
+              this.organizationMap[organizationId] = [];
+            }
+            if (!this.organizationMap[organizationId].includes(exhaustedKeyIndex)) {
+              this.organizationMap[organizationId].push(exhaustedKeyIndex);
+            }
+          }
+          
           // Extract token usage info if available
           const tokenLimitMatch = errorMessage.match(/Limit (\d+), Used (\d+), Requested (\d+)/);
           if (tokenLimitMatch) {
             const [, limit, used, requested] = tokenLimitMatch;
             Logger.warn(`⚠️  Token limit (TPD) reached on key ${exhaustedKeyIndex + 1}: ${used}/${limit} tokens used, requested ${requested}. Cooldown: ${Math.round(cooldownMs / 60000)} minutes`);
             
-            // Warn if all keys are from the same organization (they share the limit)
+            // Check if all keys are from the same organization
             if (organizationId && this.groqApiKeys.length > 1) {
-              Logger.warn(`⚠️  IMPORTANT: All API keys appear to be from the same organization (${organizationId.substring(0, 20)}...)`);
-              Logger.warn(`⚠️  Multiple keys from the same account share the same token limit (${limit} tokens/day)`);
-              Logger.warn(`⚠️  To increase capacity, you need API keys from DIFFERENT Groq accounts/organizations`);
+              const keysInSameOrg = this.organizationMap[organizationId] || [exhaustedKeyIndex];
+              if (keysInSameOrg.length === this.groqApiKeys.length) {
+                Logger.warn(`⚠️  IMPORTANT: All ${this.groqApiKeys.length} API keys are from the same organization (${organizationId.substring(0, 20)}...)`);
+                Logger.warn(`⚠️  Multiple keys from the same account share the same token limit (${limit} tokens/day)`);
+                Logger.warn(`⚠️  To increase capacity, you need API keys from DIFFERENT Groq accounts/organizations`);
+              } else {
+                const keysInOtherOrgs = this.groqApiKeys.length - keysInSameOrg.length;
+                Logger.info(`ℹ️  Key ${exhaustedKeyIndex + 1} is from organization ${organizationId.substring(0, 20)}... (${keysInSameOrg.length} keys in this org, ${keysInOtherOrgs} keys in other orgs)`);
+                Logger.info(`💡 Will try switching to keys from different organizations first`);
+              }
             }
           } else if (isTokenLimit) {
             Logger.warn(`⚠️  Token limit (TPD) reached on key ${exhaustedKeyIndex + 1}. Cooldown: ${Math.round(cooldownMs / 60000)} minutes`);
             if (organizationId && this.groqApiKeys.length > 1) {
-              Logger.warn(`⚠️  All keys from same organization (${organizationId.substring(0, 20)}...) - they share the token limit`);
+              const keysInSameOrg = this.organizationMap[organizationId] || [exhaustedKeyIndex];
+              if (keysInSameOrg.length === this.groqApiKeys.length) {
+                Logger.warn(`⚠️  All keys from same organization (${organizationId.substring(0, 20)}...) - they share the token limit`);
+              } else {
+                Logger.info(`ℹ️  Key ${exhaustedKeyIndex + 1} exhausted. ${this.groqApiKeys.length - keysInSameOrg.length} keys from different organizations available`);
+              }
             }
           } else {
             Logger.warn(`⚠️  Rate limit reached on key ${exhaustedKeyIndex + 1}. Cooldown: ${Math.round(cooldownMs / 60000)} minutes`);
@@ -359,14 +388,16 @@ export class LlamaService {
           
           // Try switching to next API key first (preferred over model switch)
           if (this.groqApiKeys.length > 1 && keyAttempts < maxKeyAttempts - 1) {
-            // Find next available key (skip exhausted ones)
-            const nextAvailableKey = this.findNextAvailableKey();
+            // Find next available key (prioritizes keys from different organizations)
+            const nextAvailableKey = this.findNextAvailableKey(exhaustedKeyIndex);
             if (nextAvailableKey !== exhaustedKeyIndex) {
+              const nextKeyStats = this.keyUsageStats[nextAvailableKey];
+              const nextKeyOrg = nextKeyStats?.organizationId ? ` (org: ${nextKeyStats.organizationId.substring(0, 15)}...)` : '';
               this.currentKeyIndex = nextAvailableKey;
               this.groqClient = this.groqClients[this.currentKeyIndex];
               this.keySwitchCount++;
               keyAttempts++;
-              Logger.warn(`⚠️  Rate limit on key ${exhaustedKeyIndex + 1}. Switching to key ${this.currentKeyIndex + 1}/${this.groqApiKeys.length}`);
+              Logger.warn(`⚠️  Rate limit on key ${exhaustedKeyIndex + 1}. Switching to key ${this.currentKeyIndex + 1}/${this.groqApiKeys.length}${nextKeyOrg}`);
               continue;
             }
           }
@@ -475,14 +506,44 @@ export class LlamaService {
   
   /**
    * Find next available key (not exhausted)
+   * Prioritizes keys from different organizations if current key's org is exhausted
+   * @param {number} exhaustedKeyIndex - Index of the exhausted key (optional)
    * @returns {number} Index of available key
    */
-  findNextAvailableKey() {
+  findNextAvailableKey(exhaustedKeyIndex = null) {
     const now = Date.now();
     let attempts = 0;
     let keyIndex = this.currentKeyIndex;
     
-    // Try to find a non-exhausted key
+    // If we know which key is exhausted, try to find a key from a different organization first
+    let exhaustedOrgId = null;
+    if (exhaustedKeyIndex !== null && this.keyUsageStats[exhaustedKeyIndex]) {
+      exhaustedOrgId = this.keyUsageStats[exhaustedKeyIndex].organizationId;
+    }
+    
+    // First pass: Try to find a key from a different organization (if we know the exhausted org)
+    if (exhaustedOrgId && this.organizationMap[exhaustedOrgId]) {
+      const keysInExhaustedOrg = this.organizationMap[exhaustedOrgId];
+      const keysInOtherOrgs = Array.from({ length: this.groqClients.length }, (_, i) => i)
+        .filter(i => !keysInExhaustedOrg.includes(i));
+      
+      // Try keys from different organizations first
+      for (const otherKeyIndex of keysInOtherOrgs) {
+        const stats = this.keyUsageStats[otherKeyIndex];
+        if (!stats?.exhausted || (stats.exhaustedUntil && now >= stats.exhaustedUntil)) {
+          if (stats?.exhausted && stats.exhaustedUntil && now >= stats.exhaustedUntil) {
+            stats.exhausted = false;
+            stats.exhaustedUntil = null;
+            Logger.info(`🔄 Key ${otherKeyIndex + 1} cooldown expired, re-enabling`);
+          }
+          Logger.info(`🔄 Switching to key ${otherKeyIndex + 1} from different organization (avoiding exhausted org)`);
+          return otherKeyIndex;
+        }
+      }
+    }
+    
+    // Second pass: Try to find any non-exhausted key (round-robin)
+    keyIndex = (this.currentKeyIndex + 1) % this.groqClients.length;
     while (attempts < this.groqClients.length) {
       const stats = this.keyUsageStats[keyIndex];
       
@@ -493,7 +554,7 @@ export class LlamaService {
           // Reset exhausted status
           stats.exhausted = false;
           stats.exhaustedUntil = null;
-          Logger.info(`🔄 Key ${keyIndex} cooldown expired, re-enabling`);
+          Logger.info(`🔄 Key ${keyIndex + 1} cooldown expired, re-enabling`);
         }
         return keyIndex;
       }
@@ -504,7 +565,7 @@ export class LlamaService {
     }
     
     // All keys exhausted, return current key anyway (will retry)
-    Logger.warn(`⚠️ All keys appear exhausted, using key ${this.currentKeyIndex}`);
+    Logger.warn(`⚠️ All keys appear exhausted, using key ${this.currentKeyIndex + 1}`);
     return this.currentKeyIndex;
   }
   
@@ -636,6 +697,7 @@ export class LlamaService {
       currentKeyIndex: this.currentKeyIndex,
       keySwitchCount: this.keySwitchCount,
       dailyTokenLimit: this.dailyTokenLimit,
+      organizationMap: this.organizationMap, // Show which keys belong to which organizations
       keys: Object.entries(this.keyUsageStats).map(([index, stats]) => ({
         index: Number.parseInt(index, 10),
         requests: stats.requests,
@@ -645,6 +707,7 @@ export class LlamaService {
         effectiveRemaining: stats.effectiveRemaining || this.effectiveTokenLimit,
         tokensUsagePercent: ((stats.tokensUsed || 0) / this.dailyTokenLimit * 100).toFixed(1),
         tokensFormatted: `${this.formatTokens(stats.tokensUsed || 0)}/${this.formatTokens(this.dailyTokenLimit)}`,
+        organizationId: stats.organizationId || 'unknown',
         lastUsed: stats.lastUsed,
         exhausted: stats.exhausted,
         exhaustedUntil: stats.exhaustedUntil,
@@ -744,7 +807,8 @@ export class LlamaService {
     
     // TOKEN USAGE CONTROL: Dynamically adjust max_tokens based on remaining budget
     // Use model stats instead of key stats for token limits
-    let maxTokens = options.maxTokens ?? 500; // Reduced default from 600 to 500
+    // CRITICAL: For llama-3.1-8b-instant, keep maxTokens low to avoid TPM limits (6000 TPM)
+    let maxTokens = options.maxTokens ?? 300; // Reduced default to 300 for chatbot model
     const currentModelStats = this.modelUsageStats[this.groqModel];
     if (currentModelStats) {
       const remainingPercent = (currentModelStats.tokensRemaining / this.dailyTokenLimit) * 100;

@@ -9,9 +9,35 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import * as Notifications from 'expo-notifications';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, RefreshControl, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Animated, Platform, RefreshControl, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+
+// Lazy getter for expo-notifications (not available on web)
+// This prevents Metro from trying to resolve the module at bundle time on web
+let _notificationsModule: any = null;
+let _notificationsInitialized = false;
+
+function getNotifications(): any {
+  // Return null on web immediately
+  if (Platform.OS === 'web') {
+    return null;
+  }
+
+  // Lazy load the module only when needed
+  if (!_notificationsInitialized) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      _notificationsModule = require('expo-notifications');
+    } catch (error) {
+      console.warn('expo-notifications not available:', error);
+      _notificationsModule = null;
+    } finally {
+      _notificationsInitialized = true;
+    }
+  }
+
+  return _notificationsModule;
+}
 import BottomSheet from '../components/common/BottomSheet';
 import { useThemeValues } from '../contexts/ThemeContext';
 import NotificationService from '../services/NotificationService';
@@ -263,6 +289,15 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
   // Memoize checkPermissions to avoid recreating on every render
   const checkPermissions = useCallback(async () => {
     try {
+      const Notifications = getNotifications();
+      
+      if (!Notifications) {
+        setHasPermission(false);
+        const enabled = await NotificationService.areNotificationsEnabled();
+        setNotificationsEnabled(enabled);
+        return;
+      }
+
       const { status } = await Notifications.getPermissionsAsync();
       setHasPermission(status === 'granted');
       const enabled = await NotificationService.areNotificationsEnabled();

@@ -8,7 +8,10 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "build": "echo 'No build step required - using Node.js ES modules'",
-    "test": "node --test"
+    "test": "node --test",
+    "benchmark": "node scripts/benchmark-ai-accuracy.js",
+    "benchmark:rag": "node scripts/benchmark-rag-pipeline.js",
+    "refresh": "node scripts/refresh-data.js"
   },
   "keywords": [
     "ai",
@@ -34,6 +37,7 @@
     "marked": "^12.0.1",
     "mongodb": "^6.3.0",
     "node-cache": "^5.1.2",
+    "nodemailer": "^7.0.11",
     "sanitize-html": "^2.12.1"
   },
   "engines": {

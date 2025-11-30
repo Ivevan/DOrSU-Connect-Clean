@@ -96,18 +96,57 @@ export class ScheduleService {
       text += `Category: ${event.category}. `;
     }
     
-    // Add date information in multiple formats for better matching
-    if (event.isoDate || event.date) {
-      const eventDate = new Date(event.isoDate || event.date);
-      if (!isNaN(eventDate.getTime())) {
-        const dateFormats = [
-          formatDateInTimezone(eventDate, { year: 'numeric', month: 'long', day: 'numeric' }),
-          formatDateInTimezone(eventDate, { year: 'numeric', month: 'short', day: 'numeric' }),
-          formatDateInTimezone(eventDate, { month: 'long', day: 'numeric' }),
-          formatDateInTimezone(eventDate, { month: 'short', day: 'numeric' })
-        ].filter(Boolean);
-        if (dateFormats.length > 0) {
-          text += `Date: ${dateFormats.join(', ')}. `;
+    // Handle different date types
+    if (event.dateType === 'month_only' || event.isMonthOnly) {
+      // Month-only event - format as month name
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December'];
+      const monthNum = event.month || (event.isoDate ? new Date(event.isoDate).getMonth() + 1 : null);
+      const monthName = event.monthName || (monthNum ? monthNames[monthNum - 1] : null);
+      const year = event.year || (event.isoDate ? new Date(event.isoDate).getFullYear() : null);
+      if (monthName) {
+        text += `Scheduled for ${monthName}${year ? ` ${year}` : ''} (month-only event, no specific date). `;
+      } else if (event.isoDate || event.date) {
+        const eventDate = new Date(event.isoDate || event.date);
+        if (!isNaN(eventDate.getTime())) {
+          const monthNameFromDate = monthNames[eventDate.getMonth()];
+          const yearFromDate = eventDate.getFullYear();
+          text += `Scheduled for ${monthNameFromDate} ${yearFromDate} (month-only event, no specific date). `;
+        }
+      }
+    } else if (event.dateType === 'week_in_month' || event.isWeekInMonth) {
+      // Week-in-month event - format as week of month
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December'];
+      const monthNum = event.month || (event.isoDate ? new Date(event.isoDate).getMonth() + 1 : null);
+      const monthName = event.monthName || (monthNum ? monthNames[monthNum - 1] : null);
+      const weekOfMonth = event.weekOfMonth;
+      const year = event.year || (event.isoDate ? new Date(event.isoDate).getFullYear() : null);
+      if (weekOfMonth && monthName) {
+        const weekOrdinal = weekOfMonth === 1 ? '1st' : weekOfMonth === 2 ? '2nd' : weekOfMonth === 3 ? '3rd' : `${weekOfMonth}th`;
+        text += `Scheduled for ${weekOrdinal} week of ${monthName}${year ? ` ${year}` : ''} (week-in-month event, no specific date). `;
+      } else if (event.isoDate || event.date) {
+        const eventDate = new Date(event.isoDate || event.date);
+        if (!isNaN(eventDate.getTime())) {
+          const monthNameFromDate = monthNames[eventDate.getMonth()];
+          const yearFromDate = eventDate.getFullYear();
+          text += `Scheduled for ${monthNameFromDate} ${yearFromDate} (week-in-month event, no specific date). `;
+        }
+      }
+    } else {
+      // Regular date events
+      if (event.isoDate || event.date) {
+        const eventDate = new Date(event.isoDate || event.date);
+        if (!isNaN(eventDate.getTime())) {
+          const dateFormats = [
+            formatDateInTimezone(eventDate, { year: 'numeric', month: 'long', day: 'numeric' }),
+            formatDateInTimezone(eventDate, { year: 'numeric', month: 'short', day: 'numeric' }),
+            formatDateInTimezone(eventDate, { month: 'long', day: 'numeric' }),
+            formatDateInTimezone(eventDate, { month: 'short', day: 'numeric' })
+          ].filter(Boolean);
+          if (dateFormats.length > 0) {
+            text += `Date: ${dateFormats.join(', ')}. `;
+          }
         }
       }
     }

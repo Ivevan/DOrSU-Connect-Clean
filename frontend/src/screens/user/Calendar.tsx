@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import dayjs from 'dayjs';
@@ -7,8 +6,8 @@ import utc from 'dayjs/plugin/utc';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Image, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
@@ -20,7 +19,6 @@ import ViewEventModal from '../../modals/ViewEventModal';
 import AdminDataService from '../../services/AdminDataService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
 import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
-import { formatCalendarDate, formatDate } from '../../utils/dateUtils';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -1025,11 +1023,12 @@ const CalendarScreen = () => {
             accessibilityRole="button"
           >
             {backendUserPhoto ? (
-              <Image 
-                source={{ uri: backendUserPhoto }} 
-                style={styles.profileImage}
-                pointerEvents="none"
-              />
+              <View pointerEvents="none">
+                <Image 
+                  source={{ uri: backendUserPhoto }} 
+                  style={styles.profileImage}
+                />
+              </View>
             ) : (
               <View style={[styles.profileIconCircle, { backgroundColor: t.colors.accent }]} pointerEvents="none">
                 <Text style={[styles.profileInitials, { fontSize: t.fontSize.scaleSize(13) }]}>{getUserInitials()}</Text>

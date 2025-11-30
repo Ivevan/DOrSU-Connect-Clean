@@ -508,7 +508,8 @@ export class QueryAnalyzer {
     }
     
     // STEP 2: Detect vague queries that need clarification
-    const vagueQueryAnalysis = this.detectVagueQuery(query, detectedTopics, detectedIntents, isFollowUpQuery, intentClassification);
+    // CRITICAL FIX: Pass extractedEntities to prevent blocking valid queries with specific keywords
+    const vagueQueryAnalysis = this.detectVagueQuery(query, detectedTopics, detectedIntents, isFollowUpQuery, intentClassification, extractedEntities);
     
     // IMPROVED: Boost multiplier for structured entity queries
     if (extractedEntities.officeAcronyms.length > 0) {
@@ -552,11 +553,16 @@ export class QueryAnalyzer {
    * @param {Object} intentClassification - Intent classification result (optional)
    * @returns {Object} - { isVague: boolean, reason: string, needsClarification: boolean }
    */
-  static detectVagueQuery(query, detectedTopics, detectedIntents, isFollowUp, intentClassification = null) {
+  static detectVagueQuery(query, detectedTopics, detectedIntents, isFollowUp, intentClassification = null, extractedEntities = null) {
     const lowerQuery = query.toLowerCase().trim();
     const queryWords = lowerQuery.split(/\s+/).filter(w => w.length > 0);
     const queryLength = query.length;
     const wordCount = queryWords.length;
+    
+    // CRITICAL FIX: Extract entities if not provided (for backward compatibility)
+    if (!extractedEntities) {
+      extractedEntities = this.extractEntities(query);
+    }
     
     // Skip vague detection for greetings - let the AI respond naturally
     if (intentClassification && intentClassification.conversationalIntent === 'greeting') {
@@ -572,7 +578,8 @@ export class QueryAnalyzer {
       // Short queries (1-3 words) without clear context
       shortQuery: wordCount <= 3 && queryLength < 30,
       
-      // Common vague terms that need context
+      // Common vague terms that need context (EXCLUDING terms with sufficient context)
+      // CRITICAL FIX: Don't mark as vague if query has sufficient context (e.g., "SUAST passing rate", "FREE HIGHER EDUCATION scholarship")
       vagueTerms: /\b(final\s+exam|midterm|prelim|quiz|test|exam|mcc|schedule|deadline|event|announcement|program|course|faculty|dean|director|president|office|department|building|campus|location|link|url|website|manual|guide|form|requirement|process|step|procedure)\b/i,
       
       // Acronyms (2-5 uppercase letters, possibly with numbers)
@@ -588,6 +595,28 @@ export class QueryAnalyzer {
       ambiguousAcademic: /\b(final\s+exam|midterm|prelim|quiz|test|mcc|schedule)\b/i.test(lowerQuery) && !/\b(when|date|time|what|where|how|which|kailan|ano|saan|paano)\b/i.test(lowerQuery)
     };
     
+    // CRITICAL FIX: Known phrases that should NOT be blocked (e.g., "FREE HIGHER EDUCATION")
+    // MUST be defined BEFORE it's used in the vague term check
+    const knownPhrases = [
+      'free higher education',
+      'free higher education (fhe)',
+      'fhe scholarship',
+      'scholarship',
+      'state university aptitude',
+      'suast passing rate',
+      'suast statistics'
+    ];
+    
+    // CRITICAL FIX: Whitelist known acronyms that should NOT be blocked
+    const knownAcronyms = new Set([
+      'SUAST', 'FHE', 'FREE', 'FACET', 'FALS', 'FTED', 'FBM', 'FCJE', 'FNAHS', 'FHUSOCOM',
+      'BSIT', 'BSCE', 'BSMath', 'BITM', 'MBA', 'MAED', 'MST', 'MSES', 'PhD', 'EdD',
+      'USC', 'OSA', 'OSPAT', 'OSCD', 'FASG', 'PESO', 'IRO', 'HSU', 'CGAD', 'IP-TBM', 'GCTC',
+      'DOrSU', 'DOSCST', 'MCC', 'MHRWS', 'BSA', 'BSAM', 'BSBio', 'BSES', 'BSDevCom',
+      'BSBA', 'BSHM', 'BSC', 'BEED', 'BSED', 'BCED', 'BPED', 'BTLED', 'BSNED', 'BSN',
+      'AB PolSci', 'BS Psych', 'BSMRS'
+    ]);
+    
     let isVague = false;
     let reasons = [];
     let needsClarification = false;
@@ -598,16 +627,33 @@ export class QueryAnalyzer {
       reasons.push('short query without clear context');
     }
     
+    // CRITICAL FIX: Check if vague term has sufficient context (e.g., "SUAST passing rate", "test results", "FREE scholarship")
     if (vaguePatterns.vagueTerms.test(lowerQuery) && detectedTopics.length === 0 && !isFollowUp) {
-      isVague = true;
       const matchedTerm = lowerQuery.match(vaguePatterns.vagueTerms)[0];
-      reasons.push(`vague term "${matchedTerm}" without context`);
+      
+      // CRITICAL FIX: Check if query contains known phrases that should NOT be blocked
+      const isKnownPhrase = knownPhrases.some(phrase => lowerQuery.includes(phrase));
+      
+      // Don't mark as vague if query has context words that clarify the term
+      const hasContext = /\b(passing|rate|statistics|stats|results?|data|information|recipients?|beneficiaries?|students?|scholarship|grant|financial|aid|higher|education|examination|entrance|aptitude|applicants?|passers?|enrolled|received|how\s+many)\b/i.test(lowerQuery);
+      
+      // Also check if it's a known acronym query (SUAST, FHE, etc.)
+      const isKnownAcronymQuery = /\b(suast|fhe|free\s+higher\s+education|facet|fals|fted|fbm|fcje|fnahs|fhusocom)\b/i.test(lowerQuery);
+      
+      // CRITICAL FIX: Don't block if it's a known phrase or has sufficient context
+      if (!hasContext && !isKnownAcronymQuery && !isKnownPhrase) {
+        isVague = true;
+        reasons.push(`vague term "${matchedTerm}" without context`);
+      }
     }
     
     if (vaguePatterns.acronyms.test(query) && !isFollowUp) {
-      isVague = true;
       const matchedAcronym = query.match(vaguePatterns.acronyms)[0];
-      reasons.push(`unclear acronym "${matchedAcronym}"`);
+      // Only block if acronym is NOT in whitelist
+      if (!knownAcronyms.has(matchedAcronym.toUpperCase())) {
+        isVague = true;
+        reasons.push(`unclear acronym "${matchedAcronym}"`);
+      }
     }
     
     if (vaguePatterns.singleWord && !isFollowUp) {
@@ -625,14 +671,33 @@ export class QueryAnalyzer {
       reasons.push('ambiguous academic term without specific question');
     }
     
+    // CRITICAL FIX: Don't block queries that have specific entities or known keywords
+    // Even if detectedTopics is empty, queries with entities (acronyms, years, names) are specific enough
+    const hasSpecificEntities = extractedEntities && (
+      extractedEntities.officeAcronyms.length > 0 ||
+      extractedEntities.years.length > 0 ||
+      extractedEntities.names.length > 0 ||
+      extractedEntities.numbers.length > 0 ||
+      extractedEntities.dates.length > 0
+    );
+    
+    // Check if query contains known DOrSU-specific keywords that indicate it's a valid query
+    const hasDorsuKeywords = /\b(dorsu|davao oriental|facet|fals|fted|fbm|fcje|fnahs|fhusocom|bsit|bsce|bsmath|bitm|mba|maed|mst|mses|phd|edd|suast|fhe|ospat|osa|oscd|baganga|banaybanay|cateel|san isidro|tarragona|main campus|unesco|heritage|mt\.?\s*hamiguitan|mhrws|library|learning.*information.*resource|ulirc|roy.*ponce|president|vice president|dean|director|scholarship|enrollment|student.*population|17251|17,251|17629|17,629)\b/i.test(query);
+    
+    // Check if query has question words and sufficient length (indicates it's a real question)
+    const hasQuestionWords = /\b(what|who|when|where|why|how|which|when\s+is|what\s+is|who\s+is|where\s+is|how\s+many|how\s+to|list|tell|show|provide|give|ano|sino|kailan|saan|bakit|paano|unsa|kinsa)\b/i.test(lowerQuery);
+    const hasSufficientLength = wordCount >= 3 || queryLength >= 20;
+    
     // Determine if clarification is needed
-    // If query is vague AND has no detected topics AND is not a follow-up with context
-    if (isVague && detectedTopics.length === 0 && !isFollowUp) {
+    // CRITICAL FIX: Only block if query is vague AND has no topics AND no entities AND no DOrSU keywords AND no question words
+    // This prevents blocking valid queries that just don't match topic categories
+    if (isVague && detectedTopics.length === 0 && !isFollowUp && !hasSpecificEntities && !hasDorsuKeywords && !hasQuestionWords) {
       needsClarification = true;
     }
     
     // Also check if query is too short and lacks question words
-    if (wordCount <= 2 && !/\b(what|who|when|where|why|how|which|when\s+is|what\s+is|who\s+is|where\s+is|how\s+to|ano|sino|kailan|saan|bakit|paano|unsa|kinsa)\b/i.test(lowerQuery)) {
+    // CRITICAL FIX: Don't block if it has entities or DOrSU keywords (even if short)
+    if (wordCount <= 2 && !hasQuestionWords && !hasSpecificEntities && !hasDorsuKeywords) {
       needsClarification = true;
       if (!isVague) {
         isVague = true;

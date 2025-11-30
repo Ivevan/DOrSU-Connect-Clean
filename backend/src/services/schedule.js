@@ -101,13 +101,17 @@ export class ScheduleService {
       // Month-only event - format as month name
       const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                           'July', 'August', 'September', 'October', 'November', 'December'];
-      const monthNum = event.month || (event.isoDate ? new Date(event.isoDate).getMonth() + 1 : null);
+      // CRITICAL: Handle both Date objects and ISO strings for isoDate
+      const isoDateObj = event.isoDate ? (event.isoDate instanceof Date ? event.isoDate : new Date(event.isoDate)) : null;
+      const monthNum = event.month || (isoDateObj && !isNaN(isoDateObj.getTime()) ? isoDateObj.getMonth() + 1 : null);
       const monthName = event.monthName || (monthNum ? monthNames[monthNum - 1] : null);
-      const year = event.year || (event.isoDate ? new Date(event.isoDate).getFullYear() : null);
+      const year = event.year || (isoDateObj && !isNaN(isoDateObj.getTime()) ? isoDateObj.getFullYear() : null);
       if (monthName) {
         text += `Scheduled for ${monthName}${year ? ` ${year}` : ''} (month-only event, no specific date). `;
       } else if (event.isoDate || event.date) {
-        const eventDate = new Date(event.isoDate || event.date);
+        // CRITICAL: Handle both Date objects and ISO strings
+        const dateValue = event.isoDate || event.date;
+        const eventDate = dateValue instanceof Date ? dateValue : new Date(dateValue);
         if (!isNaN(eventDate.getTime())) {
           const monthNameFromDate = monthNames[eventDate.getMonth()];
           const yearFromDate = eventDate.getFullYear();
@@ -118,15 +122,19 @@ export class ScheduleService {
       // Week-in-month event - format as week of month
       const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                           'July', 'August', 'September', 'October', 'November', 'December'];
-      const monthNum = event.month || (event.isoDate ? new Date(event.isoDate).getMonth() + 1 : null);
+      // CRITICAL: Handle both Date objects and ISO strings for isoDate
+      const isoDateObj = event.isoDate ? (event.isoDate instanceof Date ? event.isoDate : new Date(event.isoDate)) : null;
+      const monthNum = event.month || (isoDateObj && !isNaN(isoDateObj.getTime()) ? isoDateObj.getMonth() + 1 : null);
       const monthName = event.monthName || (monthNum ? monthNames[monthNum - 1] : null);
       const weekOfMonth = event.weekOfMonth;
-      const year = event.year || (event.isoDate ? new Date(event.isoDate).getFullYear() : null);
+      const year = event.year || (isoDateObj && !isNaN(isoDateObj.getTime()) ? isoDateObj.getFullYear() : null);
       if (weekOfMonth && monthName) {
         const weekOrdinal = weekOfMonth === 1 ? '1st' : weekOfMonth === 2 ? '2nd' : weekOfMonth === 3 ? '3rd' : `${weekOfMonth}th`;
         text += `Scheduled for ${weekOrdinal} week of ${monthName}${year ? ` ${year}` : ''} (week-in-month event, no specific date). `;
       } else if (event.isoDate || event.date) {
-        const eventDate = new Date(event.isoDate || event.date);
+        // CRITICAL: Handle both Date objects and ISO strings
+        const dateValue = event.isoDate || event.date;
+        const eventDate = dateValue instanceof Date ? dateValue : new Date(dateValue);
         if (!isNaN(eventDate.getTime())) {
           const monthNameFromDate = monthNames[eventDate.getMonth()];
           const yearFromDate = eventDate.getFullYear();
@@ -136,7 +144,9 @@ export class ScheduleService {
     } else {
       // Regular date events
       if (event.isoDate || event.date) {
-        const eventDate = new Date(event.isoDate || event.date);
+        // CRITICAL: Handle both Date objects and ISO strings
+        const dateValue = event.isoDate || event.date;
+        const eventDate = dateValue instanceof Date ? dateValue : new Date(dateValue);
         if (!isNaN(eventDate.getTime())) {
           const dateFormats = [
             formatDateInTimezone(eventDate, { year: 'numeric', month: 'long', day: 'numeric' }),
@@ -153,8 +163,9 @@ export class ScheduleService {
     
     // Add date range if applicable
     if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-      const start = new Date(event.startDate);
-      const end = new Date(event.endDate);
+      // CRITICAL: Handle both Date objects and ISO strings
+      const start = event.startDate instanceof Date ? event.startDate : new Date(event.startDate);
+      const end = event.endDate instanceof Date ? event.endDate : new Date(event.endDate);
       if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
         const startStr = formatDateInTimezone(start, { year: 'numeric', month: 'long', day: 'numeric' });
         const endStr = formatDateInTimezone(end, { year: 'numeric', month: 'long', day: 'numeric' });
@@ -751,13 +762,15 @@ export class ScheduleService {
       const baseUrl = this.getBaseUrl(req);
       
       const isoDateValue = new Date(date);
+      // CRITICAL: Ensure dates are stored as Date objects, not strings
+      // MongoDB will serialize Date objects correctly
       const event = {
         title,
         description,
         category,
         type: category === 'Event' ? 'event' : 'announcement', // Explicit type field
-        date: date.toISOString(),
-        isoDate: isoDateValue,
+        date: this.formatDate(isoDateValue), // Human-readable format for display
+        isoDate: isoDateValue, // Date object for queries and filtering
         imageFileId: imageFileId, // GridFS file ID
         image: imageFileId ? `${baseUrl}/api/images/${imageFileId}` : null, // Full URL for image retrieval
         images: imageFileId ? [`${baseUrl}/api/images/${imageFileId}`] : [],
@@ -1138,8 +1151,9 @@ export class ScheduleService {
           const dateStr = datePart.data.toString('utf8').trim();
           const date = new Date(dateStr);
           if (!isNaN(date.getTime())) {
-            updateData.date = date.toISOString();
-            updateData.isoDate = date;
+            // CRITICAL: Store date as Date object, not ISO string
+            updateData.date = this.formatDate(date); // Human-readable format
+            updateData.isoDate = date; // Date object for queries
           }
         }
 
@@ -1559,23 +1573,53 @@ export class ScheduleService {
       let updatedCount = 0;
       
       for (const event of events) {
+        // CRITICAL: Ensure all dates are stored as Date objects, not strings
+        // This ensures consistent storage and proper querying
         if (event.isoDate && !(event.isoDate instanceof Date)) {
           const parsedIso = new Date(event.isoDate);
           if (!isNaN(parsedIso.getTime())) {
             event.isoDate = parsedIso;
+          } else {
+            Logger.warn(`Invalid isoDate for event "${event.title}": ${event.isoDate}`);
           }
         }
         if (event.startDate && !(event.startDate instanceof Date)) {
           const parsedStart = new Date(event.startDate);
           if (!isNaN(parsedStart.getTime())) {
             event.startDate = parsedStart;
+          } else {
+            Logger.warn(`Invalid startDate for event "${event.title}": ${event.startDate}`);
           }
         }
         if (event.endDate && !(event.endDate instanceof Date)) {
           const parsedEnd = new Date(event.endDate);
           if (!isNaN(parsedEnd.getTime())) {
             event.endDate = parsedEnd;
+          } else {
+            Logger.warn(`Invalid endDate for event "${event.title}": ${event.endDate}`);
           }
+        }
+        // CRITICAL: Ensure date field is human-readable format, not ISO string
+        if (event.isoDate && !event.date) {
+          event.date = this.formatDate(event.isoDate);
+        } else if (event.isoDate && event.date && (event.date.includes('T') || event.date.includes('Z'))) {
+          // If date is stored as ISO string, convert to human-readable format
+          event.date = this.formatDate(event.isoDate);
+        }
+        // CRITICAL: Ensure year field is a number, not a string
+        // Extract year from isoDate if year is missing or is a string
+        if (event.isoDate instanceof Date) {
+          const yearFromDate = event.isoDate.getFullYear();
+          if (!event.year || typeof event.year === 'string') {
+            event.year = yearFromDate;
+          } else if (typeof event.year === 'number' && event.year !== yearFromDate) {
+            // If year exists but doesn't match isoDate, use isoDate's year (more reliable)
+            Logger.debug(`Year mismatch for event "${event.title}": stored year=${event.year}, isoDate year=${yearFromDate}. Using isoDate year.`);
+            event.year = yearFromDate;
+          }
+        } else if (event.startDate instanceof Date && !event.year) {
+          // If no isoDate but we have startDate, extract year from startDate
+          event.year = event.startDate.getFullYear();
         }
         // Generate embedding for each event
         Logger.info(`🔍 Generating embedding for CSV event: ${event.title}`);
@@ -1747,18 +1791,115 @@ export class ScheduleService {
       
       // Filter by semester if provided
       // Semester values: 1 (1st semester), 2 (2nd semester), or "Off" (off semester)
+      // CRITICAL: Normalize semester values to ensure proper matching
       if (semester !== undefined && semester !== null) {
+        let normalizedSemester = null;
         if (semester === 1 || semester === '1' || semester === 'first' || semester === '1st') {
-          query.semester = 1;
+          normalizedSemester = 1;
         } else if (semester === 2 || semester === '2' || semester === 'second' || semester === '2nd') {
-          query.semester = 2;
+          normalizedSemester = 2;
         } else if (semester === 'Off' || semester === 'off' || semester === 'off semester') {
-          query.semester = 'Off';
+          normalizedSemester = 'Off';
         } else {
           // Try to parse as number
           const semesterNum = parseInt(semester, 10);
           if (!isNaN(semesterNum) && (semesterNum === 1 || semesterNum === 2)) {
-            query.semester = semesterNum;
+            normalizedSemester = semesterNum;
+          }
+        }
+        
+        if (normalizedSemester !== null) {
+          // CRITICAL: Match both numeric and string representations in database
+          // Use $in to match both number and string representations
+          if (normalizedSemester === 1 || normalizedSemester === 2) {
+            query.semester = { $in: [normalizedSemester, String(normalizedSemester)] };
+          } else {
+            query.semester = normalizedSemester;
+          }
+          
+          if (enableLogging) {
+            Logger.debug(`📅 Added semester filter: ${normalizedSemester} (matching both number and string)`);
+          }
+        }
+      }
+      
+      // CRITICAL: Add explicit year filtering if date range is provided
+      // This ensures we don't get events from wrong years (e.g., 2026 when querying 2025)
+      // CRITICAL: Handle both Date objects and ISO strings in MongoDB
+      if (startDate && endDate) {
+        const queryStartYear = new Date(startDate).getFullYear();
+        const queryEndYear = new Date(endDate).getFullYear();
+        
+        // If date range is within a single year, add year filter
+        if (queryStartYear === queryEndYear) {
+          const yearStart = new Date(queryStartYear, 0, 1);
+          const yearEnd = new Date(queryStartYear + 1, 0, 1);
+          
+          const yearFilter = {
+            $or: [
+              // Check explicit year field (both number and string)
+              { year: queryStartYear },
+              { year: String(queryStartYear) },
+              // Check isoDate field - MongoDB handles Date objects, but also check if stored as string
+              {
+                $or: [
+                  {
+                    isoDate: {
+                      $gte: yearStart,
+                      $lt: yearEnd
+                    }
+                  },
+                  // Also check if isoDate is stored as ISO string (for compatibility)
+                  {
+                    isoDate: {
+                      $gte: yearStart.toISOString(),
+                      $lt: yearEnd.toISOString()
+                    }
+                  }
+                ]
+              },
+              // For date ranges, check if startDate OR endDate is in the requested year
+              // This is more lenient - we'll do exact filtering in post-query if needed
+              {
+                dateType: 'date_range',
+                $or: [
+                  {
+                    startDate: {
+                      $gte: yearStart,
+                      $lt: yearEnd
+                    }
+                  },
+                  {
+                    startDate: {
+                      $gte: yearStart.toISOString(),
+                      $lt: yearEnd.toISOString()
+                    }
+                  },
+                  {
+                    endDate: {
+                      $gte: yearStart,
+                      $lt: yearEnd
+                    }
+                  },
+                  {
+                    endDate: {
+                      $gte: yearStart.toISOString(),
+                      $lt: yearEnd.toISOString()
+                    }
+                  }
+                ]
+              }
+            ]
+          };
+          
+          if (query.$and) {
+            query.$and.push(yearFilter);
+          } else {
+            query.$and = [yearFilter];
+          }
+          
+          if (enableLogging) {
+            Logger.debug(`📅 Added explicit year filter: ${queryStartYear} (prevents wrong year events, handles both Date objects and strings)`);
           }
         }
       }
@@ -1852,13 +1993,39 @@ export class ScheduleService {
         .limit(limit)
         .toArray();
 
+      // CRITICAL: Verify year filtering worked correctly
+      if (enableLogging && startDate && endDate) {
+        const queryStartYear = new Date(startDate).getFullYear();
+        const queryEndYear = new Date(endDate).getFullYear();
+        
+        if (queryStartYear === queryEndYear) {
+          // Check if any events are from wrong year
+          const wrongYearEvents = events.filter(event => {
+            const eventYear = event.year || 
+              (event.isoDate ? (event.isoDate instanceof Date ? event.isoDate.getFullYear() : new Date(event.isoDate).getFullYear()) : null) ||
+              (event.startDate ? (event.startDate instanceof Date ? event.startDate.getFullYear() : new Date(event.startDate).getFullYear()) : null);
+            return eventYear && eventYear !== queryStartYear;
+          });
+          
+          if (wrongYearEvents.length > 0) {
+            Logger.warn(`⚠️  Year filter issue: Found ${wrongYearEvents.length} events from wrong year (query: ${queryStartYear}, found: ${wrongYearEvents.map(e => e.year || 'unknown').join(', ')})`);
+            wrongYearEvents.forEach(e => {
+              Logger.warn(`   - "${e.title}": year=${e.year}, isoDate=${e.isoDate}, startDate=${e.startDate}`);
+            });
+          } else {
+            Logger.debug(`✅ Year filter verified: All ${events.length} events are from year ${queryStartYear}`);
+          }
+        }
+      }
+
       // Log retrieved events only if logging is enabled (for RAG/AI queries)
       if (enableLogging && events && events.length > 0) {
         const eventsForLogging = events.map(event => {
-          // Format event date
+          // Format event date - handle both Date objects and strings
           const eventDate = event.isoDate || event.date;
-          const dateStr = eventDate ? formatDateInTimezone(
-            new Date(eventDate),
+          const dateObj = eventDate instanceof Date ? eventDate : new Date(eventDate);
+          const dateStr = !isNaN(dateObj.getTime()) ? formatDateInTimezone(
+            dateObj,
             { year: 'numeric', month: 'long', day: 'numeric' }
           ) || 'Date TBD' : 'Date TBD';
           
@@ -1878,10 +2045,12 @@ export class ScheduleService {
             eventText += `Semester: ${semesterText}. `;
           }
           
-          // Include date range if applicable
+          // Include date range if applicable - handle both Date objects and strings
           if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-            const start = formatDateInTimezone(new Date(event.startDate), { year: 'numeric', month: 'long', day: 'numeric' });
-            const end = formatDateInTimezone(new Date(event.endDate), { year: 'numeric', month: 'long', day: 'numeric' });
+            const startObj = event.startDate instanceof Date ? event.startDate : new Date(event.startDate);
+            const endObj = event.endDate instanceof Date ? event.endDate : new Date(event.endDate);
+            const start = !isNaN(startObj.getTime()) ? formatDateInTimezone(startObj, { year: 'numeric', month: 'long', day: 'numeric' }) : 'Date TBD';
+            const end = !isNaN(endObj.getTime()) ? formatDateInTimezone(endObj, { year: 'numeric', month: 'long', day: 'numeric' }) : 'Date TBD';
             if (start && end) {
               eventText += `Date Range: ${start} to ${end}. `;
             }

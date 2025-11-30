@@ -2204,6 +2204,7 @@ export class VectorSearchService {
             const content = (chunk.content || chunk.text || '').toLowerCase();
             const section = (chunk.section || '').toLowerCase();
             const type = (chunk.type || '').toLowerCase();
+            const metadataField = (chunk.metadata?.field || '').toLowerCase();
             
             // Boost for programs organized by faculty
             if (/programs\.(facet|fals|fted|fbm|fcje|fnahs|fhusocom)/i.test(metadataField)) {
@@ -4141,10 +4142,13 @@ export class VectorSearchService {
         results = vectorResults.map(event => {
           // Format event text similar to how rag.js formats schedule events
           const eventDate = event.isoDate || event.date;
-          const dateStr = eventDate ? formatDateInTimezone(
-            new Date(eventDate),
-            { year: 'numeric', month: 'long', day: 'numeric' }
-          ) || 'Date TBD' : 'Date TBD';
+          let dateStr = 'Date TBD';
+          if (eventDate) {
+            const dateObj = new Date(eventDate);
+            if (!isNaN(dateObj.getTime())) {
+              dateStr = formatDateInTimezone(dateObj, { year: 'numeric', month: 'long', day: 'numeric' }) || 'Date TBD';
+            }
+          }
           
           let eventText = `${event.title || 'Untitled Event'}. `;
           if (event.description) eventText += `${event.description}. `;
@@ -4194,16 +4198,32 @@ export class VectorSearchService {
           
           // Include date range if applicable
           if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-            const start = formatDateInTimezone(new Date(event.startDate), { year: 'numeric', month: 'long', day: 'numeric' });
-            const end = formatDateInTimezone(new Date(event.endDate), { year: 'numeric', month: 'long', day: 'numeric' });
-            if (start && end) {
-              eventText += `Date Range: ${start} to ${end}. `;
+            const startDateObj = new Date(event.startDate);
+            const endDateObj = new Date(event.endDate);
+            if (!isNaN(startDateObj.getTime()) && !isNaN(endDateObj.getTime())) {
+              const start = formatDateInTimezone(startDateObj, { year: 'numeric', month: 'long', day: 'numeric' });
+              const end = formatDateInTimezone(endDateObj, { year: 'numeric', month: 'long', day: 'numeric' });
+              if (start && end) {
+                eventText += `Date Range: ${start} to ${end}. `;
+              }
             }
           }
           
           // Boost score for exam type matches - support multiple exam types with OR logic
           let boostedScore = event.score || 0;
           const titleLower = (event.title || '').toLowerCase();
+          
+          // CRITICAL: Boost "start of classes" events when query asks about semester start
+          const isSemesterStartQuery = /\b(when\s+does?\s+semester|semester\s+\d+\s+start|start\s+of\s+semester|when\s+is\s+semester|semester\s+.*\s+start)\b/i.test(query);
+          if (isSemesterStartQuery && (titleLower.includes('start of classes') || titleLower.includes('start of class'))) {
+            boostedScore += 150; // Very strong boost for "start of classes" when asking about semester start
+          }
+          
+          // CRITICAL: Boost registration events when query asks about registration period
+          const isRegistrationQuery = /\b(registration|enrollment).*\b(period|date|dates|when|schedule)\b/i.test(query);
+          if (isRegistrationQuery && (titleLower.includes('registration') || titleLower.includes('enrollment'))) {
+            boostedScore += 100; // Strong boost for registration events
+          }
           
           // Use OR logic: boost if event matches ANY of the requested exam types
           if (isPrelimQuery && (titleLower.includes('prelim') || titleLower.includes('preliminary'))) {
@@ -4256,6 +4276,53 @@ export class VectorSearchService {
             source: 'mongodb_vector_search_schedule'
           };
         });
+        
+        // CRITICAL: Filter by semester if specified in query
+        const queryLower = query.toLowerCase();
+        let requestedSemester = null;
+        const semesterPatterns = [
+          { pattern: /\b(1st|first)\s+semester\b/i, value: 1 },
+          { pattern: /\b(2nd|second)\s+semester\b/i, value: 2 },
+          { pattern: /\boff\s+semester\b/i, value: 'Off' },
+          { pattern: /\bsemester\s+1\b|\bsemester\s+one\b/i, value: 1 },
+          { pattern: /\bsemester\s+2\b|\bsemester\s+two\b/i, value: 2 },
+          { pattern: /\bsemester\s+(\d+)\b/i, value: (match) => parseInt(match[1], 10) },
+          { pattern: /\bsem\s+(\d+)\b/i, value: (match) => parseInt(match[1], 10) },
+          { pattern: /\b(1st|first)\s+sem\b/i, value: 1 },
+          { pattern: /\b(2nd|second)\s+sem\b/i, value: 2 }
+        ];
+        
+        for (const { pattern, value } of semesterPatterns) {
+          const match = queryLower.match(pattern);
+          if (match) {
+            if (typeof value === 'function') {
+              requestedSemester = value(match);
+            } else {
+              requestedSemester = value;
+            }
+            break;
+          }
+        }
+        
+        if (requestedSemester !== null) {
+          const beforeSemesterFilter = results.length;
+          results = results.filter(chunk => {
+            const chunkSemester = chunk.metadata?.semester;
+            // Normalize semester values for comparison
+            const normalizedRequested = requestedSemester === 1 || requestedSemester === '1' ? 1 :
+                                      requestedSemester === 2 || requestedSemester === '2' ? 2 :
+                                      requestedSemester === 'Off' || requestedSemester === 'off' ? 'Off' :
+                                      requestedSemester;
+            const normalizedChunk = chunkSemester === 1 || chunkSemester === '1' ? 1 :
+                                   chunkSemester === 2 || chunkSemester === '2' ? 2 :
+                                   chunkSemester === 'Off' || chunkSemester === 'off' ? 'Off' :
+                                   chunkSemester;
+            return normalizedChunk === normalizedRequested;
+          });
+          if (beforeSemesterFilter !== results.length) {
+            Logger.debug(`📅 Schedule vector search: filtered events by semester (${requestedSemester}) from ${beforeSemesterFilter} to ${results.length}`);
+          }
+        }
         
         if (userType) {
           const beforeFilter = results.length;
@@ -4315,10 +4382,27 @@ export class VectorSearchService {
         let requestedYear = null;
         let requestedSemester = null;
         
-        // Extract year (4 digits)
-        const yearMatch = queryLower.match(/\b(20\d{2})\b/);
-        if (yearMatch) {
-          requestedYear = parseInt(yearMatch[1], 10);
+        // CRITICAL: Extract year - handle academic year patterns (AY 2024-2025, 2024-2025)
+        // For academic year queries, use the second year (e.g., AY 2024-2025 -> 2025)
+        // This is because events like commencement exercises happen in the second year
+        const academicYearMatch = queryLower.match(/\b(ay|academic\s+year)\s*(\d{4})\s*[-–]\s*(\d{4})\b/i) || 
+                                  queryLower.match(/\b(\d{4})\s*[-–]\s*(\d{4})\b/);
+        if (academicYearMatch) {
+          // Extract the second year from academic year pattern (e.g., AY 2024-2025 -> 2025)
+          const secondYear = academicYearMatch[3] || academicYearMatch[2];
+          requestedYear = parseInt(secondYear, 10);
+          Logger.debug(`📅 Academic year pattern detected: extracted second year ${requestedYear} from academic year query`);
+        } else {
+          // Extract year (4 digits) - use the last/latest year if multiple years are mentioned
+          const yearMatches = queryLower.match(/\b(20\d{2})\b/g);
+          if (yearMatches && yearMatches.length > 0) {
+            // If multiple years, use the latest one (e.g., "2024 and 2025" -> 2025)
+            const years = yearMatches.map(y => parseInt(y, 10));
+            requestedYear = Math.max(...years);
+            if (yearMatches.length > 1) {
+              Logger.debug(`📅 Multiple years detected: ${yearMatches.join(', ')}, using latest: ${requestedYear}`);
+            }
+          }
         }
         
         // Extract month
@@ -4335,18 +4419,31 @@ export class VectorSearchService {
           });
         }
         
-        // Extract semester
+        // Extract semester - CRITICAL: Must catch patterns like "semester 2", "sem 2", "2nd semester", etc.
         const semesterPatterns = [
           { pattern: /\b(1st|first)\s+semester\b/i, value: 1 },
           { pattern: /\b(2nd|second)\s+semester\b/i, value: 2 },
           { pattern: /\boff\s+semester\b/i, value: 'Off' },
           { pattern: /\bsemester\s+1\b|\bsemester\s+one\b/i, value: 1 },
-          { pattern: /\bsemester\s+2\b|\bsemester\s+two\b/i, value: 2 }
+          { pattern: /\bsemester\s+2\b|\bsemester\s+two\b/i, value: 2 },
+          // CRITICAL: Catch "semester 1" or "semester 2" (without ordinal)
+          { pattern: /\bsemester\s+(\d+)\b/i, value: (match) => parseInt(match[1], 10) },
+          // CRITICAL: Catch "sem 1" or "sem 2" (abbreviation)
+          { pattern: /\bsem\s+(\d+)\b/i, value: (match) => parseInt(match[1], 10) },
+          // CRITICAL: Catch "1st sem" or "2nd sem" (abbreviation with ordinal)
+          { pattern: /\b(1st|first)\s+sem\b/i, value: 1 },
+          { pattern: /\b(2nd|second)\s+sem\b/i, value: 2 }
         ];
         
         for (const { pattern, value } of semesterPatterns) {
-          if (pattern.test(queryLower)) {
-            requestedSemester = value;
+          const match = queryLower.match(pattern);
+          if (match) {
+            if (typeof value === 'function') {
+              requestedSemester = value(match);
+            } else {
+              requestedSemester = value;
+            }
+            Logger.debug(`📅 Extracted semester from query: ${requestedSemester}`);
             break;
           }
         }
@@ -4370,6 +4467,7 @@ export class VectorSearchService {
         
         // Build MongoDB query - use $and to ensure date range AND exam type filters are both applied
         // This matches the logic in schedule.js for consistent filtering
+        // CRITICAL: Add explicit year filtering if a specific year is requested
         const mongoQuery = {
           $and: [
             // Date range filter
@@ -4380,7 +4478,16 @@ export class VectorSearchService {
                   dateType: 'date_range',
                   startDate: { $lte: endDate },
                   endDate: { $gte: startDate }
-                }
+                },
+                // For month-only events, check year and month fields
+                ...(requestedYear && requestedMonth !== null ? [{
+                  dateType: 'month_only',
+                  year: { $in: [requestedYear, String(requestedYear)] },
+                  month: requestedMonth + 1 // Month is 1-based in database
+                }] : requestedYear ? [{
+                  dateType: 'month_only',
+                  year: { $in: [requestedYear, String(requestedYear)] }
+                }] : [])
               ]
             },
             // Category filter: Include Institutional/Academic (same as schedule.js)
@@ -4411,6 +4518,49 @@ export class VectorSearchService {
               { userType: normalizedUserType }
             ]
           });
+        }
+        
+        // CRITICAL: Add explicit year filtering if a specific year is requested
+        // This ensures we don't get events from wrong years (e.g., 2024 when querying 2025)
+        // NOTE: We use a more lenient filter here and rely on post-query filtering for exact matching
+        if (requestedYear) {
+          const yearStart = new Date(requestedYear, 0, 1);
+          const yearEnd = new Date(requestedYear + 1, 0, 1);
+          
+          const yearFilter = {
+            $or: [
+              // Check explicit year field (both number and string) - most reliable
+              { year: { $in: [requestedYear, String(requestedYear)] } },
+              // For date ranges, check if startDate OR endDate is in the requested year
+              // This is more lenient - we'll do exact filtering in post-query
+              {
+                dateType: 'date_range',
+                $or: [
+                  { 
+                    startDate: {
+                      $gte: yearStart,
+                      $lt: yearEnd
+                    }
+                  },
+                  {
+                    endDate: {
+                      $gte: yearStart,
+                      $lt: yearEnd
+                    }
+                  }
+                ]
+              },
+              // For single dates, check isoDate year
+              {
+                isoDate: {
+                  $gte: yearStart,
+                  $lt: yearEnd
+                }
+              }
+            ]
+          };
+          mongoQuery.$and.push(yearFilter);
+          Logger.debug(`📅 MongoDB query: Added explicit year filter for ${requestedYear} (lenient - post-query will do exact filtering)`);
         }
         
         // Filter by semester if provided (same as schedule.js)
@@ -4562,6 +4712,61 @@ export class VectorSearchService {
       }
     }
     
+    // CRITICAL: Post-query year and month filtering to ensure no wrong-year events slip through
+    // This is a safety net in case MongoDB query didn't filter correctly
+    if (requestedYear) {
+      const beforeYearFilter = results.length;
+      results = results.filter(chunk => {
+        // For month-only events, check year and month match exactly
+        if (chunk.metadata?.isMonthOnly || chunk.metadata?.dateType === 'month_only') {
+          const eventYear = chunk.metadata?.year || (chunk.metadata?.date ? new Date(chunk.metadata.date).getFullYear() : null);
+          const eventMonth = chunk.metadata?.month || (chunk.metadata?.date ? new Date(chunk.metadata.date).getMonth() + 1 : null);
+          if (requestedMonth !== null) {
+            // Month is 1-based in metadata, but 0-based in requestedMonth
+            return eventYear === requestedYear && eventMonth === (requestedMonth + 1);
+          }
+          return eventYear === requestedYear;
+        }
+        
+        // For date ranges, check if the range includes the requested year
+        if (chunk.metadata?.dateType === 'date_range' && chunk.metadata.startDate && chunk.metadata.endDate) {
+          const rangeStart = new Date(chunk.metadata.startDate);
+          const rangeEnd = new Date(chunk.metadata.endDate);
+          if (isNaN(rangeStart.getTime()) || isNaN(rangeEnd.getTime())) return false;
+          const rangeStartYear = rangeStart.getFullYear();
+          const rangeEndYear = rangeEnd.getFullYear();
+          // Range must include the requested year
+          if (rangeStartYear !== requestedYear && rangeEndYear !== requestedYear) {
+            return false;
+          }
+          // If month is specified, check if range overlaps with that month
+          if (requestedMonth !== null) {
+            const queryStart = new Date(requestedYear, requestedMonth, 1);
+            const queryEnd = new Date(requestedYear, requestedMonth + 1, 0, 23, 59, 59);
+            return (rangeStart <= queryEnd && rangeEnd >= queryStart);
+          }
+          return true;
+        } else {
+          // For single dates, check if year matches exactly
+          const dateValue = chunk.metadata?.date || chunk.metadata?.isoDate;
+          if (!dateValue) return false;
+          const eventDate = new Date(dateValue);
+          if (isNaN(eventDate.getTime())) return false;
+          const eventYear = eventDate.getFullYear();
+          const eventMonth = eventDate.getMonth();
+          if (requestedMonth !== null) {
+            // Year and month must match exactly
+            return eventYear === requestedYear && eventMonth === requestedMonth;
+          }
+          return eventYear === requestedYear;
+        }
+      });
+      if (beforeYearFilter !== results.length) {
+        const monthName = requestedMonth !== null ? monthNames[requestedMonth].charAt(0).toUpperCase() + monthNames[requestedMonth].slice(1) : '';
+        Logger.debug(`📅 Post-query year filter: Filtered from ${beforeYearFilter} to ${results.length} events for ${requestedMonth !== null ? `${monthName} ` : ''}${requestedYear}`);
+      }
+    }
+    
     // Filter and prioritize exam-specific results when exam type is detected
     // Support multiple exam types with OR logic
     if (isPrelimQuery || isMidtermQuery || isFinalQuery) {
@@ -4604,6 +4809,26 @@ export class VectorSearchService {
   }
 
   /**
+   * Detect knowledge base queries (facts, history, information)
+   * These queries are about WHAT, WHO, WHERE, HOW things are
+   * NOT about WHEN things happen (which are schedule queries)
+   */
+  _detectKnowledgeBaseQuery(query) {
+    // Historical facts (when was X established/founded/created)
+    const historicalFactPattern = /\b(when\s+(was|were|did)\s+.*\s+(established|founded|created|built|started|began|happened|occurred|opened|launched|introduced|formed|instituted|inaugurated|initiated|converted|became|changed|evolved|developed))\b/i;
+    
+    // Factual questions (what is, who is, where is, how many, what are)
+    const factualQuestionPattern = /\b(what\s+(is|are|was|were|does|do|did|can|could|should|would)|who\s+(is|are|was|were|does|do|did)|where\s+(is|are|was|were|does|do|did)|how\s+(many|much|long|old|far|tall|wide|deep|big|small|does|do|did|can|could|should|would|is|are|was|were))\b/i;
+    
+    // Knowledge base topics (history, leadership, programs, campuses, offices, services)
+    const knowledgeBaseTopicPattern = /\b(history|historical|founded|established|leadership|president|vice\s+president|chancellor|director|programs?|programmes?|courses?|degrees?|campus|campuses|extension|location|locations|address|office|offices|service|services|faculty|faculties|college|colleges|department|departments|unit|units|mandate|mission|vision|values?|outcomes?|population|enrollment|students?|admission\s+requirements?|requirements?\s+for\s+admission)\b/i;
+    
+    // Check if this is a knowledge base query
+    return historicalFactPattern.test(query) || 
+           (factualQuestionPattern.test(query) && knowledgeBaseTopicPattern.test(query));
+  }
+
+  /**
    * Detect query type
    */
   _detectQueryType(query) {
@@ -4634,10 +4859,81 @@ export class VectorSearchService {
       return 'values';
     }
     
-    // Programs/Courses queries (must be checked before comprehensive)
+    // CRITICAL FIX: Schedule/Calendar queries MUST be checked BEFORE programs
+    // Queries like "when does semester 2 start for undergraduate program" are schedule queries, not program queries
+    // Schedule queries take priority when they contain schedule keywords (when, date, start, etc.)
+    // Schedule/Calendar queries (must be checked before programs and comprehensive/general)
+    // CRITICAL: Schedule queries are about TEMPORAL events (WHEN things happen)
+    // Knowledge base queries are about FACTS (WHAT, WHO, WHERE, HOW things are)
+    
+    // ===== NEGATIVE PATTERNS: Exclude knowledge base queries =====
+    // These patterns indicate the query is about facts/history/information, NOT schedules
+    
+    // Check if this is a knowledge base query (should NOT be treated as schedule)
+    const isKnowledgeBaseQuery = this._detectKnowledgeBaseQuery(query);
+    
+    // If this is clearly a knowledge base query, it's NOT a schedule query
+    if (!isKnowledgeBaseQuery) {
+      // ===== POSITIVE PATTERNS: Schedule-specific queries =====
+      // These patterns indicate the query is about calendar events/schedules
+      
+      // Explicit schedule/calendar keywords (highest confidence)
+      // CRITICAL: "start of classes" must be detected even if query contains "program" keywords
+      const explicitSchedulePattern = /\b(schedule|schedules|calendar|academic\s+calendar|exam\s+schedule|class\s+schedule|enrollment\s+period|registration\s+period|deadline|deadlines|timeline|time\s+table|start\s+of\s+classes?|start\s+of\s+class|classes?\s+start|class\s+start|commencement|graduation|founding\s+anniversary|siglakas)\b/i;
+      
+      // "When" in schedule context (when does/is/will something happen - temporal events)
+      const whenSchedulePattern = /\b(when\s+(does|do|is|are|will|starts?|begins?|ends?|happens?|occurs?|takes\s+place|held|scheduled|due|opens?|closes?))\b/i;
+      
+      // "When" with date/time/schedule keywords
+      const whenDatePattern = /\b(when\s+(is|are)\s+(the\s+)?(date|dates|time|schedule|event|events|announcement|announcements|deadline|deadlines|holiday|holidays|exam|examination|registration|enrollment|semester\s+start|semester\s+end|classes?\s+start|classes?\s+end|period|periods))\b/i;
+      
+      // Semester start/end queries
+      const semesterStartPattern = /\b(when\s+does?\s+semester|semester\s+\d+\s+start|start\s+of\s+semester|when\s+is\s+semester|semester\s+.*\s+start|semester\s+.*\s+end)\b/i;
+      
+      // CRITICAL: "for undergraduate program" or "for graduate program" in schedule context
+      // These are schedule queries, NOT program queries (e.g., "start of classes for undergraduate program")
+      const programTypeSchedulePattern = /\b(for|of)\s+(undergraduate|graduate)\s+(program|programs)\b/i;
+      
+      // Exam date queries
+      const examDatePattern = /\b(prelim|preliminary|midterm|final|exam|examination).*\b(date|dates|when|schedule|starts?|begins?|ends?)\b/i;
+      
+      // Registration/enrollment period queries
+      const registrationPattern = /\b(registration|enrollment|enrolment).*\b(period|date|dates|when|schedule|starts?|begins?|ends?)\b/i;
+      
+      // Date range queries (between X and Y, from X to Y)
+      const dateRangePattern = /\b(between|from|until|till|to)\s+.*\s+(and|to)\s+.*\b(date|dates|month|months|year|years)\b/i;
+      
+      // Upcoming/coming/next queries with temporal context
+      const upcomingPattern = /\b(upcoming|coming|next|this\s+(week|month|year|semester)|deadline|deadlines)\b/i;
+      
+      // Check for schedule patterns (in order of confidence)
+      // CRITICAL: If query contains schedule keywords AND "for undergraduate/graduate program", it's a schedule query
+      const hasScheduleKeyword = explicitSchedulePattern.test(query) || 
+                                  whenSchedulePattern.test(query) ||
+                                  whenDatePattern.test(query) ||
+                                  semesterStartPattern.test(query) ||
+                                  examDatePattern.test(query) ||
+                                  registrationPattern.test(query) ||
+                                  dateRangePattern.test(query) ||
+                                  (upcomingPattern.test(query) && !isKnowledgeBaseQuery);
+      
+      // If it has schedule keywords AND mentions "for undergraduate/graduate program", it's definitely a schedule query
+      if (hasScheduleKeyword && programTypeSchedulePattern.test(query)) {
+        return 'schedule';
+      }
+      
+      if (hasScheduleKeyword) {
+        return 'schedule';
+      }
+    }
+    
+    // Programs/Courses queries (must be checked AFTER schedule queries)
+    // CRITICAL: Must exclude schedule queries (when, date, start, semester start, start of classes, etc.) to avoid misrouting
+    // CRITICAL: "undergraduate program" or "graduate program" in schedule context (e.g., "start of classes for undergraduate program") should NOT be treated as program queries
     // Exclude "graduate outcomes" specifically to avoid matching values queries
     if (/\b(program|programs|programme|course|courses|degree|degrees|bachelor|BS|BA|MA|MS|PhD|EdD|undergraduate|graduate\s+(program|programs|degree|degrees)|masters|doctorate|what\s+programs?\s+are|what\s+courses?\s+are)\b/i.test(query) && 
-        !/\bgraduate\s+outcomes?\b/i.test(query)) {
+        !/\bgraduate\s+outcomes?\b/i.test(query) &&
+        !/\b(when|date|dates|start\s+of|start\s+of\s+classes?|start\s+of\s+class|classes?\s+start|class\s+start|schedule|semester\s+\d+\s+start|registration|enrollment|exam|examination|deadline|examination\s+schedule|exam\s+schedule)\b/i.test(query)) {
       return 'programs';
     }
     
@@ -4665,13 +4961,6 @@ export class VectorSearchService {
     // Vision/Mission queries (must be checked before comprehensive/general)
     if (/\b(vision|mission|what\s+is\s+.*\s+(vision|mission)|dorsu.*\s+(vision|mission)|university.*\s+(vision|mission))\b/i.test(query)) {
       return 'vision_mission';
-    }
-    
-    // Schedule/Calendar queries (must be checked before comprehensive/general)
-    // Detects queries about events, announcements, dates, schedules, deadlines, etc.
-    if (/\b(date|dates|event|events|announcement|announcements|schedule|schedules|calendar|when|upcoming|coming|next|this\s+(week|month|year)|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule|timeline|time\s+table|graduation|seminar|workshop|conference|meeting|activity|activities)\b/i.test(query) ||
-        /\b(when\s+(is|are|will|does)|what\s+(date|dates|time|schedule)|tell\s+me\s+(about\s+)?(the\s+)?(schedule|dates?|events?))\b/i.test(query)) {
-      return 'schedule';
     }
     
     // Scholarship queries (must be checked before comprehensive/general)

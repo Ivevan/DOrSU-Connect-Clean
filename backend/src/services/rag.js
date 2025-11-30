@@ -178,7 +178,9 @@ export class OptimizedRAGService {
       
       // Add to FAISS index (with error handling)
       try {
-      this.faissIndex.add(embedding);
+        if (this.faissIndex) {
+          this.faissIndex.add(embedding);
+        }
       } catch (addError) {
         Logger.debug(`Failed to add embedding ${i} to FAISS index: ${addError.message}`);
         // Continue with other embeddings
@@ -504,9 +506,18 @@ export class OptimizedRAGService {
     // CRITICAL: Values/Outcomes queries MUST be checked BEFORE programs - "graduate" matches programs pattern
     // Values/Outcomes queries (must be checked before comprehensive - "values" is in comprehensive pattern)
     else if (/\b(core\s+values?|values?\s+of|graduate\s+outcomes?|outcomes?|quality\s+policy|mandate|charter)\b/i.test(query)) queryType = 'values';
-    // CRITICAL FIX: Program queries MUST be checked BEFORE faculty queries
+    // CRITICAL FIX: Schedule queries MUST be checked BEFORE program queries
+    // Queries like "when does semester 2 start" are schedule queries, not program queries
+    // Schedule queries take priority when they contain schedule keywords (when, date, start, etc.)
+    // CRITICAL: Check isScheduleQuery FIRST before any program query check
+    else if (isScheduleQuery) {
+      queryType = 'schedule';
+      Logger.info(`🎯 [QUERY ROUTING] Schedule query detected - routing to 'schedule' | Query: "${query.substring(0, 60)}..." | isScheduleQuery: ${isScheduleQuery}`);
+    }
+    // CRITICAL FIX: Program queries MUST be checked AFTER schedule queries
     // If query asks "what programs" or "programs offered", prioritize programs over faculties
-    else if (isProgramQuery && (/\b(what\s+programs?|programs?\s+offered|programs?\s+in|programs?\s+under)\b/i.test(query) || 
+    // BUT: Only if it's NOT a schedule query (already handled above)
+    else if (isProgramQuery && !isScheduleQuery && (/\b(what\s+programs?|programs?\s+offered|programs?\s+in|programs?\s+under)\b/i.test(query) || 
                                  (/\bprograms?\b/i.test(query) && /\bfaculty|faculties|facet|fals|fbm\b/i.test(query)))) {
       queryType = 'programs';
       Logger.info(`🎯 [QUERY ROUTING] Program query detected - routing to 'programs' | Query: "${query.substring(0, 60)}..." | isProgramQuery: ${isProgramQuery}`);
@@ -516,7 +527,8 @@ export class OptimizedRAGService {
       Logger.info(`🎯 [QUERY ROUTING] Faculty query detected - routing to 'faculties' | Query: "${query.substring(0, 60)}..." | isFacultyQuery: ${isFacultyQuery}`);
     }
     // Fallback: If query mentions programs but wasn't caught above, still route to programs
-    else if (isProgramQuery) {
+    // BUT: Only if it's NOT a schedule query
+    else if (isProgramQuery && !isScheduleQuery) {
       queryType = 'programs';
       Logger.info(`🎯 [QUERY ROUTING] Program query (fallback) - routing to 'programs' | Query: "${query.substring(0, 60)}..." | isProgramQuery: ${isProgramQuery}`);
     }
@@ -525,8 +537,6 @@ export class OptimizedRAGService {
     else if (/\b(hymn|anthem|university\s+hymn|university\s+anthem|dorsu\s+hymn|dorsu\s+anthem|lyrics|song|composer)\b/i.test(query)) queryType = 'hymn';
     // Vision/Mission queries (must be checked before comprehensive/general)
     else if (/\b(vision|mission|what\s+is\s+.*\s+(vision|mission)|dorsu.*\s+(vision|mission)|university.*\s+(vision|mission))\b/i.test(query)) queryType = 'vision_mission';
-    // Schedule/Calendar queries (must be checked before comprehensive/general)
-    else if (isScheduleQuery) queryType = 'schedule';
     else if (isComprehensive || isListingQuery || hasPluralKeyword) queryType = 'comprehensive';
     
     // Adjust maxResults based on query type
@@ -630,10 +640,27 @@ export class OptimizedRAGService {
         
         const queryLower = query.toLowerCase();
         
-        // Extract year (4 digits)
-        const yearMatch = queryLower.match(/\b(20\d{2})\b/);
-        if (yearMatch) {
-          requestedYear = parseInt(yearMatch[1], 10);
+        // CRITICAL: Extract year - handle academic year patterns (AY 2024-2025, 2024-2025)
+        // For academic year queries, use the second year (e.g., AY 2024-2025 -> 2025)
+        // This is because events like commencement exercises happen in the second year
+        const academicYearMatch = queryLower.match(/\b(ay|academic\s+year)\s*(\d{4})\s*[-–]\s*(\d{4})\b/i) || 
+                                  queryLower.match(/\b(\d{4})\s*[-–]\s*(\d{4})\b/);
+        if (academicYearMatch) {
+          // Extract the second year from academic year pattern (e.g., AY 2024-2025 -> 2025)
+          const secondYear = academicYearMatch[3] || academicYearMatch[2];
+          requestedYear = parseInt(secondYear, 10);
+          Logger.debug(`📅 Academic year pattern detected: extracted second year ${requestedYear} from academic year query`);
+        } else {
+          // Extract year (4 digits) - use the last/latest year if multiple years are mentioned
+          const yearMatches = queryLower.match(/\b(20\d{2})\b/g);
+          if (yearMatches && yearMatches.length > 0) {
+            // If multiple years, use the latest one (e.g., "2024 and 2025" -> 2025)
+            const years = yearMatches.map(y => parseInt(y, 10));
+            requestedYear = Math.max(...years);
+            if (yearMatches.length > 1) {
+              Logger.debug(`📅 Multiple years detected: ${yearMatches.join(', ')}, using latest: ${requestedYear}`);
+            }
+          }
         }
         
         // Extract month
@@ -651,6 +678,7 @@ export class OptimizedRAGService {
         }
         
         // Extract semester: 1 (1st semester), 2 (2nd semester), or "Off" (off semester)
+        // CRITICAL: Must catch patterns like "semester 2", "sem 2", "2nd semester", etc.
         const semesterPatterns = [
           { pattern: /\b(1st|first)\s+semester\b/i, value: 1 },
           { pattern: /\b(2nd|second)\s+semester\b/i, value: 2 },
@@ -658,13 +686,22 @@ export class OptimizedRAGService {
           { pattern: /\bsemester\s+1\b|\bsemester\s+one\b/i, value: 1 },
           { pattern: /\bsemester\s+2\b|\bsemester\s+two\b/i, value: 2 },
           { pattern: /\b1\s+sem\b|\bfirst\s+sem\b/i, value: 1 },
-          { pattern: /\b2\s+sem\b|\bsecond\s+sem\b/i, value: 2 }
+          { pattern: /\b2\s+sem\b|\bsecond\s+sem\b/i, value: 2 },
+          // CRITICAL: Catch "semester 1" or "semester 2" (without ordinal)
+          { pattern: /\bsemester\s+(\d+)\b/i, value: (match) => parseInt(match[1], 10) },
+          // CRITICAL: Catch "sem 1" or "sem 2" (abbreviation)
+          { pattern: /\bsem\s+(\d+)\b/i, value: (match) => parseInt(match[1], 10) }
         ];
         
         for (const { pattern, value } of semesterPatterns) {
-          if (pattern.test(queryLower)) {
-            requestedSemester = value;
-            Logger.debug(`📅 Detected semester from query: ${value}`);
+          const match = queryLower.match(pattern);
+          if (match) {
+            if (typeof value === 'function') {
+              requestedSemester = value(match);
+            } else {
+              requestedSemester = value;
+            }
+            Logger.debug(`📅 Detected semester from query: ${requestedSemester}`);
             break;
           }
         }
@@ -768,9 +805,15 @@ export class OptimizedRAGService {
         
         let events = [];
         
-        // Only fetch from scheduleService if we don't have enough exam-filtered schedule events from vector search
+        // CRITICAL FIX: Always fetch from scheduleService for schedule queries to ensure we have data
+        // Vector search might return empty results, so we need direct fetch as fallback
         // For exam queries, always try to fetch directly to ensure we get the best results (even if vector search had some)
-        if (scheduleEventsFromVectorSearch.length < 3 || (isPrelimQuery || isMidtermQuery || isFinalQuery)) {
+        // For non-exam schedule queries, also fetch if vector search returned few or no results
+        const shouldFetchDirectly = scheduleEventsFromVectorSearch.length < 3 || 
+                                     (isPrelimQuery || isMidtermQuery || isFinalQuery) ||
+                                     (isScheduleQuery && scheduleEventsFromVectorSearch.length === 0);
+        
+        if (shouldFetchDirectly) {
           // Log schedule fetch operation
           Logger.logDataFetch('fetchScheduleEvents', query, {
             method: 'scheduleService.getEvents',
@@ -844,22 +887,79 @@ export class OptimizedRAGService {
         if (requestedMonth !== null && requestedYear) {
           const beforeMonthFilter = filteredEvents.length;
           filteredEvents = filteredEvents.filter(event => {
+            // CRITICAL: For month-only events, check year and month match exactly
+            if (event.dateType === 'month_only' || event.isMonthOnly) {
+              const eventYear = event.year || (event.isoDate ? new Date(event.isoDate).getFullYear() : null);
+              const eventMonth = event.month || (event.isoDate ? new Date(event.isoDate).getMonth() + 1 : null);
+              // Month is 1-based in event.month, but 0-based in requestedMonth
+              return eventYear === requestedYear && eventMonth === (requestedMonth + 1);
+            }
+            
             // For date ranges, check if the requested month/year overlaps with the range
+            // CRITICAL: Also verify the year matches exactly to prevent 2024 events when querying 2025
             if (event.dateType === 'date_range' && event.startDate && event.endDate) {
               const rangeStart = new Date(event.startDate);
               const rangeEnd = new Date(event.endDate);
+              // Validate dates
+              if (isNaN(rangeStart.getTime()) || isNaN(rangeEnd.getTime())) return false;
+              
+              // CRITICAL: Check that at least one date in the range is in the requested year
+              const rangeStartYear = rangeStart.getFullYear();
+              const rangeEndYear = rangeEnd.getFullYear();
+              // Only include if the range overlaps with the requested year
+              if (rangeStartYear !== requestedYear && rangeEndYear !== requestedYear) {
+                // Range doesn't include the requested year at all
+                return false;
+              }
+              
               const queryStart = new Date(requestedYear, requestedMonth, 1);
               const queryEnd = new Date(requestedYear, requestedMonth + 1, 0, 23, 59, 59);
               
-              // Check if ranges overlap
+              // Check if ranges overlap AND at least part of the range is in the requested month/year
               return (rangeStart <= queryEnd && rangeEnd >= queryStart);
             } else {
               // For single dates, check if it's in the requested month/year
-              const eventDate = new Date(event.isoDate || event.date);
-              return eventDate.getMonth() === requestedMonth && eventDate.getFullYear() === requestedYear;
+              // CRITICAL: Verify year matches exactly
+              const dateValue = event.isoDate || event.date;
+              if (!dateValue) return false; // Skip events without dates
+              const eventDate = new Date(dateValue);
+              if (isNaN(eventDate.getTime())) return false; // Skip invalid dates
+              const eventYear = eventDate.getFullYear();
+              const eventMonth = eventDate.getMonth();
+              // CRITICAL: Year must match exactly, month must match exactly
+              return eventYear === requestedYear && eventMonth === requestedMonth;
             }
           });
           Logger.debug(`📅 Filtered ${beforeMonthFilter} events to ${filteredEvents.length} events for ${monthNames[requestedMonth]} ${requestedYear}`);
+        } else if (requestedYear) {
+          // User specified year only - filter to that year exactly
+          const beforeYearFilter = filteredEvents.length;
+          filteredEvents = filteredEvents.filter(event => {
+            // CRITICAL: For month-only events, check year matches exactly
+            if (event.dateType === 'month_only' || event.isMonthOnly) {
+              const eventYear = event.year || (event.isoDate ? new Date(event.isoDate).getFullYear() : null);
+              return eventYear === requestedYear;
+            }
+            
+            // For date ranges, check if the range includes the requested year
+            if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+              const rangeStart = new Date(event.startDate);
+              const rangeEnd = new Date(event.endDate);
+              if (isNaN(rangeStart.getTime()) || isNaN(rangeEnd.getTime())) return false;
+              const rangeStartYear = rangeStart.getFullYear();
+              const rangeEndYear = rangeEnd.getFullYear();
+              // Range must include the requested year
+              return (rangeStartYear <= requestedYear && rangeEndYear >= requestedYear);
+            } else {
+              // For single dates, check if year matches exactly
+              const dateValue = event.isoDate || event.date;
+              if (!dateValue) return false;
+              const eventDate = new Date(dateValue);
+              if (isNaN(eventDate.getTime())) return false;
+              return eventDate.getFullYear() === requestedYear;
+            }
+          });
+          Logger.debug(`📅 Filtered ${beforeYearFilter} events to ${filteredEvents.length} events for year ${requestedYear}`);
         }
         
         if (filteredEvents && filteredEvents.length > 0) {
@@ -1036,6 +1136,11 @@ export class OptimizedRAGService {
             chunksAdded: scheduleEventsFromVectorSearch.length,
             totalRelevantData: relevantData.length
           });
+        } else if (isScheduleQuery && scheduleEventsFromVectorSearch.length === 0 && scheduleEventsData.length === 0) {
+          // CRITICAL: If this is a schedule query but we have NO schedule events at all, log a warning
+          Logger.warn(`⚠️  RAG: Schedule query but NO schedule events found. Query: "${query.substring(0, 60)}..."`);
+          Logger.warn(`   Vector search results: ${scheduleEventsFromVectorSearch.length}, Direct fetch results: ${scheduleEventsData.length}`);
+          Logger.warn(`   This may indicate: 1) Schedule data not in MongoDB, 2) Query not matching schedule events, 3) Year/semester filter too restrictive`);
         } else if (isPrelimQuery || isMidtermQuery || isFinalQuery) {
           // For exam queries with no results, remove unfiltered schedule events from relevantData
           // Support multiple exam types with OR logic
@@ -1107,19 +1212,25 @@ export class OptimizedRAGService {
     const scheduleEvents = relevantData.filter(item => item.section === 'schedule_events');
     const otherData = relevantData.filter(item => item.section !== 'schedule_events');
     
-    // Add schedule events section first if present
-    if (scheduleEvents.length > 0 && isScheduleQuery) {
-      const scheduleHeader = `\n## SCHEDULE EVENTS AND ANNOUNCEMENTS\n\n`;
-      context += scheduleHeader;
-      currentTokens += Math.round(scheduleHeader.length / 4);
+    // CRITICAL: For schedule queries, ALWAYS add schedule events section
+    // If no events found, add a note so AI knows it's a schedule query
+    if (isScheduleQuery) {
+      if (scheduleEvents.length > 0) {
+        const scheduleHeader = `\n## SCHEDULE EVENTS AND ANNOUNCEMENTS\n\n`;
+        context += scheduleHeader;
+        currentTokens += Math.round(scheduleHeader.length / 4);
       
       // Helper function to format date concisely (e.g., "Jan 11" or "Jan 11 - Jan 15")
-      const formatDateConcise = (date) => {
+      // CRITICAL: Always include year to prevent confusion
+      const formatDateConcise = (date, includeYear = true) => {
         if (!date) return 'Date TBD';
         const d = new Date(date);
+        if (isNaN(d.getTime())) return 'Date TBD';
         const month = formatDateInTimezone(d, { month: 'short' });
         const day = formatDateInTimezone(d, { day: 'numeric' });
-        return month && day ? `${month} ${day}` : 'Date TBD';
+        const year = formatDateInTimezone(d, { year: 'numeric' });
+        if (!month || !day) return 'Date TBD';
+        return includeYear && year ? `${month} ${day}, ${year}` : `${month} ${day}`;
       };
       
       // Group events by title to avoid redundancy
@@ -1169,18 +1280,21 @@ export class OptimizedRAGService {
           
           if (event.metadata?.dateType === 'date_range' && event.metadata.startDate && event.metadata.endDate) {
             // For date ranges, use startDate-endDate as key
-            const start = formatDateConcise(event.metadata.startDate);
-            const end = formatDateConcise(event.metadata.endDate);
+            // CRITICAL: Always include year in date range display
+            const start = formatDateConcise(event.metadata.startDate, true);
+            const end = formatDateConcise(event.metadata.endDate, true);
             rangeKey = `${event.metadata.startDate}_${event.metadata.endDate}`;
             rangeDisplay = `${start} - ${end}`;
           } else if (event.metadata?.date) {
             // For single dates, use the date as key
+            // CRITICAL: Always include year
             rangeKey = event.metadata.date;
-            rangeDisplay = formatDateConcise(event.metadata.date);
+            rangeDisplay = formatDateConcise(event.metadata.date, true);
           } else if (event.metadata?.startDate) {
             // Fallback to startDate
+            // CRITICAL: Always include year
             rangeKey = event.metadata.startDate;
-            rangeDisplay = formatDateConcise(event.metadata.startDate);
+            rangeDisplay = formatDateConcise(event.metadata.startDate, true);
           }
           
           if (rangeKey && !dateRanges.has(rangeKey)) {
@@ -1191,24 +1305,57 @@ export class OptimizedRAGService {
         if (dateRanges.size > 0) {
           const uniqueRanges = Array.from(dateRanges.values());
           
-          // Determine year from first event
-          const firstEvent = eventGroup[0];
-          const year = firstEvent.metadata?.date 
-            ? new Date(firstEvent.metadata.date).getFullYear()
-            : firstEvent.metadata?.startDate 
-              ? new Date(firstEvent.metadata.startDate).getFullYear()
-              : new Date().getFullYear();
+          // CRITICAL: Determine year from first event - use explicit year field if available, otherwise extract from date
+          // This ensures correct year display even if dates are stored incorrectly
+          let year = null;
+          if (firstEvent.metadata?.year) {
+            // Use explicit year field if available (most reliable)
+            year = typeof firstEvent.metadata.year === 'number' ? firstEvent.metadata.year : parseInt(firstEvent.metadata.year, 10);
+          } else if (firstEvent.metadata?.date) {
+            const dateObj = new Date(firstEvent.metadata.date);
+            if (!isNaN(dateObj.getTime())) {
+              year = dateObj.getFullYear();
+            }
+          } else if (firstEvent.metadata?.startDate) {
+            const dateObj = new Date(firstEvent.metadata.startDate);
+            if (!isNaN(dateObj.getTime())) {
+              year = dateObj.getFullYear();
+            }
+          }
+          // Fallback to requested year from query if available, otherwise current year
+          if (!year || isNaN(year)) {
+            year = requestedYear || new Date().getFullYear();
+          }
           
-          if (uniqueRanges.length === 1) {
-            eventText += `📅 Date: ${uniqueRanges[0]}, ${year}\n`;
-          } else if (uniqueRanges.length <= 3) {
-            eventText += `📅 Dates: ${uniqueRanges.join(', ')}, ${year}\n`;
+          // CRITICAL: For month-only events, format differently
+          if (firstEvent.metadata?.isMonthOnly || firstEvent.metadata?.dateType === 'month_only') {
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                              'July', 'August', 'September', 'October', 'November', 'December'];
+            const monthNum = firstEvent.metadata?.month || (firstEvent.metadata?.date ? new Date(firstEvent.metadata.date).getMonth() + 1 : null);
+            const monthName = firstEvent.metadata?.monthName || (monthNum ? monthNames[monthNum - 1] : null);
+            if (monthName && year) {
+              eventText += `📅 Date: ${monthName} ${year} (month-only event, no specific date)\n`;
+            } else {
+              eventText += `📅 Date: ${uniqueRanges[0]}, ${year}\n`;
+            }
           } else {
-            // Too many ranges - list them separately
-            eventText += `📅 Dates:\n`;
-            uniqueRanges.forEach(range => {
-              eventText += `   • ${range}, ${year}\n`;
-            });
+            // For regular dates, format with explicit year
+            if (uniqueRanges.length === 1) {
+              // If range already includes year, don't duplicate
+              const rangeHasYear = uniqueRanges[0].includes(', 20');
+              eventText += rangeHasYear ? `📅 Date: ${uniqueRanges[0]}\n` : `📅 Date: ${uniqueRanges[0]}, ${year}\n`;
+            } else if (uniqueRanges.length <= 3) {
+              // Check if ranges include years
+              const rangesHaveYear = uniqueRanges.some(r => r.includes(', 20'));
+              eventText += rangesHaveYear ? `📅 Dates: ${uniqueRanges.join(', ')}\n` : `📅 Dates: ${uniqueRanges.join(', ')}, ${year}\n`;
+            } else {
+              // Too many ranges - list them separately
+              eventText += `📅 Dates:\n`;
+              uniqueRanges.forEach(range => {
+                const rangeHasYear = range.includes(', 20');
+                eventText += rangeHasYear ? `   • ${range}\n` : `   • ${range}, ${year}\n`;
+              });
+            }
           }
         }
         
@@ -1230,11 +1377,19 @@ export class OptimizedRAGService {
         context += eventText;
         currentTokens += eventTokens;
       }
+      } else {
+        // No schedule events found - add a note for schedule queries
+        const noEventsNote = `\n## SCHEDULE EVENTS AND ANNOUNCEMENTS\n\nNo schedule events found matching the query criteria. Please verify the year, semester, and date range specified in the query.\n\n`;
+        context += noEventsNote;
+        currentTokens += Math.round(noEventsNote.length / 4);
+      }
     }
     
     // Add other sections - prioritize completeness for comprehensive queries
     for (const item of otherData) {
-      const sectionText = `## ${item.section} (${item.type})\n${item.text}\n\n`;
+      // Skip items without text content
+      if (!item.text && !item.content) continue;
+      const sectionText = `## ${item.section || 'General'} (${item.type || 'info'})\n${item.text || item.content || ''}\n\n`;
       const sectionTokens = Math.round(sectionText.length / 4);
       
       // Check if adding this chunk would exceed the effective limit
@@ -1380,8 +1535,10 @@ export class OptimizedRAGService {
             // Add all embeddings to FAISS index
             for (const chunk of allChunks) {
               try {
-                this.embeddings.push(chunk.embedding);
-                this.faissIndex.add(chunk.embedding);
+                if (chunk.embedding && this.faissIndex) {
+                  this.embeddings.push(chunk.embedding);
+                  this.faissIndex.add(chunk.embedding);
+                }
               } catch (error) {
                 Logger.debug(`Failed to add chunk to FAISS: ${error.message}`);
               }
@@ -1438,9 +1595,89 @@ export class OptimizedRAGService {
    * Detect calendar query patterns
    */
   _detectCalendarQuery(query) {
-    const calendarPattern = /\b(date|dates|event|events|announcement|announcements|schedule|schedules|calendar|when|upcoming|coming|next|this\s+(week|month|year)|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule|timeline|time\s+table)\b/i;
-    const calendarIntentPattern = /\b(when\s+(is|are|will|does)|what\s+(date|dates|time|schedule)|tell\s+me\s+(about\s+)?(the\s+)?(schedule|dates?|events?))\b/i;
-    return calendarPattern.test(query) || calendarIntentPattern.test(query);
+    // CRITICAL: Schedule queries are about TEMPORAL events (WHEN things happen)
+    // Knowledge base queries are about FACTS (WHAT, WHO, WHERE, HOW things are)
+    
+    // ===== NEGATIVE PATTERNS: Exclude knowledge base queries =====
+    // These patterns indicate the query is about facts/history/information, NOT schedules
+    
+    // Check if this is a knowledge base query (should NOT be treated as schedule)
+    const isKnowledgeBaseQuery = this._detectKnowledgeBaseQuery(query);
+    
+    // If this is clearly a knowledge base query, it's NOT a schedule query
+    if (isKnowledgeBaseQuery) {
+      return false;
+    }
+    
+    // ===== POSITIVE PATTERNS: Schedule-specific queries =====
+    // These patterns indicate the query is about calendar events/schedules
+    
+    // Explicit schedule/calendar keywords (highest confidence)
+    // CRITICAL: "start of classes" must be detected even if query contains "program" keywords
+    const explicitSchedulePattern = /\b(schedule|schedules|calendar|academic\s+calendar|exam\s+schedule|class\s+schedule|enrollment\s+period|registration\s+period|deadline|deadlines|timeline|time\s+table|start\s+of\s+classes?|start\s+of\s+class|classes?\s+start|class\s+start|commencement|graduation|founding\s+anniversary|siglakas)\b/i;
+    
+    // "When" in schedule context (when does/is/will something happen - temporal events)
+    const whenSchedulePattern = /\b(when\s+(does|do|is|are|will|starts?|begins?|ends?|happens?|occurs?|takes\s+place|held|scheduled|due|opens?|closes?))\b/i;
+    
+    // "When" with date/time/schedule keywords
+    const whenDatePattern = /\b(when\s+(is|are)\s+(the\s+)?(date|dates|time|schedule|event|events|announcement|announcements|deadline|deadlines|holiday|holidays|exam|examination|registration|enrollment|semester\s+start|semester\s+end|classes?\s+start|classes?\s+end|period|periods))\b/i;
+    
+    // Semester start/end queries
+    const semesterStartPattern = /\b(when\s+does?\s+semester|semester\s+\d+\s+start|start\s+of\s+semester|when\s+is\s+semester|semester\s+.*\s+start|semester\s+.*\s+end)\b/i;
+    
+    // CRITICAL: "for undergraduate program" or "for graduate program" in schedule context
+    // These are schedule queries, NOT program queries (e.g., "start of classes for undergraduate program")
+    const programTypeSchedulePattern = /\b(for|of)\s+(undergraduate|graduate)\s+(program|programs)\b/i;
+    
+    // Exam date queries
+    const examDatePattern = /\b(prelim|preliminary|midterm|final|exam|examination).*\b(date|dates|when|schedule|starts?|begins?|ends?)\b/i;
+    
+    // Registration/enrollment period queries
+    const registrationPattern = /\b(registration|enrollment|enrolment).*\b(period|date|dates|when|schedule|starts?|begins?|ends?)\b/i;
+    
+    // Date range queries (between X and Y, from X to Y)
+    const dateRangePattern = /\b(between|from|until|till|to)\s+.*\s+(and|to)\s+.*\b(date|dates|month|months|year|years)\b/i;
+    
+    // Upcoming/coming/next queries with temporal context
+    const upcomingPattern = /\b(upcoming|coming|next|this\s+(week|month|year|semester)|deadline|deadlines)\b/i;
+    
+    // Check for schedule patterns (in order of confidence)
+    // CRITICAL: If query contains schedule keywords AND "for undergraduate/graduate program", it's a schedule query
+    const hasScheduleKeyword = explicitSchedulePattern.test(query) || 
+                                whenSchedulePattern.test(query) ||
+                                whenDatePattern.test(query) ||
+                                semesterStartPattern.test(query) ||
+                                examDatePattern.test(query) ||
+                                registrationPattern.test(query) ||
+                                dateRangePattern.test(query) ||
+                                (upcomingPattern.test(query) && !isKnowledgeBaseQuery);
+    
+    // If it has schedule keywords AND mentions "for undergraduate/graduate program", it's definitely a schedule query
+    if (hasScheduleKeyword && programTypeSchedulePattern.test(query)) {
+      return true;
+    }
+    
+    return hasScheduleKeyword;
+  }
+
+  /**
+   * Detect knowledge base queries (facts, history, information)
+   * These queries are about WHAT, WHO, WHERE, HOW things are
+   * NOT about WHEN things happen (which are schedule queries)
+   */
+  _detectKnowledgeBaseQuery(query) {
+    // Historical facts (when was X established/founded/created)
+    const historicalFactPattern = /\b(when\s+(was|were|did)\s+.*\s+(established|founded|created|built|started|began|happened|occurred|opened|launched|introduced|formed|instituted|inaugurated|initiated|converted|became|changed|evolved|developed))\b/i;
+    
+    // Factual questions (what is, who is, where is, how many, what are)
+    const factualQuestionPattern = /\b(what\s+(is|are|was|were|does|do|did|can|could|should|would)|who\s+(is|are|was|were|does|do|did)|where\s+(is|are|was|were|does|do|did)|how\s+(many|much|long|old|far|tall|wide|deep|big|small|does|do|did|can|could|should|would|is|are|was|were))\b/i;
+    
+    // Knowledge base topics (history, leadership, programs, campuses, offices, services)
+    const knowledgeBaseTopicPattern = /\b(history|historical|founded|established|leadership|president|vice\s+president|chancellor|director|programs?|programmes?|courses?|degrees?|campus|campuses|extension|location|locations|address|office|offices|service|services|faculty|faculties|college|colleges|department|departments|unit|units|mandate|mission|vision|values?|outcomes?|population|enrollment|students?|admission\s+requirements?|requirements?\s+for\s+admission)\b/i;
+    
+    // Check if this is a knowledge base query
+    return historicalFactPattern.test(query) || 
+           (factualQuestionPattern.test(query) && knowledgeBaseTopicPattern.test(query));
   }
 
   /**
@@ -1464,10 +1701,14 @@ export class OptimizedRAGService {
         !/\b(admission\s+requirements?|requirements?\s+for\s+admission)\b/i.test(query),
       isFacultyQuery: /\b(faculty|faculties|FACET|FALS|FTED|FBM|FCJE|FNAHS|FHUSOCOM|college|colleges)\b/i.test(query),
       // CRITICAL FIX: Program queries - must exclude "graduate outcomes" to avoid matching values queries
+      // CRITICAL: Must exclude schedule queries (when, date, start, semester start, start of classes, etc.) to avoid misrouting
+      // CRITICAL: "undergraduate program" or "graduate program" in schedule context (e.g., "start of classes for undergraduate program") should NOT be treated as program queries
       // Also prioritize queries that ask "what programs" or "programs offered" over just mentioning "program"
-      isProgramQuery: (/\b(program|programs|programme|course|courses|degree|degrees|undergraduate|graduate\s+(program|programs|degree|degrees)|masters|doctorate|bachelor|BS|BA|MA|MS|PhD|EdD)\b/i.test(query) && 
-                      !/\bgraduate\s+outcomes?\b/i.test(query)) ||
-                     /\b(what\s+programs?|programs?\s+offered|programs?\s+in|programs?\s+under|list\s+programs?)\b/i.test(query),
+      isProgramQuery: (!/\b(when|date|dates|start\s+of|start\s+of\s+classes?|start\s+of\s+class|classes?\s+start|class\s+start|schedule|semester\s+\d+\s+start|registration|enrollment|exam|examination|deadline|examination\s+schedule|exam\s+schedule)\b/i.test(query) &&
+                      (/\b(program|programs|programme|course|courses|degree|degrees|undergraduate|graduate\s+(program|programs|degree|degrees)|masters|doctorate|bachelor|BS|BA|MA|MS|PhD|EdD)\b/i.test(query) && 
+                      !/\bgraduate\s+outcomes?\b/i.test(query))) ||
+                     (/\b(what\s+programs?|programs?\s+offered|programs?\s+in|programs?\s+under|list\s+programs?)\b/i.test(query) &&
+                      !/\b(when|date|dates|start\s+of|start\s+of\s+classes?|start\s+of\s+class|classes?\s+start|class\s+start|schedule|semester\s+\d+\s+start|registration|enrollment|exam|examination|deadline|examination\s+schedule|exam\s+schedule)\b/i.test(query)),
       isCampusQuery: /\b(campus|campuses|extension|main campus|baganga|banaybanay|cateel|san isidro|tarragona|location|locations)\b/i.test(query),
       isOfficeQuery: /\b(office|offices|unit|units|service|services)\b/i.test(query),
       isStudentOrgQuery: /\b(usc|university student council|ang.*sidlakan|catalyst|student organization|student organizations|student publication|yearbook)\b/i.test(query),

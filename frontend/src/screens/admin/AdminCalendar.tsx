@@ -98,21 +98,38 @@ const getCellColor = (events: any[]): string | null => {
   return null;
 };
 
-const buildDateRange = (startISO?: string, endISO?: string) => {
-  const dates: Date[] = [];
-  if (!startISO || !endISO) return dates;
+// OPTIMIZED: Build date range more efficiently
+// For calendar display, we only need date keys, not full Date objects
+const buildDateRange = (startISO?: string, endISO?: string): Date[] => {
+  if (!startISO || !endISO) return [];
+  
   const start = new Date(startISO);
   const end = new Date(endISO);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return dates;
+    return [];
   }
-  const current = new Date(start);
-  current.setHours(0, 0, 0, 0);
-  end.setHours(0, 0, 0, 0);
-  while (current <= end) {
+  
+  // Normalize to start of day
+  const startTime = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+  const endTime = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
+  
+  // Limit range to prevent performance issues (max 365 days)
+  const daysDiff = Math.floor((endTime - startTime) / (1000 * 60 * 60 * 24));
+  if (daysDiff > 365) {
+    // For very long ranges, only include start and end dates
+    return [new Date(startTime), new Date(endTime)];
+  }
+  
+  // Optimized: Pre-allocate array and use setDate in a loop
+  const dates: Date[] = [];
+  const current = new Date(startTime);
+  const maxDays = Math.min(daysDiff + 1, 365);
+  
+  for (let i = 0; i <= maxDays; i++) {
     dates.push(new Date(current));
     current.setDate(current.getDate() + 1);
   }
+  
   return dates;
 };
 
@@ -291,6 +308,7 @@ const AdminCalendar = () => {
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
   const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
   const [isUploadingCSV, setIsUploadingCSV] = useState<boolean>(false);
+  const [isProcessingCSV, setIsProcessingCSV] = useState<boolean>(false);
   
   const postsForCalendar = useMemo(() => {
     if (!Array.isArray(posts)) return [];
@@ -309,75 +327,135 @@ const AdminCalendar = () => {
     });
   }, [calendarEvents, selectedContentTypesSet]);
 
+  // OPTIMIZED: Memoize category colors to avoid repeated lookups
+  const categoryColorsCache = React.useMemo(() => {
+    const cache = new Map<string, ReturnType<typeof categoryToColors>>();
+    return {
+      get: (category: string) => {
+        if (!cache.has(category)) {
+          cache.set(category, categoryToColors(category));
+        }
+        return cache.get(category)!;
+      }
+    };
+  }, []);
+
+  // OPTIMIZED: Process events more efficiently with early returns and batching
   const { eventsByDateMap, monthEventCountMap } = useMemo(() => {
+    const startTime = performance.now();
     const dateMap = new Map<string, any[]>();
     const monthMap = new Map<string, number>();
 
-    const incrementMonth = (dateObj: Date) => {
-      if (!dateObj || Number.isNaN(dateObj.getTime())) return;
-      const key = `${dateObj.getFullYear()}-${dateObj.getMonth() + 1}`;
+    // Optimized incrementMonth - inline for performance
+    const incrementMonth = (year: number, month: number) => {
+      const key = `${year}-${month}`;
       monthMap.set(key, (monthMap.get(key) || 0) + 1);
     };
 
-    const addEventInstance = (dateObj: Date, payload: any) => {
-      if (!dateObj || Number.isNaN(dateObj.getTime())) return;
-      const key = formatDateKey(dateObj);
-      if (!dateMap.has(key)) {
-        dateMap.set(key, []);
+    // Optimized addEventInstance - use date key directly instead of Date object
+    const addEventInstance = (dateKey: string, year: number, month: number, payload: any) => {
+      if (!dateMap.has(dateKey)) {
+        dateMap.set(dateKey, []);
       }
-      dateMap.get(key)!.push(payload);
-      incrementMonth(dateObj);
+      dateMap.get(dateKey)!.push(payload);
+      incrementMonth(year, month);
     };
 
-    postsForCalendar.forEach(post => {
+    // Process posts (usually fewer, so less optimization needed)
+    for (let i = 0; i < postsForCalendar.length; i++) {
+      const post = postsForCalendar[i];
       const dateObj = new Date(post.isoDate || post.date);
-      if (Number.isNaN(dateObj.getTime())) return;
+      if (Number.isNaN(dateObj.getTime())) continue;
+      
+      const dateKey = formatDateKey(dateObj);
+      const colors = categoryColorsCache.get(post.category || 'Announcement');
+      
       const payload = {
         id: post.id,
         title: post.title,
-        dateKey: formatDateKey(dateObj),
+        dateKey,
         time: post.time || '',
         type: post.category || 'Announcement',
-        color: categoryToColors(post.category).dot,
-        chip: categoryToColors(post.category),
+        color: colors.dot,
+        chip: colors,
         description: post.description,
         isPinned: post.isPinned,
         isUrgent: post.isUrgent,
         source: 'post',
       };
-      addEventInstance(dateObj, payload);
-    });
+      
+      addEventInstance(dateKey, dateObj.getFullYear(), dateObj.getMonth() + 1, payload);
+    }
 
-    calendarEventsForCalendar.forEach(event => {
+    // Process calendar events (OPTIMIZED: batch process and limit date range expansion)
+    for (let i = 0; i < calendarEventsForCalendar.length; i++) {
+      const event = calendarEventsForCalendar[i];
+      const colors = categoryColorsCache.get(event.category || 'Announcement');
+      
       const payload = {
         ...event,
         id: event._id || `calendar-${event.isoDate || event.startDate}-${event.title}`,
         type: event.category || 'Announcement',
-        color: categoryToColors(event.category).dot,
-        chip: categoryToColors(event.category),
+        color: colors.dot,
+        chip: colors,
         source: 'calendar',
       };
 
-      if (event.dateType === 'week' || event.dateType === 'month') {
+      // Handle month-only and week-only events (no date range expansion needed)
+      if (event.dateType === 'month_only' || event.dateType === 'week_in_month' || 
+          event.dateType === 'week' || event.dateType === 'month') {
         if (event.year && event.month) {
-          const placeholder = new Date(event.year, event.month - 1, 1);
-          incrementMonth(placeholder);
+          incrementMonth(event.year, event.month);
         }
-        return;
+        continue; // Skip date range processing for month/week events
       }
 
+      // Handle date ranges (OPTIMIZED: limit expansion for very long ranges)
       if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-        const rangeDates = buildDateRange(event.startDate, event.endDate);
-        rangeDates.forEach(dateObj => addEventInstance(dateObj, payload));
+        const start = new Date(event.startDate);
+        const end = new Date(event.endDate);
+        
+        if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+          const daysDiff = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+          
+          // OPTIMIZATION: For very long ranges (>90 days), only mark start and end dates
+          if (daysDiff > 90) {
+            const startKey = formatDateKey(start);
+            const endKey = formatDateKey(end);
+            addEventInstance(startKey, start.getFullYear(), start.getMonth() + 1, payload);
+            if (startKey !== endKey) {
+              addEventInstance(endKey, end.getFullYear(), end.getMonth() + 1, payload);
+            }
+          } else {
+            // For shorter ranges, expand fully
+            const rangeDates = buildDateRange(event.startDate, event.endDate);
+            for (let j = 0; j < rangeDates.length; j++) {
+              const dateObj = rangeDates[j];
+              const dateKey = formatDateKey(dateObj);
+              addEventInstance(dateKey, dateObj.getFullYear(), dateObj.getMonth() + 1, payload);
+            }
+          }
+        }
       } else {
+        // Single date event
         const fallbackDate = event.isoDate || event.date || event.startDate;
-        const dateObj = fallbackDate ? new Date(fallbackDate) : new Date(NaN);
-        addEventInstance(dateObj, payload);
+        if (fallbackDate) {
+          const dateObj = new Date(fallbackDate);
+          if (!Number.isNaN(dateObj.getTime())) {
+            const dateKey = formatDateKey(dateObj);
+            addEventInstance(dateKey, dateObj.getFullYear(), dateObj.getMonth() + 1, payload);
+          }
+        }
       }
-    });
+    }
+
+    const endTime = performance.now();
+    if (__DEV__) {
+      console.log(`⚡ Event processing: ${(endTime - startTime).toFixed(2)}ms for ${calendarEventsForCalendar.length} events, ${postsForCalendar.length} posts`);
+    }
 
     return { eventsByDateMap: dateMap, monthEventCountMap: monthMap };
-  }, [postsForCalendar, calendarEventsForCalendar]);
+  }, [postsForCalendar, calendarEventsForCalendar, categoryColorsCache]);
 
   // Calculate min/max years from events and posts to dynamically adjust calendar range
   const eventYearRange = React.useMemo(() => {
@@ -446,8 +524,9 @@ const AdminCalendar = () => {
     }
   }, []);
 
-  // Load calendar events and posts from backend
-  // Refresh when screen comes into focus to show newly created posts/events
+  // OPTIMIZED: Load calendar events and posts from backend
+  // Only load current month ± 1 month for fast initial load (like AdminDashboard)
+  // Load more data on-demand when user navigates to different months
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
@@ -455,23 +534,39 @@ const AdminCalendar = () => {
         try {
           setIsLoadingEvents(true);
           setIsLoadingPosts(true);
-          // Load events for a wide range (2020-2030) to cover all possible dates
-          // This ensures we get all events regardless of year
-          const startDate = new Date(2020, 0, 1).toISOString(); // January 1, 2020
-          const endDate = new Date(2030, 11, 31).toISOString(); // December 31, 2030
+          
+          // OPTIMIZED: Only load current month ± 1 month for fast loading (like AdminDashboard)
+          // This is much faster than loading 5 years!
+          const now = new Date();
+          const currentYear = now.getFullYear();
+          const currentMonth = now.getMonth();
+          
+          // Load current month ± 1 month for smooth navigation
+          const startDate = new Date(currentYear, currentMonth - 1, 1);
+          const endDate = new Date(currentYear, currentMonth + 2, 0, 23, 59, 59); // Last day of next month
+          
+          console.log(`📅 Fast load: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()} (3 months)`);
           
           const [events, postsData] = await Promise.all([
             CalendarService.getEvents({
-              startDate,
-              endDate,
-              limit: 2000, // Increased limit to get more events
+              startDate: startDate.toISOString(),
+              endDate: endDate.toISOString(),
+              limit: 500, // Reduced limit for 3 months
             }),
             AdminDataService.getPosts(),
           ]);
           
+          console.log(`✅ Fast load complete: ${events.length} events, ${postsData.length} posts`);
+          
           if (!cancelled) {
             setCalendarEvents(Array.isArray(events) ? events : []);
             setPosts(Array.isArray(postsData) ? postsData : []);
+            
+            // Mark loaded months in cache (for smart navigation)
+            for (let i = -1; i <= 1; i++) {
+              const checkMonth = new Date(currentYear, currentMonth + i, 1);
+              loadedMonthsRef.current.add(`${checkMonth.getFullYear()}-${checkMonth.getMonth()}`);
+            }
           }
         } catch (error) {
           console.error('Failed to load calendar data:', error);
@@ -498,36 +593,156 @@ const AdminCalendar = () => {
 
 
 
-  const getDaysInMonth = (date: Date) => {
+  // OPTIMIZED: Pre-allocate array for better performance
+  const getDaysInMonth = React.useCallback((date: Date) => {
     const start = dayjs.utc(date).tz(PH_TZ).startOf('month');
     const daysInMonth = start.daysInMonth();
     const firstDayOfMonth = start.day(); // 0=Sun..6=Sat in PH tz
     
-    const days: Array<number | null> = [];
+    // Pre-calculate total cells needed
+    const totalCells = Math.ceil((firstDayOfMonth + daysInMonth) / 7) * 7;
+    const days: Array<number | null> = new Array(totalCells);
     
     // Add leading empty cells so week starts on Sunday
     for (let i = 0; i < firstDayOfMonth; i++) {
-      days.push(null);
+      days[i] = null;
     }
     
     // Add all days of the month
     for (let i = 1; i <= daysInMonth; i++) {
-      days.push(i);
+      days[firstDayOfMonth + i - 1] = i;
     }
     
-    // Add trailing empty cells so total cells is multiple of 7 (complete rows)
-    const remainder = days.length % 7;
-    if (remainder !== 0) {
-      const toAdd = 7 - remainder;
-      for (let i = 0; i < toAdd; i++) days.push(null);
+    // Fill remaining cells with null
+    for (let i = firstDayOfMonth + daysInMonth; i < totalCells; i++) {
+      days[i] = null;
     }
     
     return days;
-  };
+  }, []);
 
   const getMonthName = (date: Date) => {
     return dayjs.utc(date).tz(PH_TZ).format('MMMM');
   };
+
+  // Track last calendar fetch time (moved before refreshCalendarEvents)
+  const lastCalendarFetchTime = useRef<number>(0);
+  const isFetchingCalendar = useRef<boolean>(false);
+  const CALENDAR_FETCH_COOLDOWN = 3000; // 3 seconds cooldown for calendar events
+  
+  // OPTIMIZED: Track which months are already loaded to avoid unnecessary fetches
+  const loadedMonthsRef = useRef<Set<string>>(new Set());
+  
+  // Helper: Check if events for a specific month are already loaded
+  const hasEventsForMonth = useCallback((month: Date): boolean => {
+    const monthKey = `${month.getFullYear()}-${month.getMonth()}`;
+    
+    // Check if we've marked this month as loaded
+    return loadedMonthsRef.current.has(monthKey);
+  }, []);
+
+  // OPTIMIZED: Refresh calendar events from backend (moved before navigation functions)
+  // Smart loading: Only fetch if month is not already loaded, load wider range for buffer
+  const refreshCalendarEvents = useCallback(async (forceRefresh: boolean = false, yearRange?: { startYear: number; endYear: number }, targetMonth?: Date) => {
+    // Prevent duplicate simultaneous fetches
+    if (isFetchingCalendar.current && !forceRefresh) {
+      return;
+    }
+
+    // Cooldown check
+    const now = Date.now();
+    if (!forceRefresh && now - lastCalendarFetchTime.current < CALENDAR_FETCH_COOLDOWN) {
+      return;
+    }
+
+    try {
+      setIsLoadingEvents(true);
+      
+      let startDate: Date;
+      let endDate: Date;
+      let monthsToLoad: string[] = [];
+      
+      if (yearRange) {
+        // Use provided range (e.g., from CSV upload) - load full year range
+        startDate = new Date(yearRange.startYear, 0, 1);
+        endDate = new Date(yearRange.endYear, 11, 31, 23, 59, 59);
+        console.log(`📅 Loading calendar events: ${yearRange.startYear}-${yearRange.endYear} (${yearRange.endYear - yearRange.startYear + 1} years)`);
+        // Mark all months in range as loaded
+        for (let year = yearRange.startYear; year <= yearRange.endYear; year++) {
+          for (let month = 0; month < 12; month++) {
+            loadedMonthsRef.current.add(`${year}-${month}`);
+          }
+        }
+      } else if (targetMonth) {
+        // OPTIMIZED: Check if we already have events for this month
+        if (!forceRefresh && hasEventsForMonth(targetMonth)) {
+          console.log(`✅ Events for ${targetMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} already loaded, skipping fetch`);
+          setIsLoadingEvents(false);
+          return;
+        }
+        
+        // Load target month ± 2 months for buffer (so navigation is smooth)
+        const targetYear = targetMonth.getFullYear();
+        const targetMonthIndex = targetMonth.getMonth();
+        startDate = new Date(targetYear, targetMonthIndex - 2, 1);
+        endDate = new Date(targetYear, targetMonthIndex + 3, 0, 23, 59, 59);
+        
+        // Mark loaded months
+        for (let i = -2; i <= 2; i++) {
+          const checkMonth = new Date(targetYear, targetMonthIndex + i, 1);
+          monthsToLoad.push(`${checkMonth.getFullYear()}-${checkMonth.getMonth()}`);
+        }
+        
+        console.log(`📅 Loading calendar events for month: ${targetMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} (5 months buffer)`);
+      } else {
+        // Default: Load current month ± 2 months for buffer (fast initial load with navigation buffer)
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+        startDate = new Date(currentYear, currentMonth - 2, 1);
+        endDate = new Date(currentYear, currentMonth + 3, 0, 23, 59, 59);
+        
+        // Mark loaded months
+        for (let i = -2; i <= 2; i++) {
+          const checkMonth = new Date(currentYear, currentMonth + i, 1);
+          monthsToLoad.push(`${checkMonth.getFullYear()}-${checkMonth.getMonth()}`);
+        }
+        
+        console.log(`📅 Loading calendar events: current month ± 2 (5 months buffer)`);
+      }
+      
+      // Mark months as loaded
+      monthsToLoad.forEach(monthKey => loadedMonthsRef.current.add(monthKey));
+      
+      isFetchingCalendar.current = true;
+      lastCalendarFetchTime.current = now;
+      
+      // Use caching - CalendarService now supports caching
+      const events = await CalendarService.getEvents({
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        limit: 500, // Reduced limit for 5 months
+      });
+      
+      console.log(`✅ Loaded ${events.length} calendar events`);
+      
+      // Merge with existing events (avoid duplicates)
+      setCalendarEvents(prevEvents => {
+        const existingIds = new Set(prevEvents.map(e => e._id || e.id || `${e.isoDate}-${e.title}`));
+        const newEvents = events.filter(e => {
+          const id = e._id || e.id || `${e.isoDate}-${e.title}`;
+          return !existingIds.has(id);
+        });
+        return [...prevEvents, ...newEvents];
+      });
+    } catch (error) {
+      if (__DEV__) console.error('Failed to refresh calendar events:', error);
+      // Don't clear events on error, keep what we have
+    } finally {
+      setIsLoadingEvents(false);
+      isFetchingCalendar.current = false;
+    }
+  }, [hasEventsForMonth]);
 
   const selectMonth = (monthIndex: number, year?: number) => {
     const targetYear = year || currentMonth.getUTCFullYear();
@@ -536,6 +751,9 @@ const AdminCalendar = () => {
     // Ensure the selected date moves into the chosen month so the week view reflects it
     setSelectedDate(new Date(Date.UTC(newMonth.getUTCFullYear(), newMonth.getUTCMonth(), 1)));
     closeMonthPicker();
+    
+    // OPTIMIZED: Only load if month not already loaded (smart caching)
+    refreshCalendarEvents(false, undefined, newMonth);
   };
 
   const navigateToNextMonth = useCallback(() => {
@@ -544,7 +762,10 @@ const AdminCalendar = () => {
     setCurrentMonth(nextMonth);
     setSelectedDate(new Date(Date.UTC(nextMonth.getUTCFullYear(), nextMonth.getUTCMonth(), 1)));
     Haptics.selectionAsync();
-  }, [currentMonth]);
+    
+    // OPTIMIZED: Only load if month not already loaded (no fetch if already cached)
+    refreshCalendarEvents(false, undefined, nextMonth);
+  }, [currentMonth, refreshCalendarEvents]);
 
   const navigateToPreviousMonth = useCallback(() => {
     const prevMonth = new Date(currentMonth);
@@ -552,7 +773,10 @@ const AdminCalendar = () => {
     setCurrentMonth(prevMonth);
     setSelectedDate(new Date(Date.UTC(prevMonth.getUTCFullYear(), prevMonth.getUTCMonth(), 1)));
     Haptics.selectionAsync();
-  }, [currentMonth]);
+    
+    // OPTIMIZED: Only load if month not already loaded (no fetch if already cached)
+    refreshCalendarEvents(false, undefined, prevMonth);
+  }, [currentMonth, refreshCalendarEvents]);
 
   const openMonthPicker = () => {
     setShowMonthPicker(true);
@@ -839,54 +1063,12 @@ const AdminCalendar = () => {
     return monthEventCountMap.get(key) || 0;
   };
 
-  // Track last calendar fetch time
-  const lastCalendarFetchTime = useRef<number>(0);
-  const isFetchingCalendar = useRef<boolean>(false);
-  const CALENDAR_FETCH_COOLDOWN = 3000; // 3 seconds cooldown for calendar events (larger range)
 
-  // Refresh calendar events from backend
-  const refreshCalendarEvents = useCallback(async (forceRefresh: boolean = false) => {
-    // Prevent duplicate simultaneous fetches
-    if (isFetchingCalendar.current && !forceRefresh) {
-      return;
-    }
-
-    // Cooldown check
-    const now = Date.now();
-    if (!forceRefresh && now - lastCalendarFetchTime.current < CALENDAR_FETCH_COOLDOWN) {
-      return;
-    }
-
-    isFetchingCalendar.current = true;
-    lastCalendarFetchTime.current = now;
-
-    try {
-      setIsLoadingEvents(true);
-      // Load events for a wide range (2020-2030) to cover all possible dates
-      const startDate = new Date(2020, 0, 1).toISOString(); // January 1, 2020
-      const endDate = new Date(2030, 11, 31).toISOString(); // December 31, 2030
-      
-      // Use caching - CalendarService now supports caching
-      const events = await CalendarService.getEvents({
-        startDate,
-        endDate,
-        limit: 2000, // Increased limit to get more events
-      });
-      
-      setCalendarEvents(Array.isArray(events) ? events : []);
-    } catch (error) {
-      if (__DEV__) console.error('Failed to refresh calendar events:', error);
-      setCalendarEvents([]);
-    } finally {
-      setIsLoadingEvents(false);
-      isFetchingCalendar.current = false;
-    }
-  }, []);
-
-  // Fetch calendar events on mount only
-  useEffect(() => {
-    refreshCalendarEvents(true); // Force refresh on mount
-  }, []); // Empty deps - only run on mount
+  // OPTIMIZED: Don't fetch on mount - useFocusEffect handles initial load
+  // This prevents double loading when screen first mounts
+  // useEffect(() => {
+  //   refreshCalendarEvents(true); // Force refresh on mount
+  // }, []); // Empty deps - only run on mount
 
   // CSV upload handler
   const handleCSVUpload = useCallback(async () => {
@@ -913,15 +1095,30 @@ const AdminCalendar = () => {
       }
 
       setIsUploadingCSV(true);
+      setIsProcessingCSV(false);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
+      // Step 1: Upload CSV file
       const uploadResult = await AdminFileService.uploadCalendarCSV(fileUri, fileName);
-
-      // Upload successful - refresh calendar immediately
+      
+      // Upload complete - switch to processing state
+      setIsUploadingCSV(false);
+      setIsProcessingCSV(true);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
-      // Refresh calendar events to show new dates (force refresh after upload)
-      await refreshCalendarEvents(true);
+      // Step 2: Refresh calendar events to show new dates (OPTIMIZED: only refresh relevant years)
+      // Extract year from uploaded events if available, otherwise use current year ± 1
+      const currentYear = new Date().getFullYear();
+      const uploadYear = uploadResult.year || currentYear; // If backend returns the year of uploaded events
+      
+      // Only refresh events for the upload year ± 1 year (much faster than 10 years!)
+      await refreshCalendarEvents(true, {
+        startYear: Math.max(uploadYear - 1, currentYear - 2),
+        endYear: Math.min(uploadYear + 1, currentYear + 2)
+      });
+      
+      // Processing complete
+      setIsProcessingCSV(false);
       
       // Show success message after refresh
       const eventsAdded = uploadResult.eventsAdded || 0;
@@ -952,6 +1149,7 @@ const AdminCalendar = () => {
       Alert.alert(alertTitle, displayMessage);
     } finally {
       setIsUploadingCSV(false);
+      setIsProcessingCSV(false);
     }
   }, [refreshCalendarEvents]);
 
@@ -990,7 +1188,8 @@ const AdminCalendar = () => {
     navigation.navigate('PostUpdate');
   }, [navigation]);
 
-  // Memoized Calendar Day Component with long press detection for unmarked cells
+  // OPTIMIZED: Memoized Calendar Day Component with long press detection for unmarked cells
+  // Using React.memo with custom comparison to prevent unnecessary re-renders
   const CalendarDay = memo(({ date, day, isCurrentDay, isSelectedDay, index, eventsForDay, theme, onPress, onLongPress }: { date: Date; day: number | null; isCurrentDay: boolean; isSelectedDay: boolean; index: number; eventsForDay: any[]; theme: any; onPress: (date: Date) => void; onLongPress: (date: Date) => void }) => {
     const hasEvents = eventsForDay && eventsForDay.length > 0;
     
@@ -1077,8 +1276,12 @@ const AdminCalendar = () => {
     );
   });
 
+  // OPTIMIZED: Use direct map lookup instead of function call for better performance
   const renderCalendarDay = useCallback((date: Date, day: number | null, isCurrentDay: boolean, isSelectedDay: boolean, key: number) => {
-    const eventsForDay = getEventsForDate(date);
+    // Direct map lookup - faster than calling getEventsForDate
+    const dateKey = formatDateKey(date);
+    const eventsForDay = eventsByDateMap.get(dateKey) || [];
+    
     return (
       <CalendarDay
         key={key}
@@ -1093,7 +1296,7 @@ const AdminCalendar = () => {
         onLongPress={handleOpenAddEvent}
       />
     );
-  }, [getEventsForDate, t, handleDayPress, handleOpenAddEvent]);
+  }, [eventsByDateMap, t, handleDayPress, handleOpenAddEvent]);
 
 
   // List animation - DISABLED FOR PERFORMANCE DEBUGGING
@@ -1103,8 +1306,11 @@ const AdminCalendar = () => {
     dotScale.setValue(1);
   }, [selectedDate]);
 
-  const days = React.useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
-  const weekDays = React.useMemo(() => ['S', 'M', 'T', 'W', 'T', 'F', 'S'], []);
+  // OPTIMIZED: Memoize days calculation
+  const days = React.useMemo(() => getDaysInMonth(currentMonth), [currentMonth, getDaysInMonth]);
+  
+  // Static array - no need for useMemo (constant value)
+  const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -1400,14 +1606,22 @@ const AdminCalendar = () => {
               style={[styles.csvUploadButton, { 
                 backgroundColor: t.colors.surface,
                 borderColor: t.colors.border,
-                opacity: isUploadingCSV ? 0.6 : 1
+                opacity: (isUploadingCSV || isProcessingCSV) ? 0.6 : 1
               }]}
               onPress={handleCSVUpload}
-              disabled={isUploadingCSV}
+              disabled={isUploadingCSV || isProcessingCSV}
               activeOpacity={0.7}
             >
               {isUploadingCSV ? (
-                <ActivityIndicator size="small" color={t.colors.accent} />
+                <>
+                  <ActivityIndicator size="small" color={t.colors.accent} />
+                  <Text style={[styles.csvUploadText, { color: t.colors.accent, fontSize: t.fontSize.scaleSize(11) }]}>Uploading...</Text>
+                </>
+              ) : isProcessingCSV ? (
+                <>
+                  <ActivityIndicator size="small" color={t.colors.accent} />
+                  <Text style={[styles.csvUploadText, { color: t.colors.accent, fontSize: t.fontSize.scaleSize(11) }]}>Processing...</Text>
+                </>
               ) : (
                 <>
                   <Ionicons name="cloud-upload-outline" size={14} color={t.colors.accent} />

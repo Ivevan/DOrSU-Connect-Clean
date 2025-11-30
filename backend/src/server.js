@@ -1313,7 +1313,8 @@ const server = http.createServer(async (req, res) => {
         
         // IMPROVED: Unified schedule queries - all calendar, events, announcements, schedules use schedule collection
         // Schedule queries: Focus on dates, schedules, timelines, deadlines, events, announcements
-        const schedulePattern = /\b(date|dates|schedule|schedules|calendar|when|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule|timeline|time\s+table|what\s+date|what\s+dates|when\s+is|when\s+are|when\s+will|event|events|announcement|announcements|upcoming|coming|next|this\s+(week|month|year))\b/i;
+        // CRITICAL: "start of classes" must be detected even if query contains "program" keywords
+        const schedulePattern = /\b(date|dates|schedule|schedules|calendar|when|deadline|deadlines|holiday|holidays|academic\s+calendar|semester|enrollment\s+period|registration|exam\s+schedule|class\s+schedule|start\s+of\s+classes?|start\s+of\s+class|classes?\s+start|class\s+start|timeline|time\s+table|what\s+date|what\s+dates|when\s+is|when\s+are|when\s+will|event|events|announcement|announcements|upcoming|coming|next|this\s+(week|month|year))\b/i;
         const isScheduleQuery = schedulePattern.test(prompt) && !isExamScheduleQuery && !isEnrollmentQuery;
         
         // CRITICAL: Preserve original query for general schedule queries (like "when is siglakass schedule")
@@ -1332,8 +1333,12 @@ const server = http.createServer(async (req, res) => {
         
         // Handle programs/courses list queries - ensure complete list
         // CRITICAL: Program queries MUST be checked BEFORE faculty queries to avoid misrouting
+        // CRITICAL: Program queries MUST exclude schedule queries (when, date, start, semester start, start of classes, etc.) to avoid misrouting
+        // CRITICAL: "undergraduate program" or "graduate program" in schedule context (e.g., "start of classes for undergraduate program") should NOT be treated as program queries
         const programPattern = /\b(program|programs|course|courses)\s+(offered|available|in|at|of|does|do)\b/i;
-        const isProgramQuery = programPattern.test(prompt);
+        const isProgramQuery = programPattern.test(prompt) && 
+                               !isScheduleQuery && // CRITICAL: Exclude schedule queries
+                               !/\b(when|date|dates|start\s+of|start\s+of\s+classes?|start\s+of\s+class|classes?\s+start|class\s+start|schedule|semester\s+\d+\s+start|registration|enrollment|exam|examination|deadline|examination\s+schedule|exam\s+schedule)\b/i.test(prompt);
         
         // Vision/Mission queries
         const visionMissionPattern = /\b(vision|mission|what\s+is\s+.*\s+(vision|mission)|dorsu.*\s+(vision|mission)|university.*\s+(vision|mission))\b/i;
@@ -1384,7 +1389,8 @@ const server = http.createServer(async (req, res) => {
         
         // CRITICAL: Program queries MUST be checked BEFORE faculty queries
         // If query asks "what programs" or "programs offered", prioritize programs over faculties
-        if (isProgramQuery) {
+        // CRITICAL: Skip program normalization if this is a schedule query (already handled above)
+        if (isProgramQuery && !isScheduleQuery) {
           // CRITICAL FIX: Preserve faculty-specific keywords (FACET, FALS, etc.) for vector search
           // Only normalize if query doesn't mention a specific faculty
           const hasSpecificFaculty = /\b(FACET|FALS|FTED|FBM|FCJE|FNAHS|FHUSOCOM|Faculty of Computing|Faculty of Agriculture|Faculty of Teacher|Faculty of Business|Faculty of Criminal|Faculty of Nursing|Faculty of Humanities)\b/i.test(prompt);
@@ -1619,8 +1625,8 @@ const server = http.createServer(async (req, res) => {
 
         // --- Context Retrieval & System Prompt Building ---
         
-        // Schedule queries should always be treated as DOrSU queries to fetch schedule data
-        const isDOrSUQuery = intentClassification.source === 'knowledge_base' || isScheduleQuery;
+        // Schedule queries (including exam schedule queries) should always be treated as DOrSU queries to fetch schedule data
+        const isDOrSUQuery = intentClassification.source === 'knowledge_base' || isScheduleQuery || isExamScheduleQuery;
         let systemPrompt = '';
         
         if (isDOrSUQuery) {
@@ -1643,7 +1649,7 @@ const server = http.createServer(async (req, res) => {
             ragTokens = 800;        // Enough tokens for faculty list
             retrievalType = '(Faculty query - comprehensive retrieval)';
             Logger.debug(`🔍 Faculty query detected - using enhanced retrieval: ${ragSections} sections, ${ragTokens} tokens`);
-          } else if (isProgramQuery) {
+          } else if (isProgramQuery && !isScheduleQuery) {
             ragSections = 12;       // Reduced for chatbot - focus on specific faculty programs
             ragTokens = 1000;       // Reduced to fit model limits
             retrievalType = '(Program list query - optimized retrieval)';
@@ -1913,39 +1919,228 @@ const server = http.createServer(async (req, res) => {
           }
         }
           
-          // Fetch schedule events if query is schedule-related
+          // Fetch schedule events if query is schedule-related (including exam schedule queries)
           let scheduleContext = '';
           let scheduleInstruction = '';
-          if (isScheduleQuery && scheduleService && mongoService) {
+          if ((isScheduleQuery || isExamScheduleQuery) && scheduleService && mongoService) {
             try {
-              // Get current date and date range (past 30 days to future 365 days)
+              // CRITICAL: Extract year/month from query for better filtering (same as rag.js)
+              const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 
+                                 'july', 'august', 'september', 'october', 'november', 'december'];
+              const monthAbbr = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 
+                                'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+              
+              let requestedMonth = null;
+              let requestedYear = null;
+              
+              const queryLower = processedPrompt.toLowerCase();
+              
+              // CRITICAL: Extract year - handle academic year patterns (AY 2024-2025, 2024-2025)
+              // For academic year queries, use the second year (e.g., AY 2024-2025 -> 2025)
+              // This is because events like commencement exercises happen in the second year
+              const academicYearMatch = queryLower.match(/\b(ay|academic\s+year)\s*(\d{4})\s*[-–]\s*(\d{4})\b/i) || 
+                                        queryLower.match(/\b(\d{4})\s*[-–]\s*(\d{4})\b/);
+              if (academicYearMatch) {
+                // Extract the second year from academic year pattern (e.g., AY 2024-2025 -> 2025)
+                const secondYear = academicYearMatch[3] || academicYearMatch[2];
+                requestedYear = parseInt(secondYear, 10);
+                Logger.debug(`📅 Server: Academic year pattern detected: extracted second year ${requestedYear} from academic year query`);
+              } else {
+                // Extract year (4 digits) - use the last/latest year if multiple years are mentioned
+                const yearMatches = queryLower.match(/\b(20\d{2})\b/g);
+                if (yearMatches && yearMatches.length > 0) {
+                  // If multiple years, use the latest one (e.g., "2024 and 2025" -> 2025)
+                  const years = yearMatches.map(y => parseInt(y, 10));
+                  requestedYear = Math.max(...years);
+                  if (yearMatches.length > 1) {
+                    Logger.debug(`📅 Server: Multiple years detected: ${yearMatches.join(', ')}, using latest: ${requestedYear}`);
+                  }
+                }
+              }
+              
+              // Extract month
+              monthNames.forEach((month, index) => {
+                if (queryLower.includes(month)) {
+                  requestedMonth = index; // 0-11
+                }
+              });
+              if (requestedMonth === null) {
+                monthAbbr.forEach((month, index) => {
+                  if (queryLower.includes(month)) {
+                    requestedMonth = index; // 0-11
+                  }
+                });
+              }
+              
+              // CRITICAL: Extract exam type from query for exam schedule queries
+              // This ensures exam queries only get exam events, not all schedule events
+              let examTypeForQuery = null;
+              if (isExamScheduleQuery) {
+                const hasPrelim = /\b(prelim|preliminary|prelims?)\b/i.test(processedPrompt);
+                const hasMidterm = /\b(midterm|mid-term|mid\s+term)\b/i.test(processedPrompt);
+                const hasFinal = /\b(final|finals?)\b/i.test(processedPrompt);
+                
+                // Determine exam type - prioritize specific types, fallback to null if multiple or none
+                if (hasFinal && !hasPrelim && !hasMidterm) {
+                  examTypeForQuery = 'final';
+                } else if (hasPrelim && !hasFinal && !hasMidterm) {
+                  examTypeForQuery = 'prelim';
+                } else if (hasMidterm && !hasFinal && !hasPrelim) {
+                  examTypeForQuery = 'midterm';
+                }
+                // If multiple exam types or none specific, leave as null (will filter JS-side)
+                
+                Logger.debug(`📅 Server: Exam schedule query detected - examType: ${examTypeForQuery || 'multiple/none (will filter JS-side)'}`);
+              }
+              
+              // Calculate date range based on query
               const now = new Date();
-              const startDate = new Date(now);
-              startDate.setDate(startDate.getDate() - 30); // Past 30 days
-              const endDate = new Date(now);
-              endDate.setDate(endDate.getDate() + 365); // Next 365 days
+              let startDate = new Date(now);
+              let endDate = new Date(now);
+              
+              if (requestedMonth !== null && requestedYear) {
+                // User specified month and year - filter to that month
+                startDate = new Date(requestedYear, requestedMonth, 1);
+                endDate = new Date(requestedYear, requestedMonth + 1, 0, 23, 59, 59); // Last day of month
+                Logger.debug(`📅 Server: Filtering schedule events to ${monthNames[requestedMonth]} ${requestedYear}`);
+              } else if (requestedYear) {
+                // User specified year only - filter to that year
+                startDate = new Date(requestedYear, 0, 1);
+                endDate = new Date(requestedYear, 11, 31, 23, 59, 59);
+                Logger.debug(`📅 Server: Filtering schedule events to year ${requestedYear}`);
+              } else {
+                // Default: Past 30 days to future 365 days
+                startDate.setDate(startDate.getDate() - 30); // Past 30 days
+                endDate.setDate(endDate.getDate() + 365); // Next 365 days
+              }
               
               const events = await scheduleService.getEvents({
                 startDate: startDate.toISOString(),
                 endDate: endDate.toISOString(),
-                limit: 100 // Get up to 100 events
+                limit: 100, // Get up to 100 events
+                examType: examTypeForQuery // CRITICAL: Pass exam type for exam schedule queries
               });
               
               if (events && events.length > 0) {
-                // Helper function to format date concisely (e.g., "Jan 11" or "Jan 11 - Jan 15")
+                // CRITICAL: Filter events by exam type first (if exam query), then by year/month
+                let filteredEvents = events;
+                
+                // CRITICAL: Filter by exam type if this is an exam schedule query
+                // This ensures we only get exam events, not registration or other events
+                if (isExamScheduleQuery) {
+                  const beforeExamFilter = filteredEvents.length;
+                  const hasPrelim = /\b(prelim|preliminary|prelims?)\b/i.test(processedPrompt);
+                  const hasMidterm = /\b(midterm|mid-term|mid\s+term)\b/i.test(processedPrompt);
+                  const hasFinal = /\b(final|finals?)\b/i.test(processedPrompt);
+                  
+                  filteredEvents = filteredEvents.filter(event => {
+                    const titleLower = (event.title || '').toLowerCase();
+                    // Use OR logic to match ANY of the requested exam types
+                    let matches = false;
+                    if (hasPrelim) matches = matches || titleLower.includes('prelim') || titleLower.includes('preliminary');
+                    if (hasMidterm) matches = matches || titleLower.includes('midterm');
+                    if (hasFinal) matches = matches || titleLower.includes('final');
+                    return matches;
+                  });
+                  
+                  if (beforeExamFilter !== filteredEvents.length) {
+                    const examTypes = [];
+                    if (hasPrelim) examTypes.push('prelim');
+                    if (hasMidterm) examTypes.push('midterm');
+                    if (hasFinal) examTypes.push('final');
+                    Logger.debug(`📅 Server: Filtered ${beforeExamFilter} events to ${filteredEvents.length} for exam types: ${examTypes.join(', ')}`);
+                  }
+                }
+                
+                // CRITICAL: Filter events by year/month if specified (post-query filtering as safety net)
+                if (requestedMonth !== null && requestedYear) {
+                  const beforeFilter = filteredEvents.length;
+                  filteredEvents = filteredEvents.filter(event => {
+                    // For month-only events, check year and month match exactly
+                    if (event.dateType === 'month_only' || event.isMonthOnly) {
+                      const eventYear = event.year || (event.isoDate ? new Date(event.isoDate).getFullYear() : null);
+                      const eventMonth = event.month || (event.isoDate ? new Date(event.isoDate).getMonth() + 1 : null);
+                      // Month is 1-based in event.month, but 0-based in requestedMonth
+                      return eventYear === requestedYear && eventMonth === (requestedMonth + 1);
+                    }
+                    
+                    // For date ranges, check if the requested month/year overlaps with the range
+                    if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+                      const rangeStart = new Date(event.startDate);
+                      const rangeEnd = new Date(event.endDate);
+                      if (isNaN(rangeStart.getTime()) || isNaN(rangeEnd.getTime())) return false;
+                      
+                      // CRITICAL: Check that at least one date in the range is in the requested year
+                      const rangeStartYear = rangeStart.getFullYear();
+                      const rangeEndYear = rangeEnd.getFullYear();
+                      if (rangeStartYear !== requestedYear && rangeEndYear !== requestedYear) {
+                        return false;
+                      }
+                      
+                      const queryStart = new Date(requestedYear, requestedMonth, 1);
+                      const queryEnd = new Date(requestedYear, requestedMonth + 1, 0, 23, 59, 59);
+                      return (rangeStart <= queryEnd && rangeEnd >= queryStart);
+                    } else {
+                      // For single dates, check if it's in the requested month/year
+                      const dateValue = event.isoDate || event.date;
+                      if (!dateValue) return false;
+                      const eventDate = new Date(dateValue);
+                      if (isNaN(eventDate.getTime())) return false;
+                      return eventDate.getMonth() === requestedMonth && eventDate.getFullYear() === requestedYear;
+                    }
+                  });
+                  if (beforeFilter !== filteredEvents.length) {
+                    Logger.debug(`📅 Server: Filtered ${beforeFilter} events to ${filteredEvents.length} for ${monthNames[requestedMonth]} ${requestedYear}`);
+                  }
+                } else if (requestedYear) {
+                  const beforeFilter = filteredEvents.length;
+                  filteredEvents = filteredEvents.filter(event => {
+                    // For month-only events, check year matches exactly
+                    if (event.dateType === 'month_only' || event.isMonthOnly) {
+                      const eventYear = event.year || (event.isoDate ? new Date(event.isoDate).getFullYear() : null);
+                      return eventYear === requestedYear;
+                    }
+                    
+                    // For date ranges, check if the range includes the requested year
+                    if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+                      const rangeStart = new Date(event.startDate);
+                      const rangeEnd = new Date(event.endDate);
+                      if (isNaN(rangeStart.getTime()) || isNaN(rangeEnd.getTime())) return false;
+                      const rangeStartYear = rangeStart.getFullYear();
+                      const rangeEndYear = rangeEnd.getFullYear();
+                      return (rangeStartYear <= requestedYear && rangeEndYear >= requestedYear);
+                    } else {
+                      // For single dates, check if year matches exactly
+                      const dateValue = event.isoDate || event.date;
+                      if (!dateValue) return false;
+                      const eventDate = new Date(dateValue);
+                      if (isNaN(eventDate.getTime())) return false;
+                      return eventDate.getFullYear() === requestedYear;
+                    }
+                  });
+                  if (beforeFilter !== filteredEvents.length) {
+                    Logger.debug(`📅 Server: Filtered ${beforeFilter} events to ${filteredEvents.length} for year ${requestedYear}`);
+                  }
+                }
+                
+                // Helper function to format date concisely (e.g., "Jan 11, 2025" or "Jan 11 - Jan 15, 2025")
+                // CRITICAL: Always include year to prevent confusion
                 // CRITICAL: Use Philippine timezone to prevent date shifts (e.g., Dec 1 -> Nov 30)
-                const formatDateConcise = (date) => {
+                const formatDateConcise = (date, includeYear = true) => {
                   if (!date) return 'Date TBD';
                   const d = new Date(date);
+                  if (isNaN(d.getTime())) return 'Date TBD';
                   // Use timezone-aware formatting to ensure correct date in Philippine timezone
                   const month = formatDateInTimezone(d, { month: 'short' });
                   const day = formatDateInTimezone(d, { day: 'numeric' });
-                  return `${month} ${day}`;
+                  const year = formatDateInTimezone(d, { year: 'numeric' });
+                  if (!month || !day) return 'Date TBD';
+                  return includeYear && year ? `${month} ${day}, ${year}` : `${month} ${day}`;
                 };
                 
                 // Group events by title to avoid redundancy
                 const groupedEvents = new Map();
-                events.forEach(event => {
+                filteredEvents.forEach(event => {
                   const title = event.title || 'Untitled Event';
                   if (!groupedEvents.has(title)) {
                     groupedEvents.set(title, []);
@@ -1971,63 +2166,78 @@ const server = http.createServer(async (req, res) => {
                   
                   let eventInfo = `- **${title}**\n`;
                   
-                  // Check if all events in group are date ranges
-                  const allAreDateRanges = eventGroup.every(e => 
-                    e.dateType === 'date_range' && e.startDate && e.endDate
-                  );
-                  
-                  if (allAreDateRanges && eventGroup.length > 0) {
-                    // For date ranges, show the range concisely
-                    const startDate = eventGroup[0].startDate;
-                    const endDate = eventGroup[eventGroup.length - 1].endDate;
-                    
-                    // If all events are part of the same range, show single range
-                    if (eventGroup.length === 1) {
-                      const start = formatDateConcise(startDate);
-                      const end = formatDateConcise(endDate);
-                      // CRITICAL: Use timezone-aware year to prevent date shifts
-                      const year = formatDateInTimezone(new Date(startDate), { year: 'numeric' });
-                      eventInfo += `  📅 Date: ${start} - ${end}, ${year}\n`;
+                  // CRITICAL: For month-only events, format differently
+                  if (firstEvent.dateType === 'month_only' || firstEvent.isMonthOnly) {
+                    const monthNamesFull = ['January', 'February', 'March', 'April', 'May', 'June',
+                                          'July', 'August', 'September', 'October', 'November', 'December'];
+                    const monthNum = firstEvent.month || (firstEvent.isoDate ? new Date(firstEvent.isoDate).getMonth() + 1 : null);
+                    const monthName = firstEvent.monthName || (monthNum ? monthNamesFull[monthNum - 1] : null);
+                    // CRITICAL: Use explicit year field first, then extract from date
+                    let year = firstEvent.year;
+                    if (!year && firstEvent.isoDate) {
+                      const dateObj = new Date(firstEvent.isoDate);
+                      if (!isNaN(dateObj.getTime())) {
+                        year = dateObj.getFullYear();
+                      }
+                    }
+                    // Fallback to requested year or current year
+                    if (!year) {
+                      year = requestedYear || new Date().getFullYear();
+                    }
+                    if (monthName && year) {
+                      eventInfo += `  📅 Date: ${monthName} ${year} (month-only event, no specific date)\n`;
                     } else {
-                      // Multiple ranges - show first and last
-                      const firstStart = formatDateConcise(startDate);
-                      const lastEnd = formatDateConcise(endDate);
-                      // CRITICAL: Use timezone-aware year to prevent date shifts
-                      const year = formatDateInTimezone(new Date(startDate), { year: 'numeric' });
-                      eventInfo += `  📅 Dates: ${firstStart} - ${lastEnd}, ${year}\n`;
+                      eventInfo += `  📅 Date: Date TBD\n`;
                     }
                   } else {
-                    // Mix of single dates and ranges, or all single dates
-                    const dates = [];
-                    eventGroup.forEach(event => {
-                      if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-                        const start = formatDateConcise(event.startDate);
-                        const end = formatDateConcise(event.endDate);
-                        dates.push(`${start} - ${end}`);
-                      } else if (event.isoDate || event.date) {
-                        dates.push(formatDateConcise(event.isoDate || event.date));
-                      }
-                    });
+                    // Check if all events in group are date ranges
+                    const allAreDateRanges = eventGroup.every(e => 
+                      e.dateType === 'date_range' && e.startDate && e.endDate
+                    );
                     
-                    if (dates.length > 0) {
-                      // Remove duplicates and format
-                      const uniqueDates = [...new Set(dates)];
-                      // CRITICAL: Use timezone-aware year to prevent date shifts
-                      const year = eventGroup[0].isoDate || eventGroup[0].date 
-                        ? formatDateInTimezone(new Date(eventGroup[0].isoDate || eventGroup[0].date), { year: 'numeric' })
-                        : eventGroup[0].startDate 
-                          ? formatDateInTimezone(new Date(eventGroup[0].startDate), { year: 'numeric' })
-                          : formatDateInTimezone(new Date(), { year: 'numeric' });
+                    if (allAreDateRanges && eventGroup.length > 0) {
+                      // For date ranges, show the range concisely
+                      const startDate = eventGroup[0].startDate;
+                      const endDate = eventGroup[eventGroup.length - 1].endDate;
                       
-                      if (uniqueDates.length === 1) {
-                        eventInfo += `  📅 Date: ${uniqueDates[0]}, ${year}\n`;
-                      } else if (uniqueDates.length <= 3) {
-                        eventInfo += `  📅 Dates: ${uniqueDates.join(', ')}, ${year}\n`;
+                      // If all events are part of the same range, show single range
+                      if (eventGroup.length === 1) {
+                        const start = formatDateConcise(startDate, true);
+                        const end = formatDateConcise(endDate, true);
+                        eventInfo += `  📅 Date: ${start} - ${end}\n`;
                       } else {
-                        // Too many dates, show range
-                        const firstDate = uniqueDates[0];
-                        const lastDate = uniqueDates[uniqueDates.length - 1];
-                        eventInfo += `  📅 Dates: ${firstDate} - ${lastDate}, ${year}\n`;
+                        // Multiple ranges - show first and last
+                        const firstStart = formatDateConcise(startDate, true);
+                        const lastEnd = formatDateConcise(endDate, true);
+                        eventInfo += `  📅 Dates: ${firstStart} - ${lastEnd}\n`;
+                      }
+                    } else {
+                      // Mix of single dates and ranges, or all single dates
+                      const dates = [];
+                      eventGroup.forEach(event => {
+                        if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+                          const start = formatDateConcise(event.startDate, true);
+                          const end = formatDateConcise(event.endDate, true);
+                          dates.push(`${start} - ${end}`);
+                        } else if (event.isoDate || event.date) {
+                          dates.push(formatDateConcise(event.isoDate || event.date, true));
+                        }
+                      });
+                      
+                      if (dates.length > 0) {
+                        // Remove duplicates and format
+                        const uniqueDates = [...new Set(dates)];
+                        
+                        if (uniqueDates.length === 1) {
+                          eventInfo += `  📅 Date: ${uniqueDates[0]}\n`;
+                        } else if (uniqueDates.length <= 3) {
+                          eventInfo += `  📅 Dates: ${uniqueDates.join(', ')}\n`;
+                        } else {
+                          // Too many dates, show range
+                          const firstDate = uniqueDates[0];
+                          const lastDate = uniqueDates[uniqueDates.length - 1];
+                          eventInfo += `  📅 Dates: ${firstDate} - ${lastDate}\n`;
+                        }
                       }
                     }
                   }
@@ -2051,7 +2261,7 @@ const server = http.createServer(async (req, res) => {
                 
                 scheduleInstruction = getCalendarEventsInstructions();
                 
-                Logger.info(`📅 Schedule: Fetched ${events.length} events for schedule query`);
+                Logger.info(`📅 Schedule: Fetched ${filteredEvents.length} events for schedule query${requestedYear ? ` (filtered to ${requestedMonth !== null ? `${monthNames[requestedMonth]} ` : ''}${requestedYear})` : ''}`);
               } else {
                 Logger.info('📅 Schedule: No events found in database');
               }
@@ -2063,7 +2273,7 @@ const server = http.createServer(async (req, res) => {
           
           // Fetch additional schedule items (announcements/events) from schedule collection
           let postsContext = '';
-          if (isScheduleQuery && mongoService) {
+          if ((isScheduleQuery || isExamScheduleQuery) && mongoService) {
             try {
               const scheduleCollection = mongoService.getCollection('schedule');
               // Get recent schedule items (last 100, sorted by date descending)
@@ -2123,39 +2333,228 @@ const server = http.createServer(async (req, res) => {
               // Also fetch calendar events from schedule collection for comprehensive coverage
               if (scheduleService && !scheduleContext) {
                 try {
+                  // CRITICAL: Extract year/month from query for better filtering (reuse variables from above if available)
+                  // If not already extracted, extract them here
+                  if (typeof requestedYear === 'undefined' || typeof requestedMonth === 'undefined') {
+                    const monthNamesLocal = ['january', 'february', 'march', 'april', 'may', 'june', 
+                                           'july', 'august', 'september', 'october', 'november', 'december'];
+                    const monthAbbrLocal = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 
+                                          'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+                    
+                    let requestedMonthLocal = null;
+                    let requestedYearLocal = null;
+                    
+                    const queryLowerLocal = processedPrompt.toLowerCase();
+                    
+                    // CRITICAL: Extract year - handle academic year patterns (AY 2024-2025, 2024-2025)
+                    // For academic year queries, use the second year (e.g., AY 2024-2025 -> 2025)
+                    const academicYearMatchLocal = queryLowerLocal.match(/\b(ay|academic\s+year)\s*(\d{4})\s*[-–]\s*(\d{4})\b/i) || 
+                                                   queryLowerLocal.match(/\b(\d{4})\s*[-–]\s*(\d{4})\b/);
+                    if (academicYearMatchLocal) {
+                      // Extract the second year from academic year pattern (e.g., AY 2024-2025 -> 2025)
+                      const secondYear = academicYearMatchLocal[3] || academicYearMatchLocal[2];
+                      requestedYearLocal = parseInt(secondYear, 10);
+                      Logger.debug(`📅 Server (fallback): Academic year pattern detected: extracted second year ${requestedYearLocal}`);
+                    } else {
+                      // Extract year (4 digits) - use the last/latest year if multiple years are mentioned
+                      const yearMatchesLocal = queryLowerLocal.match(/\b(20\d{2})\b/g);
+                      if (yearMatchesLocal && yearMatchesLocal.length > 0) {
+                        // If multiple years, use the latest one (e.g., "2024 and 2025" -> 2025)
+                        const years = yearMatchesLocal.map(y => parseInt(y, 10));
+                        requestedYearLocal = Math.max(...years);
+                        if (yearMatchesLocal.length > 1) {
+                          Logger.debug(`📅 Server (fallback): Multiple years detected: ${yearMatchesLocal.join(', ')}, using latest: ${requestedYearLocal}`);
+                        }
+                      }
+                    }
+                    
+                    // Extract month
+                    monthNamesLocal.forEach((month, index) => {
+                      if (queryLowerLocal.includes(month)) {
+                        requestedMonthLocal = index; // 0-11
+                      }
+                    });
+                    if (requestedMonthLocal === null) {
+                      monthAbbrLocal.forEach((month, index) => {
+                        if (queryLowerLocal.includes(month)) {
+                          requestedMonthLocal = index; // 0-11
+                        }
+                      });
+                    }
+                    
+                    // Use local variables if global ones weren't set
+                    if (typeof requestedYear === 'undefined') requestedYear = requestedYearLocal;
+                    if (typeof requestedMonth === 'undefined') requestedMonth = requestedMonthLocal;
+                  }
+                  
+                  // Calculate date range based on query
                   const now = new Date();
-                  const startDate = new Date(now);
-                  startDate.setDate(startDate.getDate() - 30);
-                  const endDate = new Date(now);
-                  endDate.setDate(endDate.getDate() + 365);
+                  let startDate = new Date(now);
+                  let endDate = new Date(now);
+                  
+                  if (requestedMonth !== null && requestedMonth !== undefined && requestedYear) {
+                    // User specified month and year - filter to that month
+                    startDate = new Date(requestedYear, requestedMonth, 1);
+                    endDate = new Date(requestedYear, requestedMonth + 1, 0, 23, 59, 59);
+                  } else if (requestedYear) {
+                    // User specified year only - filter to that year
+                    startDate = new Date(requestedYear, 0, 1);
+                    endDate = new Date(requestedYear, 11, 31, 23, 59, 59);
+                  } else {
+                    // Default: Past 30 days to future 365 days
+                    startDate.setDate(startDate.getDate() - 30);
+                    endDate.setDate(endDate.getDate() + 365);
+                  }
+                  
+                  // CRITICAL: Extract exam type from query for exam schedule queries (same as above)
+                  let examTypeForQueryLocal = null;
+                  if (isExamScheduleQuery) {
+                    const hasPrelim = /\b(prelim|preliminary|prelims?)\b/i.test(processedPrompt);
+                    const hasMidterm = /\b(midterm|mid-term|mid\s+term)\b/i.test(processedPrompt);
+                    const hasFinal = /\b(final|finals?)\b/i.test(processedPrompt);
+                    
+                    if (hasFinal && !hasPrelim && !hasMidterm) {
+                      examTypeForQueryLocal = 'final';
+                    } else if (hasPrelim && !hasFinal && !hasMidterm) {
+                      examTypeForQueryLocal = 'prelim';
+                    } else if (hasMidterm && !hasFinal && !hasPrelim) {
+                      examTypeForQueryLocal = 'midterm';
+                    }
+                  }
                   
                   const events = await scheduleService.getEvents({
                     startDate: startDate.toISOString(),
                     endDate: endDate.toISOString(),
-                    limit: 50
+                    limit: 50,
+                    examType: examTypeForQueryLocal // CRITICAL: Pass exam type for exam schedule queries
                   });
                   
                   if (events && events.length > 0) {
-                    // Helper function to format date concisely (e.g., "Jan 11" or "Jan 11 - Jan 15")
-                    // CRITICAL: Use Philippine timezone to prevent date shifts (e.g., Dec 1 -> Nov 30)
-                    const formatDateConcise = (date) => {
-                      if (!date) return 'Date TBD';
-                      const d = new Date(date);
-                      // Use timezone-aware formatting to ensure correct date in Philippine timezone
-                      const month = formatDateInTimezone(d, { month: 'short' });
-                      const day = formatDateInTimezone(d, { day: 'numeric' });
-                      return `${month} ${day}`;
-                    };
+                    // CRITICAL: Filter events by exam type first (if exam query), then by year/month
+                    let filteredEventsLocal = events;
                     
-                    const formattedEvents = events.slice(0, 20).map(event => {
+                    // CRITICAL: Filter by exam type if this is an exam schedule query
+                    if (isExamScheduleQuery) {
+                      const beforeExamFilter = filteredEventsLocal.length;
+                      const hasPrelim = /\b(prelim|preliminary|prelims?)\b/i.test(processedPrompt);
+                      const hasMidterm = /\b(midterm|mid-term|mid\s+term)\b/i.test(processedPrompt);
+                      const hasFinal = /\b(final|finals?)\b/i.test(processedPrompt);
+                      
+                      filteredEventsLocal = filteredEventsLocal.filter(event => {
+                        const titleLower = (event.title || '').toLowerCase();
+                        let matches = false;
+                        if (hasPrelim) matches = matches || titleLower.includes('prelim') || titleLower.includes('preliminary');
+                        if (hasMidterm) matches = matches || titleLower.includes('midterm');
+                        if (hasFinal) matches = matches || titleLower.includes('final');
+                        return matches;
+                      });
+                      
+                      if (beforeExamFilter !== filteredEventsLocal.length) {
+                        const examTypes = [];
+                        if (hasPrelim) examTypes.push('prelim');
+                        if (hasMidterm) examTypes.push('midterm');
+                        if (hasFinal) examTypes.push('final');
+                        Logger.debug(`📅 Server (fallback): Filtered ${beforeExamFilter} events to ${filteredEventsLocal.length} for exam types: ${examTypes.join(', ')}`);
+                      }
+                    }
+                    
+                    // CRITICAL: Filter events by year/month if specified (post-query filtering as safety net)
+                    if (requestedMonth !== null && requestedMonth !== undefined && requestedYear) {
+                      const beforeFilter = filteredEventsLocal.length;
+                      filteredEventsLocal = filteredEventsLocal.filter(event => {
+                        // For month-only events, check year and month match exactly
+                        if (event.dateType === 'month_only' || event.isMonthOnly) {
+                          const eventYear = event.year || (event.isoDate ? new Date(event.isoDate).getFullYear() : null);
+                          const eventMonth = event.month || (event.isoDate ? new Date(event.isoDate).getMonth() + 1 : null);
+                          return eventYear === requestedYear && eventMonth === (requestedMonth + 1);
+                        }
+                        
+                        // For date ranges, check if the requested month/year overlaps with the range
+                        if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+                          const rangeStart = new Date(event.startDate);
+                          const rangeEnd = new Date(event.endDate);
+                          if (isNaN(rangeStart.getTime()) || isNaN(rangeEnd.getTime())) return false;
+                          const rangeStartYear = rangeStart.getFullYear();
+                          const rangeEndYear = rangeEnd.getFullYear();
+                          if (rangeStartYear !== requestedYear && rangeEndYear !== requestedYear) {
+                            return false;
+                          }
+                          const queryStart = new Date(requestedYear, requestedMonth, 1);
+                          const queryEnd = new Date(requestedYear, requestedMonth + 1, 0, 23, 59, 59);
+                          return (rangeStart <= queryEnd && rangeEnd >= queryStart);
+                        } else {
+                          // For single dates, check if it's in the requested month/year
+                          const dateValue = event.isoDate || event.date;
+                          if (!dateValue) return false;
+                          const eventDate = new Date(dateValue);
+                          if (isNaN(eventDate.getTime())) return false;
+                          return eventDate.getMonth() === requestedMonth && eventDate.getFullYear() === requestedYear;
+                        }
+                      });
+                      if (beforeFilter !== filteredEventsLocal.length) {
+                        Logger.debug(`📅 Server (fallback): Filtered ${beforeFilter} events to ${filteredEventsLocal.length} for ${requestedMonth !== null ? `${monthNamesLocal[requestedMonth]} ` : ''}${requestedYear}`);
+                      }
+                    } else if (requestedYear) {
+                      const beforeFilter = filteredEventsLocal.length;
+                      filteredEventsLocal = filteredEventsLocal.filter(event => {
+                        if (event.dateType === 'month_only' || event.isMonthOnly) {
+                          const eventYear = event.year || (event.isoDate ? new Date(event.isoDate).getFullYear() : null);
+                          return eventYear === requestedYear;
+                        }
+                        if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+                          const rangeStart = new Date(event.startDate);
+                          const rangeEnd = new Date(event.endDate);
+                          if (isNaN(rangeStart.getTime()) || isNaN(rangeEnd.getTime())) return false;
+                          const rangeStartYear = rangeStart.getFullYear();
+                          const rangeEndYear = rangeEnd.getFullYear();
+                          return (rangeStartYear <= requestedYear && rangeEndYear >= requestedYear);
+                        } else {
+                          const dateValue = event.isoDate || event.date;
+                          if (!dateValue) return false;
+                          const eventDate = new Date(dateValue);
+                          if (isNaN(eventDate.getTime())) return false;
+                          return eventDate.getFullYear() === requestedYear;
+                        }
+                      });
+                      if (beforeFilter !== filteredEventsLocal.length) {
+                        Logger.debug(`📅 Server (fallback): Filtered ${beforeFilter} events to ${filteredEventsLocal.length} for year ${requestedYear}`);
+                      }
+                    }
+                    
+                    const formattedEvents = filteredEventsLocal.slice(0, 20).map(event => {
                       let eventText = `- **${event.title || 'Untitled Event'}**\n`;
-                      if (event.isoDate || event.date) {
+                      
+                      // CRITICAL: Handle month-only events
+                      if (event.dateType === 'month_only' || event.isMonthOnly) {
+                        const monthNamesFull = ['January', 'February', 'March', 'April', 'May', 'June',
+                                              'July', 'August', 'September', 'October', 'November', 'December'];
+                        const monthNum = event.month || (event.isoDate ? new Date(event.isoDate).getMonth() + 1 : null);
+                        const monthName = event.monthName || (monthNum ? monthNamesFull[monthNum - 1] : null);
+                        let year = event.year || (event.isoDate ? new Date(event.isoDate).getFullYear() : null);
+                        if (!year) year = requestedYear || new Date().getFullYear();
+                        if (monthName && year) {
+                          eventText += `  📅 Date: ${monthName} ${year} (month-only event, no specific date)\n`;
+                        } else {
+                          eventText += `  📅 Date: Date TBD\n`;
+                        }
+                      } else if (event.isoDate || event.date) {
                         const eventDate = new Date(event.isoDate || event.date);
                         // CRITICAL: Use timezone-aware formatting to prevent date shifts
+                        // CRITICAL: Always include year
                         const month = formatDateInTimezone(eventDate, { month: 'short' });
                         const day = formatDateInTimezone(eventDate, { day: 'numeric' });
                         const year = formatDateInTimezone(eventDate, { year: 'numeric' });
                         eventText += `  📅 Date: ${month} ${day}, ${year}\n`;
+                      } else if (event.dateType === 'date_range' && event.startDate && event.endDate) {
+                        const startDateObj = new Date(event.startDate);
+                        const endDateObj = new Date(event.endDate);
+                        if (!isNaN(startDateObj.getTime()) && !isNaN(endDateObj.getTime())) {
+                          const start = formatDateInTimezone(startDateObj, { year: 'numeric', month: 'short', day: 'numeric' });
+                          const end = formatDateInTimezone(endDateObj, { year: 'numeric', month: 'short', day: 'numeric' });
+                          if (start && end) {
+                            eventText += `  📅 Date: ${start} - ${end}\n`;
+                          }
+                        }
                       }
                       if (event.category) eventText += `  🏷️ Category: ${event.category}\n`;
                       if (event.description) {
@@ -2168,18 +2567,18 @@ const server = http.createServer(async (req, res) => {
                     });
                     
                     if (postsContext) {
-                      postsContext += `\n\n=== SCHEDULE EVENTS (${events.length} events found) ===\n` +
+                      postsContext += `\n\n=== SCHEDULE EVENTS (${filteredEventsLocal.length} events found) ===\n` +
                         `The following are calendar events with specific dates:\n\n` +
                         formattedEvents.join('\n') +
                         `\n=== END OF SCHEDULE EVENTS ===\n`;
                     } else {
-                      postsContext = `\n\n=== SCHEDULE EVENTS (${events.length} events found) ===\n` +
+                      postsContext = `\n\n=== SCHEDULE EVENTS (${filteredEventsLocal.length} events found) ===\n` +
                         `The following are calendar events with specific dates:\n\n` +
                         formattedEvents.join('\n') +
                         `\n=== END OF SCHEDULE EVENTS ===\n`;
                     }
                     
-                    Logger.info(`📅 Schedule: Fetched ${events.length} events for schedule query`);
+                    Logger.info(`📅 Schedule (fallback): Fetched ${filteredEventsLocal.length} events for schedule query${requestedYear ? ` (filtered to ${requestedMonth !== null && requestedMonth !== undefined ? `${monthNamesLocal[requestedMonth]} ` : ''}${requestedYear})` : ''}`);
                   }
                 } catch (scheduleError) {
                   Logger.debug('📅 Schedule: Error fetching events for schedule query:', scheduleError);
@@ -2235,13 +2634,15 @@ const server = http.createServer(async (req, res) => {
           
           // Build data source instructions based on query type
           let dataSourceInstructions = '';
-          if (isScheduleQuery) {
+          if (isScheduleQuery || isExamScheduleQuery) {
             dataSourceInstructions = '\n📅 DATA SOURCE FOR THIS QUERY:\n' +
               '• For dates, schedules, events, announcements, and timelines → Use ONLY the "SCHEDULE EVENTS" section above (from "schedule" collection)\n' +
               '• The schedule collection contains all calendar events, announcements, and posts\n' +
               '• DO NOT use general knowledge or training data about dates, events, or announcements\n' +
               '• If schedule events are provided above, use those EXACT dates and information\n' +
-              '• Check both calendar events and announcements/events sections as they are from the unified schedule collection\n\n';
+              '• Check both calendar events and announcements/events sections as they are from the unified schedule collection\n' +
+              (isExamScheduleQuery ? '• CRITICAL: For exam schedule queries, ONLY use exam events (prelim, midterm, or final examination) from the schedule events above\n' : '') +
+              '\n';
           } else if (isDirectNewsQuery) {
             dataSourceInstructions = '\n📰 DATA SOURCE FOR THIS QUERY:\n' +
               '• For news and updates → Use ONLY the "NEWS" section above (from "news" collection)\n' +
@@ -2267,7 +2668,7 @@ const server = http.createServer(async (req, res) => {
             dataSourceInstructions = getLeadershipInstructions(false, false, true);
           } else if (isLeadershipQuery) {
             dataSourceInstructions = getLeadershipInstructions(false, false, false);
-          } else if (isProgramQuery) {
+          } else if (isProgramQuery && !isScheduleQuery) {
             dataSourceInstructions = getProgramInstructions();
           } else if (isAdmissionRequirementsQuery) {
             dataSourceInstructions = getAdmissionRequirementsInstructions();
@@ -2394,7 +2795,7 @@ const server = http.createServer(async (req, res) => {
                 getHistoryCriticalRules() :
               (isVPQuery || isDeanQuery || isDirectorQuery || isLeadershipQuery) ?
                 getLeadershipCriticalRules() :
-              (isProgramQuery) ?
+              (isProgramQuery && !isScheduleQuery) ?
                 getProgramCriticalRules() :
               (isHymnQuery) ?
                 getHymnCriticalRules() :

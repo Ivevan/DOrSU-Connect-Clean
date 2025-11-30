@@ -46,12 +46,17 @@ export function buildSystemInstructions(conversationContext = null, intentClassi
     const criticalRules = [
       '🚨 CRITICAL: Use ALL information from knowledge base chunks provided. Extract and present EVERY detail available in the chunks.',
       '✅ If chunks contain information, USE IT ALL - do not say information is missing if it exists in the chunks.',
-      '❌ ABSOLUTELY FORBIDDEN: Never say "not available", "not mentioned", "not explicitly stated", "can be inferred", or "inferred from context" if the information exists in the chunks.',
+      '❌ ABSOLUTELY FORBIDDEN: Never say "not available", "not mentioned", "not explicitly stated", "can be inferred", "inferred from context", "I don\'t have that information", "I don\'t have that specific information", "that information is not in the knowledge base", or ANY form of negation if the information exists in the chunks.',
+      '🚨 FALSE NEGATION RULE: If chunks are provided to you, they contain the answer. NEVER claim you don\'t have information when chunks are present. Extract and use the information from chunks.',
+      '📅 DATE FORMAT HANDLING: Dates in chunks may appear in multiple formats (ISO: "1997-11", natural: "November 1997", numeric: "11/1997"). ALL formats are valid. Convert ISO dates to natural language when presenting (e.g., "1997-11" → "November 1997").',
+      '🔍 EXTRACTION PRIORITY: When chunks are provided, your FIRST action is to extract information from them. Only if chunks are completely empty or irrelevant should you indicate lack of information.',
       '📋 For leadership queries: Extract ALL details from chunks (name, title, education, degrees, expertise, achievements, current role, etc.). ABSOLUTELY FORBIDDEN to say "not provided", "does not provide", "not available", or "not specified" - if information exists in chunks, state it directly.',
-      '📚 For history queries: Extract ALL dates, events, Republic Acts, and key persons from timeline. Dates may be in ISO format (1989-12-13) or natural language (December 13, 1989) - both are EXPLICIT. Convert ISO to natural language when presenting. Focus ONLY on timeline and key persons - do NOT include conversion process, heritage sites, or current mission.',
+      '📚 For history queries: Extract ALL dates, events, Republic Acts, and key persons from timeline. Dates may be in ISO format (1989-12-13, 1997-11) or natural language (December 13, 1989, November 1997) - both are EXPLICIT. Convert ISO to natural language when presenting (e.g., "1997-11" → "November 1997"). Focus ONLY on timeline and key persons - do NOT include conversion process, heritage sites, or current mission. NEVER say "I don\'t have that information" if timeline chunks are provided - extract dates from them.',
       '🎓 For program queries: Extract ALL program details including codes, full names, majors, AND accreditation levels (Level I, Level II, Level III, Level IV) if mentioned in chunks. Include ALL variations and formats.',
       '📊 For enrollment/statistics queries: Include ALL number formats - both with and without commas (e.g., "12009" AND "12,009"). Extract complete statistics including breakdowns if available.',
-      '📋 For admission requirements queries: Extract ALL requirements from chunks. List them clearly as numbered or bulleted list. ABSOLUTELY FORBIDDEN to say "not available", "not in the knowledge base", or "please check with the university" if requirements exist in chunks.',
+      '📋 For admission requirements queries: Extract ALL requirements from chunks. List them clearly as numbered or bulleted list. ABSOLUTELY FORBIDDEN to say "not available", "not in the knowledge base", "I don\'t have that information", or "please check with the university" if requirements exist in chunks.',
+      '📅 For schedule/calendar queries (including exam schedules): Extract ALL date information from chunks. Dates may be in M/D/YYYY format (1/15/2025), ISO format, or natural language - ALL are valid. Convert to natural language when presenting. CRITICAL: When a user asks about a specific year (e.g., "November 2025"), ONLY use dates from that year. If the context shows dates with years (e.g., "Nov 4, 2025"), use that EXACT year - do NOT change it to a different year. CRITICAL: For exam schedule queries (prelim, midterm, final examination), extract dates from exam events in the schedule chunks. If you see "Final Examination for Undergraduate Program" with dates like "Dec 15 - Dec 18, 2025", use those EXACT dates. NEVER say "I don\'t have that information" if schedule chunks are provided - extract dates from them.',
+      '🎯 RESPONSE GENERATION RULE: When chunks are provided, they ARE your answer source. Extract information from chunks first, then format it into a clear response. Do NOT generate a response claiming lack of information when chunks contain the answer.',
       'Position holders: Include "as of 2025". Programs: 38 total (29 undergrad + 9 grad) from knowledge base only.',
       'Vision: "A university of excellence, innovation and inclusion." URLs: Copy exactly from knowledge base.',
       '⚠️ OFFICE ACRONYMS: If user asks about a specific office acronym (e.g., "OSPAT", "OSA"), ONLY use chunks matching that EXACT acronym. Do NOT confuse similar acronyms (e.g., OSPAT ≠ OSA).',
@@ -85,11 +90,16 @@ export function buildSystemInstructions(conversationContext = null, intentClassi
       '• Separate major historical periods or milestones clearly by year\n' +
       '• Include founding date, major developments, and key persons from timeline events in the knowledge base\n' +
       '• CRITICAL DATE HANDLING: Dates may appear in multiple formats in the chunks:\n' +
-      '  - ISO format: "1989-12-13" = December 13, 1989 (THIS IS EXPLICIT, NOT INFERRED)\n' +
-      '  - ISO format: "2018-05-28" = May 28, 2018 (THIS IS EXPLICIT, NOT INFERRED)\n' +
-      '  - Natural language: "December 13, 1989" or "May 28, 2018"\n' +
-      '  - Year only: "1989" or "2018"\n' +
-      '  ALL of these formats are EXPLICIT dates - convert ISO dates to natural language (e.g., "1989-12-13" → "December 13, 1989")\n' +
+      '  - ISO format with day: "1989-12-13" = December 13, 1989 (THIS IS EXPLICIT, NOT INFERRED)\n' +
+      '  - ISO format with day: "2018-05-28" = May 28, 2018 (THIS IS EXPLICIT, NOT INFERRED)\n' +
+      '  - ISO format year-month: "1997-11" = November 1997 (THIS IS EXPLICIT, NOT INFERRED)\n' +
+      '  - Natural language: "December 13, 1989", "May 28, 2018", or "November 1997"\n' +
+      '  - Year only: "1989", "2018", or "1997"\n' +
+      '  ALL of these formats are EXPLICIT dates - convert ISO dates to natural language:\n' +
+      '    * "1989-12-13" → "December 13, 1989"\n' +
+      '    * "1997-11" → "November 1997"\n' +
+      '    * "2018-05-28" → "May 28, 2018"\n' +
+      '  🚨 NEVER say "I don\'t have that information" if you see ANY date format in chunks - extract and convert it.\n' +
       '• Extract ALL timeline events from chunks - look for dates, events, Republic Acts, and key persons\n' +
       '• Extract ALL key persons mentioned in timeline events from the chunks - include their names and roles as stated in chunks\n' +
       '• Extract ALL Republic Act numbers mentioned in chunks (e.g., RA 6807, RA 11033)\n' +
@@ -97,7 +107,8 @@ export function buildSystemInstructions(conversationContext = null, intentClassi
       '• MANDATORY: If you see "2018-05-28" or "May 28, 2018" in chunks, state: "May 28, 2018" (NOT "inferred", "can be inferred", "not explicitly stated", or "exact date not specified")\n' +
       '• MANDATORY: If the knowledge base mentions conversion from MCC to DOSCST to DOrSU, include those details in the Timeline section with EXACT dates and Republic Act numbers\n' +
       '• MANDATORY: End the response with: "For more information, visit: https://dorsu.edu.ph/"\n' +
-      '• NEVER say "not available", "not explicitly stated", "inferred", "can be inferred", "no specific event mentioned", "exact date not specified", "not provided in the knowledge base", or ANY hedging language - if it\'s in the chunks, it\'s EXPLICIT and must be stated directly\n\n';
+      '• NEVER say "not available", "not explicitly stated", "inferred", "can be inferred", "no specific event mentioned", "exact date not specified", "not provided in the knowledge base", "I don\'t have that information", or ANY hedging language - if it\'s in the chunks, it\'s EXPLICIT and must be stated directly\n' +
+      '• 🚨 FALSE NEGATION PREVENTION: If chunks contain ANY date information (even in ISO format like "1997-11"), you MUST extract it and present it. NEVER claim the information is missing.\n\n';
   }
 
   /**
@@ -355,6 +366,9 @@ export function buildSystemInstructions(conversationContext = null, intentClassi
       '• Use ONLY the exact dates and information from the calendar events data provided above\n' +
       '• DO NOT modify, estimate, or approximate dates - use them EXACTLY as shown in the knowledge base\n' +
       '• DO NOT use your training data or general knowledge about dates - ONLY use dates from the calendar events section above\n' +
+      '• CRITICAL: When a user asks about a specific year (e.g., "November 2025"), ONLY use dates from that year. If the context shows "Nov 4, 2025", use 2025 - do NOT change it to 2024 or any other year\n' +
+      '• CRITICAL: For month-only events (e.g., GAD Summit), if the context shows "November 2025", say "November 2025" - do NOT invent a specific date like "November 1, 2025"\n' +
+      '• CRITICAL: For exam schedule queries (prelim, midterm, final examination), extract dates from exam events in the schedule chunks. If you see "Final Examination for Undergraduate Program" with dates like "Dec 15 - Dec 18, 2025", use those EXACT dates. NEVER say "I don\'t have that information" if exam events are in the schedule chunks above.\n' +
       '• When mentioning events, format dates concisely (e.g., "Jan 11 - Jan 15, 2025" instead of listing each date separately)\n' +
       '• For date range events, show the range format: "Jan 11 - Jan 15, 2025" - use the EXACT dates from the data\n' +
       '• Do NOT list the same event multiple times - group similar events together\n' +

@@ -901,16 +901,18 @@ class FileProcessorService {
         
         // Create an event for each date found
         for (const date of dates) {
+          const dateObj = new Date(date);
           events.push({
             title,
-            date: this.formatDate(date),
-            isoDate: new Date(date),
+            date: this.formatDate(dateObj),
+            isoDate: dateObj,
             time,
             category,
             description,
             source: 'CSV Upload',
             userType: normalizedUserType,
-            semester: semester
+            semester: semester,
+            year: dateObj.getFullYear() // CRITICAL: Extract year from date as number
           });
         }
       }

@@ -128,8 +128,128 @@ const CalendarScreen = () => {
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
   const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
 
-  // Load calendar events and posts from backend
-  // Refresh when screen comes into focus to show newly created posts/events
+  // Track last calendar fetch time
+  const lastCalendarFetchTime = useRef<number>(0);
+  const isFetchingCalendar = useRef<boolean>(false);
+  const CALENDAR_FETCH_COOLDOWN = 3000; // 3 seconds cooldown for calendar events
+  
+  // OPTIMIZED: Track which months are already loaded to avoid unnecessary fetches
+  const loadedMonthsRef = useRef<Set<string>>(new Set());
+  
+  // Helper: Check if events for a specific month are already loaded
+  const hasEventsForMonth = useCallback((month: Date): boolean => {
+    const monthKey = `${month.getFullYear()}-${month.getMonth()}`;
+    
+    // Check if we've marked this month as loaded
+    return loadedMonthsRef.current.has(monthKey);
+  }, []);
+
+  // OPTIMIZED: Refresh calendar events from backend
+  // Smart loading: Only fetch if month is not already loaded, load wider range for buffer
+  const refreshCalendarEvents = useCallback(async (forceRefresh: boolean = false, yearRange?: { startYear: number; endYear: number }, targetMonth?: Date) => {
+    // Prevent duplicate simultaneous fetches
+    if (isFetchingCalendar.current && !forceRefresh) {
+      return;
+    }
+
+    // Cooldown check
+    const now = Date.now();
+    if (!forceRefresh && now - lastCalendarFetchTime.current < CALENDAR_FETCH_COOLDOWN) {
+      return;
+    }
+
+    try {
+      setIsLoadingEvents(true);
+      
+      let startDate: Date;
+      let endDate: Date;
+      let monthsToLoad: string[] = [];
+      
+      if (yearRange) {
+        // Use provided range (e.g., from CSV upload) - load full year range
+        startDate = new Date(yearRange.startYear, 0, 1);
+        endDate = new Date(yearRange.endYear, 11, 31, 23, 59, 59);
+        console.log(`📅 Loading calendar events: ${yearRange.startYear}-${yearRange.endYear} (${yearRange.endYear - yearRange.startYear + 1} years)`);
+        // Mark all months in range as loaded
+        for (let year = yearRange.startYear; year <= yearRange.endYear; year++) {
+          for (let month = 0; month < 12; month++) {
+            loadedMonthsRef.current.add(`${year}-${month}`);
+          }
+        }
+      } else if (targetMonth) {
+        // OPTIMIZED: Check if we already have events for this month
+        if (!forceRefresh && hasEventsForMonth(targetMonth)) {
+          console.log(`✅ Events for ${targetMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} already loaded, skipping fetch`);
+          setIsLoadingEvents(false);
+          return;
+        }
+        
+        // Load target month ± 2 months for buffer (so navigation is smooth)
+        const targetYear = targetMonth.getFullYear();
+        const targetMonthIndex = targetMonth.getMonth();
+        startDate = new Date(targetYear, targetMonthIndex - 2, 1);
+        endDate = new Date(targetYear, targetMonthIndex + 3, 0, 23, 59, 59);
+        
+        // Mark loaded months
+        for (let i = -2; i <= 2; i++) {
+          const checkMonth = new Date(targetYear, targetMonthIndex + i, 1);
+          monthsToLoad.push(`${checkMonth.getFullYear()}-${checkMonth.getMonth()}`);
+        }
+        
+        console.log(`📅 Loading calendar events for month: ${targetMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })} (5 months buffer)`);
+      } else {
+        // Default: Load current month ± 2 months for buffer (fast initial load with navigation buffer)
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+        startDate = new Date(currentYear, currentMonth - 2, 1);
+        endDate = new Date(currentYear, currentMonth + 3, 0, 23, 59, 59);
+        
+        // Mark loaded months
+        for (let i = -2; i <= 2; i++) {
+          const checkMonth = new Date(currentYear, currentMonth + i, 1);
+          monthsToLoad.push(`${checkMonth.getFullYear()}-${checkMonth.getMonth()}`);
+        }
+        
+        console.log(`📅 Loading calendar events: current month ± 2 (5 months buffer)`);
+      }
+      
+      // Mark months as loaded
+      monthsToLoad.forEach(monthKey => loadedMonthsRef.current.add(monthKey));
+      
+      isFetchingCalendar.current = true;
+      lastCalendarFetchTime.current = now;
+      
+      // Use caching - CalendarService now supports caching
+      const events = await CalendarService.getEvents({
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        limit: 500, // Reduced limit for 5 months
+      });
+      
+      console.log(`✅ Loaded ${events.length} calendar events`);
+      
+      // Merge with existing events (avoid duplicates)
+      setCalendarEvents(prevEvents => {
+        const existingIds = new Set(prevEvents.map(e => e._id || e.id || `${e.isoDate}-${e.title}`));
+        const newEvents = events.filter(e => {
+          const id = e._id || e.id || `${e.isoDate}-${e.title}`;
+          return !existingIds.has(id);
+        });
+        return [...prevEvents, ...newEvents];
+      });
+    } catch (error) {
+      console.error('Failed to refresh calendar events:', error);
+      // Don't clear events on error, keep what we have
+    } finally {
+      setIsLoadingEvents(false);
+      isFetchingCalendar.current = false;
+    }
+  }, [hasEventsForMonth]);
+
+  // OPTIMIZED: Load calendar events and posts from backend
+  // Only load current month ± 1 month for fast initial load (like AdminCalendar)
+  // Load more data on-demand when user navigates to different months
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
@@ -137,23 +257,39 @@ const CalendarScreen = () => {
         try {
           setIsLoadingEvents(true);
           setIsLoadingPosts(true);
-          // Load events for a wide range (2020-2030) to cover all possible dates
-          // This ensures we get all events regardless of year
-          const startDate = new Date(2020, 0, 1).toISOString(); // January 1, 2020
-          const endDate = new Date(2030, 11, 31).toISOString(); // December 31, 2030
+          
+          // OPTIMIZED: Only load current month ± 1 month for fast loading (like AdminCalendar)
+          // This is much faster than loading 10 years!
+          const now = new Date();
+          const currentYear = now.getFullYear();
+          const currentMonth = now.getMonth();
+          
+          // Load current month ± 1 month for smooth navigation
+          const startDate = new Date(currentYear, currentMonth - 1, 1);
+          const endDate = new Date(currentYear, currentMonth + 2, 0, 23, 59, 59); // Last day of next month
+          
+          console.log(`📅 Fast load: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()} (3 months)`);
           
           const [events, postsData] = await Promise.all([
             CalendarService.getEvents({
-              startDate,
-              endDate,
-              limit: 2000, // Increased limit to get more events
+              startDate: startDate.toISOString(),
+              endDate: endDate.toISOString(),
+              limit: 500, // Reduced limit for 3 months
             }),
             AdminDataService.getPosts(),
           ]);
           
+          console.log(`✅ Fast load complete: ${events.length} events, ${postsData.length} posts`);
+          
           if (!cancelled) {
             setCalendarEvents(Array.isArray(events) ? events : []);
             setPosts(Array.isArray(postsData) ? postsData : []);
+            
+            // Mark loaded months in cache (for smart navigation)
+            for (let i = -1; i <= 1; i++) {
+              const checkMonth = new Date(currentYear, currentMonth + i, 1);
+              loadedMonthsRef.current.add(`${checkMonth.getFullYear()}-${checkMonth.getMonth()}`);
+            }
           }
         } catch (error) {
           console.error('Failed to load calendar data:', error);
@@ -447,7 +583,10 @@ const CalendarScreen = () => {
     setCurrentMonth(nextMonth);
     setSelectedDate(new Date(Date.UTC(nextMonth.getUTCFullYear(), nextMonth.getUTCMonth(), 1)));
     Haptics.selectionAsync();
-  }, [currentMonth]);
+    
+    // OPTIMIZED: Only load if month not already loaded (no fetch if already cached)
+    refreshCalendarEvents(false, undefined, nextMonth);
+  }, [currentMonth, refreshCalendarEvents]);
 
   const navigateToPreviousMonth = useCallback(() => {
     const prevMonth = new Date(currentMonth);
@@ -455,14 +594,21 @@ const CalendarScreen = () => {
     setCurrentMonth(prevMonth);
     setSelectedDate(new Date(Date.UTC(prevMonth.getUTCFullYear(), prevMonth.getUTCMonth(), 1)));
     Haptics.selectionAsync();
-  }, [currentMonth]);
+    
+    // OPTIMIZED: Only load if month not already loaded (no fetch if already cached)
+    refreshCalendarEvents(false, undefined, prevMonth);
+  }, [currentMonth, refreshCalendarEvents]);
   
   const selectMonth = (monthIndex: number, year?: number) => {
     const targetYear = year || currentMonth.getUTCFullYear();
     const newMonth = new Date(Date.UTC(targetYear, monthIndex, 1));
     setCurrentMonth(newMonth);
+    // Ensure the selected date moves into the chosen month so the week view reflects it
     setSelectedDate(new Date(Date.UTC(newMonth.getUTCFullYear(), newMonth.getUTCMonth(), 1)));
     closeMonthPicker();
+    
+    // OPTIMIZED: Only load if month not already loaded (smart caching)
+    refreshCalendarEvents(false, undefined, newMonth);
   };
   
   const getUserInitials = () => {

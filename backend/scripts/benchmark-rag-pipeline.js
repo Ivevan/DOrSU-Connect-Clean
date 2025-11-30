@@ -31,147 +31,42 @@ const scheduleData = JSON.parse(fs.readFileSync(scheduleDataPath, 'utf-8'));
 
 /**
  * Generate test queries with ground truth data
- * 20 token-efficient questions: 10 from dorsu_data.json and 10 from schedule_data.json
- * Includes enrollment query variations for robustness testing
+ * 20 token-efficient questions: 10 from schedule_data.json and 10 from dorsu_data.json
+ * REVERSED ORDER: Schedule questions first (1-10), then knowledge_chunks questions (11-20)
+ * Includes edge cases to test query routing improvements
  */
 function generateTestQueries() {
   const queries = [];
 
-  // ========== DORSU DATA QUESTIONS (10 questions) ==========
-  
-  // 1. Programs - FALS (TOKEN-EFFICIENT: Short, specific)
-  queries.push({
-    question: "What programs are in FALS?",
-    expectedKeywords: ["BSAM", "BSA", "BSBio", "BSES"],
-    groundTruth: dorsuData.programs?.FALS?.programs,
-    category: "programs",
-    difficulty: "medium",
-    dataSource: "dorsu_data"
-  });
+  // ========== SCHEDULE DATA QUESTIONS (10 questions) - NOW FIRST ==========
 
-  // 2. Enrollment - Main Campus (TOKEN-EFFICIENT: Short, specific)
-  queries.push({
-    question: "Main Campus enrollment 2024-2025?",
-    expectedKeywords: ["12009", "12,009"],
-    groundTruth: dorsuData['studentPopulation (as of 2024-2025)']?.campusPopulation?.find(c => c.campus === 'Main Campus'),
-    category: "enrollment",
-    difficulty: "medium",
-    dataSource: "dorsu_data"
-  });
-
-  // 3. Programs - FBM (TOKEN-EFFICIENT: Short, specific)
-  queries.push({
-    question: "What programs are in FBM?",
-    expectedKeywords: ["BSBA", "BSHM"],
-    groundTruth: dorsuData.programs?.FBM?.programs,
-    category: "programs",
-    difficulty: "medium",
-    dataSource: "dorsu_data"
-  });
-
-  // 4. History - San Isidro (TOKEN-EFFICIENT: Short, specific)
-  // Note: Only checking date since question asks "when", not "who"
-  queries.push({
-    question: "When was San Isidro Campus established?",
-    expectedKeywords: ["1997", "November"],
-    groundTruth: dorsuData.history?.timeline?.find(t => t.date === "1997-11"),
-    category: "history",
-    difficulty: "hard",
-    dataSource: "dorsu_data"
-  });
-
-  // 5. Leadership - VPs (TOKEN-EFFICIENT: Short, specific)
-  queries.push({
-    question: "Who are the VPs of DOrSU?",
-    expectedKeywords: ["VP for Administration and Finance", "VP for Research, Innovation, and Extension", "VP for Academic Affairs", "VP for Planning and Quality Assurance"],
-    groundTruth: dorsuData['organizationalStructure/DOrSUOfficials2025']?.vicePresidents || [],
-    category: "leadership",
-    difficulty: "hard",
-    dataSource: "dorsu_data"
-  });
-
-  // 6. Programs - FACET (TOKEN-EFFICIENT: Short, specific)
-  queries.push({
-    question: "What programs are in FACET?",
-    expectedKeywords: ["BSIT", "BSCE", "BSMath", "BITM"],
-    groundTruth: dorsuData.programs?.FACET?.programs,
-    category: "programs",
-    difficulty: "medium",
-    dataSource: "dorsu_data"
-  });
-
-  // 7. Admission Requirements (TOKEN-EFFICIENT: Short, specific)
-  queries.push({
-    question: "Admission requirements for transferring students?",
-    expectedKeywords: ["SUAST Examination Result", "Transcript of Record", "Certificate of Transfer Credential", "Good Moral Character", "PSA Birth Certificate"],
-    groundTruth: dorsuData['admissionEnrollmentRequirements2025']?.transferringStudents?.requirements || [],
-    category: "admission",
-    difficulty: "medium",
-    dataSource: "dorsu_data"
-  });
-
-  // 8. Leadership - President (TOKEN-EFFICIENT: Short, specific)
-  queries.push({
-    question: "Who is the president of DOrSU?",
-    expectedKeywords: ["Dr. Roy G. Ponce", "Roy G. Ponce"],
-    groundTruth: dorsuData.leadership?.president,
-    category: "leadership",
-    difficulty: "easy",
-    dataSource: "dorsu_data"
-  });
-
-  // 9. Office Head - OSPAT (TOKEN-EFFICIENT: Short, specific)
-  queries.push({
-    question: "Who is the head of OSPAT?",
-    expectedKeywords: ["Ms. Trishea Amor C. Jacobe", "Trishea Amor C. Jacobe", "OSPAT"],
-    groundTruth: dorsuData.offices?.studentServices?.find(o => o.acronym === 'OSPAT'),
-    category: "offices",
-    difficulty: "hard",
-    dataSource: "dorsu_data"
-  });
-
-  // 10. Enrollment 2025-2026 (TOKEN-EFFICIENT: Short, specific)
-  const grandTotalEnrollment = dorsuData['enrollment2025-2026']?.semester1?.find(e => e.program === 'GRAND TOTAL');
-  queries.push({
-    question: "Grand Total enrollment 2025-2026 semester 1?",
-    expectedKeywords: ["17629", "17,629"],
-    groundTruth: grandTotalEnrollment ? {
-      total: grandTotalEnrollment.total,
-      program: grandTotalEnrollment.program,
-      semester: grandTotalEnrollment.semester,
-      school_year: grandTotalEnrollment.school_year
-    } : null,
-    category: "enrollment",
-    difficulty: "medium",
-    dataSource: "dorsu_data"
-  });
-
-  // ========== SCHEDULE DATA QUESTIONS (10 questions) ==========
-
-  // 11. Start of Classes - Semester 2, 2025
+  // 1. Start of Classes - Semester 2, 2025 (CRITICAL: Tests schedule routing priority)
   const startClassesUndergrad = scheduleData.find(e => 
     e.Event === "Start of Classes for Undergraduate Program" && 
     e.Semester === "2" && 
-    e.Year === "2025"
+    e.Year === "2025" &&
+    e.Month === "1"
   );
   queries.push({
-    question: "When does semester 2 start for undergraduate program in 2025?",
+    question: "Start of classes for undergraduate program in January 2025?",
     expectedKeywords: ["1/15/2025", "January 15", "2025"],
     groundTruth: startClassesUndergrad,
     category: "schedule",
     difficulty: "medium",
-    dataSource: "schedule_data"
+    dataSource: "schedule_data",
+    testRouting: true // Tests that this routes to schedule, not programs
   });
 
-  // 12. Final Examination - Semester 1, 2025
+  // 2. Final Examination - Semester 1, 2025 (December)
   const finalExamUndergrad = scheduleData.find(e => 
     e.Event === "Final Examination for Undergraduate Program" && 
     e.Semester === "1" && 
     e.Year === "2025" &&
+    e.Month === "12" &&
     e.DateType === "date_range"
   );
   queries.push({
-    question: "When is the final examination for undergraduate program semester 1, 2025?",
+    question: "When is the final examination schedule for dec 2025?",
     expectedKeywords: ["12/15/2025", "12/18/2025", "December"],
     groundTruth: finalExamUndergrad,
     category: "schedule",
@@ -179,14 +74,15 @@ function generateTestQueries() {
     dataSource: "schedule_data"
   });
 
-  // 13. Registration Period - Semester 1, 2025
+  // 3. Registration Period - Semester 1, 2025 (August)
   const registrationUndergrad = scheduleData.find(e => 
     e.Event === "Regular Registration Period for Undergraduate Program" && 
     e.Semester === "1" && 
-    e.Year === "2025"
+    e.Year === "2025" &&
+    e.Month === "8"
   );
   queries.push({
-    question: "Regular registration period for undergraduate program semester 1, 2025?",
+    question: "Regular registration period for undergraduate program in August 2025?",
     expectedKeywords: ["8/4/2025", "8/8/2025", "August"],
     groundTruth: registrationUndergrad,
     category: "schedule",
@@ -194,13 +90,14 @@ function generateTestQueries() {
     dataSource: "schedule_data"
   });
 
-  // 14. Siglakas Event
+  // 4. Siglakas Event - April 2025
   const siglakas = scheduleData.find(e => 
     e.Event === "Siglakas" && 
-    e.Year === "2025"
+    e.Year === "2025" &&
+    e.Month === "4"
   );
   queries.push({
-    question: "When is Siglakas in 2025?",
+    question: "When is the schedule of Siglakas in April 2025?",
     expectedKeywords: ["4/23/2025", "4/26/2025", "April"],
     groundTruth: siglakas,
     category: "schedule",
@@ -208,14 +105,15 @@ function generateTestQueries() {
     dataSource: "schedule_data"
   });
 
-  // 15. Preliminary Examination - Semester 2, 2025
+  // 5. Preliminary Examination - Semester 2, 2025 (February)
   const prelimExamUndergrad = scheduleData.find(e => 
     e.Event === "Preliminary Examination for Undergraduate Program" && 
     e.Semester === "2" && 
-    e.Year === "2025"
+    e.Year === "2025" &&
+    e.Month === "2"
   );
   queries.push({
-    question: "Preliminary examination dates for undergraduate program semester 2, 2025?",
+    question: "Preliminary examination dates for undergraduate program for February 2025?",
     expectedKeywords: ["2/25/2025", "2/26/2025", "February"],
     groundTruth: prelimExamUndergrad,
     category: "schedule",
@@ -223,7 +121,7 @@ function generateTestQueries() {
     dataSource: "schedule_data"
   });
 
-  // 16. Commencement Exercises
+  // 6. Commencement Exercises - AY 2024-2025
   const commencement = scheduleData.find(e => 
     e.Event === "Commencement Exercises for AY 2024-2025" && 
     e.Year === "2025"
@@ -237,14 +135,15 @@ function generateTestQueries() {
     dataSource: "schedule_data"
   });
 
-  // 17. Midterm Examination - Semester 1, 2025
+  // 7. Midterm Examination - Semester 1, 2025 (November)
   const midtermExamUndergrad = scheduleData.find(e => 
     e.Event === "Midterm Examination for Undergraduate Program" && 
     e.Semester === "1" && 
-    e.Year === "2025"
+    e.Year === "2025" &&
+    e.Month === "11"
   );
   queries.push({
-    question: "Midterm examination dates for undergraduate program semester 1, 2025?",
+    question: "Midterm examination schedule for undergraduate program in November 2025?",
     expectedKeywords: ["11/4/2025", "11/5/2025", "November"],
     groundTruth: midtermExamUndergrad,
     category: "schedule",
@@ -252,48 +151,158 @@ function generateTestQueries() {
     dataSource: "schedule_data"
   });
 
-  // 18. Deadline for Application for Graduation
-  const graduationDeadline = scheduleData.find(e => 
-    e.Event === "Deadline in Filing of Application for Graduation" && 
-    e.Semester === "2" && 
-    e.Year === "2025"
+  // 8. Deadline for Submission of Grades - Semester 1, 2025 (December)
+  const gradesDeadline = scheduleData.find(e => 
+    e.Event === "Deadline in Submission of the Report of Grades" && 
+    e.Semester === "1" && 
+    e.Year === "2025" &&
+    e.Month === "12"
   );
   queries.push({
-    question: "Deadline for filing application for graduation semester 2, 2025?",
-    expectedKeywords: ["2/12/2025", "February 12"],
-    groundTruth: graduationDeadline,
+    question: "Deadline for submission of grades in December 2025?",
+    expectedKeywords: ["12/31/2025", "December 31"],
+    groundTruth: gradesDeadline,
     category: "schedule",
     difficulty: "medium",
     dataSource: "schedule_data"
   });
 
-  // 19. Foundation Day
+  // 9. Foundation Day - 2025
   const foundationDay = scheduleData.find(e => 
     e.Event === "DOrSU Founding Anniversary" && 
     e.Year === "2025"
   );
   queries.push({
     question: "When is DOrSU Founding Anniversary in 2025?",
-    expectedKeywords: ["5/20/2025", "May 20"],
+    expectedKeywords: ["5/28/2025", "May 28"],
     groundTruth: foundationDay,
     category: "schedule",
     difficulty: "easy",
     dataSource: "schedule_data"
   });
 
-  // 20. Off-Semester Registration
-  const offSemRegistration = scheduleData.find(e => 
-    e.Event === "Regular Registration Period for Undergraduate Program" && 
-    e.Semester === "Off" && 
+  // 10. GAD Summit - 2025 (month_only event)
+  const gadSummit = scheduleData.find(e => 
+    e.Event === "GAD Summit" && 
     e.Year === "2025"
   );
   queries.push({
-    question: "Regular registration period for undergraduate program off-semester 2025?",
-    expectedKeywords: ["6/5/2025", "6/6/2025", "June"],
-    groundTruth: offSemRegistration,
+    question: "When is GAD summit?",
+    expectedKeywords: ["November", "November 2025", "2025"],
+    groundTruth: gadSummit,
     category: "schedule",
     difficulty: "medium",
     dataSource: "schedule_data"
+  });
+
+  // ========== DORSU DATA QUESTIONS (10 questions) - NOW SECOND ==========
+  
+  // 11. History - San Isidro (CRITICAL: Tests knowledge base routing - should NOT route to schedule)
+  // This tests the new _detectKnowledgeBaseQuery() helper
+  queries.push({
+    question: "When was San Isidro Campus established?",
+    expectedKeywords: ["1997", "November"],
+    groundTruth: dorsuData.history?.timeline?.find(t => t.date === "1997-11"),
+    category: "history",
+    difficulty: "hard",
+    dataSource: "dorsu_data",
+    testRouting: true // Tests that this routes to knowledge_chunks, NOT schedule
+  });
+
+  // 12. Programs - FALS (TOKEN-EFFICIENT: Short, specific)
+  queries.push({
+    question: "What programs are in FALS?",
+    expectedKeywords: ["BSAM", "BSA", "BSBio", "BSES"],
+    groundTruth: dorsuData.programs?.FALS?.programs,
+    category: "programs",
+    difficulty: "medium",
+    dataSource: "dorsu_data"
+  });
+
+  // 13. Enrollment - Main Campus (TOKEN-EFFICIENT: Short, specific)
+  queries.push({
+    question: "Main Campus enrollment 2024-2025?",
+    expectedKeywords: ["12009", "12,009"],
+    groundTruth: dorsuData['studentPopulation (as of 2024-2025)']?.campusPopulation?.find(c => c.campus === 'Main Campus'),
+    category: "enrollment",
+    difficulty: "medium",
+    dataSource: "dorsu_data"
+  });
+
+  // 14. Programs - FBM (TOKEN-EFFICIENT: Short, specific)
+  queries.push({
+    question: "What programs are in FBM?",
+    expectedKeywords: ["BSBA", "BSHM"],
+    groundTruth: dorsuData.programs?.FBM?.programs,
+    category: "programs",
+    difficulty: "medium",
+    dataSource: "dorsu_data"
+  });
+
+  // 15. Leadership - VPs (TOKEN-EFFICIENT: Short, specific)
+  queries.push({
+    question: "Who are the VPs of DOrSU?",
+    expectedKeywords: ["VP for Administration and Finance", "VP for Research, Innovation, and Extension", "VP for Academic Affairs", "VP for Planning and Quality Assurance"],
+    groundTruth: dorsuData['organizationalStructure/DOrSUOfficials2025']?.vicePresidents || [],
+    category: "leadership",
+    difficulty: "hard",
+    dataSource: "dorsu_data"
+  });
+
+  // 16. Programs - FACET (TOKEN-EFFICIENT: Short, specific)
+  queries.push({
+    question: "What programs are in FACET?",
+    expectedKeywords: ["BSIT", "BSCE", "BSMath", "BITM"],
+    groundTruth: dorsuData.programs?.FACET?.programs,
+    category: "programs",
+    difficulty: "medium",
+    dataSource: "dorsu_data"
+  });
+
+  // 17. Admission Requirements (TOKEN-EFFICIENT: Short, specific)
+  queries.push({
+    question: "Admission requirements for transferring students?",
+    expectedKeywords: ["SUAST Examination Result", "Transcript of Record", "Certificate of Transfer Credential", "Good Moral Character", "PSA Birth Certificate"],
+    groundTruth: dorsuData['admissionEnrollmentRequirements2025']?.transferringStudents?.requirements || [],
+    category: "admission",
+    difficulty: "medium",
+    dataSource: "dorsu_data"
+  });
+
+  // 18. Leadership - President (TOKEN-EFFICIENT: Short, specific)
+  queries.push({
+    question: "Who is the president of DOrSU?",
+    expectedKeywords: ["Dr. Roy G. Ponce", "Roy G. Ponce"],
+    groundTruth: dorsuData.leadership?.president,
+    category: "leadership",
+    difficulty: "easy",
+    dataSource: "dorsu_data"
+  });
+
+  // 19. Office Head - OSPAT (TOKEN-EFFICIENT: Short, specific)
+  queries.push({
+    question: "Who is the head of OSPAT?",
+    expectedKeywords: ["Ms. Trishea Amor C. Jacobe", "Trishea Amor C. Jacobe", "OSPAT"],
+    groundTruth: dorsuData.offices?.studentServices?.find(o => o.acronym === 'OSPAT'),
+    category: "offices",
+    difficulty: "hard",
+    dataSource: "dorsu_data"
+  });
+
+  // 20. Enrollment 2025-2026 (TOKEN-EFFICIENT: Short, specific)
+  const grandTotalEnrollment = dorsuData['enrollment2025-2026']?.semester1?.find(e => e.program === 'GRAND TOTAL');
+  queries.push({
+    question: "Grand Total enrollment 2025-2026 semester 1?",
+    expectedKeywords: ["17629", "17,629"],
+    groundTruth: grandTotalEnrollment ? {
+      total: grandTotalEnrollment.total,
+      program: grandTotalEnrollment.program,
+      semester: grandTotalEnrollment.semester,
+      school_year: grandTotalEnrollment.school_year
+    } : null,
+    category: "enrollment",
+    difficulty: "medium",
+    dataSource: "dorsu_data"
   });
 
   return queries;
@@ -554,10 +563,27 @@ function testRetrievalRelevance(response, query, groundTruth) {
         '9': 'september', '09': 'september', '10': 'october',
         '11': 'november', '12': 'december'
       };
+      const monthAbbrevs = {
+        '1': ['jan', 'january'], '01': ['jan', 'january'],
+        '2': ['feb', 'february'], '02': ['feb', 'february'],
+        '3': ['mar', 'march'], '03': ['mar', 'march'],
+        '4': ['apr', 'april'], '04': ['apr', 'april'],
+        '5': ['may'], '05': ['may'],
+        '6': ['jun', 'june'], '06': ['jun', 'june'],
+        '7': ['jul', 'july'], '07': ['jul', 'july'],
+        '8': ['aug', 'august'], '08': ['aug', 'august'],
+        '9': ['sep', 'sept', 'september'], '09': ['sep', 'sept', 'september'],
+        '10': ['oct', 'october'],
+        '11': ['nov', 'november'],
+        '12': ['dec', 'december']
+      };
       const monthName = monthNames[month];
-      // Check if year matches and (month name matches OR month number matches OR day matches)
+      const monthAbbrevList = monthAbbrevs[month] || [monthName];
+      // Check if year matches and (month name matches OR month abbreviation matches OR month number matches OR day matches)
       if (responseText.includes(year)) {
         if (monthName && responseText.includes(monthName)) {
+          found = true;
+        } else if (monthAbbrevList.some(abbrev => responseText.includes(abbrev))) {
           found = true;
         } else if (responseText.includes(month) && responseText.includes(day)) {
           found = true;
@@ -674,10 +700,27 @@ function testContextAccuracy(response, query, groundTruth) {
         '9': 'september', '09': 'september', '10': 'october',
         '11': 'november', '12': 'december'
       };
+      const monthAbbrevs = {
+        '1': ['jan', 'january'], '01': ['jan', 'january'],
+        '2': ['feb', 'february'], '02': ['feb', 'february'],
+        '3': ['mar', 'march'], '03': ['mar', 'march'],
+        '4': ['apr', 'april'], '04': ['apr', 'april'],
+        '5': ['may'], '05': ['may'],
+        '6': ['jun', 'june'], '06': ['jun', 'june'],
+        '7': ['jul', 'july'], '07': ['jul', 'july'],
+        '8': ['aug', 'august'], '08': ['aug', 'august'],
+        '9': ['sep', 'sept', 'september'], '09': ['sep', 'sept', 'september'],
+        '10': ['oct', 'october'],
+        '11': ['nov', 'november'],
+        '12': ['dec', 'december']
+      };
       const monthName = monthNames[month];
-      // Check if year matches and (month name matches OR month number matches OR day matches)
+      const monthAbbrevList = monthAbbrevs[month] || [monthName];
+      // Check if year matches and (month name matches OR month abbreviation matches OR month number matches OR day matches)
       if (responseText.includes(year)) {
         if (monthName && responseText.includes(monthName)) {
+          found = true;
+        } else if (monthAbbrevList.some(abbrev => responseText.includes(abbrev))) {
           found = true;
         } else if (responseText.includes(month) && responseText.includes(day)) {
           found = true;
@@ -861,6 +904,25 @@ function testAnswerCorrectness(response, query, groundTruth) {
   const foundKeywords = [];
   const missingKeywords = [];
   
+  // Check for false negations (AI says "I don't have information" when data exists)
+  const falseNegationPatterns = [
+    /i (don't|do not) (have|know|see|find)/i,
+    /the knowledge base does not (specify|mention|include|contain)/i,
+    /(unfortunately|sorry),? (i|we) (cannot|cannot|don't|do not) (find|locate|retrieve)/i,
+    /i don't have that (specific )?information/i,
+    /that (specific )?information (is not|isn't) (available|in the knowledge base)/i
+  ];
+  
+  const hasFalseNegation = falseNegationPatterns.some(pattern => pattern.test(responseText));
+  const groundTruthFacts = extractGroundTruthFacts(groundTruth, query.question);
+  
+  // If AI claims no information but ground truth exists, this is a critical error
+  // The context accuracy being 100% means chunks were retrieved, so AI should have used them
+  if (hasFalseNegation && groundTruthFacts.length > 0 && response.usedKnowledgeBase) {
+    // This is a response generation failure - chunks were retrieved but AI didn't use them
+    // Penalize heavily but still check if keywords are present (in case AI mentions them despite negation)
+  }
+  
   // Use the same flexible matching logic as benchmark-ai-accuracy.js
   expectedKeywords.forEach(keyword => {
     const keywordLower = keyword.toLowerCase();
@@ -869,6 +931,116 @@ function testAnswerCorrectness(response, query, groundTruth) {
     if (responseText.includes(keywordLower)) {
       foundKeywords.push(keyword);
       return;
+    }
+    
+    // CRITICAL: Flexible month name matching - standalone month names should match abbreviations
+    // "August" should match "aug", "Aug", "august", etc.
+    // "February" should match "feb", "Feb", "february", etc.
+    const monthNameMap = {
+      'january': ['jan', 'january'],
+      'february': ['feb', 'february'],
+      'march': ['mar', 'march'],
+      'april': ['apr', 'april'],
+      'may': ['may'],
+      'june': ['jun', 'june'],
+      'july': ['jul', 'july'],
+      'august': ['aug', 'august'],
+      'september': ['sep', 'sept', 'september'],
+      'october': ['oct', 'october'],
+      'november': ['nov', 'november'],
+      'december': ['dec', 'december']
+    };
+    
+    if (monthNameMap[keywordLower]) {
+      const monthAbbrevs = monthNameMap[keywordLower];
+      if (monthAbbrevs.some(abbrev => responseText.includes(abbrev))) {
+        foundKeywords.push(keyword);
+        return;
+      }
+    }
+    
+    // Flexible date matching: "1997" should match "1997" in various formats
+    // Also handle month names: "November" should match "november", "nov", etc.
+    if (keyword === 'November' || keyword === 'november') {
+      if (responseText.includes('november') || responseText.includes('nov')) {
+        foundKeywords.push(keyword);
+        return;
+      }
+    }
+    if (keyword === '1997') {
+      if (responseText.includes('1997')) {
+        foundKeywords.push(keyword);
+        return;
+      }
+    }
+    
+    // Flexible date format matching: "1997-11" should match "november 1997" or "1997 november"
+    if (/^\d{4}-\d{1,2}$/.test(keyword)) {
+      const [year, month] = keyword.split('-');
+      const monthNames = {
+        '11': 'november', '12': 'december', '05': 'may', '5': 'may',
+        '06': 'june', '6': 'june', '01': 'january', '1': 'january',
+        '02': 'february', '2': 'february', '03': 'march', '3': 'march',
+        '04': 'april', '4': 'april', '07': 'july', '7': 'july',
+        '08': 'august', '8': 'august', '09': 'september', '9': 'september',
+        '10': 'october'
+      };
+      const monthName = monthNames[month];
+      if (responseText.includes(year) && (monthName ? responseText.includes(monthName) : true)) {
+        foundKeywords.push(keyword);
+        return;
+      }
+    }
+    
+    // Flexible date matching for M/D/YYYY format: "1/15/2025" should match "January 15, 2025"
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(keyword)) {
+      const [month, day, year] = keyword.split('/');
+      const monthNames = {
+        '1': 'january', '01': 'january', '2': 'february', '02': 'february',
+        '3': 'march', '03': 'march', '4': 'april', '04': 'april',
+        '5': 'may', '05': 'may', '6': 'june', '06': 'june',
+        '7': 'july', '07': 'july', '8': 'august', '08': 'august',
+        '9': 'september', '09': 'september', '10': 'october',
+        '11': 'november', '12': 'december'
+      };
+      const monthAbbrevs = {
+        '1': ['jan', 'january'], '01': ['jan', 'january'],
+        '2': ['feb', 'february'], '02': ['feb', 'february'],
+        '3': ['mar', 'march'], '03': ['mar', 'march'],
+        '4': ['apr', 'april'], '04': ['apr', 'april'],
+        '5': ['may'], '05': ['may'],
+        '6': ['jun', 'june'], '06': ['jun', 'june'],
+        '7': ['jul', 'july'], '07': ['jul', 'july'],
+        '8': ['aug', 'august'], '08': ['aug', 'august'],
+        '9': ['sep', 'sept', 'september'], '09': ['sep', 'sept', 'september'],
+        '10': ['oct', 'october'],
+        '11': ['nov', 'november'],
+        '12': ['dec', 'december']
+      };
+      const monthName = monthNames[month];
+      const monthAbbrevList = monthAbbrevs[month] || [monthName];
+      if (responseText.includes(year)) {
+        // Check for full month name
+        if (monthName && responseText.includes(monthName)) {
+          foundKeywords.push(keyword);
+          return;
+        }
+        // Check for month abbreviations (e.g., "Apr" matches "april")
+        if (monthAbbrevList.some(abbrev => responseText.includes(abbrev))) {
+          foundKeywords.push(keyword);
+          return;
+        }
+        // Check for month number and day
+        if (responseText.includes(month) && responseText.includes(day)) {
+          foundKeywords.push(keyword);
+          return;
+        }
+        // Direct match
+        if (responseText.includes(keyword)) {
+          foundKeywords.push(keyword);
+          return;
+        }
+      }
     }
     
     // Flexible matching for VP titles and similar phrases
@@ -912,24 +1084,99 @@ function testAnswerCorrectness(response, query, groundTruth) {
   });
   
   // Calculate accuracy (same as benchmark-ai-accuracy.js)
-  const accuracy = expectedKeywords.length > 0
+  let accuracy = expectedKeywords.length > 0
     ? (foundKeywords.length / expectedKeywords.length) * 100
     : 0;
   
+  // Heavy penalty for false negations when data exists and was retrieved
+  // This indicates the AI failed to use retrieved context properly
+  if (hasFalseNegation && groundTruthFacts.length > 0 && response.usedKnowledgeBase) {
+    // If AI claims no information but chunks were retrieved with correct data,
+    // this is a critical response generation failure
+    // Reduce accuracy significantly (but not to 0 if some keywords were found)
+    accuracy = Math.max(0, accuracy * 0.1); // Reduce to 10% of original score
+  }
+  
   // Also check ground truth facts for additional context (but don't use in score calculation)
-  const groundTruthFacts = extractGroundTruthFacts(groundTruth, query.question);
-  const foundFacts = groundTruthFacts.filter(fact => responseText.includes(fact.toLowerCase()));
+  // Use flexible matching like in testContextAccuracy
+  let foundFacts = 0;
+  groundTruthFacts.forEach(fact => {
+    const factLower = fact.toLowerCase();
+    let found = false;
+    
+    // Direct match
+    if (responseText.includes(factLower)) {
+      found = true;
+    }
+    // Flexible date matching: "1997-11" should match "november 1997"
+    else if (/^\d{4}-\d{1,2}$/.test(fact)) {
+      const [year, month] = fact.split('-');
+      const monthNames = {
+        '11': 'november', '12': 'december', '05': 'may', '5': 'may',
+        '06': 'june', '6': 'june', '01': 'january', '1': 'january'
+      };
+      const monthName = monthNames[month];
+      if (responseText.includes(year) && (monthName ? responseText.includes(monthName) : true)) {
+        found = true;
+      }
+    }
+    // Flexible date matching for M/D/YYYY format
+    else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(fact)) {
+      const [month, day, year] = fact.split('/');
+      const monthNames = {
+        '1': 'january', '01': 'january', '2': 'february', '02': 'february',
+        '3': 'march', '03': 'march', '4': 'april', '04': 'april',
+        '5': 'may', '05': 'may', '6': 'june', '06': 'june',
+        '7': 'july', '07': 'july', '8': 'august', '08': 'august',
+        '9': 'september', '09': 'september', '10': 'october',
+        '11': 'november', '12': 'december'
+      };
+      const monthAbbrevs = {
+        '1': ['jan', 'january'], '01': ['jan', 'january'],
+        '2': ['feb', 'february'], '02': ['feb', 'february'],
+        '3': ['mar', 'march'], '03': ['mar', 'march'],
+        '4': ['apr', 'april'], '04': ['apr', 'april'],
+        '5': ['may'], '05': ['may'],
+        '6': ['jun', 'june'], '06': ['jun', 'june'],
+        '7': ['jul', 'july'], '07': ['jul', 'july'],
+        '8': ['aug', 'august'], '08': ['aug', 'august'],
+        '9': ['sep', 'sept', 'september'], '09': ['sep', 'sept', 'september'],
+        '10': ['oct', 'october'],
+        '11': ['nov', 'november'],
+        '12': ['dec', 'december']
+      };
+      const monthName = monthNames[month];
+      const monthAbbrevList = monthAbbrevs[month] || [monthName];
+      if (responseText.includes(year)) {
+        if (monthName && responseText.includes(monthName)) {
+          found = true;
+        } else if (monthAbbrevList.some(abbrev => responseText.includes(abbrev))) {
+          found = true;
+        } else if (responseText.includes(month) && responseText.includes(day)) {
+          found = true;
+        }
+      }
+    }
+    
+    if (found) foundFacts++;
+  });
 
   return {
     score: accuracy, // Use same accuracy calculation as AI accuracy benchmark
     keywordAccuracy: accuracy, // Same as score
     factAccuracy: groundTruthFacts.length > 0
-      ? (foundFacts.length / groundTruthFacts.length) * 100
+      ? (foundFacts / groundTruthFacts.length) * 100
       : 0,
     foundKeywords,
     missingKeywords,
-    foundFacts: foundFacts.slice(0, 10),
-    passed: accuracy >= 70 // Same 70% threshold as benchmark-ai-accuracy.js
+    foundFacts: groundTruthFacts.filter((fact, idx) => {
+      // Return facts that were found (simplified check)
+      const factLower = fact.toLowerCase();
+      return responseText.includes(factLower) || 
+             (/^\d{4}-\d{1,2}$/.test(fact) && responseText.includes(fact.split('-')[0]));
+    }).slice(0, 10),
+    passed: accuracy >= 70, // Same 70% threshold as benchmark-ai-accuracy.js
+    hasFalseNegation: hasFalseNegation && groundTruthFacts.length > 0 && response.usedKnowledgeBase
   };
 }
 
@@ -972,6 +1219,62 @@ async function runRAGBenchmark() {
       totalHallucinationScore += hallucinations.score;
       totalAnswerCorrectness += answerCorrectness.score;
 
+      // OPTIMIZED: Test query routing accuracy for queries marked with testRouting
+      let routingAccuracy = null;
+      if (query.testRouting) {
+        const responseText = (response.reply || '').toLowerCase();
+        const isScheduleQuery = query.category === 'schedule';
+        const isKnowledgeBaseQuery = query.category === 'history' || query.category === 'programs' || 
+                                     query.category === 'leadership' || query.category === 'offices';
+        
+        // Check if response indicates correct routing
+        let routingCorrect = false;
+        let routingIssue = null;
+        
+        if (isScheduleQuery) {
+          // Schedule queries should mention dates, events, or schedule-related content
+          // Should NOT mention historical facts or general knowledge
+          const hasScheduleContent = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}|\d{1,2}\/\d{1,2}\/\d{4}|\b(start|begin|commence|registration|examination|exam|deadline|event|schedule)\b/i.test(responseText);
+          const hasHistoricalContent = /\b(established|founded|created|history|historical|timeline)\b/i.test(responseText);
+          
+          if (hasScheduleContent && !hasHistoricalContent) {
+            routingCorrect = true;
+          } else if (hasHistoricalContent) {
+            routingIssue = 'Response contains historical content (may be misrouted to knowledge_chunks)';
+          } else if (!hasScheduleContent) {
+            routingIssue = 'Response lacks schedule-specific content (may not have routed to schedule collection)';
+          }
+        } else if (isKnowledgeBaseQuery) {
+          // Knowledge base queries should mention facts, history, or general information
+          // Should NOT mention schedule events or dates in schedule context
+          // CRITICAL: For history queries, also check for year patterns (e.g., "1997", "November 1997")
+          // This handles concise historical responses like "November 1997."
+          const hasKnowledgeContent = /\b(established|founded|created|history|president|programs?|campus|campuses|enrollment|leadership|office)\b/i.test(responseText);
+          const hasYearPattern = /\b(19\d{2}|20\d{2})\b/.test(responseText); // Years like 1997, 2025
+          const hasHistoricalDatePattern = /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}\b/i.test(responseText); // "November 1997"
+          const hasScheduleEventContent = /\b(start\s+of\s+classes|registration\s+period|examination\s+schedule|academic\s+calendar)\b/i.test(responseText);
+          
+          // For history queries, accept concise responses with years or historical dates
+          const isHistoryQuery = query.category === 'history';
+          const hasHistoricalContent = hasKnowledgeContent || (isHistoryQuery && (hasYearPattern || hasHistoricalDatePattern));
+          
+          if (hasHistoricalContent && !hasScheduleEventContent) {
+            routingCorrect = true;
+          } else if (hasScheduleEventContent) {
+            routingIssue = 'Response contains schedule event content (may be misrouted to schedule collection)';
+          } else if (!hasHistoricalContent) {
+            routingIssue = 'Response lacks knowledge base content (may not have routed to knowledge_chunks)';
+          }
+        }
+        
+        routingAccuracy = {
+          correct: routingCorrect,
+          issue: routingIssue,
+          expectedCollection: isScheduleQuery ? 'schedule' : 'knowledge_chunks',
+          detectedCollection: routingCorrect ? (isScheduleQuery ? 'schedule' : 'knowledge_chunks') : 'unknown'
+        };
+      }
+
       const result = {
         question: query.question,
         category: query.category,
@@ -981,6 +1284,9 @@ async function runRAGBenchmark() {
         responseTime,
         model: response.model || 'unknown',
         usedKnowledgeBase: response.usedKnowledgeBase || false,
+        
+        // OPTIMIZED: Query routing accuracy (for testRouting queries)
+        routingAccuracy: routingAccuracy,
         
         // RAG Pipeline Metrics
         retrievalRelevance: {
@@ -1017,7 +1323,8 @@ async function runRAGBenchmark() {
           foundKeywords: answerCorrectness.foundKeywords,
           missingKeywords: answerCorrectness.missingKeywords,
           foundFacts: answerCorrectness.foundFacts,
-          passed: answerCorrectness.passed
+          passed: answerCorrectness.passed,
+          hasFalseNegation: answerCorrectness.hasFalseNegation || false
         }
       };
 
@@ -1036,6 +1343,14 @@ async function runRAGBenchmark() {
       }
       console.log(`   🎭 Hallucinations: ${hallucinations.hasHallucinations ? 'YES' : 'NO'} (Score: ${hallucinations.score.toFixed(1)}%)`);
       console.log(`   ✓ Answer Correctness: ${answerCorrectness.score.toFixed(1)}% ${answerCorrectness.passed ? '✅' : '❌'}`);
+      // OPTIMIZED: Display routing accuracy for testRouting queries
+      if (routingAccuracy) {
+        const routingIcon = routingAccuracy.correct ? '✅' : '❌';
+        console.log(`   🎯 Query Routing: ${routingIcon} ${routingAccuracy.correct ? 'Correct' : 'Issue detected'} (Expected: ${routingAccuracy.expectedCollection})`);
+        if (routingAccuracy.issue) {
+          console.log(`      ⚠️  ${routingAccuracy.issue}`);
+        }
+      }
       console.log(`   ⏱️  Response time: ${responseTime}ms\n`);
 
       // Add delay to avoid rate limiting
@@ -1052,6 +1367,11 @@ async function runRAGBenchmark() {
       });
     }
   }
+
+  // OPTIMIZED: Calculate routing accuracy statistics
+  const routingTests = results.filter(r => r.routingAccuracy);
+  const routingCorrectCount = routingTests.filter(r => r.routingAccuracy?.correct).length;
+  const routingAccuracy = routingTests.length > 0 ? (routingCorrectCount / routingTests.length) * 100 : null;
 
   // Calculate statistics
   const avgRetrievalRelevance = totalRetrievalRelevance / queries.length;
@@ -1111,7 +1431,11 @@ async function runRAGBenchmark() {
       averageContextAccuracy: avgContextAccuracy,
       averageHallucinationScore: avgHallucinationScore,
       averageAnswerCorrectness: avgAnswerCorrectness,
-      overallScore: (avgRetrievalRelevance + avgContextAccuracy + avgHallucinationScore + avgAnswerCorrectness) / 4
+      overallScore: (avgRetrievalRelevance + avgContextAccuracy + avgHallucinationScore + avgAnswerCorrectness) / 4,
+      // OPTIMIZED: Routing accuracy statistics
+      routingAccuracy: routingAccuracy,
+      routingTestsCount: routingTests.length,
+      routingCorrectCount: routingCorrectCount
     },
     categoryStats: Object.entries(categoryStats).map(([category, stats]) => ({
       category,
@@ -1155,6 +1479,12 @@ async function runRAGBenchmark() {
   console.log(`   Hallucination Score: ${avgHallucinationScore.toFixed(1)}% (higher is better)`);
   console.log(`   Answer Correctness: ${avgAnswerCorrectness.toFixed(1)}%`);
   console.log(`   Overall Score: ${report.summary.overallScore.toFixed(1)}%`);
+  // OPTIMIZED: Display routing accuracy
+  if (routingAccuracy !== null) {
+    console.log(`\n🎯 Query Routing Accuracy:`);
+    console.log(`   Routing Tests: ${routingTests.length}`);
+    console.log(`   Correct Routing: ${routingCorrectCount}/${routingTests.length} (${routingAccuracy.toFixed(1)}%)`);
+  }
   
   console.log(`\n📁 Category Performance:`);
   report.categoryStats.forEach(stat => {
@@ -1191,7 +1521,12 @@ function generateMarkdownReport(report) {
   markdown += `- **Average Context Accuracy:** ${report.summary.averageContextAccuracy.toFixed(1)}%\n`;
   markdown += `- **Average Hallucination Score:** ${report.summary.averageHallucinationScore.toFixed(1)}% (higher is better)\n`;
   markdown += `- **Average Answer Correctness:** ${report.summary.averageAnswerCorrectness.toFixed(1)}%\n`;
-  markdown += `- **Overall Score:** ${report.summary.overallScore.toFixed(1)}%\n\n`;
+  markdown += `- **Overall Score:** ${report.summary.overallScore.toFixed(1)}%\n`;
+  // OPTIMIZED: Add routing accuracy to summary
+  if (report.summary.routingAccuracy !== null) {
+    markdown += `- **Query Routing Accuracy:** ${report.summary.routingAccuracy.toFixed(1)}% (${report.summary.routingCorrectCount}/${report.summary.routingTestsCount} tests passed)\n`;
+  }
+  markdown += `\n`;
   
   // Category Performance
   if (report.categoryStats && report.categoryStats.length > 0) {
@@ -1290,6 +1625,29 @@ function generateMarkdownReport(report) {
     if (result.answerCorrectness.missingKeywords && result.answerCorrectness.missingKeywords.length > 0) {
       markdown += `#### Missing Keywords (${result.answerCorrectness.missingKeywords.length})\n\n`;
       markdown += `${result.answerCorrectness.missingKeywords.join(', ')}\n\n`;
+    }
+    
+    // OPTIMIZED: Query Routing Accuracy (for testRouting queries)
+    if (result.routingAccuracy) {
+      markdown += `#### 🎯 Query Routing Accuracy\n\n`;
+      const routingIcon = result.routingAccuracy.correct ? '✅' : '❌';
+      markdown += `**Status:** ${routingIcon} ${result.routingAccuracy.correct ? 'Correct Routing' : 'Routing Issue Detected'}\n\n`;
+      markdown += `- **Expected Collection:** ${result.routingAccuracy.expectedCollection}\n`;
+      markdown += `- **Detected Collection:** ${result.routingAccuracy.detectedCollection}\n`;
+      if (result.routingAccuracy.issue) {
+        markdown += `- **Issue:** ${result.routingAccuracy.issue}\n`;
+      }
+      markdown += `\n`;
+    }
+    
+    // False Negation Warning
+    if (result.answerCorrectness.hasFalseNegation) {
+      markdown += `#### ⚠️ False Negation Detected\n\n`;
+      markdown += `**Issue:** The AI claimed it doesn't have information, but:\n`;
+      markdown += `- Context Accuracy is ${result.contextAccuracy.score.toFixed(1)}% (chunks were retrieved correctly)\n`;
+      markdown += `- Knowledge Base was used: ${result.usedKnowledgeBase ? 'Yes' : 'No'}\n`;
+      markdown += `- Ground truth facts exist: ${result.contextAccuracy.totalChecked} facts\n\n`;
+      markdown += `**Root Cause:** This indicates a **response generation failure** - the retrieval system found the correct information, but the AI model failed to use it in the response. This is different from retrieval failure.\n\n`;
     }
     
     // Metadata

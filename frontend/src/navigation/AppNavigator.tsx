@@ -118,80 +118,60 @@ const AppNavigator = () => {
               navigationRef.navigate('CreateAccount' as never);
             }
             
-            // Wait a moment for navigation to complete
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // Check for pending account
-            const pendingEmail = await AsyncStorage.getItem('pendingEmail');
-            const pendingUsername = await AsyncStorage.getItem('pendingUsername');
-            const pendingPassword = await AsyncStorage.getItem('pendingPassword');
-            
-            if (pendingEmail && pendingPassword && pendingUsername) {
-              try {
-                console.log('🔐 Processing email verification...');
-                const { applyEmailVerificationCode, signInWithEmailAndPassword, reloadUser, getCurrentUser } = require('../services/authService');
+            // Apply the verification code immediately
+            try {
+              const { applyEmailVerificationCode, getCurrentUser, reloadUser } = require('../services/authService');
+              
+              // Step 1: Check if user is already signed in and verified
+              const currentUser = getCurrentUser();
+              if (currentUser) {
+                // Reload user to get latest verification status
+                await reloadUser(currentUser);
+                const updatedUser = getCurrentUser();
                 
-                // Step 1: Apply the verification code from the URL
-                try {
-                  console.log('🔐 Applying email verification code...');
-                  await applyEmailVerificationCode(oobCode);
-                  console.log('✅ Email verification code applied successfully');
-                } catch (applyError: any) {
-                  console.error('❌ Failed to apply verification code:', applyError);
-                  // If code is invalid/expired, clear it and show error
-                  if (applyError?.code === 'auth/invalid-action-code' || 
-                      applyError?.code === 'auth/expired-action-code') {
-                    await AsyncStorage.removeItem('pendingVerificationCode');
-                    await AsyncStorage.setItem('verificationError', applyError.message || 'Invalid or expired verification code');
-                    return;
-                  }
-                  // Continue anyway - Firebase might have already verified it
-                }
-                
-                // Step 2: Sign in to get the user
-                console.log('🔑 Signing in with pending credentials...');
-                const firebaseUser = await signInWithEmailAndPassword(pendingEmail, pendingPassword);
-                
-                // Step 3: Reload to get latest verification status
-                console.log('🔄 Reloading user to check verification status...');
-                await reloadUser(firebaseUser);
-                
-                // Step 4: Check verification status
-                const currentUser = getCurrentUser();
-                console.log('📧 Email verified status:', currentUser?.emailVerified);
-                
-                if (currentUser?.emailVerified) {
-                  // Email is verified - clear verification code and set flag for CreateAccount to complete
-                  console.log('✅ Email verified via deep link - setting flag for CreateAccount to complete');
+                if (updatedUser?.emailVerified) {
+                  // Email already verified, just clean up
                   await AsyncStorage.removeItem('pendingVerificationCode');
                   await AsyncStorage.setItem('emailVerifiedViaDeepLink', 'true');
-                  // CreateAccount will detect this and complete the account creation
+                  // CreateAccount will detect this and complete account creation
                 } else {
-                  console.log('⏳ Email not yet verified, will check again...');
-                  // Set flag for CreateAccount to check
-                  await AsyncStorage.setItem('emailVerifiedViaDeepLink', 'true');
+                  // Step 2: Apply the verification code if not already verified
+                  try {
+                    await applyEmailVerificationCode(oobCode);
+                    await reloadUser(currentUser);
+                    const finalUser = getCurrentUser();
+                    
+                    if (finalUser?.emailVerified) {
+                      await AsyncStorage.removeItem('pendingVerificationCode');
+                      await AsyncStorage.setItem('emailVerifiedViaDeepLink', 'true');
+                    }
+                  } catch (applyError: any) {
+                    // If code is invalid/expired/already used, check if email is now verified
+                    if (applyError?.code === 'auth/invalid-action-code' || 
+                        applyError?.code === 'auth/expired-action-code') {
+                      // Code might be invalid because email was already verified
+                      await reloadUser(currentUser);
+                      const checkUser = getCurrentUser();
+                      if (checkUser?.emailVerified) {
+                        // Email is verified, just clean up
+                        await AsyncStorage.removeItem('pendingVerificationCode');
+                        await AsyncStorage.setItem('emailVerifiedViaDeepLink', 'true');
+                      } else {
+                        // Email not verified, store error
+                        await AsyncStorage.setItem('verificationError', applyError.message || 'Invalid or expired verification code');
+                      }
+                    } else {
+                      await AsyncStorage.setItem('verificationError', applyError.message || 'Failed to verify email');
+                    }
+                  }
                 }
-              } catch (error: any) {
-                console.error('❌ Error verifying email via deep link:', error);
-                await AsyncStorage.setItem('verificationError', error.message || 'Failed to verify email');
+              } else {
+                // User not signed in yet - CreateAccount will handle it
+                // Store the code for CreateAccount to use
               }
-            } else {
-              console.log('⚠️ No pending account found for deep link verification');
-              // User might have already completed registration, just verify the email
-              try {
-                const { applyEmailVerificationCode } = require('../services/authService');
-                console.log('🔐 Applying verification code for existing account...');
-                await applyEmailVerificationCode(oobCode);
-                console.log('✅ Email verified (no pending account)');
-                await AsyncStorage.removeItem('pendingVerificationCode');
-                // Navigate to sign in
-                if (navigationRef.isReady()) {
-                  navigationRef.navigate('SignIn' as never);
-                }
-              } catch (error: any) {
-                console.error('❌ Error applying verification code:', error);
-                await AsyncStorage.setItem('verificationError', error.message || 'Failed to verify email');
-              }
+            } catch (error: any) {
+              // General error handling
+              await AsyncStorage.setItem('verificationError', error.message || 'Failed to verify email');
             }
           } else {
             console.log('⚠️ Verification link detected but no oobCode found');

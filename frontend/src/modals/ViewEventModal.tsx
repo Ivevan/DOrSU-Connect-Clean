@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useMemo, useRef } from 'react';
-import { Animated, Image, InteractionManager, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet from '../components/common/BottomSheet';
 import { useThemeValues } from '../contexts/ThemeContext';
@@ -76,9 +76,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
       duration: 200,
       useNativeDriver: true,
     }).start(() => {
-      InteractionManager.runAfterInteractions(() => {
-        setShowDeleteConfirm(false);
-      });
+      setShowDeleteConfirm(false);
     });
   }, [deleteConfirmSheetY]);
 
@@ -91,24 +89,21 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
       duration: 200,
       useNativeDriver: true,
     }).start(() => {
-      InteractionManager.runAfterInteractions(() => {
-        setShowDeleteConfirm(false);
-      });
+      setShowDeleteConfirm(false);
     });
   }, [onDelete, deleteConfirmSheetY]);
 
   const handleClose = useCallback(() => {
+    // Start the close animation
     Animated.timing(sheetY, {
       toValue: 500,
       duration: 200,
       useNativeDriver: true,
-    }).start(() => {
-      // Defer state update to avoid React warning about scheduling updates during render
-      // Use InteractionManager to ensure update happens after interactions complete
-      InteractionManager.runAfterInteractions(() => {
-        onClose();
-      });
-    });
+    }).start();
+    
+    // Call onClose immediately to update parent state and hide Modal
+    // This prevents the black overlay from showing
+    onClose();
   }, [sheetY, onClose]);
 
   // If there are multiple events, show the list; otherwise show single event
@@ -221,50 +216,43 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
 
           {/* Category Badge */}
           <View style={[styles.categoryBadge, { backgroundColor: eventColor + '20', borderColor: eventColor + '40' }]}>
-            <Ionicons name="pricetag-outline" size={12} color={eventColor} />
+            <Ionicons name="pricetag-outline" size={11} color={eventColor} />
             <Text style={[styles.categoryBadgeText, { color: eventColor }]}>
               {eventCategory}
             </Text>
           </View>
 
-          {/* Date and Time */}
-          <View style={styles.detailRow}>
-            <View style={styles.detailItem}>
-              <View style={styles.detailIconRow}>
-                <Ionicons name="calendar-outline" size={14} color={theme.colors.textMuted} />
-                <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Date</Text>
-              </View>
-              <Text style={[styles.detailValue, { color: theme.colors.text }]}>
-                {primaryEvent.isoDate || primaryEvent.date
-                  ? formatDate(new Date(primaryEvent.isoDate || primaryEvent.date))
-                  : 'Not specified'}
-              </Text>
-            </View>
-            <View style={styles.detailItem}>
-              <View style={styles.detailIconRow}>
-                <Ionicons name="time-outline" size={14} color={theme.colors.textMuted} />
-                <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Time</Text>
-              </View>
-              <Text style={[styles.detailValue, { color: theme.colors.text }]}>
-                {primaryEvent.time && primaryEvent.time.trim() ? primaryEvent.time : 'All Day'}
-              </Text>
-            </View>
-          </View>
-
-          {/* Date Range (if applicable) */}
-          {primaryEvent.startDate && primaryEvent.endDate && (
+          {/* Date, Time, and Date Range - Compact Layout */}
+          <View style={styles.detailsContainer}>
             <View style={styles.detailRow}>
               <View style={styles.detailItem}>
-                <View style={styles.detailIconRow}>
-                  <Ionicons name="calendar-outline" size={14} color={theme.colors.textMuted} />
-                  <Text style={[styles.detailLabel, { color: theme.colors.textMuted }]}>Date Range</Text>
-                </View>
+                <Ionicons name="calendar-outline" size={14} color={theme.colors.textMuted} />
                 <Text style={[styles.detailValue, { color: theme.colors.text }]}>
-                  {formatDate(new Date(primaryEvent.startDate))} - {formatDate(new Date(primaryEvent.endDate))}
+                  {primaryEvent.isoDate || primaryEvent.date
+                    ? formatDate(new Date(primaryEvent.isoDate || primaryEvent.date))
+                    : 'Not specified'}
+                </Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Ionicons name="time-outline" size={14} color={theme.colors.textMuted} />
+                <Text style={[styles.detailValue, { color: theme.colors.text }]}>
+                  {primaryEvent.time && primaryEvent.time.trim() ? primaryEvent.time : 'All Day'}
                 </Text>
               </View>
             </View>
-          )}
+            
+            {/* Date Range (if applicable) - Inline */}
+            {primaryEvent.startDate && primaryEvent.endDate && (
+              <View style={styles.detailRow}>
+                <View style={[styles.detailItem, { flex: 0 }]}>
+                  <Ionicons name="swap-horizontal-outline" size={14} color={theme.colors.textMuted} />
+                  <Text style={[styles.detailValue, { color: theme.colors.text }]}>
+                    {formatDate(new Date(primaryEvent.startDate))} - {formatDate(new Date(primaryEvent.endDate))}
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
 
           {/* Description */}
           {primaryEvent.description && (
@@ -289,9 +277,13 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
       maxHeight="90%"
       backgroundColor={theme.colors.card}
       autoSize={!hasImage}
-      sheetPaddingBottom={hasImage ? undefined : 0}
+      sheetPaddingBottom={hasImage ? undefined : (onEdit || onDelete ? Math.max(insets.bottom, 12) : 0)}
     >
-      <View style={[styles.container, !hasImage && styles.containerAutoSize]}>
+      <View style={[
+        styles.container, 
+        !hasImage && styles.containerAutoSize,
+        !hasImage && (onEdit || onDelete) && styles.containerWithActions
+      ]}>
         {/* Header */}
         <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Event Details</Text>
@@ -314,7 +306,11 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
             {renderEventContent()}
           </ScrollView>
         ) : (
-          <View style={[styles.scrollContent, styles.contentContainer]}>
+          <View style={[
+            styles.scrollContent, 
+            styles.contentContainer,
+            (onEdit || onDelete) && styles.contentWithActions
+          ]}>
             {renderEventContent()}
           </View>
         )}
@@ -327,7 +323,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
                 style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
                 onPress={onEdit}
               >
-                <Ionicons name="create-outline" size={16} color="#fff" />
+                <Ionicons name="create-outline" size={14} color="#fff" />
                 <Text style={styles.actionButtonText}>Edit</Text>
               </TouchableOpacity>
             )}
@@ -337,7 +333,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
                 onPress={handleDeletePress}
                 activeOpacity={0.8}
               >
-                <Ionicons name="trash-outline" size={16} color="#fff" />
+                <Ionicons name="trash-outline" size={14} color="#fff" />
                 <Text style={styles.actionButtonText}>Delete</Text>
               </TouchableOpacity>
             )}
@@ -411,22 +407,27 @@ const styles = StyleSheet.create({
   },
   containerAutoSize: {
     flex: 0,
+    minHeight: 0,
+  },
+  containerWithActions: {
+    // Ensure container accounts for button height (button ~40px + padding ~20px)
+    minHeight: 70,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 16,
+    paddingVertical: 12,
     paddingHorizontal: 4,
-    marginBottom: 8,
+    marginBottom: 4,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(0, 0, 0, 0.1)',
     flexShrink: 0,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    letterSpacing: -0.3,
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.2,
     flex: 1,
     textAlign: 'center',
   },
@@ -444,8 +445,8 @@ const styles = StyleSheet.create({
     minHeight: 0,
   },
   scrollContent: {
-    paddingTop: 16,
-    paddingBottom: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
     alignItems: 'center',
   },
   scrollContentAutoSize: {
@@ -453,6 +454,9 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     width: '100%',
+  },
+  contentWithActions: {
+    paddingBottom: 4,
   },
   eventsListContainer: {
     marginBottom: 16,
@@ -509,110 +513,95 @@ const styles = StyleSheet.create({
   eventDetails: {
     width: '100%',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 8,
   },
   eventImage: {
     width: '100%',
-    height: 200,
+    height: 180,
     borderRadius: 12,
-    marginBottom: 16,
+    marginBottom: 12,
     backgroundColor: 'rgba(0, 0, 0, 0.05)',
   },
   eventTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    marginBottom: 12,
-    lineHeight: 28,
-    letterSpacing: -0.4,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
+    lineHeight: 24,
+    letterSpacing: -0.3,
     textAlign: 'center',
     paddingHorizontal: 20,
   },
   categoryBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
     borderWidth: 1,
-    marginBottom: 24,
-    gap: 6,
+    marginBottom: 16,
+    gap: 5,
   },
   categoryBadgeText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    letterSpacing: 0.6,
   },
   detailsContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
     width: '100%',
     paddingHorizontal: 20,
+    marginBottom: 12,
   },
-  detailCard: {
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+    paddingVertical: 6,
+  },
+  detailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     flex: 1,
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.05)',
-  },
-  detailIconWrapper: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.03)',
-  },
-  detailLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 6,
-    opacity: 0.7,
-    textAlign: 'center',
   },
   detailValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 20,
-    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+    flex: 1,
   },
   descriptionContainer: {
-    marginTop: 8,
+    marginTop: 4,
     width: '100%',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
     backgroundColor: 'rgba(0, 0, 0, 0.02)',
     borderWidth: 1,
     borderColor: 'rgba(0, 0, 0, 0.05)',
   },
   descriptionLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 8,
+    letterSpacing: 0.6,
+    marginBottom: 6,
     opacity: 0.7,
     textAlign: 'center',
   },
   descriptionText: {
-    fontSize: 14,
-    lineHeight: 22,
+    fontSize: 13,
+    lineHeight: 20,
     fontWeight: '400',
     textAlign: 'center',
   },
   actionsContainer: {
     flexDirection: 'row',
     gap: 8,
-    paddingTop: 12,
-    marginTop: 8,
+    paddingTop: 10,
+    paddingBottom: 4,
+    marginTop: 6,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(0, 0, 0, 0.1)',
     flexShrink: 0,
@@ -622,12 +611,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
-    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 5,
   },
   actionButtonText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#fff',
   },

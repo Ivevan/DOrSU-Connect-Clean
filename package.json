@@ -53,6 +53,7 @@
     "expo-status-bar": "~2.2.3",
     "expo-web-browser": "^15.0.8",
     "firebase": "^9.23.0",
+    "git": "^0.1.5",
     "lottie-react-native": "^7.2.2",
     "react": "19.0.0",
     "react-dom": "19.0.0",

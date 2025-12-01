@@ -32,3 +32,7 @@ coverage/
 
 # Benchmark results (keep README.md)
 benchmark-results/*.json
+
+# Sensitive keys (do not commit)
+dorsu-key.pem
+*.pem

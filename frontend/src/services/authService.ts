@@ -330,14 +330,10 @@ export const sendEmailVerification = async (user: User): Promise<void> => {
     
     if (Platform.OS === 'web') {
       const { sendEmailVerification: sendVerification } = require('firebase/auth');
-      // For web, use actionCodeSettings to redirect to the app
-      const actionCodeSettings = {
-        url: `${window.location.origin}/verify-email`,
-        handleCodeInApp: true,
-      };
-      console.log('📧 Sending verification email (web) with settings:', actionCodeSettings);
-      await sendVerification(user, actionCodeSettings);
-      console.log('✅ Verification email sent successfully (web)');
+      // Use Firebase default verification URL (no custom redirect)
+      console.log('📧 Sending verification email (web) using Firebase default settings');
+      await sendVerification(user);
+      console.log('✅ Verification email sent successfully (web, default URL)');
     } else {
       // Native - React Native Firebase
       // React Native Firebase sendEmailVerification may not support actionCodeSettings
@@ -351,26 +347,9 @@ export const sendEmailVerification = async (user: User): Promise<void> => {
       } catch (simpleError: any) {
         console.warn('⚠️ Simple sendEmailVerification failed, trying with actionCodeSettings:', simpleError);
         
-        // Fallback: try with actionCodeSettings if available
-        try {
-          const actionCodeSettings = {
-            url: 'dorsuconnect://verify-email',
-            handleCodeInApp: true,
-            iOS: {
-              bundleId: 'com.dorsuconnect.app',
-            },
-            android: {
-              packageName: 'com.dorsuconnect.app',
-              installApp: false,
-              minimumVersion: '1',
-            },
-          };
-          await user.sendEmailVerification(actionCodeSettings);
-          console.log('✅ Verification email sent successfully (native - with deep link)');
-        } catch (settingsError: any) {
-          console.error('❌ Both methods failed:', settingsError);
-          throw simpleError; // Throw the original error
-        }
+        // Fallback: rethrow the original error if even simple call fails
+        console.error('❌ sendEmailVerification (native) failed:', simpleError);
+        throw simpleError;
       }
     }
     

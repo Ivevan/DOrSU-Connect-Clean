@@ -231,9 +231,11 @@ const CalendarScreen = () => {
       
       // Merge with existing events (avoid duplicates)
       setCalendarEvents(prevEvents => {
-        const existingIds = new Set(prevEvents.map(e => e._id || e.id || `${e.isoDate}-${e.title}`));
+        const existingIds = new Set(
+          prevEvents.map(e => (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`)
+        );
         const newEvents = events.filter(e => {
-          const id = e._id || e.id || `${e.isoDate}-${e.title}`;
+          const id = (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`;
           return !existingIds.has(id);
         });
         return [...prevEvents, ...newEvents];

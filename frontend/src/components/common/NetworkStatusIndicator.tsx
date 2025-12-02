@@ -97,7 +97,8 @@ const NetworkStatusIndicator: React.FC = () => {
     if (isOnline) {
       return theme.colors.success || '#10B981'; // Green for online
     }
-    return theme.colors.error || '#EF4444'; // Red for offline
+    // Use 'danger' from theme, which is mapped from the palette's error color
+    return theme.colors.danger || '#EF4444'; // Red for offline
   };
 
   // Don't render if not visible

@@ -5,7 +5,11 @@ docker build -t dorsu-backend .
 $ACCOUNT_ID = "443151264622"
 $REGION = "ap-southeast-1"
 
-# ag with full ECR repo name
+# IMPORTANT: Login to ECR first (required before push, tokens expire after 12 hours)
+$env:AWS_PAGER = ""
+aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin "$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com"
+
+# Tag with full ECR repo name
 docker tag dorsu-backend:latest "$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/dorsu-backend:latest"
 
 # Push to ECR

@@ -263,7 +263,7 @@ class NotificationService {
   }
 
   /**
-   * Schedule a notification (for immediate display, use presentNotificationAsync)
+   * Schedule a notification (for immediate display, use scheduleNotificationAsync with null trigger)
    */
   private async scheduleNotification(
     title: string,
@@ -292,7 +292,7 @@ class NotificationService {
         return null;
       }
 
-      // Use presentNotificationAsync for immediate notifications
+      // Use scheduleNotificationAsync with null trigger for immediate notifications
       const notificationContent: any = {
         title,
         body,
@@ -305,12 +305,17 @@ class NotificationService {
         notificationContent.priority = Notifications.AndroidNotificationPriority.HIGH;
       }
 
-      const identifier = await Notifications.presentNotificationAsync(notificationContent);
+      // Schedule notification with null trigger to show immediately
+      // null trigger means the notification will be shown right away
+      const identifier = await Notifications.scheduleNotificationAsync({
+        content: notificationContent,
+        trigger: null, // null trigger = immediate notification
+      });
 
-      console.log('Notification sent:', { title, body, identifier });
+      console.log('✅ Notification sent:', { title, body, identifier });
       return identifier;
     } catch (error) {
-      console.error('Error scheduling notification:', error);
+      console.error('❌ Error scheduling notification:', error);
       return null;
     }
   }
@@ -338,13 +343,35 @@ class NotificationService {
       
       // Filter for new posts that haven't been notified yet
       const newPosts = posts.filter((post: Post) => {
-        if (!post.date || !post.id) return false;
-        const postDate = new Date(post.date).getTime();
-        // Only notify if:
-        // 1. Post is created after last check AND
-        // 2. Post ID hasn't been notified before
-        const isNew = postDate > lastCheck && !notifiedPostIds.has(post.id);
-        return isNew;
+        if (!post.id) return false;
+        
+        // Skip if already notified
+        if (notifiedPostIds.has(post.id)) {
+          return false;
+        }
+        
+        // Use createdAt if available (actual creation time), otherwise use isoDate or date
+        const postDateStr = (post as any).createdAt || post.isoDate || post.date;
+        if (!postDateStr) {
+          console.warn('Post has no date field:', post.id);
+          return false;
+        }
+        
+        const postDate = new Date(postDateStr).getTime();
+        if (isNaN(postDate)) {
+          console.warn('Invalid post date:', postDateStr, 'for post:', post.id);
+          return false;
+        }
+        
+        // Notify if post was created within the last 24 hours
+        // This ensures we catch new posts even if lastCheck is old
+        const oneDayAgo = now - 24 * 60 * 60 * 1000;
+        const isRecent = postDate > oneDayAgo;
+        
+        // Also notify if post was created after last check (for immediate notifications)
+        const isAfterLastCheck = postDate > lastCheck;
+        
+        return isRecent || isAfterLastCheck;
       });
 
       console.log(`Found ${newPosts.length} new posts to notify`);
@@ -353,24 +380,31 @@ class NotificationService {
       for (const post of newPosts) {
         if (!post.id) continue;
         
-        const notificationId = await this.scheduleNotification(
-          '📢 New Post Added',
-          post.title || 'A new post has been added',
-          {
-            type: 'new_post',
-            postId: post.id,
-            category: post.category,
+        try {
+          const notificationId = await this.scheduleNotification(
+            '📢 New Post Added',
+            post.title || 'A new post has been added',
+            {
+              type: 'new_post',
+              postId: post.id,
+              category: post.category,
+            }
+          );
+          
+          if (notificationId) {
+            console.log('✅ Push notification sent for post:', post.id, post.title);
+            // Mark this post as notified only if notification was successfully sent
+            await this.addNotifiedPostId(post.id);
+          } else {
+            console.warn('⚠️ Failed to send push notification for post:', post.id, '- notification may be disabled or permissions not granted');
+            // Still mark as notified to avoid spam, but log the issue
+            await this.addNotifiedPostId(post.id);
           }
-        );
-        
-        if (notificationId) {
-          console.log('Notification sent for post:', post.id, post.title);
-        } else {
-          console.warn('Failed to send notification for post:', post.id);
+        } catch (error) {
+          console.error('❌ Error sending notification for post:', post.id, error);
+          // Mark as notified to avoid retrying failed notifications
+          await this.addNotifiedPostId(post.id);
         }
-        
-        // Mark this post as notified
-        await this.addNotifiedPostId(post.id);
       }
 
       // Update last check time
@@ -571,25 +605,80 @@ class NotificationService {
    */
   async checkAllNotifications(): Promise<void> {
     try {
-      console.log('Starting notification check...');
+      console.log('🔔 Starting notification check...');
       const hasPermission = await this.requestPermissions();
       if (!hasPermission) {
-        console.warn('Notification permissions not granted, skipping checks');
+        console.warn('⚠️ Notification permissions not granted, skipping checks');
         return;
       }
 
-      console.log('Notification permissions granted, running checks...');
+      console.log('✅ Notification permissions granted, running checks...');
       
       // Run all checks in parallel
       await Promise.all([
-        this.checkNewPosts().catch(err => console.error('Error in checkNewPosts:', err)),
-        this.checkTodaysEvents().catch(err => console.error('Error in checkTodaysEvents:', err)),
-        this.checkUpcomingEvents().catch(err => console.error('Error in checkUpcomingEvents:', err)),
+        this.checkNewPosts().catch(err => console.error('❌ Error in checkNewPosts:', err)),
+        this.checkTodaysEvents().catch(err => console.error('❌ Error in checkTodaysEvents:', err)),
+        this.checkUpcomingEvents().catch(err => console.error('❌ Error in checkUpcomingEvents:', err)),
       ]);
       
-      console.log('Notification checks completed');
+      console.log('✅ Notification checks completed');
     } catch (error) {
-      console.error('Error checking all notifications:', error);
+      console.error('❌ Error checking all notifications:', error);
+    }
+  }
+
+  /**
+   * Trigger notification for a specific post immediately (used after post creation)
+   */
+  async notifyNewPost(postId: string): Promise<void> {
+    try {
+      const enabled = await this.areNotificationsEnabled();
+      if (!enabled) {
+        console.log('Notifications are disabled, skipping new post notification');
+        return;
+      }
+
+      const hasPermission = await this.requestPermissions();
+      if (!hasPermission) {
+        console.warn('Notification permissions not granted, skipping new post notification');
+        return;
+      }
+
+      // Fetch the specific post
+      const posts = await AdminDataService.getPosts();
+      const post = posts.find((p: Post) => p.id === postId);
+      
+      if (!post) {
+        console.warn('Post not found for notification:', postId);
+        return;
+      }
+
+      // Check if already notified
+      const notifiedPostIds = await this.getNotifiedPostIds();
+      if (notifiedPostIds.has(postId)) {
+        console.log('Post already notified:', postId);
+        return;
+      }
+
+      // Send notification immediately
+      const notificationId = await this.scheduleNotification(
+        '📢 New Post Added',
+        post.title || 'A new post has been added',
+        {
+          type: 'new_post',
+          postId: post.id,
+          category: post.category,
+        }
+      );
+
+      if (notificationId) {
+        console.log('✅ Immediate notification sent for post:', post.id, post.title);
+        await this.addNotifiedPostId(post.id);
+      } else {
+        console.warn('⚠️ Failed to send immediate notification for post:', post.id);
+      }
+    } catch (error) {
+      console.error('❌ Error notifying new post:', error);
     }
   }
 

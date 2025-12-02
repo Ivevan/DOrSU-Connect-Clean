@@ -43,6 +43,7 @@ import { useThemeValues } from '../contexts/ThemeContext';
 import NotificationService from '../services/NotificationService';
 import AdminDataService, { Post } from '../services/AdminDataService';
 import CalendarService, { CalendarEvent } from '../services/CalendarService';
+import { formatDate } from '../utils/dateUtils';
 
 interface NotificationModalProps {
   visible: boolean;
@@ -167,6 +168,7 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
   const loadNotifications = useCallback(async () => {
     try {
       setIsLoading(true);
+      console.log('📬 NotificationModal: Starting to load notifications...');
       
       // Load read status first - read directly from AsyncStorage to avoid dependency issues
       let currentReadIds: Set<string>;
@@ -189,48 +191,74 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
       let events: CalendarEvent[] = [];
       
       try {
-        [posts, events] = await Promise.all([
-          AdminDataService.getPosts().catch((error) => {
-            console.error('❌ NotificationModal: Failed to fetch posts:', error);
-            return [];
-          }),
+        console.log('📬 NotificationModal: Fetching posts and events...');
+        const [postsResult, eventsResult] = await Promise.allSettled([
+          AdminDataService.getPosts(),
           CalendarService.getEvents({
             startDate: new Date().toISOString(),
             endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
             limit: 50,
-          }).catch((error) => {
-            console.error('❌ NotificationModal: Failed to fetch events:', error);
-            return [];
           }),
         ]);
-        console.log(`📊 NotificationModal: Loaded ${posts.length} posts and ${events.length} events`);
+        
+        // Handle posts result
+        if (postsResult.status === 'fulfilled') {
+          posts = postsResult.value || [];
+          console.log(`✅ NotificationModal: Loaded ${posts.length} posts`);
+        } else {
+          console.error('❌ NotificationModal: Failed to fetch posts:', postsResult.reason);
+          posts = [];
+        }
+        
+        // Handle events result
+        if (eventsResult.status === 'fulfilled') {
+          events = Array.isArray(eventsResult.value) ? eventsResult.value : [];
+          console.log(`✅ NotificationModal: Loaded ${events.length} events`);
+        } else {
+          console.error('❌ NotificationModal: Failed to fetch events:', eventsResult.reason);
+          events = [];
+        }
+        
+        console.log(`📊 NotificationModal: Total loaded - ${posts.length} posts, ${events.length} events`);
       } catch (error) {
         console.error('❌ NotificationModal: Error loading notifications:', error);
         // Continue with empty arrays
+        posts = [];
+        events = [];
       }
 
       const items: NotificationItem[] = [];
       const todayKey = getPHDateKey(new Date());
       const now = Date.now();
 
-      // Add individual new posts (last 24 hours)
+      // Add individual new posts (last 7 days for better visibility)
       const recentPosts = posts.filter((post: Post) => {
-        if (!post.date) return false;
-        const postDate = new Date(post.date).getTime();
-        const oneDayAgo = now - 24 * 60 * 60 * 1000;
-        return postDate > oneDayAgo;
+        if (!post.date && !post.isoDate) return false;
+        const postDate = new Date(post.isoDate || post.date).getTime();
+        const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+        return postDate > sevenDaysAgo;
       });
+
+      console.log(`📬 NotificationModal: Found ${recentPosts.length} recent posts (last 7 days)`);
 
       // Create individual notification for each new post
       recentPosts.forEach((post: Post, index: number) => {
-        // Use createdAt if available (actual creation time), otherwise use date
-        const postDate = (post as any).createdAt || post.date || post.isoDate;
+        // Use isoDate if available (more accurate), otherwise use date
+        const postDate = post.isoDate || post.date || new Date().toISOString();
+        const postTimestamp = new Date(postDate).getTime();
+        
+        // Skip if timestamp is invalid
+        if (isNaN(postTimestamp)) {
+          console.warn(`⚠️ NotificationModal: Invalid timestamp for post ${post.id}`);
+          return;
+        }
+        
         items.push({
-          id: `new_post_${post.id || index}`,
+          id: `new_post_${post.id || `post_${index}`}`,
           type: 'new_post',
           title: '📢 New Post',
           message: post.title || 'A new post has been added',
-          timestamp: new Date(postDate).getTime(),
+          timestamp: postTimestamp,
           data: { postId: post.id, post },
         });
       });
@@ -242,35 +270,58 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
         return eventKey === todayKey;
       });
 
+      console.log(`📬 NotificationModal: Found ${todaysEvents.length} today's events`);
+
       // Create individual notification for each today's event
       todaysEvents.forEach((event: CalendarEvent, index: number) => {
+        const eventDate = event.isoDate || event.date;
+        if (!eventDate) return;
+        
+        const eventTimestamp = new Date(eventDate).getTime();
+        if (isNaN(eventTimestamp)) {
+          console.warn(`⚠️ NotificationModal: Invalid timestamp for event ${event._id}`);
+          return;
+        }
+        
         items.push({
-          id: `todays_event_${event._id || index}`,
+          id: `todays_event_${event._id || `event_${index}`}`,
           type: 'todays_event',
           title: '📅 Today',
           message: event.title || 'An event is scheduled for today',
-          timestamp: new Date(event.isoDate || event.date).getTime(),
+          timestamp: eventTimestamp,
           data: { eventId: event._id, event },
         });
       });
 
-      // Add individual upcoming events (only future events, not past)
+      // Add individual upcoming events (only future events, not past, within next 7 days)
       const upcomingEvents = events.filter((event: CalendarEvent) => {
         if (!event.isoDate && !event.date) return false;
         const eventKey = getPHDateKey(event.isoDate || event.date);
         const eventDate = new Date(event.isoDate || event.date).getTime();
-        // Only include events that are in the future (not today, not past)
-        return eventKey > todayKey && eventDate > now;
+        const sevenDaysFromNow = now + 7 * 24 * 60 * 60 * 1000;
+        // Only include events that are in the future (not today, not past) and within 7 days
+        return eventKey > todayKey && eventDate > now && eventDate <= sevenDaysFromNow;
       });
+
+      console.log(`📬 NotificationModal: Found ${upcomingEvents.length} upcoming events (next 7 days)`);
 
       // Create individual notification for each upcoming event
       upcomingEvents.forEach((event: CalendarEvent, index: number) => {
+        const eventDate = event.isoDate || event.date;
+        if (!eventDate) return;
+        
+        const eventTimestamp = new Date(eventDate).getTime();
+        if (isNaN(eventTimestamp)) {
+          console.warn(`⚠️ NotificationModal: Invalid timestamp for event ${event._id}`);
+          return;
+        }
+        
         items.push({
-          id: `upcoming_event_${event._id || index}`,
+          id: `upcoming_event_${event._id || `event_${index}`}`,
           type: 'upcoming_event',
           title: '🔔 Upcoming',
           message: event.title || 'An upcoming event',
-          timestamp: new Date(event.isoDate || event.date).getTime(),
+          timestamp: eventTimestamp,
           data: { eventId: event._id, event },
         });
       });
@@ -294,8 +345,10 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
       });
 
       setNotificationItems(itemsWithReadStatus);
+      console.log(`✅ NotificationModal: Loaded ${itemsWithReadStatus.length} notification items`);
     } catch (error) {
-      console.error('Error loading notifications:', error);
+      console.error('❌ NotificationModal: Error loading notifications:', error);
+      setNotificationItems([]);
     } finally {
       setIsLoading(false);
     }
@@ -335,14 +388,20 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
   // Animate sheet when visible changes
   useEffect(() => {
     if (visible) {
+      console.log('📬 NotificationModal: Modal opened, loading notifications...');
       Animated.spring(sheetY, {
         toValue: 0,
         useNativeDriver: true,
         tension: 65,
         friction: 11,
       }).start();
-      loadNotifications();
-      checkPermissions();
+      // Load notifications immediately when modal opens
+      loadNotifications().catch((error) => {
+        console.error('❌ NotificationModal: Error in loadNotifications:', error);
+      });
+      checkPermissions().catch((error) => {
+        console.error('❌ NotificationModal: Error in checkPermissions:', error);
+      });
     } else {
       Animated.timing(sheetY, {
         toValue: 600,
@@ -354,10 +413,17 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
   }, [visible]); // Only depend on visible - loadNotifications and checkPermissions are stable
 
   const handleRefresh = async () => {
-    setIsRefreshing(true);
-    await loadNotifications();
-    await NotificationService.checkAllNotifications();
-    setIsRefreshing(false);
+    try {
+      setIsRefreshing(true);
+      console.log('📬 NotificationModal: Refreshing notifications...');
+      await loadNotifications();
+      await NotificationService.checkAllNotifications();
+      console.log('✅ NotificationModal: Refresh completed');
+    } catch (error) {
+      console.error('❌ NotificationModal: Error refreshing notifications:', error);
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const handleToggleNotifications = async (value: boolean) => {
@@ -582,11 +648,18 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
               <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>No Notifications</Text>
               <Text style={[styles.emptyMessage, { color: theme.colors.textMuted }]}>
                 {filter === 'all' 
-                  ? 'All caught up! No new posts or events.'
+                  ? 'All caught up! No new posts or events in the last 7 days.'
                   : filter === 'new_post'
-                  ? 'No new posts found.'
-                  : 'No upcoming events found.'}
+                  ? 'No new posts found in the last 7 days.'
+                  : 'No upcoming events found in the next 7 days.'}
               </Text>
+              <TouchableOpacity
+                style={[styles.retryButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                onPress={handleRefresh}
+              >
+                <Ionicons name="refresh" size={16} color={theme.colors.accent} />
+                <Text style={[styles.retryButtonText, { color: theme.colors.accent }]}>Refresh</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.notificationsList}>
@@ -633,13 +706,23 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
                         <View style={styles.notificationMeta}>
                           {item.data.post && (
                             <Text style={[styles.notificationMetaText, { color: theme.colors.textMuted }]} numberOfLines={1}>
-                              {new Date(item.data.post.date).toLocaleDateString()}
+                              {(() => {
+                                const postDate = item.data.post.isoDate || item.data.post.date;
+                                if (!postDate) return '';
+                                const formatted = formatDate(postDate);
+                                return formatted || '';
+                              })()}
                             </Text>
                           )}
                           {item.data.event && (
                             <Text style={[styles.notificationMetaText, { color: theme.colors.textMuted }]} numberOfLines={1}>
-                              {new Date(item.data.event.isoDate || item.data.event.date).toLocaleDateString()}
-                              {item.data.event.time && ` • ${item.data.event.time}`}
+                              {(() => {
+                                const eventDate = item.data.event.isoDate || item.data.event.date;
+                                if (!eventDate) return '';
+                                const formatted = formatDate(eventDate);
+                                return formatted || '';
+                              })()}
+                              {item.data.event.time && item.data.event.time.trim() && ` • ${item.data.event.time}`}
                             </Text>
                           )}
                         </View>
@@ -873,6 +956,21 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 13,
     fontWeight: '700',
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 12,
+    gap: 6,
+  },
+  retryButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   filtersContainer: {
     flexDirection: 'row',

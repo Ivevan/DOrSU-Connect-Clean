@@ -504,7 +504,7 @@ class NotificationService {
   }
 
   /**
-   * Check for upcoming events and send notifications
+   * Check for upcoming events and posts and send notifications
    */
   async checkUpcomingEvents(): Promise<void> {
     try {
@@ -517,8 +517,9 @@ class NotificationService {
       const now = Date.now();
       const todayKey = getPHDateKey(new Date());
       const notifiedEventIds = await this.getNotifiedEventIds();
+      const notifiedPostIds = await this.getNotifiedPostIds();
 
-      // Check for upcoming events (next 7 days, starting from tomorrow)
+      // Check for upcoming calendar events (next 7 days, starting from tomorrow)
       const startDate = new Date();
       startDate.setDate(startDate.getDate() + 1); // Tomorrow
       startDate.setHours(0, 0, 0, 0);
@@ -528,22 +529,33 @@ class NotificationService {
       endDate.setHours(23, 59, 59, 999);
 
       let events: CalendarEvent[] = [];
+      let posts: Post[] = [];
+
+      // Fetch both calendar events and posts
       try {
-        events = await CalendarService.getEvents({
-          startDate: startDate.toISOString(),
-          endDate: endDate.toISOString(),
-          limit: 100,
-        });
-        console.log(`📅 checkUpcomingEvents: Fetched ${events.length} events from API`);
+        [events, posts] = await Promise.all([
+          CalendarService.getEvents({
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+            limit: 100,
+          }).catch((error: any) => {
+            console.error('❌ checkUpcomingEvents: Failed to fetch events:', error.message);
+            return [];
+          }),
+          AdminDataService.getPosts().catch((error: any) => {
+            console.error('❌ checkUpcomingEvents: Failed to fetch posts:', error.message);
+            return [];
+          }),
+        ]);
+        console.log(`📅 checkUpcomingEvents: Fetched ${events.length} calendar events and ${posts.length} posts`);
       } catch (error: any) {
-        console.error('❌ checkUpcomingEvents: Failed to fetch events:', error.message);
-        // Don't throw - just log and continue with empty array
-        // This prevents the notification check from crashing
+        console.error('❌ checkUpcomingEvents: Error fetching data:', error.message);
         events = [];
+        posts = [];
       }
 
-      // Filter for upcoming events (future events only, not today, not past)
-      const upcomingEvents = events.filter((event: CalendarEvent) => {
+      // Filter for upcoming calendar events (future events only, not today, not past)
+      const upcomingCalendarEvents = events.filter((event: CalendarEvent) => {
         if (!event.isoDate && !event.date) return false;
         const eventKey = getPHDateKey(event.isoDate || event.date);
         const eventDate = new Date(event.isoDate || event.date).getTime();
@@ -551,10 +563,25 @@ class NotificationService {
         return eventKey > todayKey && eventDate > now;
       });
 
-      // Filter for new upcoming events that haven't been notified yet
-      const newUpcomingEvents = upcomingEvents.filter((event: CalendarEvent) => {
-        if (!event.date || !event._id) return false;
-        const eventDate = new Date(event.date).getTime();
+      // Filter for upcoming posts (future posts only, not today, not past)
+      const upcomingPosts = posts.filter((post: Post) => {
+        if (!post.id) return false;
+        const postDateStr = post.isoDate || post.date;
+        if (!postDateStr) return false;
+        const postKey = getPHDateKey(postDateStr);
+        const postDate = new Date(postDateStr).getTime();
+        if (isNaN(postDate)) return false;
+        // Only include posts that are in the future (not today, not past)
+        return postKey > todayKey && postDate > now;
+      });
+
+      // Filter for new upcoming calendar events that haven't been notified yet
+      const newUpcomingCalendarEvents = upcomingCalendarEvents.filter((event: CalendarEvent) => {
+        if (!event._id) return false;
+        const eventDateStr = event.isoDate || event.date;
+        if (!eventDateStr) return false;
+        const eventDate = new Date(eventDateStr).getTime();
+        if (isNaN(eventDate)) return false;
         const eventId = event._id.toString();
         // Only notify if:
         // 1. Event is created/updated after last check AND
@@ -562,41 +589,78 @@ class NotificationService {
         return eventDate > lastCheck && !notifiedEventIds.has(eventId);
       });
 
-      // Send notification for upcoming events
-      if (newUpcomingEvents.length > 0) {
-        const eventCount = newUpcomingEvents.length;
-        const eventText = eventCount === 1 
-          ? `"${newUpcomingEvents[0].title}"` 
-          : `${eventCount} upcoming events`;
+      // Filter for new upcoming posts that haven't been notified yet
+      const newUpcomingPosts = upcomingPosts.filter((post: Post) => {
+        if (!post.id) return false;
+        const postDateStr = post.isoDate || post.date;
+        if (!postDateStr) return false;
+        const postDate = new Date(postDateStr).getTime();
+        if (isNaN(postDate)) return false;
+        // Only notify if:
+        // 1. Post is created/updated after last check AND
+        // 2. Post ID hasn't been notified before
+        return postDate > lastCheck && !notifiedPostIds.has(post.id);
+      });
+
+      // Combine calendar events and posts for notification
+      const totalUpcoming = newUpcomingCalendarEvents.length + newUpcomingPosts.length;
+
+      // Send notification for upcoming items (both events and posts)
+      if (totalUpcoming > 0) {
+        const eventCount = newUpcomingCalendarEvents.length;
+        const postCount = newUpcomingPosts.length;
+        
+        let notificationText = '';
+        if (eventCount > 0 && postCount > 0) {
+          notificationText = `${eventCount} event${eventCount > 1 ? 's' : ''} and ${postCount} post${postCount > 1 ? 's' : ''}`;
+        } else if (eventCount > 0) {
+          notificationText = `${eventCount} event${eventCount > 1 ? 's' : ''}`;
+        } else {
+          notificationText = `${postCount} post${postCount > 1 ? 's' : ''}`;
+        }
 
         await this.scheduleNotification(
-          '🔔 Upcoming Events',
-          `You have ${eventText} coming up soon`,
+          '🔔 Upcoming Updates',
+          `You have ${notificationText} coming up soon`,
           {
             type: 'upcoming_events',
             eventCount,
-            events: newUpcomingEvents.map(e => ({ 
+            postCount,
+            totalCount: totalUpcoming,
+            events: newUpcomingCalendarEvents.map(e => ({ 
               id: e._id, 
               title: e.title,
               date: e.isoDate || e.date 
             })),
+            posts: newUpcomingPosts.map(p => ({
+              id: p.id,
+              title: p.title,
+              date: p.isoDate || p.date
+            })),
           }
         );
         
-        // Mark these events as notified
-        for (const event of newUpcomingEvents) {
+        // Mark calendar events as notified
+        for (const event of newUpcomingCalendarEvents) {
           if (event._id) {
             await this.addNotifiedEventId(event._id.toString());
+          }
+        }
+
+        // Mark posts as notified
+        for (const post of newUpcomingPosts) {
+          if (post.id) {
+            await this.addNotifiedPostId(post.id);
           }
         }
       }
 
       // Update last check time
-      if (newUpcomingEvents.length > 0) {
+      if (totalUpcoming > 0) {
         await this.setLastCheck(STORAGE_KEYS.LAST_UPCOMING_EVENT_CHECK, now);
       }
     } catch (error) {
-      console.error('Error checking upcoming events:', error);
+      console.error('❌ Error checking upcoming events:', error);
     }
   }
 

@@ -9,7 +9,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Platform, RefreshControl, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 
 // Lazy getter for expo-notifications (not available on web)
@@ -186,25 +186,35 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
         currentReadIds = new Set<string>();
       }
       
-      // Fetch current data to show what would trigger notifications
+      // Fetch current data - mirror AdminDashboard/SchoolUpdates approach
+      // Fetch ALL posts (no date filter) and calendar events with date range (current month ± 2 months)
       let posts: Post[] = [];
       let events: CalendarEvent[] = [];
       
       try {
-        console.log('📬 NotificationModal: Fetching posts and events...');
+        console.log('📬 NotificationModal: Fetching posts and events (mirroring AdminDashboard/SchoolUpdates)...');
+        
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+        
+        // Fetch calendar events: current month ± 2 months (same as AdminDashboard/SchoolUpdates)
+        const startDate = new Date(currentYear, currentMonth - 2, 1);
+        const endDate = new Date(currentYear, currentMonth + 3, 0, 23, 59, 59); // Last day of month + 2
+        
         const [postsResult, eventsResult] = await Promise.allSettled([
-          AdminDataService.getPosts(),
+          AdminDataService.getPosts(), // Fetch ALL posts (no date filter)
           CalendarService.getEvents({
-            startDate: new Date().toISOString(),
-            endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-            limit: 50,
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+            limit: 1000, // Same limit as AdminDashboard
           }),
         ]);
         
         // Handle posts result
         if (postsResult.status === 'fulfilled') {
           posts = postsResult.value || [];
-          console.log(`✅ NotificationModal: Loaded ${posts.length} posts`);
+          console.log(`✅ NotificationModal: Loaded ${posts.length} posts (all posts)`);
         } else {
           console.error('❌ NotificationModal: Failed to fetch posts:', postsResult.reason);
           posts = [];
@@ -213,7 +223,7 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
         // Handle events result
         if (eventsResult.status === 'fulfilled') {
           events = Array.isArray(eventsResult.value) ? eventsResult.value : [];
-          console.log(`✅ NotificationModal: Loaded ${events.length} events`);
+          console.log(`✅ NotificationModal: Loaded ${events.length} calendar events (${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()})`);
         } else {
           console.error('❌ NotificationModal: Failed to fetch events:', eventsResult.reason);
           events = [];
@@ -228,103 +238,186 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
       }
 
       const items: NotificationItem[] = [];
-      const todayKey = getPHDateKey(new Date());
-      const now = Date.now();
-
-      // Add individual new posts (last 7 days for better visibility)
-      const recentPosts = posts.filter((post: Post) => {
-        if (!post.date && !post.isoDate) return false;
-        const postDate = new Date(post.isoDate || post.date).getTime();
-        const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-        return postDate > sevenDaysAgo;
-      });
-
-      console.log(`📬 NotificationModal: Found ${recentPosts.length} recent posts (last 7 days)`);
-
-      // Create individual notification for each new post
-      recentPosts.forEach((post: Post, index: number) => {
-        // Use isoDate if available (more accurate), otherwise use date
-        const postDate = post.isoDate || post.date || new Date().toISOString();
-        const postTimestamp = new Date(postDate).getTime();
-        
-        // Skip if timestamp is invalid
-        if (isNaN(postTimestamp)) {
-          console.warn(`⚠️ NotificationModal: Invalid timestamp for post ${post.id}`);
+      const now = new Date();
+      const todayKey = getPHDateKey(now);
+      const nowTime = Date.now();
+      
+      // Mirror AdminDashboard/SchoolUpdates approach:
+      // 1. Convert all posts to notification items (for "All Updates" and "Added Post")
+      // 2. Convert all calendar events to notification items (for "All Updates" and "Upcoming Updates")
+      // 3. Use same date filtering logic as displayedUpdates
+      
+      // Process posts - include ALL posts for "All Updates", categorize for filters
+      // Mirror AdminDashboard: ALL posts are shown, categorized by date
+      let newPostCount = 0;
+      let upcomingPostCount = 0;
+      
+      posts.forEach((post: Post, index: number) => {
+        if (!post.id) {
+          console.warn(`⚠️ NotificationModal: Post missing ID at index ${index}`);
           return;
         }
         
+        const postDateStr = post.isoDate || post.date;
+        if (!postDateStr) {
+          // Posts without dates - include as "new_post" for "All Updates" and "Added Post"
+          items.push({
+            id: `new_post_${post.id}`,
+            type: 'new_post',
+            title: '📢 New Post',
+            message: post.title || 'A new post has been added',
+            timestamp: nowTime, // Use current time if no date
+            data: { postId: post.id, post },
+          });
+          newPostCount++;
+          return;
+        }
+        
+        const postDate = new Date(postDateStr).getTime();
+        if (isNaN(postDate)) {
+          console.warn(`⚠️ NotificationModal: Invalid timestamp for post ${post.id}, date: ${postDateStr}`);
+          // Still include it as "new_post"
+          items.push({
+            id: `new_post_${post.id}`,
+            type: 'new_post',
+            title: '📢 New Post',
+            message: post.title || 'A new post has been added',
+            timestamp: nowTime,
+            data: { postId: post.id, post },
+          });
+          newPostCount++;
+          return;
+        }
+        
+        // ALL posts should be categorized as 'new_post' for "Added Post" filter
+        // This ensures ALL posts appear in "Added Post" regardless of their date
+        // Future posts will also be duplicated as 'upcoming_event' for "Upcoming Updates" filter
+        const postKey = getPHDateKey(postDateStr);
+        const isFuture = postDate > nowTime;
+        const isToday = postKey === todayKey;
+        
+        // Always add as 'new_post' first (for "Added Post" and "All Updates")
         items.push({
-          id: `new_post_${post.id || `post_${index}`}`,
+          id: `new_post_${post.id}`,
           type: 'new_post',
           title: '📢 New Post',
           message: post.title || 'A new post has been added',
-          timestamp: postTimestamp,
+          timestamp: postDate,
           data: { postId: post.id, post },
         });
-      });
-
-      // Add individual today's events (only if event date is today)
-      const todaysEvents = events.filter((event: CalendarEvent) => {
-        if (!event.isoDate && !event.date) return false;
-        const eventKey = getPHDateKey(event.isoDate || event.date);
-        return eventKey === todayKey;
-      });
-
-      console.log(`📬 NotificationModal: Found ${todaysEvents.length} today's events`);
-
-      // Create individual notification for each today's event
-      todaysEvents.forEach((event: CalendarEvent, index: number) => {
-        const eventDate = event.isoDate || event.date;
-        if (!eventDate) return;
+        newPostCount++;
         
-        const eventTimestamp = new Date(eventDate).getTime();
-        if (isNaN(eventTimestamp)) {
-          console.warn(`⚠️ NotificationModal: Invalid timestamp for event ${event._id}`);
+        // If it's a future post (not today), also add as 'upcoming_event' (for "Upcoming Updates")
+        if (isFuture && !isToday) {
+          items.push({
+            id: `upcoming_post_${post.id}`,
+            type: 'upcoming_event', // Use same type as upcoming events
+            title: '🔔 Upcoming',
+            message: post.title || 'An upcoming post',
+            timestamp: postDate,
+            data: { postId: post.id, post },
+          });
+          upcomingPostCount++;
+        }
+      });
+      
+      console.log(`📬 NotificationModal: Processed ${posts.length} posts - ${newPostCount} new_post items, ${upcomingPostCount} upcoming_post items`);
+      if (posts.length > 0) {
+        console.log(`📬 Sample posts:`, posts.slice(0, 3).map(p => ({
+          id: p.id,
+          title: p.title,
+          date: p.date,
+          isoDate: p.isoDate,
+          hasDate: !!p.date,
+          hasIsoDate: !!p.isoDate,
+        })));
+      }
+
+      // Process calendar events - include ALL events for "All Updates", categorize for filters
+      // Mirror AdminDashboard: ALL calendar events are shown, categorized by date
+      let todaysEventCount = 0;
+      let upcomingEventCount = 0;
+      
+      events.forEach((event: CalendarEvent, index: number) => {
+        // Skip events without any identifier or date
+        if (!event._id && !event.isoDate && !event.date) {
+          console.warn(`⚠️ NotificationModal: Event missing ID and date at index ${index}`);
           return;
         }
         
-        items.push({
-          id: `todays_event_${event._id || `event_${index}`}`,
-          type: 'todays_event',
-          title: '📅 Today',
-          message: event.title || 'An event is scheduled for today',
-          timestamp: eventTimestamp,
-          data: { eventId: event._id, event },
-        });
-      });
-
-      // Add individual upcoming events (only future events, not past, within next 7 days)
-      const upcomingEvents = events.filter((event: CalendarEvent) => {
-        if (!event.isoDate && !event.date) return false;
-        const eventKey = getPHDateKey(event.isoDate || event.date);
-        const eventDate = new Date(event.isoDate || event.date).getTime();
-        const sevenDaysFromNow = now + 7 * 24 * 60 * 60 * 1000;
-        // Only include events that are in the future (not today, not past) and within 7 days
-        return eventKey > todayKey && eventDate > now && eventDate <= sevenDaysFromNow;
-      });
-
-      console.log(`📬 NotificationModal: Found ${upcomingEvents.length} upcoming events (next 7 days)`);
-
-      // Create individual notification for each upcoming event
-      upcomingEvents.forEach((event: CalendarEvent, index: number) => {
-        const eventDate = event.isoDate || event.date;
-        if (!eventDate) return;
-        
-        const eventTimestamp = new Date(eventDate).getTime();
-        if (isNaN(eventTimestamp)) {
-          console.warn(`⚠️ NotificationModal: Invalid timestamp for event ${event._id}`);
+        const eventDateStr = event.isoDate || event.date;
+        if (!eventDateStr) {
+          // Events without dates - include as "upcoming_event" for "All Updates" and "Upcoming Updates"
+          items.push({
+            id: `upcoming_event_${event._id || `event_${index}`}`,
+            type: 'upcoming_event',
+            title: '🔔 Upcoming',
+            message: event.title || 'An upcoming event',
+            timestamp: nowTime,
+            data: { eventId: event._id, event },
+          });
+          upcomingEventCount++;
           return;
         }
         
-        items.push({
-          id: `upcoming_event_${event._id || `event_${index}`}`,
-          type: 'upcoming_event',
-          title: '🔔 Upcoming',
-          message: event.title || 'An upcoming event',
-          timestamp: eventTimestamp,
-          data: { eventId: event._id, event },
-        });
+        const eventDate = new Date(eventDateStr).getTime();
+        if (isNaN(eventDate)) {
+          console.warn(`⚠️ NotificationModal: Invalid timestamp for event ${event._id}, date: ${eventDateStr}`);
+          // Still include it
+          items.push({
+            id: `upcoming_event_${event._id || `event_${index}`}`,
+            type: 'upcoming_event',
+            title: '🔔 Upcoming',
+            message: event.title || 'An upcoming event',
+            timestamp: nowTime,
+            data: { eventId: event._id, event },
+          });
+          upcomingEventCount++;
+          return;
+        }
+        
+        const eventKey = getPHDateKey(eventDateStr);
+        const isToday = eventKey === todayKey;
+        const isFuture = eventDate > nowTime;
+        const isPast = eventDate <= nowTime && !isToday;
+        
+        if (isToday) {
+          // Today's event - shows in "All Updates" and "Upcoming Updates"
+          items.push({
+            id: `todays_event_${event._id || `event_${index}`}`,
+            type: 'todays_event',
+            title: '📅 Today',
+            message: event.title || 'An event is scheduled for today',
+            timestamp: eventDate,
+            data: { eventId: event._id, event },
+          });
+          todaysEventCount++;
+        } else if (isFuture) {
+          // Upcoming event (future date, not today) - shows in "Upcoming Updates" and "All Updates"
+          items.push({
+            id: `upcoming_event_${event._id || `event_${index}`}`,
+            type: 'upcoming_event',
+            title: '🔔 Upcoming',
+            message: event.title || 'An upcoming event',
+            timestamp: eventDate,
+            data: { eventId: event._id, event },
+          });
+          upcomingEventCount++;
+        } else if (isPast) {
+          // Past event - still include in "All Updates" as "upcoming_event" for visibility
+          items.push({
+            id: `upcoming_event_${event._id || `event_${index}`}`,
+            type: 'upcoming_event',
+            title: '📅 Past Event',
+            message: event.title || 'A past event',
+            timestamp: eventDate,
+            data: { eventId: event._id, event },
+          });
+          upcomingEventCount++;
+        }
       });
+      
+      console.log(`📬 NotificationModal: Processed ${events.length} events - ${todaysEventCount} today's, ${upcomingEventCount} upcoming`);
 
       // Mark items as read based on stored read IDs
       const itemsWithReadStatus = items.map(item => ({
@@ -344,8 +437,20 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
         return (typeOrder[a.type] || 3) - (typeOrder[b.type] || 3);
       });
 
+      // Log summary of what was loaded
+      const summary = {
+        newPosts: itemsWithReadStatus.filter(i => i.type === 'new_post').length,
+        todaysEvents: itemsWithReadStatus.filter(i => i.type === 'todays_event').length,
+        upcomingPosts: itemsWithReadStatus.filter(i => i.type === 'upcoming_event' && (i.data?.postId || i.data?.post)).length,
+        upcomingEvents: itemsWithReadStatus.filter(i => i.type === 'upcoming_event' && (i.data?.eventId || i.data?.event)).length,
+        total: itemsWithReadStatus.length,
+        sampleNewPosts: itemsWithReadStatus.filter(i => i.type === 'new_post').slice(0, 3).map(i => ({ id: i.id, title: i.message })),
+        sampleUpcomingPosts: itemsWithReadStatus.filter(i => i.type === 'upcoming_event' && (i.data?.postId || i.data?.post)).slice(0, 3).map(i => ({ id: i.id, title: i.message })),
+        sampleUpcomingEvents: itemsWithReadStatus.filter(i => i.type === 'upcoming_event' && (i.data?.eventId || i.data?.event)).slice(0, 3).map(i => ({ id: i.id, title: i.message })),
+      };
+      console.log(`✅ NotificationModal: Loaded ${itemsWithReadStatus.length} notification items:`, JSON.stringify(summary, null, 2));
+      
       setNotificationItems(itemsWithReadStatus);
-      console.log(`✅ NotificationModal: Loaded ${itemsWithReadStatus.length} notification items`);
     } catch (error) {
       console.error('❌ NotificationModal: Error loading notifications:', error);
       setNotificationItems([]);
@@ -395,13 +500,17 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
         tension: 65,
         friction: 11,
       }).start();
-      // Load notifications immediately when modal opens
-      loadNotifications().catch((error) => {
-        console.error('❌ NotificationModal: Error in loadNotifications:', error);
-      });
+      // Load notifications immediately when modal opens (force refresh to get latest posts)
+      // Use a small delay to ensure any pending post creation has completed
+      const loadTimer = setTimeout(() => {
+        loadNotifications().catch((error) => {
+          console.error('❌ NotificationModal: Error in loadNotifications:', error);
+        });
+      }, 100);
       checkPermissions().catch((error) => {
         console.error('❌ NotificationModal: Error in checkPermissions:', error);
       });
+      return () => clearTimeout(loadTimer);
     } else {
       Animated.timing(sheetY, {
         toValue: 600,
@@ -473,15 +582,64 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
     }
   };
 
+  // Helper function to check if an item's date is in the current month
+  const isInCurrentMonth = useCallback((timestamp: number): boolean => {
+    const itemDate = new Date(timestamp);
+    const now = new Date();
+    return itemDate.getFullYear() === now.getFullYear() && 
+           itemDate.getMonth() === now.getMonth();
+  }, []);
+
   // Filter notifications based on selected filter, then sort by upload time (DESCENDING - latest first)
-  // This applies to: All Updates, Added Post, and Upcoming Updates filters
-  const filteredNotifications = notificationItems
-    .filter(item => {
-      if (filter === 'all') return true; // All Updates - shows all notification types
-      if (filter === 'new_post') return item.type === 'new_post'; // Added Post - only new posts
-      if (filter === 'upcoming_event') return item.type === 'upcoming_event' || item.type === 'todays_event'; // Upcoming Updates - events only
-      return true;
-    })
+  // Mirror AdminDashboard/SchoolUpdates filter behavior
+  const filteredNotifications = useMemo(() => {
+    const filtered = notificationItems
+      .filter(item => {
+        if (filter === 'all') {
+          // All Updates - shows ALL notification types from current month only
+          // Filter by current month
+          return isInCurrentMonth(item.timestamp);
+        }
+      if (filter === 'new_post') {
+        // Added Post - only shows posts (type 'new_post')
+        // This matches AdminDashboard showing only posts
+        // All posts should be type 'new_post' except future posts (which are 'upcoming_event')
+        return item.type === 'new_post';
+      }
+        if (filter === 'upcoming_event') {
+          // Upcoming Updates - shows both upcoming posts AND upcoming calendar events from current month only
+          // Both use type 'upcoming_event', also include today's events
+          // This matches AdminDashboard "Upcoming Month" filter showing both posts and events
+          const isUpcoming = item.type === 'upcoming_event' || item.type === 'todays_event';
+          // Also filter by current month
+          return isUpcoming && isInCurrentMonth(item.timestamp);
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        // DESCENDING sort: Latest created/uploaded first (b.timestamp - a.timestamp)
+        // This ensures the most recently created post/event appears at the top
+        const timeDiff = b.timestamp - a.timestamp;
+        if (timeDiff !== 0) return timeDiff;
+        
+        // Secondary sort: by type for consistency when timestamps are equal
+        const typeOrder = { 'new_post': 0, 'todays_event': 1, 'upcoming_event': 2 };
+        return (typeOrder[a.type] || 3) - (typeOrder[b.type] || 3);
+      });
+    
+    // Debug logging
+    console.log(`🔍 NotificationModal Filter Debug:`);
+    console.log(`  - Filter: "${filter}"`);
+    console.log(`  - Total items: ${notificationItems.length}`);
+    console.log(`  - Filtered items: ${filtered.length}`);
+    console.log(`  - Breakdown by type:`);
+    console.log(`    * new_post: ${notificationItems.filter(i => i.type === 'new_post').length} total, ${filtered.filter(i => i.type === 'new_post').length} filtered`);
+    console.log(`    * todays_event: ${notificationItems.filter(i => i.type === 'todays_event').length} total, ${filtered.filter(i => i.type === 'todays_event').length} filtered`);
+    console.log(`    * upcoming_event (posts): ${notificationItems.filter(i => i.type === 'upcoming_event' && (i.data?.postId || i.data?.post)).length} total, ${filtered.filter(i => i.type === 'upcoming_event' && (i.data?.postId || i.data?.post)).length} filtered`);
+    console.log(`    * upcoming_event (events): ${notificationItems.filter(i => i.type === 'upcoming_event' && (i.data?.eventId || i.data?.event)).length} total, ${filtered.filter(i => i.type === 'upcoming_event' && (i.data?.eventId || i.data?.event)).length} filtered`);
+    
+    return filtered;
+  }, [notificationItems, filter, isInCurrentMonth])
     .sort((a, b) => {
       // DESCENDING sort: Latest created/uploaded first (b.timestamp - a.timestamp)
       // This ensures the most recently created post/event appears at the top
@@ -492,6 +650,35 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
       const typeOrder = { 'new_post': 0, 'todays_event': 1, 'upcoming_event': 2 };
       return (typeOrder[a.type] || 3) - (typeOrder[b.type] || 3);
     });
+  
+  // Debug: Log filtered results
+  useEffect(() => {
+    if (notificationItems.length > 0) {
+      const filterSummary = {
+        filter,
+        totalItems: notificationItems.length,
+        filteredCount: filteredNotifications.length,
+        byType: {
+          new_post: notificationItems.filter(i => i.type === 'new_post').length,
+          todays_event: notificationItems.filter(i => i.type === 'todays_event').length,
+          upcoming_event: notificationItems.filter(i => i.type === 'upcoming_event').length,
+        },
+        upcomingBreakdown: filter === 'upcoming_event' ? {
+          totalUpcoming: filteredNotifications.length,
+          posts: filteredNotifications.filter(i => i.type === 'upcoming_event' && (i.data?.postId || i.data?.post)).length,
+          calendarEvents: filteredNotifications.filter(i => i.type === 'upcoming_event' && (i.data?.eventId || i.data?.event)).length,
+          todaysEvents: filteredNotifications.filter(i => i.type === 'todays_event').length,
+        } : null,
+        allUpdatesBreakdown: filter === 'all' ? {
+          newPosts: filteredNotifications.filter(i => i.type === 'new_post').length,
+          todaysEvents: filteredNotifications.filter(i => i.type === 'todays_event').length,
+          upcomingPosts: filteredNotifications.filter(i => i.type === 'upcoming_event' && (i.data?.postId || i.data?.post)).length,
+          upcomingEvents: filteredNotifications.filter(i => i.type === 'upcoming_event' && (i.data?.eventId || i.data?.event)).length,
+        } : null
+      };
+      console.log(`🔍 NotificationModal: Filter "${filter}" results:`, filterSummary);
+    }
+  }, [filter, filteredNotifications, notificationItems]);
 
   if (!visible) return null;
 
@@ -648,10 +835,10 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
               <Text style={[styles.emptyTitle, { color: theme.colors.text }]}>No Notifications</Text>
               <Text style={[styles.emptyMessage, { color: theme.colors.textMuted }]}>
                 {filter === 'all' 
-                  ? 'All caught up! No new posts or events in the last 7 days.'
+                  ? 'All caught up! No posts or events found.'
                   : filter === 'new_post'
-                  ? 'No new posts found in the last 7 days.'
-                  : 'No upcoming events found in the next 7 days.'}
+                  ? 'No posts found.'
+                  : 'No upcoming posts or events found.'}
               </Text>
               <TouchableOpacity
                 style={[styles.retryButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
@@ -704,10 +891,12 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
                       </Text>
                       {item.data && (
                         <View style={styles.notificationMeta}>
-                          {item.data.post && (
+                          {(item.data.post || (item.type === 'upcoming_event' && item.data.postId)) && (
                             <Text style={[styles.notificationMetaText, { color: theme.colors.textMuted }]} numberOfLines={1}>
                               {(() => {
-                                const postDate = item.data.post.isoDate || item.data.post.date;
+                                const post = item.data.post;
+                                if (!post) return '';
+                                const postDate = post.isoDate || post.date;
                                 if (!postDate) return '';
                                 const formatted = formatDate(postDate);
                                 return formatted || '';

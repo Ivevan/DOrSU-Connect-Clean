@@ -100,7 +100,6 @@ const legendItemsData: LegendItem[] = [
 ];
 
 const timeFilterOptions = [
-  { key: 'all' as const, label: 'All' },
   { key: 'thismonth' as const, label: 'This Month' },
   { key: 'lastmonth' as const, label: 'Last Month' },
   { key: 'upcomingmonth' as const, label: 'Upcoming Month' },
@@ -175,7 +174,7 @@ const AdminDashboard = () => {
   }, [currentUser, backendUserFirstName, backendUserLastName]);
   
   // Dashboard data
-  const [timeFilter, setTimeFilter] = useState<'all' | 'upcomingmonth' | 'lastmonth' | 'thismonth'>('all');
+  const [timeFilter, setTimeFilter] = useState<'all' | 'upcomingmonth' | 'lastmonth' | 'thismonth'>('thismonth');
   const [showTimeFilterDropdown, setShowTimeFilterDropdown] = useState(false);
   const [dashboardData, setDashboardData] = useState({
     recentUpdates: [] as DashboardUpdate[],
@@ -1194,7 +1193,7 @@ const AdminDashboard = () => {
             <View style={styles.legendHeaderRow}>
               <Text style={[styles.eventCountText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>
                 {displayedUpdates.length} {displayedUpdates.length === 1 ? 'update' : 'updates'}
-                {timeFilter !== 'all' && ` (${timeFilterOptions.find(opt => opt.key === timeFilter)?.label || ''})`}
+                {` (${timeFilterOptions.find(opt => opt.key === timeFilter)?.label || ''})`}
               </Text>
             </View>
             <View style={styles.legendItems}>

@@ -7,11 +7,28 @@ import { useThemeValues } from '../contexts/ThemeContext';
 import { categoryToColors } from '../utils/calendarUtils';
 import { formatDate } from '../utils/dateUtils';
 
+// Helper function to get day name from date
+const getDayName = (dateStr: string | Date | undefined): string => {
+  if (!dateStr) return '';
+  
+  const date = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+  if (isNaN(date.getTime())) return '';
+  
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  return days[date.getDay()];
+};
+
+// Helper function to check if description exists and has content
+const hasDescription = (description: string | undefined | null): boolean => {
+  return !!(description && typeof description === 'string' && description.trim().length > 0);
+};
+
 interface ViewEventModalProps {
   visible: boolean;
   onClose: () => void;
   selectedEvent: any | null;
   selectedDateEvents?: any[];
+  selectedDate?: Date | string | null;
   onEdit?: () => void;
   onDelete?: () => void;
 }
@@ -21,14 +38,16 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
   onClose,
   selectedEvent,
   selectedDateEvents = [],
+  selectedDate,
   onEdit,
   onDelete,
 }) => {
   const { theme } = useThemeValues();
   const insets = useSafeAreaInsets();
   const sheetY = useRef(new Animated.Value(500)).current;
+  const [selectedEventFromList, setSelectedEventFromList] = React.useState<any | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
-  const deleteConfirmSheetY = useRef(new Animated.Value(300)).current;
+  const deleteModalOpacity = useRef(new Animated.Value(0)).current;
 
   // Animate sheet when visible changes - optimized for performance
   React.useEffect(() => {
@@ -52,46 +71,34 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
   // Animate delete confirmation modal
   React.useEffect(() => {
     if (showDeleteConfirm) {
-      Animated.timing(deleteConfirmSheetY, {
-        toValue: 0,
-        duration: 220,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      Animated.timing(deleteConfirmSheetY, {
-        toValue: 300,
+      Animated.timing(deleteModalOpacity, {
+        toValue: 1,
         duration: 200,
         useNativeDriver: true,
       }).start();
+    } else {
+      Animated.timing(deleteModalOpacity, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
     }
-  }, [showDeleteConfirm, deleteConfirmSheetY]);
+  }, [showDeleteConfirm, deleteModalOpacity]);
 
   const handleDeletePress = useCallback(() => {
     setShowDeleteConfirm(true);
   }, []);
 
   const handleDeleteCancel = useCallback(() => {
-    Animated.timing(deleteConfirmSheetY, {
-      toValue: 300,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      setShowDeleteConfirm(false);
-    });
-  }, [deleteConfirmSheetY]);
+    setShowDeleteConfirm(false);
+  }, []);
 
   const handleDeleteConfirm = useCallback(() => {
+    setShowDeleteConfirm(false);
     if (onDelete) {
       onDelete();
     }
-    Animated.timing(deleteConfirmSheetY, {
-      toValue: 300,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      setShowDeleteConfirm(false);
-    });
-  }, [onDelete, deleteConfirmSheetY]);
+  }, [onDelete]);
 
   const handleClose = useCallback(() => {
     // Start the close animation
@@ -126,18 +133,86 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
   }, [allEvents]);
   
   const eventsToShow = uniqueEvents;
-  const primaryEvent = selectedEvent || eventsToShow[0] || null;
+  
+  // Helper function to check if two events are the same
+  const isSameEvent = useCallback((event1: any, event2: any): boolean => {
+    if (!event1 || !event2) return false;
+    
+    // Check by ID first (most reliable)
+    if (event1.id && event2.id && event1.id === event2.id) return true;
+    if (event1._id && event2._id && event1._id === event2._id) return true;
+    
+    // Check by title and category/type as fallback
+    if (event1.title === event2.title) {
+      const cat1 = event1.category || event1.type || '';
+      const cat2 = event2.category || event2.type || '';
+      if (cat1 === cat2) return true;
+    }
+    
+    return false;
+  }, []);
+  
+  // Use selected event from list if available, otherwise use selectedEvent
+  // For multiple events, only show details if one is explicitly selected
+  // For single event, always show details
+  // Memoize to ensure stable reference and trigger dependent memos correctly
+  const primaryEvent = useMemo(() => {
+    return selectedEventFromList || selectedEvent || (eventsToShow.length === 1 ? eventsToShow[0] : null);
+  }, [selectedEventFromList, selectedEvent, eventsToShow]);
+  
+  // Reset selected event from list when modal closes
+  React.useEffect(() => {
+    if (!visible) {
+      setSelectedEventFromList(null);
+    }
+  }, [visible]);
+  
+  // Auto-select event when modal opens
+  React.useEffect(() => {
+    if (visible && eventsToShow.length > 1) {
+      if (selectedEvent) {
+        // If selectedEvent is provided, use it for highlighting
+        setSelectedEventFromList(selectedEvent);
+      } else if (eventsToShow.length > 0 && !selectedEventFromList) {
+        // Otherwise, auto-select first event if nothing is selected
+        setSelectedEventFromList(eventsToShow[0]);
+      }
+    }
+  }, [visible, eventsToShow.length, selectedEvent]);
 
   // Memoize expensive color calculations - MUST be called before any early returns
   const eventColor = useMemo(() => {
     if (!primaryEvent) return '#93C5FD'; // Default color
     return primaryEvent.color || categoryToColors(primaryEvent.category || primaryEvent.type || 'Event').dot;
-  }, [primaryEvent?.color, primaryEvent?.category, primaryEvent?.type]);
+  }, [primaryEvent]);
   
   const eventCategory = useMemo(() => {
     if (!primaryEvent) return 'Event'; // Default category
     return primaryEvent.category || primaryEvent.type || 'Event';
-  }, [primaryEvent?.category, primaryEvent?.type]);
+  }, [primaryEvent]);
+
+  // Check if there's an image to determine if we should auto-size
+  // Memoize to ensure it updates when primaryEvent changes
+  // MUST be called before any early returns
+  const hasImage = useMemo(() => {
+    return !!(primaryEvent?.images?.[0] || primaryEvent?.image);
+  }, [primaryEvent]);
+  
+  // Get image URI - memoized to ensure it updates when primaryEvent changes
+  // MUST be called before any early returns
+  const imageUri = useMemo(() => {
+    return primaryEvent?.images?.[0] || primaryEvent?.image || null;
+  }, [primaryEvent]);
+  
+  // Create a unique key for the Image component to force remount when event changes
+  // MUST be called before any early returns
+  // Use event ID as primary key - this ensures remount when switching between events
+  const imageKey = useMemo(() => {
+    if (!primaryEvent) return null;
+    // Use event ID as the key - this will change when we switch events, forcing remount
+    const eventId = primaryEvent.id || primaryEvent._id || `${primaryEvent.title}-${primaryEvent.isoDate || primaryEvent.date}`;
+    return `event-image-${eventId}`;
+  }, [primaryEvent]);
 
   // Early return after all hooks have been called
   if (!visible || (!selectedEvent && selectedDateEvents.length === 0)) {
@@ -148,9 +223,6 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
   if (!primaryEvent) {
     return null;
   }
-
-  // Check if there's an image to determine if we should auto-size
-  const hasImage = !!(primaryEvent?.images?.[0] || primaryEvent?.image);
 
   // Shared content component to avoid duplication
   const renderEventContent = () => (
@@ -163,30 +235,47 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
           </Text>
           {eventsToShow.map((event, index) => {
             const eventColor = event.color || categoryToColors(event.category || event.type || 'Event').dot;
+            // Check if this event is selected - prioritize selectedEventFromList, then selectedEvent, then primaryEvent
+            const isSelected = selectedEventFromList 
+              ? isSameEvent(selectedEventFromList, event)
+              : selectedEvent 
+                ? isSameEvent(selectedEvent, event)
+                : primaryEvent 
+                  ? isSameEvent(primaryEvent, event)
+                  : false;
             return (
               <TouchableOpacity
                 key={event.id || index}
                 style={[styles.eventItem, { 
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
+                  backgroundColor: isSelected ? eventColor + '10' : theme.colors.surface,
+                  borderColor: isSelected ? eventColor : theme.colors.border,
+                  borderWidth: isSelected ? 1.5 : 1,
                 }]}
+                onPress={() => setSelectedEventFromList(event)}
+                activeOpacity={0.7}
               >
                 <View style={[styles.eventAccent, { backgroundColor: eventColor }]} />
                 <View style={styles.eventItemContent}>
-                  <Text style={[styles.eventItemTitle, { color: theme.colors.text }]} numberOfLines={2}>
+                  <Text style={[styles.eventItemTitle, { color: theme.colors.text }]} numberOfLines={2} ellipsizeMode="tail">
                     {event.title}
                   </Text>
-                  <View style={styles.eventItemMeta}>
-                    <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-                    <Text style={[styles.eventItemTime, { color: theme.colors.textMuted }]}>
-                      {event.time && event.time.trim() ? event.time : 'All Day'}
+                  {/* Date Range (if applicable) */}
+                  {(event.startDate && event.endDate) && (
+                    <View style={styles.eventItemDateRangeContainer}>
+                      <View style={styles.eventItemDateRange}>
+                        <Ionicons name="calendar-outline" size={10} color={eventColor} />
+                        <Text style={[styles.eventItemDateRangeText, { color: eventColor }]}>
+                          Date: {getDayName(event.startDate)}, {formatDate(new Date(event.startDate))}
                     </Text>
-                    <View style={[styles.eventItemCategory, { backgroundColor: eventColor + '20' }]}>
-                      <Text style={[styles.eventItemCategoryText, { color: eventColor }]}>
-                        {event.category || event.type || 'Event'}
+                      </View>
+                      <View style={[styles.eventItemDateRange, { marginTop: 2 }]}>
+                        <Ionicons name="calendar-outline" size={10} color={eventColor} />
+                        <Text style={[styles.eventItemDateRangeText, { color: eventColor }]}>
+                          End Date: {getDayName(event.endDate)}, {formatDate(new Date(event.endDate))}
                       </Text>
                     </View>
                   </View>
+                  )}
                 </View>
               </TouchableOpacity>
             );
@@ -194,26 +283,45 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
         </View>
       )}
 
-      {/* Single Event Details */}
+      {/* Single Event Details - Show when there's a primary event */}
       {primaryEvent && (
         <View style={styles.eventDetails}>
-          {/* Image (if available) */}
-          {(primaryEvent.images?.[0] || primaryEvent.image) && (
+          {/* Image (if available) - key forces remount when event changes */}
+          {imageUri ? (
             <Image
-              source={{ uri: primaryEvent.images?.[0] || primaryEvent.image }}
+              key={imageKey || `image-${primaryEvent?.id || primaryEvent?._id || 'default'}`}
+              source={{ uri: imageUri }}
               style={styles.eventImage}
               resizeMode="cover"
               onError={(error) => {
                 console.error('Image load error:', error.nativeEvent.error);
               }}
             />
-          )}
+          ) : null}
 
-          {/* Title */}
-          <Text style={[styles.eventTitle, { color: theme.colors.text }]}>
+          {/* Title Section with Category Badge and Date/Time */}
+          <View style={styles.titleSection}>
+            <Text style={[styles.eventTitle, { color: theme.colors.text }]} numberOfLines={2}>
             {primaryEvent.title || 'Untitled Event'}
           </Text>
-
+            <View style={styles.titleMetaRow}>
+              {/* Date and Time as Subtle Text */}
+              <View style={styles.dateTimeContainer}>
+                <View style={styles.dateTimeRow}>
+                  <Ionicons name="calendar-outline" size={12} color={eventColor} />
+                  <Text style={[styles.dateTimeText, { color: eventColor }]}>
+                    {primaryEvent.isoDate || primaryEvent.date
+                      ? `${getDayName(primaryEvent.isoDate || primaryEvent.date)}, ${formatDate(new Date(primaryEvent.isoDate || primaryEvent.date))}`
+                      : 'Not specified'}
+                  </Text>
+                </View>
+                <View style={[styles.dateTimeRow, { marginBottom: 0 }]}>
+                  <Ionicons name="time-outline" size={12} color={eventColor} />
+                  <Text style={[styles.dateTimeText, { color: eventColor }]}>
+                    {primaryEvent.time && primaryEvent.time.trim() ? primaryEvent.time : 'All Day'}
+                  </Text>
+                </View>
+              </View>
           {/* Category Badge */}
           <View style={[styles.categoryBadge, { backgroundColor: eventColor + '20', borderColor: eventColor + '40' }]}>
             <Ionicons name="pricetag-outline" size={11} color={eventColor} />
@@ -221,45 +329,38 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
               {eventCategory}
             </Text>
           </View>
-
-          {/* Date, Time, and Date Range - Compact Layout */}
-          <View style={styles.detailsContainer}>
-            <View style={styles.detailRow}>
-              <View style={styles.detailItem}>
-                <Ionicons name="calendar-outline" size={14} color={theme.colors.textMuted} />
-                <Text style={[styles.detailValue, { color: theme.colors.text }]}>
-                  {primaryEvent.isoDate || primaryEvent.date
-                    ? formatDate(new Date(primaryEvent.isoDate || primaryEvent.date))
-                    : 'Not specified'}
-                </Text>
               </View>
-              <View style={styles.detailItem}>
-                <Ionicons name="time-outline" size={14} color={theme.colors.textMuted} />
-                <Text style={[styles.detailValue, { color: theme.colors.text }]}>
-                  {primaryEvent.time && primaryEvent.time.trim() ? primaryEvent.time : 'All Day'}
-                </Text>
-              </View>
-            </View>
-            
-            {/* Date Range (if applicable) - Inline */}
+            {/* Date Range (if applicable) */}
             {primaryEvent.startDate && primaryEvent.endDate && (
-              <View style={styles.detailRow}>
-                <View style={[styles.detailItem, { flex: 0 }]}>
-                  <Ionicons name="swap-horizontal-outline" size={14} color={theme.colors.textMuted} />
-                  <Text style={[styles.detailValue, { color: theme.colors.text }]}>
-                    {formatDate(new Date(primaryEvent.startDate))} - {formatDate(new Date(primaryEvent.endDate))}
+              <View style={styles.dateTimeContainer}>
+                <View style={styles.dateTimeRow}>
+                  <Ionicons name="calendar-outline" size={12} color={eventColor} />
+                  <Text style={[styles.dateTimeText, { color: eventColor }]}>
+                    Date: {getDayName(primaryEvent.startDate)}, {formatDate(new Date(primaryEvent.startDate))}
+                </Text>
+              </View>
+                <View style={[styles.dateTimeRow, { marginBottom: 0 }]}>
+                  <Ionicons name="calendar-outline" size={12} color={eventColor} />
+                  <Text style={[styles.dateTimeText, { color: eventColor }]}>
+                    End Date: {getDayName(primaryEvent.endDate)}, {formatDate(new Date(primaryEvent.endDate))}
                   </Text>
                 </View>
               </View>
             )}
           </View>
 
-          {/* Description */}
-          {primaryEvent.description && (
-            <View style={styles.descriptionContainer}>
-              <Text style={[styles.descriptionLabel, { color: theme.colors.textMuted }]}>Description</Text>
+          {/* Description - Only show if description exists and has content */}
+          {hasDescription(primaryEvent.description) && (
+            <View style={[styles.descriptionContainer, {
+              backgroundColor: theme.colors.surface,
+              borderColor: theme.colors.border,
+            }]}>
+              <View style={styles.descriptionHeader}>
+                <Ionicons name="document-text-outline" size={14} color={eventColor} />
+                <Text style={[styles.descriptionLabel, { color: theme.colors.textMuted }]}>Description</Text>
+              </View>
               <Text style={[styles.descriptionText, { color: theme.colors.text }]}>
-                {primaryEvent.description}
+                {primaryEvent.description?.trim()}
               </Text>
             </View>
           )}
@@ -286,7 +387,18 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
       ]}>
         {/* Header */}
         <View style={styles.header}>
+          <View style={styles.headerContent}>
           <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Event Details</Text>
+            {/* Selected Date Indicator */}
+            {selectedDate && primaryEvent && (
+              <View style={[styles.selectedDateIndicator, { backgroundColor: eventColor + '15', borderColor: eventColor + '30' }]}>
+                <Ionicons name="calendar" size={11} color={eventColor} />
+                <Text style={[styles.selectedDateIndicatorText, { color: eventColor }]}>
+                  {getDayName(selectedDate)}, {formatDate(typeof selectedDate === 'string' ? new Date(selectedDate) : selectedDate)}
+                </Text>
+              </View>
+            )}
+          </View>
           <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
             <Ionicons name="close" size={24} color={theme.colors.text} />
           </TouchableOpacity>
@@ -341,7 +453,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
         )}
       </View>
 
-      {/* Delete Confirmation Modal - Only render when needed */}
+      {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
         <View style={styles.deleteModalOverlay} pointerEvents="box-none">
           <TouchableOpacity 
@@ -351,43 +463,45 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
           />
           <Animated.View 
             style={[
-              styles.deleteModalSheet, 
-              { 
-                transform: [{ translateY: deleteConfirmSheetY }],
-                backgroundColor: theme.colors.card,
-                paddingBottom: Math.max(insets.bottom, 20),
+              styles.deleteModalContainer,
+              {
+                opacity: deleteModalOpacity,
+                transform: [{
+                  scale: deleteModalOpacity.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.9, 1],
+                  }),
+                }],
               }
             ]}
-            removeClippedSubviews={true}
           >
-            <View style={styles.deleteModalHandle} />
-            <View style={styles.deleteModalHeader}>
-              <View style={[styles.deleteModalIconCircle, { backgroundColor: '#DC2626' + '20' }]}>
-                <Ionicons name="trash" size={24} color="#DC2626" />
+            <View style={[styles.deleteModalContent, { backgroundColor: theme.colors.card }]}>
+              <View style={[styles.deleteModalIconWrapper, { backgroundColor: '#DC2626' + '15' }]}>
+                <Ionicons name="trash" size={32} color="#DC2626" />
               </View>
-              <Text style={[styles.deleteModalTitle, { color: theme.colors.text }]}>Delete Post</Text>
-            </View>
-            <Text style={[styles.deleteModalMessage, { color: theme.colors.textMuted }]}>
-              Are you sure you want to delete "{primaryEvent?.title || 'this post'}"?
-            </Text>
-            <View style={styles.deleteModalActions}>
-              <TouchableOpacity
-                style={[styles.deleteModalButton, styles.deleteModalCancelButton, { 
-                  backgroundColor: theme.colors.surface,
-                  borderColor: theme.colors.border,
-                }]}
-                onPress={handleDeleteCancel}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.deleteModalCancelText, { color: theme.colors.text }]}>CANCEL</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.deleteModalButton, styles.deleteModalConfirmButton, { backgroundColor: '#DC2626' }]}
-                onPress={handleDeleteConfirm}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.deleteModalConfirmText}>DELETE</Text>
-              </TouchableOpacity>
+              <Text style={[styles.deleteModalTitle, { color: theme.colors.text }]}>Delete Event</Text>
+              <Text style={[styles.deleteModalMessage, { color: theme.colors.textMuted }]}>
+                Are you sure you want to delete "{primaryEvent?.title || 'this event'}"?
+              </Text>
+              <View style={styles.deleteModalActions}>
+                <TouchableOpacity
+                  style={[styles.deleteModalButton, styles.deleteModalCancelButton, { 
+                    backgroundColor: theme.colors.surface,
+                    borderColor: theme.colors.border,
+                  }]}
+                  onPress={handleDeleteCancel}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.deleteModalCancelText, { color: theme.colors.text }]}>CANCEL</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.deleteModalButton, styles.deleteModalConfirmButton, { backgroundColor: '#DC2626' }]}
+                  onPress={handleDeleteConfirm}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.deleteModalConfirmText}>DELETE</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </Animated.View>
         </View>
@@ -424,11 +538,15 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(0, 0, 0, 0.1)',
     flexShrink: 0,
   },
+  headerContent: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 8,
+  },
   headerTitle: {
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: -0.2,
-    flex: 1,
     textAlign: 'center',
   },
   closeButton: {
@@ -459,56 +577,62 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   eventsListContainer: {
-    marginBottom: 16,
+    marginBottom: 12,
+    paddingHorizontal: 16,
+    width: '100%',
   },
   sectionTitle: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
-    marginBottom: 10,
+    marginBottom: 8,
     opacity: 0.7,
   },
   eventItem: {
     flexDirection: 'row',
-    borderRadius: 12,
+    borderRadius: 8,
     borderWidth: 1,
-    marginBottom: 8,
+    marginBottom: 4,
     overflow: 'hidden',
+    minHeight: 44,
+    width: '100%',
   },
   eventAccent: {
-    width: 3,
+    width: 4,
+    flexShrink: 0,
   },
   eventItemContent: {
     flex: 1,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    minWidth: 0,
   },
   eventItemTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 6,
+    fontSize: 13,
+    fontWeight: '600',
     lineHeight: 18,
+    textAlign: 'left',
+    flexShrink: 1,
+    width: '100%',
+    marginBottom: 4,
   },
-  eventItemMeta: {
+  eventItemDateRangeContainer: {
+    marginTop: 4,
+  },
+  eventItemDateRange: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
+    marginTop: 2,
   },
-  eventItemTime: {
-    fontSize: 12,
-    flex: 1,
+  eventItemDateRangeText: {
+    fontSize: 10,
     fontWeight: '500',
-  },
-  eventItemCategory: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  eventItemCategoryText: {
-    fontSize: 9,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    opacity: 0.85,
+    flexShrink: 1,
   },
   eventDetails: {
     width: '100%',
@@ -522,14 +646,40 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     backgroundColor: 'rgba(0, 0, 0, 0.05)',
   },
+  titleSection: {
+    width: '100%',
+    paddingHorizontal: 20,
+    marginBottom: 16,
+  },
   eventTitle: {
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 8,
     lineHeight: 24,
     letterSpacing: -0.3,
-    textAlign: 'center',
-    paddingHorizontal: 20,
+    textAlign: 'left',
+    marginBottom: 8,
+  },
+  selectedDateIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    gap: 5,
+  },
+  selectedDateIndicatorText: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+  },
+  titleMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: 12,
+    flexWrap: 'wrap',
   },
   categoryBadge: {
     flexDirection: 'row',
@@ -538,8 +688,8 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: 10,
     borderWidth: 1,
-    marginBottom: 16,
     gap: 5,
+    flexShrink: 0,
   },
   categoryBadgeText: {
     fontSize: 10,
@@ -547,54 +697,58 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
-  detailsContainer: {
-    width: '100%',
-    paddingHorizontal: 20,
-    marginBottom: 12,
+  dateTimeContainer: {
+    flex: 1,
+    flexShrink: 1,
   },
-  detailRow: {
+  dateTimeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
-    paddingVertical: 6,
+    justifyContent: 'flex-start',
+    gap: 4,
+    flexWrap: 'wrap',
+    marginBottom: 2,
   },
-  detailItem: {
+  dateTimeText: {
+    fontSize: 12,
+    fontWeight: '400',
+    lineHeight: 16,
+    opacity: 0.85,
+  },
+  dateTimeSeparator: {
+    fontSize: 12,
+    fontWeight: '400',
+    marginHorizontal: 2,
+    opacity: 0.7,
+  },
+  descriptionContainer: {
+    marginTop: 16,
+    width: '100%',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginHorizontal: 20,
+  },
+  descriptionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    flex: 1,
-  },
-  detailValue: {
-    fontSize: 13,
-    fontWeight: '600',
-    lineHeight: 18,
-    flex: 1,
-  },
-  descriptionContainer: {
-    marginTop: 4,
-    width: '100%',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.02)',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 0, 0, 0.05)',
+    marginBottom: 10,
   },
   descriptionLabel: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 6,
-    opacity: 0.7,
-    textAlign: 'center',
+    letterSpacing: 0.8,
+    opacity: 0.8,
   },
   descriptionText: {
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 22,
     fontWeight: '400',
-    textAlign: 'center',
+    textAlign: 'left',
+    letterSpacing: 0.1,
   },
   actionsContainer: {
     flexDirection: 'row',
@@ -630,7 +784,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
     zIndex: 1000,
   },
   deleteModalBackdrop: {
@@ -641,59 +796,55 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
-  deleteModalSheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
+  deleteModalContainer: {
+    width: '85%',
+    maxWidth: 400,
+    zIndex: 1001,
   },
-  deleteModalHandle: {
-    alignSelf: 'center',
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    marginBottom: 20,
-  },
-  deleteModalHeader: {
-    flexDirection: 'row',
+  deleteModalContent: {
+    borderRadius: 16,
+    padding: 24,
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 20,
   },
-  deleteModalIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  deleteModalIconWrapper: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 16,
   },
   deleteModalTitle: {
     fontSize: 20,
-    fontWeight: '800',
+    fontWeight: '700',
+    marginBottom: 12,
+    textAlign: 'center',
     letterSpacing: -0.3,
-    flex: 1,
   },
   deleteModalMessage: {
     fontSize: 14,
     lineHeight: 20,
+    textAlign: 'center',
     marginBottom: 24,
+    paddingHorizontal: 8,
   },
   deleteModalActions: {
     flexDirection: 'row',
     gap: 12,
+    width: '100%',
   },
   deleteModalButton: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
+    minHeight: 44,
   },
   deleteModalCancelButton: {
     borderWidth: 1.5,

@@ -5,8 +5,9 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Dimensions, Easing, Image, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Dimensions, Easing, Image, InteractionManager, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import BottomSheet from '../../components/common/BottomSheet';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import UserSidebar from '../../components/navigation/UserSidebar';
 import { useThemeValues } from '../../contexts/ThemeContext';
@@ -16,6 +17,7 @@ import CalendarService, { CalendarEvent } from '../../services/CalendarService';
 import NotificationService from '../../services/NotificationService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import { categoryToColors } from '../../utils/calendarUtils';
+import { formatDate } from '../../utils/dateUtils';
 import NotificationModal from '../../modals/NotificationModal';
 
 type RootStackParamList = {
@@ -307,6 +309,13 @@ const legendItemsData: LegendItem[] = [
   { type: 'Announcement', key: 'announcement', color: '#3B82F6' },
 ];
 
+const timeFilterOptions = [
+  { key: 'all' as const, label: 'All' },
+  { key: 'thismonth' as const, label: 'This Month' },
+  { key: 'lastmonth' as const, label: 'Last Month' },
+  { key: 'upcomingmonth' as const, label: 'Upcoming Month' },
+];
+
 // Note: UpdateCard component is no longer used - cards are rendered inline to match AdminDashboard design
 
 // Event Card with Image Preview (Horizontal Scrollable)
@@ -410,7 +419,7 @@ const SchoolUpdates = () => {
   const [updates, setUpdates] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [timeFilter, setTimeFilter] = useState<'all' | 'upcoming' | 'recent' | 'thismonth'>('all');
+  const [timeFilter, setTimeFilter] = useState<'all' | 'upcomingmonth' | 'lastmonth' | 'thismonth'>('all');
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [isLoadingCalendarEvents, setIsLoadingCalendarEvents] = useState(false);
@@ -420,11 +429,15 @@ const SchoolUpdates = () => {
   const scrollRef = useRef<ScrollView>(null);
   const calendarEventsScrollRef = useRef<ScrollView>(null);
   
-  // Content type filter - multiple selection: 'academic', 'institutional', 'event', 'announcement', 'news'
+  // Content type filter - matches AdminCalendar behavior (single select, null = show all)
   const [selectedLegendType, setSelectedLegendType] = useState<string | null>(null);
   const selectedContentTypes = useMemo(() => (
     selectedLegendType ? [selectedLegendType] : ['academic', 'institutional', 'event', 'announcement', 'news']
   ), [selectedLegendType]);
+  const selectedContentTypesSet = useMemo(
+    () => new Set(selectedContentTypes.map(type => type.toLowerCase())),
+    [selectedContentTypes]
+  );
   
   // Event Modal state (view-only) - used for both calendar events and updates
   const [showEventDrawer, setShowEventDrawer] = useState(false);
@@ -434,7 +447,10 @@ const SchoolUpdates = () => {
   
   // Notification modal state
   const [showNotificationModal, setShowNotificationModal] = useState(false);
-
+  
+  // Time filter dropdown state
+  const [isTimeFilterOpen, setIsTimeFilterOpen] = useState(false);
+  const timeFilterSheetY = useRef(new Animated.Value(300)).current;
 
   // Memoize safe area insets to prevent recalculation during navigation
   const safeInsets = useMemo(() => ({
@@ -567,12 +583,14 @@ const SchoolUpdates = () => {
 
   // Fetch data from AdminDataService (matching AdminDashboard pattern)
   const fetchUpdates = useCallback(async (forceRefresh: boolean = false) => {
-    // Prevent duplicate simultaneous fetches
+    // Prevent duplicate simultaneous fetches (unless force refresh)
+    // When force refresh is true, we allow it to proceed even if a fetch is in progress
+    // to ensure we get the latest data after returning from PostUpdate screen
     if (isFetching.current && !forceRefresh) {
       return;
     }
 
-    // Cooldown check - prevent too frequent fetches
+    // Cooldown check - prevent too frequent fetches (bypassed on force refresh)
     const now = Date.now();
     if (!forceRefresh && now - lastFetchTime.current < FETCH_COOLDOWN) {
       return;
@@ -588,6 +606,17 @@ const SchoolUpdates = () => {
       // Fetch recent updates (posts/announcements) - use cache if available
       const posts = await AdminDataService.getPosts();
       
+      console.log('📥 Fetched posts from API:', posts.length);
+      if (posts.length > 0) {
+        console.log('📝 Sample post:', {
+          id: posts[0].id,
+          title: posts[0].title,
+          date: posts[0].date,
+          isoDate: posts[0].isoDate,
+          category: posts[0].category
+        });
+      }
+      
       const postsData = posts.map(post => {
         // Ensure images array is properly set
         let images = post.images;
@@ -600,16 +629,21 @@ const SchoolUpdates = () => {
           }
         }
         
+          // Use same date handling as AdminDashboard - formatDate handles ISO strings correctly
+          const dateValue = post.isoDate || post.date;
+          const formattedDate = dateValue ? formatDate(dateValue) : 'No date';
+          
           return {
             id: post.id,
             title: post.title,
-            date: new Date(post.date).toLocaleDateString(),
+            date: formattedDate,
             tag: post.category,
             description: post.description,
             image: post.image,
             images: images,
             pinned: (post as any).pinned || false,
-            isoDate: post.date,
+            isoDate: dateValue || '',
+            source: 'post', // Mark as post/update to distinguish from calendar events
           };
       });
       
@@ -619,15 +653,28 @@ const SchoolUpdates = () => {
         index === self.findIndex(u => u.id === update.id)
       );
       
-      // Sort by date (newest first)
+      // Sort by date (ascending - earliest first)
       uniqueUpdates.sort((a, b) => {
         const dateA = new Date(a.isoDate || a.date).getTime();
         const dateB = new Date(b.isoDate || b.date).getTime();
-        return dateB - dateA;
+        return dateA - dateB;
+      });
+      
+      console.log('✅ Processed updates:', {
+        total: uniqueUpdates.length,
+        withDates: uniqueUpdates.filter(u => u.isoDate).length,
+        withoutDates: uniqueUpdates.filter(u => !u.isoDate).length,
+        sample: uniqueUpdates.length > 0 ? {
+          id: uniqueUpdates[0].id,
+          title: uniqueUpdates[0].title,
+          isoDate: uniqueUpdates[0].isoDate,
+          tag: uniqueUpdates[0].tag
+        } : null
       });
       
       setUpdates(uniqueUpdates);
     } catch (err: any) {
+      console.error('❌ Error fetching updates:', err);
       setError(err?.message || 'Failed to load updates');
       if (__DEV__) console.error('Error fetching updates:', err);
     } finally {
@@ -662,14 +709,15 @@ const SchoolUpdates = () => {
   // Note: This is defined before refreshCalendarEvents, so we'll refresh calendar events separately
   useFocusEffect(
     useCallback(() => {
-      // Add a small delay to ensure backend has processed any updates
+      // Add a delay to ensure backend has processed any updates
       // This is especially important when coming back from PostUpdate screen
+      // PostUpdate waits 300ms after publishing before navigating, so we wait longer to ensure backend processing
       const refreshTimer = setTimeout(() => {
         // Always refresh when screen comes into focus to ensure new posts appear immediately
         // Force refresh (bypass cache) to get the latest data including newly created posts
         // The fetchUpdates function has its own cooldown to prevent too many requests
         fetchUpdates(true); // Force refresh to bypass cache and get latest posts
-      }, 100); // Small delay to ensure backend has processed updates
+      }, 800); // Delay to ensure backend has fully processed updates from PostUpdate screen
       
       return () => {
         clearTimeout(refreshTimer);
@@ -680,14 +728,26 @@ const SchoolUpdates = () => {
   const filtered = useMemo(() => {
     const result = updates.filter(u => {
       const q = searchQuery.trim().toLowerCase();
-      const byQuery = q.length === 0 || u.title.toLowerCase().includes(q) || (u.body && u.body.toLowerCase().includes(q));
-      return byQuery;
+      if (q.length === 0) return true;
+      
+      // Search in title, description, and tag
+      const titleMatch = u.title?.toLowerCase().includes(q) || false;
+      const descriptionMatch = u.description?.toLowerCase().includes(q) || false;
+      const tagMatch = u.tag?.toLowerCase().includes(q) || false;
+      
+      return titleMatch || descriptionMatch || tagMatch;
     });
     if (__DEV__) {
       console.log('🔍 Filtered updates:', { 
         total: updates.length, 
         query: searchQuery.trim(), 
-        filtered: result.length 
+        filtered: result.length,
+        sampleUpdate: updates.length > 0 ? {
+          id: updates[0].id,
+          title: updates[0].title,
+          isoDate: updates[0].isoDate,
+          hasDescription: !!updates[0].description
+        } : null
       });
     }
     return result;
@@ -713,73 +773,183 @@ const SchoolUpdates = () => {
     });
   }, [filtered]);
 
-  // Filtered by time (all, upcoming, or recent) and content type
+  // Filtered updates based on selected time filter, content type, and search query
   // Includes both posts and calendar events
-  // Only show Event, Announcement, and News entries that are in the current month or next month
+  // Uses the same date processing logic as AdminCalendar (matching AdminDashboard)
   const displayedUpdates = useMemo(() => {
     const now = new Date();
+    
+    // Use same approach as AdminCalendar: Date object's native methods
+    // AdminCalendar uses dateObj.getFullYear() and dateObj.getMonth() directly
     const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-    const todayKey = getPHDateKey(now);
+    const currentMonth = now.getMonth(); // 0-11 (0 = January, 11 = December)
     
-    // Calculate next month and year (handle year rollover)
-    const nextMonth = currentMonth + 1;
-    const nextYear = nextMonth > 11 ? currentYear + 1 : currentYear;
-    const normalizedNextMonth = nextMonth > 11 ? 0 : nextMonth;
+    // Calculate last month (previous month)
+    // If current month is January (0), last month is December of previous year
+    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+    const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
     
-    // Categories that should be filtered by current month and next month
-    const monthFilteredCategories = new Set(['event', 'announcement', 'news']);
+    // Calculate next month (upcoming month)
+    // If current month is December (11), next month is January of next year
+    const nextMonth = currentMonth === 11 ? 0 : currentMonth + 1;
+    const nextMonthYear = currentMonth === 11 ? currentYear + 1 : currentYear;
     
-    console.log('🔍 Computing displayedUpdates:', {
-      timeFilter,
-      selectedContentTypes,
-      updatesCount: updates.length,
-      filteredCount: filtered.length,
-      upcomingCount: upcomingUpdates.length,
-      recentCount: recentUpdates.length,
-    });
-    
-    // Start with posts based on time filter
+    // Start with posts based on time filter (same approach as AdminCalendar)
     let result;
-    if (timeFilter === 'upcoming') {
-      result = [...upcomingUpdates];
-    } else if (timeFilter === 'recent') {
-      result = [...recentUpdates];
+    if (timeFilter === 'upcomingmonth') {
+      // Filter by next month only - strictly exclude current month
+      result = filtered.filter(u => {
+        if (!u.isoDate) return false;
+        // Same as AdminCalendar: create Date object directly from isoDate
+        const dateObj = new Date(u.isoDate);
+        if (Number.isNaN(dateObj.getTime())) return false;
+        
+        const eventYear = dateObj.getFullYear();
+        const eventMonth = dateObj.getMonth(); // 0-indexed
+        
+        // Strict comparison: must match next month exactly
+        const matches = eventYear === nextMonthYear && eventMonth === nextMonth;
+        // Also ensure it's NOT current month
+        const notCurrentMonth = !(eventYear === currentYear && eventMonth === currentMonth);
+        return matches && notCurrentMonth;
+      });
+    } else if (timeFilter === 'lastmonth') {
+      // Filter by last month only - strictly exclude current month
+      result = filtered.filter(u => {
+        if (!u.isoDate) return false;
+        // Same as AdminCalendar: create Date object directly from isoDate
+        const dateObj = new Date(u.isoDate);
+        if (Number.isNaN(dateObj.getTime())) return false;
+        
+        const eventYear = dateObj.getFullYear();
+        const eventMonth = dateObj.getMonth(); // 0-indexed
+        
+        // Strict comparison: must match last month exactly
+        const matches = eventYear === lastMonthYear && eventMonth === lastMonth;
+        // Also ensure it's NOT current month
+        const notCurrentMonth = !(eventYear === currentYear && eventMonth === currentMonth);
+        return matches && notCurrentMonth;
+      });
     } else if (timeFilter === 'thismonth') {
       // Filter by current month only
       result = filtered.filter(u => {
         if (!u.isoDate) return false;
-        try {
-          const updateDate = new Date(u.isoDate);
-          const updateYear = updateDate.getFullYear();
-          const updateMonth = updateDate.getMonth();
-          return updateYear === currentYear && updateMonth === currentMonth;
-        } catch {
-          return false;
-        }
+        // Same as AdminCalendar: create Date object directly from isoDate
+        const dateObj = new Date(u.isoDate);
+        if (Number.isNaN(dateObj.getTime())) return false;
+        
+        const eventYear = dateObj.getFullYear();
+        const eventMonth = dateObj.getMonth(); // 0-indexed
+        return eventYear === currentYear && eventMonth === currentMonth;
       });
     } else {
-      // 'all' - show all posts, including those without dates
-      result = [...filtered];
+      result = [...filtered]; // 'all'
     }
     
-    // Add calendar events based on time filter
+    // Add calendar events based on time filter (same approach as AdminCalendar)
+    // Handle month-only, week-only, date ranges, and single date events
     const calendarEventsForUpdates = calendarEvents
       .filter(event => {
-        const eventDate = event.isoDate || event.date;
-        if (!eventDate) return false;
+        // Handle month-only and week-only events (same as AdminCalendar lines 406-411)
+        const dateType = String(event.dateType || '');
+        if (dateType === 'month_only' || dateType === 'week_in_month' || 
+            dateType === 'week' || dateType === 'month') {
+          if (event.year && event.month) {
+            // event.month is 1-indexed (1 = January, 12 = December) in AdminCalendar
+            // Convert to 0-indexed for comparison
+            const eventMonth0Indexed = event.month - 1;
+            
+            if (timeFilter === 'upcomingmonth') {
+              return event.year === nextMonthYear && eventMonth0Indexed === nextMonth;
+            } else if (timeFilter === 'lastmonth') {
+              return event.year === lastMonthYear && eventMonth0Indexed === lastMonth;
+            } else if (timeFilter === 'thismonth') {
+              return event.year === currentYear && eventMonth0Indexed === currentMonth;
+            } else {
+              return true; // 'all' - include all
+            }
+          }
+          return false;
+        }
         
-        const eventDateObj = new Date(eventDate);
-        const eventKey = getPHDateKey(eventDate);
-        const eventYear = eventDateObj.getFullYear();
-        const eventMonth = eventDateObj.getMonth();
+        // For date range events, check if the range overlaps with the target month
+        // Same approach as AdminCalendar: use Date objects directly
+        if (dateType === 'date_range' && event.startDate && event.endDate) {
+          const start = new Date(event.startDate);
+          const end = new Date(event.endDate);
+          
+          if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+          
+          const startYear = start.getFullYear();
+          const startMonth = start.getMonth();
+          const endYear = end.getFullYear();
+          const endMonth = end.getMonth();
+          
+          // Check if the range overlaps with the target month
+          if (timeFilter === 'upcomingmonth') {
+            // Check if range overlaps with next month (and not only current month)
+            const rangeStart = new Date(startYear, startMonth, 1).getTime();
+            const rangeEnd = new Date(endYear, endMonth + 1, 0, 23, 59, 59).getTime();
+            const targetStart = new Date(nextMonthYear, nextMonth, 1).getTime();
+            const targetEnd = new Date(nextMonthYear, nextMonth + 1, 0, 23, 59, 59).getTime();
+            const currentStart = new Date(currentYear, currentMonth, 1).getTime();
+            const currentEnd = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59).getTime();
+            
+            // Must overlap with next month
+            const overlapsTarget = !(rangeEnd < targetStart || rangeStart > targetEnd);
+            // Must NOT be entirely within current month
+            const notOnlyCurrentMonth = !(rangeStart >= currentStart && rangeEnd <= currentEnd);
+            return overlapsTarget && notOnlyCurrentMonth;
+          } else if (timeFilter === 'lastmonth') {
+            // Check if range overlaps with last month (and not only current month)
+            const rangeStart = new Date(startYear, startMonth, 1).getTime();
+            const rangeEnd = new Date(endYear, endMonth + 1, 0, 23, 59, 59).getTime();
+            const targetStart = new Date(lastMonthYear, lastMonth, 1).getTime();
+            const targetEnd = new Date(lastMonthYear, lastMonth + 1, 0, 23, 59, 59).getTime();
+            const currentStart = new Date(currentYear, currentMonth, 1).getTime();
+            const currentEnd = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59).getTime();
+            
+            // Must overlap with last month
+            const overlapsTarget = !(rangeEnd < targetStart || rangeStart > targetEnd);
+            // Must NOT be entirely within current month
+            const notOnlyCurrentMonth = !(rangeStart >= currentStart && rangeEnd <= currentEnd);
+            return overlapsTarget && notOnlyCurrentMonth;
+          } else if (timeFilter === 'thismonth') {
+            // Check if range overlaps with current month
+            const rangeStart = new Date(startYear, startMonth, 1).getTime();
+            const rangeEnd = new Date(endYear, endMonth + 1, 0, 23, 59, 59).getTime();
+            const targetStart = new Date(currentYear, currentMonth, 1).getTime();
+            const targetEnd = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59).getTime();
+            return !(rangeEnd < targetStart || rangeStart > targetEnd);
+          } else {
+            return true; // 'all' - include all
+          }
+        }
+        
+        // For single date events, use the event date (same as AdminCalendar)
+        const fallbackDate = event.isoDate || event.date || event.startDate;
+        if (!fallbackDate) return false;
+        
+        // Same as AdminCalendar: create Date object directly
+        const dateObj = new Date(fallbackDate);
+        if (Number.isNaN(dateObj.getTime())) return false;
+        
+        const eventYear = dateObj.getFullYear();
+        const eventMonth = dateObj.getMonth(); // 0-indexed
         
         // Apply time filter
-        if (timeFilter === 'upcoming') {
-          return eventKey > todayKey;
-        } else if (timeFilter === 'recent') {
-          return eventKey <= todayKey;
+        if (timeFilter === 'upcomingmonth') {
+          // Must match next month exactly and NOT be current month
+          const matches = eventYear === nextMonthYear && eventMonth === nextMonth;
+          const notCurrentMonth = !(eventYear === currentYear && eventMonth === currentMonth);
+          return matches && notCurrentMonth;
+        } else if (timeFilter === 'lastmonth') {
+          // Must match last month exactly and NOT be current month
+          const matches = eventYear === lastMonthYear && eventMonth === lastMonth;
+          const notCurrentMonth = !(eventYear === currentYear && eventMonth === currentMonth);
+          return matches && notCurrentMonth;
         } else if (timeFilter === 'thismonth') {
+          // Must match current month exactly
           return eventYear === currentYear && eventMonth === currentMonth;
         } else {
           // 'all' - include all calendar events
@@ -789,7 +959,7 @@ const SchoolUpdates = () => {
       .map(event => ({
         id: event._id || `calendar-${event.isoDate}-${event.title}`,
         title: event.title,
-        date: new Date(event.isoDate || event.date).toLocaleDateString(),
+        date: formatDate(event.isoDate || event.date) || 'No date',
         tag: event.category || 'Event',
         description: event.description || '',
         image: undefined,
@@ -815,89 +985,96 @@ const SchoolUpdates = () => {
     // Apply content type filter
     result = result.filter(update => {
       const updateType = String(update.tag || 'Announcement').toLowerCase();
-      return selectedContentTypes.includes(updateType);
+      return selectedContentTypesSet.has(updateType);
     });
     
-    // Filter by current month or next month for Event, Announcement, and News categories
-    result = result.filter(update => {
-      const updateType = String(update.tag || 'Announcement').toLowerCase();
-      
-      // Only apply month filter to Event, Announcement, and News
-      if (monthFilteredCategories.has(updateType)) {
-        if (!update.isoDate) return false; // Exclude entries without dates
-        try {
-          const updateDate = new Date(update.isoDate);
-          const updateYear = updateDate.getFullYear();
-          const updateMonth = updateDate.getMonth();
-          
-          // Check if date is in current month or next month
-          const isCurrentMonth = updateYear === currentYear && updateMonth === currentMonth;
-          const isNextMonth = updateYear === nextYear && updateMonth === normalizedNextMonth;
-          
-          return isCurrentMonth || isNextMonth;
-        } catch {
-          return false; // Exclude entries with invalid dates
-        }
-      }
-      
-      // For other categories (Academic, Institutional), show all (no month filter)
-      return true;
-    });
+    // Apply search filter (matching AdminDashboard)
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      result = result.filter(update => {
+        const title = (update.title || '').toLowerCase();
+        const description = (update.description || '').toLowerCase();
+        const tag = (update.tag || '').toLowerCase();
+        return title.includes(query) || description.includes(query) || tag.includes(query);
+      });
+    }
     
-    console.log('📋 Result before sorting:', result.length, 'items');
-    
-    // Sort by date (newest first) - posts without dates go to the end
+    // Sort by date (ascending - earliest first) - matching user requirement
     result.sort((a, b) => {
       if (!a.isoDate && !b.isoDate) return 0;
       if (!a.isoDate) return 1; // Posts without dates go to end
       if (!b.isoDate) return -1; // Posts without dates go to end
-      
       try {
         const dateA = new Date(a.isoDate).getTime();
         const dateB = new Date(b.isoDate).getTime();
         if (isNaN(dateA) || isNaN(dateB)) return 0;
-        return dateB - dateA; // Newest first
+        return dateA - dateB; // Ascending - earliest first
       } catch {
         return 0;
       }
     });
     
-    console.log(`📊 Displayed updates (${timeFilter}):`, result.length, 'out of', updates.length, 'total');
-    if (result.length > 0) {
-      console.log('📝 First update:', { id: result[0].id, title: result[0].title, isoDate: result[0].isoDate });
-    }
     return result;
-  }, [timeFilter, selectedContentTypes, upcomingUpdates, recentUpdates, filtered, updates.length, calendarEvents]);
+  }, [timeFilter, selectedContentTypes, searchQuery, filtered, calendarEvents]);
+
+  // Calculate counts per legend type based on displayedUpdates (respects time filter)
+  const legendTypeCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    legendItemsData.forEach(item => {
+      counts[item.key] = displayedUpdates.filter(update => {
+        const updateType = String(update.tag || 'Announcement').toLowerCase();
+        return updateType === item.key.toLowerCase();
+      }).length;
+    });
+    return counts;
+  }, [displayedUpdates]);
 
   // Current month events - combines calendar events and posts/updates
   // Filtered by selectedContentTypes and search query
+  // Uses Philippines timezone for calendar month calculations
   const currentMonthEvents = useMemo(() => {
+    // Get current date in Philippines timezone
     const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
+    const phNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+    const currentYear = phNow.getFullYear();
+    const currentMonth = phNow.getMonth();
+    
+    // Helper function to get month/year in Philippines timezone
+    const getPHMonthYear = (date: Date | string) => {
+      try {
+        const dateObj = typeof date === 'string' ? new Date(date) : date;
+        const phDate = new Date(dateObj.toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
+        return {
+          year: phDate.getFullYear(),
+          month: phDate.getMonth(),
+        };
+      } catch {
+        return null;
+      }
+    };
     
     const events: any[] = [];
     
-    // Add calendar events for current month
+    // Add calendar events for current month (based on Philippines timezone)
     calendarEvents
       .filter(event => {
         const eventDate = event.isoDate || event.date;
         if (!eventDate) return false;
-        const eventDateObj = new Date(eventDate);
-        const isCurrentMonth = eventDateObj.getFullYear() === currentYear &&
-                               eventDateObj.getMonth() === currentMonth;
+        const phDate = getPHMonthYear(eventDate);
+        if (!phDate) return false;
+        const isCurrentMonth = phDate.year === currentYear && phDate.month === currentMonth;
         
         if (!isCurrentMonth) return false;
         
         // Apply content type filter
         const eventType = String(event.category || 'Event').toLowerCase();
-        return selectedContentTypes.includes(eventType);
+        return selectedContentTypesSet.has(eventType);
       })
       .forEach(event => {
         events.push({
           id: event._id || `calendar-${event.isoDate}-${event.title}`,
           title: event.title,
-          date: new Date(event.isoDate || event.date).toLocaleDateString(),
+          date: formatDate(event.isoDate || event.date) || 'No date',
           tag: event.category || 'Event',
           description: event.description || '',
           image: undefined,
@@ -910,25 +1087,25 @@ const SchoolUpdates = () => {
         });
       });
     
-    // Add posts/updates for current month (events, announcements, news)
+    // Add posts/updates for current month (based on Philippines timezone)
     updates
       .filter(update => {
         if (!update.isoDate) return false;
-        const updateDate = new Date(update.isoDate);
-        const isCurrentMonth = updateDate.getFullYear() === currentYear &&
-                              updateDate.getMonth() === currentMonth;
+        const phDate = getPHMonthYear(update.isoDate);
+        if (!phDate) return false;
+        const isCurrentMonth = phDate.year === currentYear && phDate.month === currentMonth;
         
         if (!isCurrentMonth) return false;
         
         // Apply content type filter
         const updateType = String(update.tag || 'Announcement').toLowerCase();
-        return selectedContentTypes.includes(updateType);
+        return selectedContentTypesSet.has(updateType);
       })
       .forEach(update => {
         events.push({
           id: update.id,
           title: update.title,
-          date: new Date(update.isoDate || update.date).toLocaleDateString(),
+          date: formatDate(update.isoDate || update.date) || 'No date',
           tag: update.tag || 'Announcement',
           description: update.description || '',
           image: update.image,
@@ -997,7 +1174,7 @@ const SchoolUpdates = () => {
     });
     
     return filteredEvents;
-  }, [calendarEvents, updates, selectedContentTypes, searchQuery]);
+  }, [calendarEvents, updates, selectedContentTypesSet, searchQuery]);
 
   // Calculate available height for scrollable cards section (after currentMonthEvents is defined)
   const cardsScrollViewHeight = useMemo(() => {
@@ -1023,20 +1200,25 @@ const SchoolUpdates = () => {
       setIsLoadingCalendarEvents(true);
       setCalendarEventsError(null);
       
-      // Fetch from API
+      // Fetch from API - Load current month ± 2 months to support filtering by last month and next month
+      // This matches the pattern used in Calendar.tsx
       const now = new Date();
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth();
       
-      // Get first and last day of current month
-      const startDate = new Date(currentYear, currentMonth, 1);
-      const endDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
+      // Load current month ± 2 months for buffer (so filtering by last/next month works)
+      const startDate = new Date(currentYear, currentMonth - 2, 1);
+      const endDate = new Date(currentYear, currentMonth + 3, 0, 23, 59, 59); // Last day of month + 2
+      
+      console.log(`📅 Loading calendar events: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()} (5 months buffer)`);
       
       const events = await CalendarService.getEvents({
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
         limit: 1000,
       });
+      
+      console.log(`✅ Loaded ${events.length} calendar events for filtering`);
       
       setCalendarEvents(Array.isArray(events) ? events : []);
       setRetryCount(0);
@@ -1263,6 +1445,33 @@ const SchoolUpdates = () => {
     setSelectedEvent(null);
     setSelectedDateForDrawer(null);
     setSelectedDateEvents([]);
+  }, []);
+
+  // Time filter dropdown functions
+  const openTimeFilterDropdown = useCallback(() => {
+    setIsTimeFilterOpen(true);
+    setTimeout(() => {
+      Animated.timing(timeFilterSheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
+    }, 0);
+  }, [timeFilterSheetY]);
+
+  const closeTimeFilterDropdown = useCallback(() => {
+    Animated.timing(timeFilterSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
+      InteractionManager.runAfterInteractions(() => {
+        setIsTimeFilterOpen(false);
+      });
+    });
+  }, [timeFilterSheetY]);
+
+  const selectTimeFilter = useCallback((filter: 'all' | 'upcomingmonth' | 'lastmonth' | 'thismonth') => {
+    setTimeFilter(filter);
+    closeTimeFilterDropdown();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [closeTimeFilterDropdown]);
+
+  // Get display text for time filter
+  const getTimeFilterText = useCallback((filter: 'all' | 'upcomingmonth' | 'lastmonth' | 'thismonth') => {
+    return timeFilterOptions.find(opt => opt.key === filter)?.label || 'All';
   }, []);
 
 
@@ -1516,12 +1725,9 @@ const SchoolUpdates = () => {
           </BlurView>
         </View>
 
-        {/* Events This Month Section */}
+        {/* Legend/Filter Section - Hide when searching */}
+        {searchQuery.trim().length === 0 && (
         <View style={styles.sectionContainer}>
-          <View style={styles.sectionDivider}>
-            <Text style={[styles.sectionDividerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>EVENTS THIS MONTH</Text>
-          </View>
-
           <BlurView
             intensity={Platform.OS === 'ios' ? 50 : 40}
             tint={isDarkMode ? 'dark' : 'light'}
@@ -1532,7 +1738,8 @@ const SchoolUpdates = () => {
           >
             <View style={styles.legendHeaderRow}>
               <Text style={[styles.eventCountText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>
-                {currentMonthEvents.length} {currentMonthEvents.length === 1 ? 'event' : 'events'} this month
+                {displayedUpdates.length} {displayedUpdates.length === 1 ? 'update' : 'updates'}
+                {timeFilter !== 'all' && ` (${timeFilterOptions.find(opt => opt.key === timeFilter)?.label || ''})`}
               </Text>
             </View>
             <View style={styles.legendItems}>
@@ -1592,7 +1799,7 @@ const SchoolUpdates = () => {
                           numberOfLines={1}
                           ellipsizeMode="tail"
                         >
-                          {item.type}
+                          {item.type} ({legendTypeCounts[item.key] || 0})
                         </Text>
                       </TouchableOpacity>
                     );
@@ -1601,227 +1808,52 @@ const SchoolUpdates = () => {
               ))}
             </View>
           </BlurView>
-
-          {isLoadingCalendarEvents ? (
-            <View style={[styles.eventsLoadingContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <ActivityIndicator size="small" color={theme.colors.accent} />
-              <Text style={[styles.eventsLoadingText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }]}>
-                Loading events...
-              </Text>
-            </View>
-          ) : calendarEventsError ? (
-            <View style={[styles.eventsErrorContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <Ionicons name="alert-circle-outline" size={20} color="#DC2626" />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.eventsErrorText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(12) }]}>
-                  {calendarEventsError}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => refreshCalendarEvents()}
-                  style={[styles.eventsRetryButton, { backgroundColor: theme.colors.accent }]}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.eventsRetryText, { fontSize: theme.fontSize.scaleSize(11) }]}>Retry</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : currentMonthEvents.length > 0 ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingRight: 20, gap: 12, paddingLeft: 0 }}
-              style={{ flexShrink: 0 }}
-            >
-              {currentMonthEvents.map((event) => {
-                const tagLower = event.tag?.toLowerCase() || '';
-                let accentColor = '#93C5FD';
-                
-                if (tagLower === 'institutional') {
-                  accentColor = '#2563EB';
-                } else if (tagLower === 'academic') {
-                  accentColor = '#10B981';
-                } else {
-                  const colors = categoryToColors(event.tag);
-                  accentColor = colors.dot || '#93C5FD';
-                }
-                
-                // Find the full event object (calendar event or post)
-                let fullEvent: any = null;
-                if (event.source === 'calendar') {
-                  // Calendar event
-                  fullEvent = calendarEvents.find(e => 
-                    e._id === event.id || 
-                    `calendar-${e.isoDate}-${e.title}` === event.id
-                  ) || null;
-                } else if (event.source === 'post') {
-                  // Post/Update - create event data format
-                  fullEvent = {
-                    id: event.id,
-                    title: event.title,
-                    description: event.description,
-                    category: event.tag,
-                    type: event.tag,
-                    date: event.isoDate || event.date,
-                    isoDate: event.isoDate || event.date,
-                    image: event.image,
-                    images: event.images,
-                  };
-                }
-                
-                // Create a subtle background color based on accent color
-                const cardBackgroundColor = isDarkMode 
-                  ? accentColor + '08' // Very subtle in dark mode
-                  : accentColor + '12'; // Slightly more visible in light mode
-                
-                return (
-                  <TouchableOpacity
-                    key={event.id}
-                    style={[styles.calendarEventCard, { 
-                      backgroundColor: cardBackgroundColor, 
-                      borderColor: accentColor + '30',
-                      minWidth: 260,
-                    }]}
-                    activeOpacity={0.7}
-                    delayPressIn={0}
-                    onPress={() => {
-                      if (fullEvent) {
-                        if (event.source === 'calendar') {
-                          // Calendar event
-                          const eventDate = fullEvent.isoDate || fullEvent.date 
-                            ? new Date(fullEvent.isoDate || fullEvent.date)
-                            : new Date();
-                          openEventDrawer(fullEvent, eventDate);
-                        } else if (event.source === 'post') {
-                          // Post/Update - use ViewEventModal format
-                          const eventDate = fullEvent.isoDate || fullEvent.date 
-                            ? new Date(fullEvent.isoDate || fullEvent.date)
-                            : new Date();
-                          setSelectedEvent(fullEvent);
-                          setSelectedDateForDrawer(eventDate);
-                          setSelectedDateEvents([{
-                            id: fullEvent.id,
-                            title: fullEvent.title,
-                            color: accentColor,
-                            type: fullEvent.category,
-                            category: fullEvent.category,
-                            description: fullEvent.description,
-                            isoDate: fullEvent.isoDate || fullEvent.date,
-                            date: fullEvent.isoDate || fullEvent.date,
-                            image: fullEvent.image,
-                            images: fullEvent.images,
-                          }]);
-                          setShowEventDrawer(true);
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        }
-                      }
-                    }}
-                  >
-                    <View style={[styles.calendarEventAccent, { backgroundColor: accentColor }]} collapsable={false} />
-                    <View style={styles.calendarEventContent} collapsable={false}>
-                      <View style={styles.calendarEventHeader}>
-                        <View style={[styles.calendarEventIconWrapper, { backgroundColor: accentColor + '20' }]}>
-                          <Ionicons 
-                            name={event.source === 'post' ? 'document-text' : 'calendar'} 
-                            size={16} 
-                            color={accentColor} 
-                          />
-                        </View>
-                        <Text style={[styles.calendarEventTag, { color: accentColor, fontSize: theme.fontSize.scaleSize(9) }]}>{event.tag}</Text>
-                      </View>
-                      <Text style={[styles.calendarEventTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]} numberOfLines={2}>
-                        {event.title}
-                      </Text>
-                      <View style={styles.calendarEventDateRow}>
-                        <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
-                        <Text style={[styles.calendarEventDate, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]}>
-                          {event.date}
-                        </Text>
-                      </View>
-                      {event.description && (
-                        <Text style={[styles.calendarEventDescription, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]} numberOfLines={2}>
-                          {event.description}
-                        </Text>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          ) : (
-            <View style={[styles.emptyEventsContainer, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-              <Ionicons name="calendar-outline" size={24} color={theme.colors.textMuted} />
-              <Text style={[styles.emptyEventsText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }]}>
-                No events match your filters this month
-              </Text>
-            </View>
-          )}
         </View>
+        )}
 
         {/* Updates Section */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionDivider}>
-              <Text style={[styles.sectionDividerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>UPDATES</Text>
+              <Text style={[styles.sectionDividerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>
+                {searchQuery.trim().length > 0 ? 'SEARCH RESULTS' : 'UPDATES'}
+              </Text>
           </View>
           
-          {/* Time Filter Pills */}
-          <View style={[styles.filtersContainer, { flexShrink: 0, marginBottom: 12 }]} collapsable={false}>
-            <Pressable
-              style={[
-                styles.filterPill, 
-                { borderColor: theme.colors.border }, 
-                timeFilter === 'all' && {
-                  backgroundColor: theme.colors.accent,
-                  borderColor: theme.colors.accent,
-                  shadowColor: theme.colors.accent,
-                }
-              ]}
-              onPress={() => setTimeFilter('all')}
+          {/* Time Filter Dropdown - Hide when searching */}
+          {searchQuery.trim().length === 0 && (
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.timeFilterDropdown, {
+              backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
+              borderColor: 'rgba(255, 255, 255, 0.2)',
+              marginBottom: 12,
+            }]}
+          >
+            <TouchableOpacity
+              style={styles.timeFilterButton}
+              onPress={openTimeFilterDropdown}
+              activeOpacity={0.7}
             >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'all' && { color: '#FFF' }]}>All</Text>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.filterPill, 
-                { borderColor: theme.colors.border }, 
-                timeFilter === 'thismonth' && {
-                  backgroundColor: theme.colors.accent,
-                  borderColor: theme.colors.accent,
-                  shadowColor: theme.colors.accent,
-                }
-              ]}
-              onPress={() => setTimeFilter('thismonth')}
-            >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'thismonth' && { color: '#FFF' }]}>This month</Text>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.filterPill, 
-                { borderColor: theme.colors.border }, 
-                timeFilter === 'recent' && {
-                  backgroundColor: theme.colors.accent,
-                  borderColor: theme.colors.accent,
-                  shadowColor: theme.colors.accent,
-                }
-              ]}
-              onPress={() => setTimeFilter('recent')}
-            >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'recent' && { color: '#FFF' }]}>Recent</Text>
-            </Pressable>
-            <Pressable
-              style={[
-                styles.filterPill, 
-                { borderColor: theme.colors.border }, 
-                timeFilter === 'upcoming' && {
-                  backgroundColor: theme.colors.accent,
-                  borderColor: theme.colors.accent,
-                  shadowColor: theme.colors.accent,
-                }
-              ]}
-              onPress={() => setTimeFilter('upcoming')}
-            >
-              <Text style={[styles.filterPillText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }, timeFilter === 'upcoming' && { color: '#FFF' }]}>Upcoming</Text>
-            </Pressable>
-          </View>
+              <Text style={[styles.timeFilterButtonText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>
+                {getTimeFilterText(timeFilter)}
+              </Text>
+              <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+          </BlurView>
+          )}
+          
+          {/* Search Results Count - Show when searching */}
+          {searchQuery.trim().length > 0 && (
+            <View style={styles.searchResultsHeader}>
+              <Text style={[styles.searchResultsCount, { 
+                color: theme.colors.textMuted, 
+                fontSize: theme.fontSize.scaleSize(12) 
+              }]}>
+                {displayedUpdates.length} {displayedUpdates.length === 1 ? 'result' : 'results'} found for "{searchQuery}"
+              </Text>
+            </View>
+          )}
           
           {/* Updates Cards Section - Direct display without container */}
           <View style={styles.updatesCardsContainer}>
@@ -1843,7 +1875,15 @@ const SchoolUpdates = () => {
               <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                 <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
                 <Text style={{ marginTop: 6, fontSize: theme.fontSize.scaleSize(12), color: theme.colors.textMuted, fontWeight: '600' }}>
-                  {timeFilter === 'upcoming' ? 'No upcoming updates' : timeFilter === 'recent' ? 'No recent updates found' : timeFilter === 'thismonth' ? 'No updates this month' : 'No updates found'}
+                  {searchQuery.trim().length > 0 
+                    ? `No results found for "${searchQuery}"`
+                    : timeFilter === 'upcomingmonth' 
+                      ? 'No updates for upcoming month' 
+                      : timeFilter === 'lastmonth' 
+                        ? 'No updates for last month' 
+                        : timeFilter === 'thismonth' 
+                          ? 'No updates this month' 
+                          : 'No updates found'}
                 </Text>
               </View>
             )}
@@ -1944,7 +1984,7 @@ const SchoolUpdates = () => {
                         </View>
                       </View>
                       <Text style={[styles.updateSubtitle, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>
-                        {update.date}
+                        {formatDate(update.isoDate || update.date) || update.date}
                       </Text>
                       {update.description && (
                         <Text style={[styles.updateDescription, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }]} numberOfLines={2}>
@@ -1983,6 +2023,7 @@ const SchoolUpdates = () => {
         onClose={closeEventDrawer}
         selectedEvent={selectedEvent}
         selectedDateEvents={selectedDateEvents}
+        selectedDate={selectedDateForDrawer}
       />
 
       {/* Notification Modal */}
@@ -1990,6 +2031,59 @@ const SchoolUpdates = () => {
         visible={showNotificationModal}
         onClose={() => setShowNotificationModal(false)}
       />
+
+      {/* Time Filter Dropdown BottomSheet */}
+      <BottomSheet
+        visible={isTimeFilterOpen}
+        onClose={closeTimeFilterDropdown}
+        sheetY={timeFilterSheetY}
+        backgroundColor={theme.colors.card}
+        maxHeight="50%"
+      >
+        <View style={styles.timeFilterSheetHeader}>
+          <Text style={[styles.timeFilterSheetTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Select Time Filter</Text>
+          <TouchableOpacity onPress={closeTimeFilterDropdown} style={styles.timeFilterSheetCloseBtn}>
+            <Ionicons name="close" size={20} color={theme.colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+        <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
+          <View style={styles.timeFilterSheetContent}>
+            {timeFilterOptions.map((option, index) => {
+              const isSelected = timeFilter === option.key;
+              const isLast = index === timeFilterOptions.length - 1;
+              return (
+                <TouchableOpacity
+                  key={option.key}
+                  style={[
+                    styles.timeFilterOption,
+                    { 
+                      backgroundColor: isSelected ? theme.colors.accent + '15' : theme.colors.surface,
+                      borderColor: isSelected ? theme.colors.accent : theme.colors.border,
+                    },
+                    isLast && { borderBottomWidth: 0 }
+                  ]}
+                  onPress={() => selectTimeFilter(option.key)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    styles.timeFilterOptionText,
+                    { 
+                      color: isSelected ? theme.colors.accent : theme.colors.text,
+                      fontSize: theme.fontSize.scaleSize(14),
+                      fontWeight: isSelected ? '700' : '500',
+                    }
+                  ]}>
+                    {option.label}
+                  </Text>
+                  {isSelected && (
+                    <Ionicons name="checkmark-circle" size={20} color={theme.colors.accent} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </ScrollView>
+      </BottomSheet>
 
       {/* Bottom Navigation Bar - Fixed position */}
       <View style={[styles.bottomNavContainer, {
@@ -2223,7 +2317,6 @@ const styles = StyleSheet.create({
   filtersContainer: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 12,
     flexShrink: 0,
   },
   filterPill: {
@@ -2249,6 +2342,54 @@ const styles = StyleSheet.create({
   filterPillTextActive: {
     color: '#FFF',
   },
+  timeFilterDropdown: {
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  timeFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    minHeight: 52,
+  },
+  timeFilterButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  timeFilterSheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    paddingHorizontal: 4,
+  },
+  timeFilterSheetTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  timeFilterSheetCloseBtn: {
+    padding: 6,
+    borderRadius: 10,
+  },
+  timeFilterSheetContent: {
+    gap: 8,
+    paddingBottom: 8,
+  },
+  timeFilterOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  timeFilterOptionText: {
+    fontSize: 14,
+  },
   searchBarContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2272,6 +2413,17 @@ const styles = StyleSheet.create({
   searchClearButton: {
     padding: 4,
     marginLeft: 8,
+  },
+  searchResultsHeader: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  searchResultsCount: {
+    fontSize: 12,
+    fontWeight: '500',
+    fontStyle: 'italic',
+    opacity: 0.8,
   },
   statsGrid: {
     flexDirection: 'row',

@@ -9,7 +9,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Modal, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
@@ -309,6 +309,7 @@ const AdminCalendar = () => {
   const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
   const [isUploadingCSV, setIsUploadingCSV] = useState<boolean>(false);
   const [isProcessingCSV, setIsProcessingCSV] = useState<boolean>(false);
+  const [refreshing, setRefreshing] = useState(false);
   
   const postsForCalendar = useMemo(() => {
     if (!Array.isArray(posts)) return [];
@@ -1070,6 +1071,23 @@ const AdminCalendar = () => {
   //   refreshCalendarEvents(true); // Force refresh on mount
   // }, []); // Empty deps - only run on mount
 
+  // Pull-to-refresh handler
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      // Refresh both calendar events and posts
+      await Promise.all([
+        refreshCalendarEvents(true, undefined, currentMonth),
+        loadPosts(),
+      ]);
+    } catch (error) {
+      if (__DEV__) console.error('Refresh error:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshCalendarEvents, loadPosts, currentMonth]);
+
   // CSV upload handler
   const handleCSVUpload = useCallback(async () => {
     try {
@@ -1446,6 +1464,14 @@ const AdminCalendar = () => {
         keyboardShouldPersistTaps="handled"
         bounces={true}
         scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={t.colors.accent}
+            colors={[t.colors.accent]}
+          />
+        }
       >
         {/* Calendar Card - Fixed below header */}
         {/* Animation wrapper removed for debugging */}
@@ -1588,20 +1614,23 @@ const AdminCalendar = () => {
           tint={isDarkMode ? 'dark' : 'light'}
           style={[styles.adminActionsCard, { backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)' }]}
         >
-          <View style={styles.adminActionsRow}>
+          <View style={styles.adminActionsTitleRow}>
+            <Text style={[styles.adminActionsTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>
+              CSV Calendar file upload
+            </Text>
             <TouchableOpacity
-              style={[styles.helpButton, { 
-                backgroundColor: t.colors.surface,
-                borderColor: t.colors.border,
-              }]}
+              style={styles.helpButtonInline}
               onPress={() => {
                 navigation.navigate('CalendarHelp');
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               }}
               activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="information-circle-outline" size={16} color={t.colors.textMuted} />
+              <Ionicons name="information-circle-outline" size={18} color={t.colors.textMuted} />
             </TouchableOpacity>
+          </View>
+          <View style={styles.adminActionsRow}>
             <TouchableOpacity
               style={[styles.csvUploadButton, { 
                 backgroundColor: t.colors.surface,
@@ -1670,6 +1699,7 @@ const AdminCalendar = () => {
         onClose={closeEventDrawer}
         selectedEvent={selectedEvent}
         selectedDateEvents={selectedDateEvents}
+        selectedDate={selectedDateForDrawer}
         onEdit={() => {
           // Navigate to PostUpdate for editing if it's a post
           if (selectedEvent?.source === 'post') {
@@ -1684,38 +1714,25 @@ const AdminCalendar = () => {
         onDelete={async () => {
           if (!selectedEvent) return;
           
-          Alert.alert(
-            'Delete Event',
-            `Are you sure you want to delete "${selectedEvent.title}"?`,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Delete',
-                style: 'destructive',
-                onPress: async () => {
-                  try {
-                    setIsDeleting(true);
-                    if (selectedEvent.source === 'post') {
-                      // Delete post using AdminDataService
-                      await AdminDataService.deletePost(selectedEvent.id);
-                    } else {
-                      // Delete calendar event
-                      await CalendarService.deleteEvent(selectedEvent._id || selectedEvent.id);
-                    }
-                    await refreshCalendarEvents(true);
-                    closeEventDrawer();
-                    setSelectedEvent(null);
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                  } catch (error) {
-                    Alert.alert('Error', 'Failed to delete event');
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                  } finally {
-                    setIsDeleting(false);
-                  }
-                },
-              },
-            ]
-          );
+          // ViewEventModal handles confirmation, just execute deletion
+          try {
+            setIsDeleting(true);
+            if (selectedEvent.source === 'post') {
+              // Delete post using AdminDataService
+              await AdminDataService.deletePost(selectedEvent.id);
+            } else {
+              // Delete calendar event
+              await CalendarService.deleteEvent(selectedEvent._id || selectedEvent.id);
+            }
+            await refreshCalendarEvents(true);
+            closeEventDrawer();
+            setSelectedEvent(null);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          } catch (error) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          } finally {
+            setIsDeleting(false);
+          }
         }}
       />
 
@@ -1882,6 +1899,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
     padding: 12,
+  },
+  adminActionsTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 12,
+  },
+  adminActionsTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  helpButtonInline: {
+    padding: 2,
+    marginLeft: -2,
   },
   adminActionsRow: {
     flexDirection: 'row',

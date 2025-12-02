@@ -1341,6 +1341,7 @@ const CalendarScreen = () => {
         onClose={closeEventDrawer}
         selectedEvent={selectedEvent}
         selectedDateEvents={selectedDateEvents}
+        selectedDate={selectedDateForDrawer}
       />
 
       <View style={[styles.bottomNavContainer, {

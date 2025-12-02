@@ -228,7 +228,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
               fontWeight: currentScreen === 'AIChat' ? '600' : '500',
               fontSize: t.fontSize.scaleSize(16)
             }]}>
-              Conversation
+              AI Assistant
             </Text>
           </TouchableOpacity>
 
@@ -315,7 +315,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.clearAllText, { color: isDarkMode ? '#EF4444' : '#DC2626', fontSize: t.fontSize.scaleSize(11) }]}>
+                  <Text style={[styles.clearAllText, { color: isDarkMode ? '#EF4444' : '#DC2626', fontSize: t.fontSize.scaleSize(12) }]}>
                     Clear All
                   </Text>
                 </TouchableOpacity>
@@ -501,10 +501,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   sidebarIconButton: {
-    width: 44,
-    height: 44,
-    minWidth: 44,
-    minHeight: 44,
+    width: 36,
+    height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
@@ -565,10 +563,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   clearAllText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
   },
   sidebarContent: {
     flex: 1,
@@ -580,22 +576,27 @@ const styles = StyleSheet.create({
   },
   historyItemButton: {
     flexDirection: 'row',
-    alignItems: 'center',
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 10,
+    position: 'relative',
   },
   historyAccent: {
-    width: 2,
-    height: '100%',
-    borderRadius: 1,
-    marginRight: 10,
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    borderRadius: 2,
   },
   historyItemContent: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   historyItemTextContainer: {
     flex: 1,
+    marginLeft: 8,
   },
   historyTitleRow: {
     flexDirection: 'row',

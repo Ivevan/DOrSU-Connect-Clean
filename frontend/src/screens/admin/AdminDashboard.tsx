@@ -1176,10 +1176,13 @@ const AdminDashboard = () => {
         {/* Updates Section */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionDivider}>
-              <Text style={[styles.sectionDividerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>UPDATES</Text>
+              <Text style={[styles.sectionDividerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>
+                {searchQuery.trim().length > 0 ? 'SEARCH RESULTS' : 'UPDATES'}
+              </Text>
           </View>
           
-          {/* Event Type Legend */}
+          {/* Event Type Legend - Hide when searching */}
+          {searchQuery.trim().length === 0 && (
           <BlurView
             intensity={Platform.OS === 'ios' ? 50 : 40}
             tint={isDarkMode ? 'dark' : 'light'}
@@ -1260,8 +1263,10 @@ const AdminDashboard = () => {
               ))}
             </View>
           </BlurView>
+          )}
           
-          {/* Time Filter Dropdown */}
+          {/* Time Filter Dropdown - Hide when searching */}
+          {searchQuery.trim().length === 0 && (
           <View style={[styles.filterDropdownContainer, { marginBottom: 12 }]}>
             <TouchableOpacity
               style={[styles.filterDropdownButton, {
@@ -1348,6 +1353,19 @@ const AdminDashboard = () => {
               </TouchableOpacity>
             </Modal>
           </View>
+          )}
+          
+          {/* Search Results Count - Show when searching */}
+          {searchQuery.trim().length > 0 && (
+            <View style={styles.searchResultsHeader}>
+              <Text style={[styles.searchResultsCount, { 
+                color: theme.colors.textMuted, 
+                fontSize: theme.fontSize.scaleSize(12) 
+              }]}>
+                {displayedUpdates.length} {displayedUpdates.length === 1 ? 'result' : 'results'} found for "{searchQuery}"
+              </Text>
+            </View>
+          )}
           
           {/* Updates Cards Section - Direct display without container */}
           <View style={styles.updatesCardsContainer}>
@@ -1369,7 +1387,15 @@ const AdminDashboard = () => {
               <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                 <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
                 <Text style={{ marginTop: 6, fontSize: theme.fontSize.scaleSize(12), color: theme.colors.textMuted, fontWeight: '600' }}>
-                  {timeFilter === 'upcomingmonth' ? 'No updates for upcoming month' : timeFilter === 'lastmonth' ? 'No updates for last month' : timeFilter === 'thismonth' ? 'No updates this month' : 'No updates found'}
+                  {searchQuery.trim().length > 0 
+                    ? `No results found for "${searchQuery}"`
+                    : timeFilter === 'upcomingmonth' 
+                      ? 'No updates for upcoming month' 
+                      : timeFilter === 'lastmonth' 
+                        ? 'No updates for last month' 
+                        : timeFilter === 'thismonth' 
+                          ? 'No updates this month' 
+                          : 'No updates found'}
                 </Text>
               </View>
             )}
@@ -1786,6 +1812,17 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
     color: '#6B7280',
+    opacity: 0.8,
+  },
+  searchResultsHeader: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  searchResultsCount: {
+    fontSize: 12,
+    fontWeight: '500',
+    fontStyle: 'italic',
     opacity: 0.8,
   },
   updatesCardsContainer: {

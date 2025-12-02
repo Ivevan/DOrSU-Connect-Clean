@@ -119,6 +119,8 @@ class CalendarService {
 
       const url = `${this.baseUrl}/api/schedule/events${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
       
+      console.log(`📅 CalendarService: Fetching events from ${url}`);
+      
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -127,17 +129,36 @@ class CalendarService {
       });
 
       if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error(`❌ CalendarService: HTTP error! status: ${response.status}, body: ${errorText}`);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
       if (data.success && Array.isArray(data.events)) {
+        console.log(`✅ CalendarService: Fetched ${data.events.length} events`);
         return data.events;
       }
       
+      console.warn('⚠️ CalendarService: Response format unexpected:', data);
       return [];
-    } catch (error) {
-      console.error('Failed to get calendar events:', error);
+    } catch (error: any) {
+      // Check if it's a network error (connection timeout, refused, etc.)
+      const isNetworkError = error?.message?.includes('Failed to fetch') || 
+                            error?.message?.includes('ERR_CONNECTION') ||
+                            error?.message?.includes('network') ||
+                            error?.name === 'TypeError';
+      
+      if (isNetworkError) {
+        console.error('❌ CalendarService: Network error fetching events:', error.message);
+        console.error('   This usually means the backend is unreachable. Check API URL:', this.baseUrl);
+        console.error('   Make sure the Expo dev server has been restarted after updating .env file');
+      } else {
+        console.error('❌ CalendarService: Failed to get calendar events:', error);
+      }
+      
+      // Return empty array for backward compatibility, but log the error
+      // Callers can check the console logs to see if there was an error
       return [];
     }
   }

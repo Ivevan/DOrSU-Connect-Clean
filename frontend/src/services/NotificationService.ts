@@ -411,11 +411,19 @@ class NotificationService {
       const endDate = new Date();
       endDate.setHours(23, 59, 59, 999);
 
-      const events = await CalendarService.getEvents({
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
-        limit: 100,
-      });
+      let events: CalendarEvent[] = [];
+      try {
+        events = await CalendarService.getEvents({
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+          limit: 100,
+        });
+        console.log(`📅 checkTodaysEvents: Fetched ${events.length} events from API`);
+      } catch (error: any) {
+        console.error('❌ checkTodaysEvents: Failed to fetch events:', error.message);
+        // Don't throw - just log and continue with empty array
+        events = [];
+      }
 
       // Filter for today's events
       const todaysEvents = events.filter((event: CalendarEvent) => {
@@ -485,11 +493,20 @@ class NotificationService {
       endDate.setDate(endDate.getDate() + 7); // 7 days from now
       endDate.setHours(23, 59, 59, 999);
 
-      const events = await CalendarService.getEvents({
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
-        limit: 100,
-      });
+      let events: CalendarEvent[] = [];
+      try {
+        events = await CalendarService.getEvents({
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+          limit: 100,
+        });
+        console.log(`📅 checkUpcomingEvents: Fetched ${events.length} events from API`);
+      } catch (error: any) {
+        console.error('❌ checkUpcomingEvents: Failed to fetch events:', error.message);
+        // Don't throw - just log and continue with empty array
+        // This prevents the notification check from crashing
+        events = [];
+      }
 
       // Filter for upcoming events (future events only, not today, not past)
       const upcomingEvents = events.filter((event: CalendarEvent) => {

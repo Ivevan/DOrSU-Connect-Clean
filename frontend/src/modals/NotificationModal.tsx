@@ -185,14 +185,29 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
       }
       
       // Fetch current data to show what would trigger notifications
-      const [posts, events] = await Promise.all([
-        AdminDataService.getPosts().catch(() => []),
-        CalendarService.getEvents({
-          startDate: new Date().toISOString(),
-          endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          limit: 50,
-        }).catch(() => []),
-      ]);
+      let posts: Post[] = [];
+      let events: CalendarEvent[] = [];
+      
+      try {
+        [posts, events] = await Promise.all([
+          AdminDataService.getPosts().catch((error) => {
+            console.error('❌ NotificationModal: Failed to fetch posts:', error);
+            return [];
+          }),
+          CalendarService.getEvents({
+            startDate: new Date().toISOString(),
+            endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+            limit: 50,
+          }).catch((error) => {
+            console.error('❌ NotificationModal: Failed to fetch events:', error);
+            return [];
+          }),
+        ]);
+        console.log(`📊 NotificationModal: Loaded ${posts.length} posts and ${events.length} events`);
+      } catch (error) {
+        console.error('❌ NotificationModal: Error loading notifications:', error);
+        // Continue with empty arrays
+      }
 
       const items: NotificationItem[] = [];
       const todayKey = getPHDateKey(new Date());

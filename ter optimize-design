@@ -1,0 +1,13 @@
+*   [33m475e58f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m Merge branch 'optimize-design'
+[31m|[m[32m\[m  
+[31m|[m * [33m3599b2a[m[33m ([m[1;31morigin/optimize-design[m[33m, [m[1;32moptimize-design[m[33m)[m Enhance AdminDashboard and SchoolUpdates components to improve search functionality. Updated section headers to display 'SEARCH RESULTS' when a query is present, and added a results count display. Adjusted visibility of legend and filter dropdowns based on search state for a cleaner user experience.
+[31m|[m * [33mf962d46[m Refactor UserSidebar and ViewEventModal components for improved UI consistency and functionality. Updated text labels for clarity, adjusted font sizes, and optimized styles for better layout. Enhanced event handling in ViewEventModal with new helper functions for date formatting and event comparison, and implemented a time filter dropdown in SchoolUpdates for better user experience.
+* [32m|[m [33m4629d66[m Merge branch 'master' of https://github.com/Ivevan/DOrSU-Connect-Clean
+[33m|[m[32m\[m[32m|[m 
+[33m|[m * [33mce436e7[m Update README.md to enhance app description and features section. Changed "Features" to "About the App" for clarity, and reorganized content to better highlight app functionalities for users and administrators.
+[33m|[m * [33m269da26[m Read.md
+[33m|[m * [33ma88c8ea[m Refactor ViewEventModal for improved performance and UI consistency. Removed unnecessary InteractionManager calls, streamlined close animation logic, and adjusted layout for date and time display. Updated styles for better spacing and alignment, including font size and padding adjustments across various components.
+* [34m|[m [33ma9e5668[m AWS Deployment
+[34m|[m[34m/[m  
+* [33m43803c7[m RAG Test
+* [33m439b117[m AI Accuracy Fix

@@ -5,6 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -196,23 +197,181 @@ const UserSettings = () => {
       setIsUploadingPhoto(true);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-      const fileName = asset.name || `profile_${Date.now()}.jpg`;
-      const uploadResult = await ProfileService.uploadProfilePicture(
-        asset.uri,
-        fileName,
-        mime
-      );
+      const maxSize = 5 * 1024 * 1024; // 5MB
+      let finalUri = asset.uri;
+      let finalMime = 'image/jpeg'; // Always use JPEG for better compression
+      let finalFileName = `profile_${Date.now()}.jpg`;
 
-      // Update local state
-      setBackendUserPhoto(uploadResult.imageUrl);
-      
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert('Success', 'Profile picture updated successfully!');
+      try {
+        // Always compress images to ensure they meet size requirements
+        try {
+          // Dynamically import ImageManipulator (with error handling)
+          let ImageManipulator: any;
+          try {
+            // @ts-ignore - expo-image-manipulator may not have types
+            ImageManipulator = require('expo-image-manipulator');
+          } catch (importError) {
+            throw new Error('expo-image-manipulator module not found');
+          }
+          
+          if (!ImageManipulator || !ImageManipulator.manipulateAsync) {
+            throw new Error('expo-image-manipulator not properly loaded');
+          }
+          
+          // Compression strategy: Progressive compression until under 5MB
+          const compressionSteps = [
+            { width: 1200, compress: 0.8 }, // Step 1: High quality, large size
+            { width: 1000, compress: 0.7 }, // Step 2: Good quality, medium size
+            { width: 800, compress: 0.6 },  // Step 3: Medium quality, smaller size
+            { width: 600, compress: 0.5 },  // Step 4: Lower quality, small size
+            { width: 500, compress: 0.4 },  // Step 5: Low quality, very small size
+            { width: 400, compress: 0.3 },  // Step 6: Very low quality, tiny size
+          ];
+          
+          let compressedUri = asset.uri;
+          let compressionSuccessful = false;
+          
+          // Try each compression step until we get under 5MB
+          for (const step of compressionSteps) {
+            try {
+              const manipResult = await ImageManipulator.manipulateAsync(
+                asset.uri,
+                [{ resize: { width: step.width } }],
+                { 
+                  compress: step.compress,
+                  format: ImageManipulator.SaveFormat.JPEG 
+                }
+              );
+              
+              // Check compressed file size
+              const compressedInfo = await FileSystem.getInfoAsync(manipResult.uri);
+              if (compressedInfo.exists && compressedInfo.size) {
+                const sizeInMB = compressedInfo.size / (1024 * 1024);
+                if (compressedInfo.size <= maxSize) {
+                  // Success! File is under 5MB
+                  compressedUri = manipResult.uri;
+                  finalMime = 'image/jpeg';
+                  finalFileName = `profile_${Date.now()}.jpg`;
+                  console.log(`✅ Image compressed successfully: ${(compressedInfo.size / 1024).toFixed(2)} KB (${step.width}px, ${step.compress * 100}% quality)`);
+                  compressionSuccessful = true;
+                  break;
+                } else {
+                  // Still too large, try next step
+                  console.log(`⚠️ Compression step (${step.width}px, ${step.compress * 100}%) still too large: ${sizeInMB.toFixed(2)} MB`);
+                }
+              }
+            } catch (stepError) {
+              console.error(`Compression step failed:`, stepError);
+              continue;
+            }
+          }
+          
+          // If compression was successful, use compressed image
+          if (compressionSuccessful) {
+            finalUri = compressedUri;
+          } else {
+            // All compression steps failed or still too large, use most aggressive compression
+            console.log('⚠️ All compression steps exceeded limit, using most aggressive compression');
+            const lastResort = await ImageManipulator.manipulateAsync(
+              asset.uri,
+              [{ resize: { width: 400 } }],
+              { 
+                compress: 0.3,
+                format: ImageManipulator.SaveFormat.JPEG 
+              }
+            );
+            finalUri = lastResort.uri;
+            finalMime = 'image/jpeg';
+            finalFileName = `profile_${Date.now()}.jpg`;
+            
+            // Final size check
+            const finalCheck = await FileSystem.getInfoAsync(finalUri);
+            if (finalCheck.exists && finalCheck.size && finalCheck.size > maxSize) {
+              throw new Error('Image is too large even after maximum compression. Please select a smaller image.');
+            }
+          }
+        } catch (compressError: any) {
+          // Compression failed, check original size
+          console.error('Image compression failed:', compressError);
+          
+          // Check if it's a module not found error
+          if (compressError.message && (
+            compressError.message.includes('expo-image-manipulator') || 
+            compressError.message.includes('Unable to resolve') ||
+            compressError.message.includes('not found')
+          )) {
+            console.warn('expo-image-manipulator not available, checking file size...');
+            const originalInfo = await FileSystem.getInfoAsync(asset.uri);
+            if (originalInfo.exists && originalInfo.size && originalInfo.size > maxSize) {
+              setIsUploadingPhoto(false);
+              Alert.alert(
+                'Compression Unavailable',
+                'Image compression is not available. Please select an image smaller than 5MB, or restart the app after installing dependencies.',
+                [{ text: 'OK' }]
+              );
+              return;
+            }
+            // If original is under 5MB, continue with original
+          } else {
+            // Other compression errors - check original size
+            const originalInfo = await FileSystem.getInfoAsync(asset.uri);
+            if (originalInfo.exists && originalInfo.size && originalInfo.size > maxSize) {
+              throw new Error('Image is too large and compression failed. Please select a smaller image.');
+            }
+            // If original is under 5MB, use it as-is
+          }
+        }
+
+        // Optimistic update: Show selected image immediately
+        setBackendUserPhoto(finalUri);
+        await AsyncStorage.setItem('userPhoto', finalUri);
+
+        // Upload in background
+        const uploadResult = await ProfileService.uploadProfilePicture(
+          finalUri,
+          finalFileName,
+          finalMime
+        );
+
+        // Update with server URL once upload completes
+        setBackendUserPhoto(uploadResult.imageUrl);
+        await AsyncStorage.setItem('userPhoto', uploadResult.imageUrl);
+        
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (uploadError: any) {
+        console.error('Profile picture upload error:', uploadError);
+        
+        // Check if it's a file size error
+        if (uploadError.message && uploadError.message.includes('5MB')) {
+          Alert.alert(
+            'File Too Large', 
+            'The image is too large even after compression. Please select a smaller image.',
+            [{ text: 'OK' }]
+          );
+          // Revert optimistic update
+          const previousPhoto = await AsyncStorage.getItem('userPhoto');
+          if (previousPhoto && previousPhoto !== finalUri) {
+            setBackendUserPhoto(previousPhoto);
+          } else {
+            setBackendUserPhoto(null);
+            await AsyncStorage.removeItem('userPhoto');
+          }
+        } else {
+          // Keep the local image for other errors
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          Alert.alert(
+            'Upload Warning', 
+            'Image selected but upload failed. The image will be saved locally. Please try again later.',
+            [{ text: 'OK' }]
+          );
+        }
+      } finally {
+        setIsUploadingPhoto(false);
+      }
     } catch (error: any) {
-      console.error('Profile picture upload error:', error);
+      console.error('Profile picture selection error:', error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Upload Failed', error.message || 'Failed to upload profile picture');
-    } finally {
+      Alert.alert('Error', error.message || 'Failed to select profile picture');
       setIsUploadingPhoto(false);
     }
   }, []);

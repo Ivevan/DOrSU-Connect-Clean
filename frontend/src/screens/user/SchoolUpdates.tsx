@@ -5,9 +5,8 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Dimensions, Easing, Image, InteractionManager, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Dimensions, Easing, Image, Modal, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import BottomSheet from '../../components/common/BottomSheet';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import UserSidebar from '../../components/navigation/UserSidebar';
 import { useThemeValues } from '../../contexts/ThemeContext';
@@ -310,7 +309,6 @@ const legendItemsData: LegendItem[] = [
 ];
 
 const timeFilterOptions = [
-  { key: 'all' as const, label: 'All' },
   { key: 'thismonth' as const, label: 'This Month' },
   { key: 'lastmonth' as const, label: 'Last Month' },
   { key: 'upcomingmonth' as const, label: 'Upcoming Month' },
@@ -419,7 +417,7 @@ const SchoolUpdates = () => {
   const [updates, setUpdates] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [timeFilter, setTimeFilter] = useState<'all' | 'upcomingmonth' | 'lastmonth' | 'thismonth'>('all');
+  const [timeFilter, setTimeFilter] = useState<'all' | 'upcomingmonth' | 'lastmonth' | 'thismonth'>('thismonth');
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [isLoadingCalendarEvents, setIsLoadingCalendarEvents] = useState(false);
@@ -449,8 +447,7 @@ const SchoolUpdates = () => {
   const [showNotificationModal, setShowNotificationModal] = useState(false);
   
   // Time filter dropdown state
-  const [isTimeFilterOpen, setIsTimeFilterOpen] = useState(false);
-  const timeFilterSheetY = useRef(new Animated.Value(300)).current;
+  const [showTimeFilterDropdown, setShowTimeFilterDropdown] = useState(false);
 
   // Memoize safe area insets to prevent recalculation during navigation
   const safeInsets = useMemo(() => ({
@@ -1447,32 +1444,6 @@ const SchoolUpdates = () => {
     setSelectedDateEvents([]);
   }, []);
 
-  // Time filter dropdown functions
-  const openTimeFilterDropdown = useCallback(() => {
-    setIsTimeFilterOpen(true);
-    setTimeout(() => {
-      Animated.timing(timeFilterSheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
-    }, 0);
-  }, [timeFilterSheetY]);
-
-  const closeTimeFilterDropdown = useCallback(() => {
-    Animated.timing(timeFilterSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      InteractionManager.runAfterInteractions(() => {
-        setIsTimeFilterOpen(false);
-      });
-    });
-  }, [timeFilterSheetY]);
-
-  const selectTimeFilter = useCallback((filter: 'all' | 'upcomingmonth' | 'lastmonth' | 'thismonth') => {
-    setTimeFilter(filter);
-    closeTimeFilterDropdown();
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [closeTimeFilterDropdown]);
-
-  // Get display text for time filter
-  const getTimeFilterText = useCallback((filter: 'all' | 'upcomingmonth' | 'lastmonth' | 'thismonth') => {
-    return timeFilterOptions.find(opt => opt.key === filter)?.label || 'All';
-  }, []);
 
 
   return (
@@ -1739,7 +1710,7 @@ const SchoolUpdates = () => {
             <View style={styles.legendHeaderRow}>
               <Text style={[styles.eventCountText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>
                 {displayedUpdates.length} {displayedUpdates.length === 1 ? 'update' : 'updates'}
-                {timeFilter !== 'all' && ` (${timeFilterOptions.find(opt => opt.key === timeFilter)?.label || ''})`}
+                {` (${timeFilterOptions.find(opt => opt.key === timeFilter)?.label || ''})`}
               </Text>
             </View>
             <View style={styles.legendItems}>
@@ -1821,26 +1792,92 @@ const SchoolUpdates = () => {
           
           {/* Time Filter Dropdown - Hide when searching */}
           {searchQuery.trim().length === 0 && (
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 50 : 40}
-            tint={isDarkMode ? 'dark' : 'light'}
-            style={[styles.timeFilterDropdown, {
-              backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
-              borderColor: 'rgba(255, 255, 255, 0.2)',
-              marginBottom: 12,
-            }]}
-          >
+          <View style={[styles.filterDropdownContainer, { marginBottom: 12 }]}>
             <TouchableOpacity
-              style={styles.timeFilterButton}
-              onPress={openTimeFilterDropdown}
+              style={[styles.filterDropdownButton, {
+                backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
+                borderColor: 'rgba(255, 255, 255, 0.2)',
+              }]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setShowTimeFilterDropdown(!showTimeFilterDropdown);
+              }}
               activeOpacity={0.7}
             >
-              <Text style={[styles.timeFilterButtonText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>
-                {getTimeFilterText(timeFilter)}
+              <BlurView
+                intensity={Platform.OS === 'ios' ? 50 : 40}
+                tint={isDarkMode ? 'dark' : 'light'}
+                style={StyleSheet.absoluteFillObject}
+              />
+              <Text style={[styles.filterDropdownButtonText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>
+                {timeFilterOptions.find(opt => opt.key === timeFilter)?.label || 'This Month'}
               </Text>
-              <Ionicons name="chevron-down" size={18} color={theme.colors.textMuted} />
+              <Ionicons 
+                name={showTimeFilterDropdown ? 'chevron-up' : 'chevron-down'} 
+                size={20} 
+                color={theme.colors.textMuted} 
+              />
             </TouchableOpacity>
-          </BlurView>
+
+            {/* Dropdown Modal */}
+            <Modal
+              visible={showTimeFilterDropdown}
+              transparent={true}
+              animationType="fade"
+              onRequestClose={() => setShowTimeFilterDropdown(false)}
+            >
+              <TouchableOpacity
+                style={styles.dropdownOverlay}
+                activeOpacity={1}
+                onPress={() => setShowTimeFilterDropdown(false)}
+              >
+                <View style={styles.dropdownContentWrapper}>
+                  <BlurView
+                    intensity={Platform.OS === 'ios' ? 80 : 60}
+                    tint={isDarkMode ? 'dark' : 'light'}
+                    style={[styles.dropdownContent, {
+                      backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                      borderColor: 'rgba(255, 255, 255, 0.2)',
+                    }]}
+                  >
+                    {timeFilterOptions.map((option, index) => {
+                      const isSelected = timeFilter === option.key;
+                      const isLast = index === timeFilterOptions.length - 1;
+                      return (
+                        <TouchableOpacity
+                          key={option.key}
+                          style={[
+                            styles.dropdownItem,
+                            isLast && { borderBottomWidth: 0 },
+                            isSelected && {
+                              backgroundColor: theme.colors.accent + '20',
+                            }
+                          ]}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            setTimeFilter(option.key);
+                            setShowTimeFilterDropdown(false);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[
+                            styles.dropdownItemText,
+                            { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) },
+                            isSelected && { color: theme.colors.accent, fontWeight: '700' }
+                          ]}>
+                            {option.label}
+                          </Text>
+                          {isSelected && (
+                            <Ionicons name="checkmark" size={20} color={theme.colors.accent} />
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </BlurView>
+                </View>
+              </TouchableOpacity>
+            </Modal>
+          </View>
           )}
           
           {/* Search Results Count - Show when searching */}
@@ -2032,58 +2069,6 @@ const SchoolUpdates = () => {
         onClose={() => setShowNotificationModal(false)}
       />
 
-      {/* Time Filter Dropdown BottomSheet */}
-      <BottomSheet
-        visible={isTimeFilterOpen}
-        onClose={closeTimeFilterDropdown}
-        sheetY={timeFilterSheetY}
-        backgroundColor={theme.colors.card}
-        maxHeight="50%"
-      >
-        <View style={styles.timeFilterSheetHeader}>
-          <Text style={[styles.timeFilterSheetTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Select Time Filter</Text>
-          <TouchableOpacity onPress={closeTimeFilterDropdown} style={styles.timeFilterSheetCloseBtn}>
-            <Ionicons name="close" size={20} color={theme.colors.textMuted} />
-          </TouchableOpacity>
-        </View>
-        <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
-          <View style={styles.timeFilterSheetContent}>
-            {timeFilterOptions.map((option, index) => {
-              const isSelected = timeFilter === option.key;
-              const isLast = index === timeFilterOptions.length - 1;
-              return (
-                <TouchableOpacity
-                  key={option.key}
-                  style={[
-                    styles.timeFilterOption,
-                    { 
-                      backgroundColor: isSelected ? theme.colors.accent + '15' : theme.colors.surface,
-                      borderColor: isSelected ? theme.colors.accent : theme.colors.border,
-                    },
-                    isLast && { borderBottomWidth: 0 }
-                  ]}
-                  onPress={() => selectTimeFilter(option.key)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[
-                    styles.timeFilterOptionText,
-                    { 
-                      color: isSelected ? theme.colors.accent : theme.colors.text,
-                      fontSize: theme.fontSize.scaleSize(14),
-                      fontWeight: isSelected ? '700' : '500',
-                    }
-                  ]}>
-                    {option.label}
-                  </Text>
-                  {isSelected && (
-                    <Ionicons name="checkmark-circle" size={20} color={theme.colors.accent} />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </ScrollView>
-      </BottomSheet>
 
       {/* Bottom Navigation Bar - Fixed position */}
       <View style={[styles.bottomNavContainer, {
@@ -2342,53 +2327,56 @@ const styles = StyleSheet.create({
   filterPillTextActive: {
     color: '#FFF',
   },
-  timeFilterDropdown: {
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
+  filterDropdownContainer: {
+    position: 'relative',
+    zIndex: 10,
   },
-  timeFilterButton: {
+  filterDropdownButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    borderRadius: 16,
+    borderWidth: 1,
     paddingHorizontal: 16,
     paddingVertical: 14,
     minHeight: 52,
+    overflow: 'hidden',
   },
-  timeFilterButtonText: {
-    fontSize: 14,
+  filterDropdownButtonText: {
+    flex: 1,
     fontWeight: '600',
   },
-  timeFilterSheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    paddingHorizontal: 4,
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'stretch',
   },
-  timeFilterSheetTitle: {
-    fontSize: 16,
-    fontWeight: '700',
+  dropdownContentWrapper: {
+    paddingHorizontal: 20,
   },
-  timeFilterSheetCloseBtn: {
-    padding: 6,
-    borderRadius: 10,
+  dropdownContent: {
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  timeFilterSheetContent: {
-    gap: 8,
-    paddingBottom: 8,
-  },
-  timeFilterOption: {
+  dropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1.5,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
   },
-  timeFilterOptionText: {
-    fontSize: 14,
+  dropdownItemText: {
+    flex: 1,
+    fontWeight: '500',
   },
   searchBarContainer: {
     flexDirection: 'row',

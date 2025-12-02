@@ -442,8 +442,8 @@ const PostUpdate: React.FC = () => {
       return;
     }
     
-    if (!title.trim() || !description.trim()) {
-      Alert.alert('Error', 'Please fill in all required fields');
+    if (!title.trim()) {
+      Alert.alert('Error', 'Please fill in the title field');
       return;
     }
     
@@ -454,10 +454,10 @@ const PostUpdate: React.FC = () => {
     }, 0);
     // Reset animation state after a short delay
     setTimeout(() => setIsAnimating(false), 300);
-  }, [isAnimating, title, description, publishAlertSheetY]);
+  }, [isAnimating, title, publishAlertSheetY]);
 
-  // Check if form is valid for publishing - memoized
-  const isFormValid = useMemo(() => title.trim() !== '' && description.trim() !== '', [title, description]);
+  // Check if form is valid for publishing - memoized (only title is required)
+  const isFormValid = useMemo(() => title.trim() !== '', [title]);
 
   const handleCancel = useCallback(() => {
     // Prevent rapid tapping during animation
@@ -1135,7 +1135,9 @@ const PostUpdate: React.FC = () => {
           sheetY={cancelAlertSheetY}
           backgroundColor={theme.colors.card}
           maxHeight="40%"
-          contentStyle={styles.cancelAlertContent}
+          autoSize={true}
+          sheetPaddingBottom={8}
+          contentStyle={[styles.cancelAlertContent, { paddingBottom: 0 }]}
         >
           <View style={styles.alertIconWrapWarning}>
             <Ionicons name="warning" size={20} color="#F59E0B" />
@@ -1171,36 +1173,32 @@ const PostUpdate: React.FC = () => {
           sheetY={publishAlertSheetY}
           backgroundColor={theme.colors.card}
           maxHeight="60%"
+          autoSize={true}
+          sheetPaddingBottom={8}
+          contentStyle={{ paddingBottom: 0 }}
         >
-          <View style={styles.alertIconWrapSuccess}>
-            <Ionicons name="checkmark-circle" size={24} color="#059669" />
-          </View>
-          <Text style={[styles.alertTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(20) }]}>Ready to Publish?</Text>
-          <Text style={[styles.alertSubtitle, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(14) }]}>Your update will be published and visible to all users.</Text>
-          <View style={[styles.alertPreviewInfo, { backgroundColor: theme.colors.surfaceAlt }]}>
-            <View style={styles.alertPreviewRow}>
-              <Ionicons name="text" size={14} color={theme.colors.textMuted} />
-              <Text style={[styles.alertPreviewText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }]}>Title: {title || 'Untitled'}</Text>
+          <View style={styles.publishAlertContent}>
+            <View style={styles.alertIconWrapSuccess}>
+              <Ionicons name="checkmark-circle" size={32} color="#059669" />
             </View>
-            <View style={styles.alertPreviewRow}>
-              <Ionicons name="folder" size={14} color={theme.colors.textMuted} />
-              <Text style={[styles.alertPreviewText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }]}>Category: {category}</Text>
+            <Text style={[styles.alertTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(20) }]}>Ready to Publish?</Text>
+            <Text style={[styles.alertSubtitle, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(14) }]}>Your update will be published and visible to all users.</Text>
+            <View style={[styles.alertPreviewInfo, { backgroundColor: theme.colors.surfaceAlt }]}>
+              <View style={styles.alertPreviewRow}>
+                <Ionicons name="text" size={14} color={theme.colors.textMuted} />
+                <Text style={[styles.alertPreviewText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }]}>Title: {title || 'Untitled'}</Text>
+              </View>
+              <View style={styles.alertPreviewRow}>
+                <Ionicons name="folder" size={14} color={theme.colors.textMuted} />
+                <Text style={[styles.alertPreviewText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }]}>Category: {category}</Text>
+              </View>
             </View>
-          </View>
-          <View style={styles.alertActionsRow}>
-            <TouchableOpacity style={[styles.alertCancelBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]} onPress={() => {
-              Animated.timing(publishAlertSheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-                InteractionManager.runAfterInteractions(() => {
-                  setIsPublishAlertOpen(false);
-                });
-              });
-            }}>
-              <Text style={[styles.alertCancelText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>Review</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.alertSuccessBtn} onPress={confirmPublish}>
-              <Ionicons name="checkmark" size={16} color="#fff" />
-              <Text style={[styles.alertSuccessText, { fontSize: theme.fontSize.scaleSize(14) }]}>Publish Now</Text>
-            </TouchableOpacity>
+            <View style={styles.alertActionsRowSingle}>
+              <TouchableOpacity style={styles.alertSuccessBtn} onPress={confirmPublish}>
+                <Ionicons name="checkmark" size={18} color="#fff" />
+                <Text style={[styles.alertSuccessText, { fontSize: theme.fontSize.scaleSize(14) }]}>Publish Now</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </BottomSheet>
 
@@ -1235,7 +1233,7 @@ const PostUpdate: React.FC = () => {
           }]}
         >
           <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }]}>Description</Text>
+            <Text style={[styles.label, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }]}>Description <Text style={{ color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }}>(Optional)</Text></Text>
             <View style={styles.textAreaWrapper}>
               <TextInput
                 style={[styles.textInput, styles.textArea, styles.textInputElevated, { backgroundColor: 'transparent', borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)', color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}
@@ -2202,7 +2200,7 @@ const styles = StyleSheet.create({
   cancelAlertContent: {
     alignItems: 'center',
     paddingTop: 4,
-    paddingBottom: 8,
+    paddingBottom: 0,
   },
   alertCard: {
     width: '100%',
@@ -2224,7 +2222,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FEF3C7',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
     alignSelf: 'center',
   },
   alertIconWrapSuccess: {
@@ -2234,7 +2232,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#DCFCE7',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   alertTitle: {
     fontSize: 18,
@@ -2245,7 +2243,7 @@ const styles = StyleSheet.create({
   alertSubtitle: {
     fontSize: 13,
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
     lineHeight: 18,
     paddingHorizontal: 8,
   },
@@ -2253,7 +2251,7 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   alertPreviewRow: {
     flexDirection: 'row',
@@ -2265,11 +2263,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     flex: 1,
   },
+  publishAlertContent: {
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    paddingTop: 4,
+    paddingBottom: 0,
+  },
   alertActionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
     gap: 10,
+    marginTop: 2,
+  },
+  alertActionsRowSingle: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    width: '100%',
     marginTop: 4,
   },
   alertCancelBtn: {
@@ -2296,14 +2306,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   alertSuccessBtn: {
-    flex: 1,
+    width: '100%',
     backgroundColor: '#059669',
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 6,
+    gap: 8,
+    minHeight: 48,
   },
   alertSuccessText: {
     fontSize: 14,

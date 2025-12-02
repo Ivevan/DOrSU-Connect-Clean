@@ -203,7 +203,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
   const imageUri = useMemo(() => {
     return primaryEvent?.images?.[0] || primaryEvent?.image || null;
   }, [primaryEvent]);
-  
+
   // Create a unique key for the Image component to force remount when event changes
   // MUST be called before any early returns
   // Use event ID as primary key - this ensures remount when switching between events
@@ -212,6 +212,28 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
     // Use event ID as the key - this will change when we switch events, forcing remount
     const eventId = primaryEvent.id || primaryEvent._id || `${primaryEvent.title}-${primaryEvent.isoDate || primaryEvent.date}`;
     return `event-image-${eventId}`;
+  }, [primaryEvent]);
+
+  // Determine if event is from calendar/CSV (only delete) or a post (edit + delete)
+  // Calendar events have _id (MongoDB), posts have id
+  // Also check source property as fallback
+  const isCalendarOrCSVEvent = useMemo(() => {
+    if (!primaryEvent) return false;
+    
+    // Check source property first
+    const source = primaryEvent.source;
+    if (source === 'calendar' || source === 'CSV Upload' || source === 'csv') {
+      return true;
+    }
+    
+    // Check if it has _id (MongoDB ID) - indicates calendar event
+    if (primaryEvent._id) {
+      return true;
+    }
+    
+    // If it has id but no _id, it's likely a post
+    // Posts have id property, calendar events have _id
+    return false;
   }, [primaryEvent]);
 
   // Early return after all hooks have been called
@@ -428,9 +450,11 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
         )}
 
         {/* Action Buttons - Outside ScrollView */}
-        {(onEdit || onDelete) && (
+        {/* Show only delete for calendar/CSV events, show both edit and delete for posts */}
+        {onDelete && (
           <View style={styles.actionsContainer}>
-            {onEdit && (
+            {/* Show Edit button only for posts (not calendar/CSV events) */}
+            {onEdit && !isCalendarOrCSVEvent && (
               <TouchableOpacity
                 style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
                 onPress={onEdit}
@@ -439,16 +463,21 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
                 <Text style={styles.actionButtonText}>Edit</Text>
               </TouchableOpacity>
             )}
-            {onDelete && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.deleteButton, { backgroundColor: '#DC2626' }]}
-                onPress={handleDeletePress}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="trash-outline" size={14} color="#fff" />
-                <Text style={styles.actionButtonText}>Delete</Text>
-              </TouchableOpacity>
-            )}
+            {/* Show Delete button for all event types */}
+            <TouchableOpacity
+              style={[
+                styles.actionButton, 
+                styles.deleteButton, 
+                { backgroundColor: '#DC2626' },
+                // If only delete button, make it full width
+                isCalendarOrCSVEvent && !onEdit && { flex: 1 }
+              ]}
+              onPress={handleDeletePress}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="trash-outline" size={14} color="#fff" />
+              <Text style={styles.actionButtonText}>Delete</Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>

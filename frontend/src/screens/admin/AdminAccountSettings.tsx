@@ -102,8 +102,18 @@ const AdminAccountSettings = () => {
     }
 
     try {
-      await AsyncStorage.setItem('userName', editedName.trim());
-      setBackendUserName(editedName.trim());
+      const trimmedName = editedName.trim();
+      // Parse name into first and last name
+      const nameParts = trimmedName.split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+      
+      // Save all three formats for compatibility
+      await AsyncStorage.setItem('userName', trimmedName);
+      await AsyncStorage.setItem('userFirstName', firstName);
+      await AsyncStorage.setItem('userLastName', lastName);
+      
+      setBackendUserName(trimmedName);
       setIsEditingName(false);
       Alert.alert('Success', 'Name updated successfully');
     } catch (error) {

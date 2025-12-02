@@ -628,6 +628,15 @@ const CreateAccount = () => {
       
       // Step 2: Send email verification link
       setIsSendingVerification(true);
+      // Start loading animation
+      Animated.loop(
+        Animated.timing(loadingRotation, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        })
+      ).start();
+      
       try {
         await sendEmailVerification(user);
         setEmailVerificationStatus('pending');
@@ -648,10 +657,10 @@ const CreateAccount = () => {
         throw new Error(verificationError.message || 'Failed to send verification email. Please try again.');
       } finally {
         setIsSendingVerification(false);
+        loadingRotation.stopAnimation();
       }
       
       setIsLoading(false);
-      loadingRotation.stopAnimation();
       
       // Start checking verification status
       checkEmailVerificationStatus();
@@ -693,6 +702,15 @@ const CreateAccount = () => {
     setIsSendingVerification(true);
     setErrors(prev => ({ ...prev, general: '' }));
     
+    // Start loading animation
+    Animated.loop(
+      Animated.timing(loadingRotation, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      })
+    ).start();
+    
     try {
       await sendEmailVerification(firebaseUser);
       setEmailVerificationMessage('Verification email resent! Please check your inbox.');
@@ -704,6 +722,7 @@ const CreateAccount = () => {
       }));
     } finally {
       setIsSendingVerification(false);
+      loadingRotation.stopAnimation();
     }
   };
 
@@ -761,6 +780,38 @@ const CreateAccount = () => {
                 {emailVerificationMessage || 'Your email has been confirmed. Please enter your name (optional) to complete your account.'}
               </Text>
             </View>
+          </View>
+        )}
+
+        {emailVerificationStatus === 'pending' && (
+          <View style={styles.verificationInfoBox}>
+            {isSendingVerification ? (
+              <>
+                <Animated.View style={[
+                  styles.loadingSpinner,
+                  {
+                    transform: [{
+                      rotate: loadingRotation.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0deg', '360deg'],
+                      })
+                    }]
+                  }
+                ]}>
+                  <MaterialIcons name="refresh" size={18} color="#2563EB" />
+                </Animated.View>
+                <Text style={styles.verificationInfoText}>Sending verification email...</Text>
+              </>
+            ) : (
+              <>
+                <MaterialIcons name="info" size={18} color="#2563EB" style={{ marginRight: 8 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.verificationInfoText}>
+                    {emailVerificationMessage || 'Verification email sent! Please check your inbox and click the link to verify your email.'}
+                  </Text>
+                </View>
+              </>
+            )}
           </View>
         )}
 

@@ -5,7 +5,7 @@
  * Environment Variables:
  * - EXPO_PUBLIC_API_ENV: 'localhost' or 'render' to switch between environments
  * - EXPO_PUBLIC_API_BASE_URL_LOCAL: Local development URL
- * - EXPO_PUBLIC_API_BASE_URL_RENDER: Production Render URL
+ * - EXPO_PUBLIC_API_BASE_URL_RENDER: Production AWS ECS/Fargate URL
  * 
  * Quick Switch:
  * 1. Edit .env file and change EXPO_PUBLIC_API_ENV value
@@ -19,17 +19,17 @@ const isDevelopment = __DEV__;
 const API_CONFIG = {
   // Local development - adjust this if your backend runs on a different port
   development: {
-    baseUrl: 'https://dorsu-connect.onrender.com',
-    //baseUrl: 'https://dorsu-connect-clean.onrender.com',
+    baseUrl: 'http://localhost:3000',
     // For Android emulator, use: 'http://10.0.2.2:3000'
     // For iOS simulator, use: 'http://localhost:3000'
     // For physical device, use your computer's IP: 'http://192.168.x.x:3000'
   },
   
-  // Production - Render deployment
+  // Production - AWS ECS/Fargate backend (fallback if env var not loaded)
   production: {
-    baseUrl: 'https://dorsu-connect.onrender.com',
-    //baseUrl: 'https://dorsu-connect-clean.onrender.com',
+    baseUrl: 'http://52.221.223.110:3000', // AWS ECS Fargate IP (fallback)
+    // Note: This IP may change when the ECS task restarts
+    // Set EXPO_PUBLIC_API_BASE_URL_RENDER in .env to override
   },
 };
 

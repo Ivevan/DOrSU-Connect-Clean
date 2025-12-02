@@ -25,10 +25,10 @@ const API_CONFIG = {
     // For physical device, use your computer's IP: 'http://192.168.x.x:3000'
   },
   
-  // Production - AWS ECS/Fargate backend (fallback if env var not loaded)
+  // Production - AWS Application Load Balancer (static DNS)
   production: {
-    baseUrl: 'http://52.221.223.110:3000', // AWS ECS Fargate IP (fallback)
-    // Note: This IP may change when the ECS task restarts
+    baseUrl: 'http://dorsu-backend-alb-2059766618.ap-southeast-1.elb.amazonaws.com', // AWS ALB DNS (static)
+    // Note: This DNS name is static and won't change when ECS tasks restart
     // Set EXPO_PUBLIC_API_BASE_URL_RENDER in .env to override
   },
 };

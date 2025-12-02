@@ -192,7 +192,7 @@ const server = http.createServer(async (req, res) => {
   // Allow requests from frontend
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma, If-Modified-Since');
   res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
 
   // Handle preflight OPTIONS request

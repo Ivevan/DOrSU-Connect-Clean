@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Allow cleartext traffic for AWS ECS Fargate backend and development -->
+    <!-- Note: Android doesn't support IP addresses in domain-config, so we use base-config -->
+    <!-- This allows HTTP connections to IP addresses (like AWS ECS Fargate) -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <!-- Allow cleartext for specific domains -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <!-- AWS Application Load Balancer -->
+        <domain includeSubdomains="true">ap-southeast-1.elb.amazonaws.com</domain>
+    </domain-config>
+</network-security-config>

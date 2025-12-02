@@ -121,7 +121,15 @@ const SignIn = () => {
     try {
       // Check for static admin credentials FIRST (before validation)
       const normalizedEmail = email.toLowerCase().trim();
-      const isAdminLogin = (normalizedEmail === 'admin' || normalizedEmail === 'admin@dorsu.edu.ph') && password === '12345';
+
+      // Allow admin password to be updated via settings by reading from AsyncStorage.
+      // Fallback to default '12345' when no custom password has been set.
+      const storedAdminPassword = await AsyncStorage.getItem('adminPassword');
+      const expectedAdminPassword = storedAdminPassword || '12345';
+
+      const isAdminLogin =
+        (normalizedEmail === 'admin' || normalizedEmail === 'admin@dorsu.edu.ph') &&
+        password === expectedAdminPassword;
       
       // Even admin login requires internet connection
       if (isAdminLogin && !isOnline) {

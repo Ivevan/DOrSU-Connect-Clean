@@ -9,7 +9,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Modal, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
@@ -24,7 +24,7 @@ import AdminFileService from '../../services/AdminFileService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
 import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
-import { formatCalendarDate, formatDate } from '../../utils/dateUtils';
+import { formatDate } from '../../utils/dateUtils';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -403,8 +403,9 @@ const AdminCalendar = () => {
       };
 
       // Handle month-only and week-only events (no date range expansion needed)
-      if (event.dateType === 'month_only' || event.dateType === 'week_in_month' || 
-          event.dateType === 'week' || event.dateType === 'month') {
+      const dateType = String(event.dateType || '');
+      if (dateType === 'month_only' || dateType === 'week_in_month' || 
+          dateType === 'week' || dateType === 'month') {
         if (event.year && event.month) {
           incrementMonth(event.year, event.month);
         }
@@ -729,9 +730,11 @@ const AdminCalendar = () => {
       
       // Merge with existing events (avoid duplicates)
       setCalendarEvents(prevEvents => {
-        const existingIds = new Set(prevEvents.map(e => e._id || e.id || `${e.isoDate}-${e.title}`));
+        const existingIds = new Set(
+          prevEvents.map(e => (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`)
+        );
         const newEvents = events.filter(e => {
-          const id = e._id || e.id || `${e.isoDate}-${e.title}`;
+          const id = (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`;
           return !existingIds.has(id);
         });
         return [...prevEvents, ...newEvents];

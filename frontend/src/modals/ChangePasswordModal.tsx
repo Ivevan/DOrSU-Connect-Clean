@@ -3,6 +3,7 @@ import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, Animated, A
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../contexts/ThemeContext';
 import ProfileService from '../services/ProfileService';
 
@@ -83,6 +84,41 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
     setError(null);
     setIsSubmitting(true);
     try {
+      // Special handling for static admin sessions that use a local token
+      const [isAdmin, storedToken] = await Promise.all([
+        AsyncStorage.getItem('isAdmin'),
+        AsyncStorage.getItem('userToken'),
+      ]);
+
+      if (isAdmin === 'true' && storedToken && storedToken.startsWith('admin_')) {
+        // Admin account uses a locally stored password (no backend user record).
+        const storedAdminPassword = await AsyncStorage.getItem('adminPassword');
+        const effectiveCurrentPassword = storedAdminPassword || '12345';
+
+        if (currentPassword !== effectiveCurrentPassword) {
+          setError('Current password is incorrect');
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (newPassword === effectiveCurrentPassword) {
+          setError('New password must be different from the current password');
+          setIsSubmitting(false);
+          return;
+        }
+
+        await AsyncStorage.setItem('adminPassword', newPassword);
+        setSuccess('Password updated successfully');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        onSuccess?.();
+        setIsSubmitting(false);
+        setTimeout(() => {
+          onClose();
+        }, 600);
+        return;
+      }
+
+      // Regular users: delegate to backend profile service
       await ProfileService.changePassword(currentPassword, newPassword);
       setSuccess('Password updated successfully');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

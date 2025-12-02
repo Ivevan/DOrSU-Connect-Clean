@@ -23,11 +23,6 @@ const EmailSettings = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   const floatAnim1 = useRef(new Animated.Value(0)).current;
-  const cloudAnim1 = useRef(new Animated.Value(0)).current;
-  const cloudAnim2 = useRef(new Animated.Value(0)).current;
-  const lightSpot1 = useRef(new Animated.Value(0)).current;
-  const lightSpot2 = useRef(new Animated.Value(0)).current;
-  const lightSpot3 = useRef(new Animated.Value(0)).current;
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
@@ -82,96 +77,25 @@ const EmailSettings = () => {
     return 'No email';
   }, [currentUser, backendUserEmail]);
 
+  // Animate floating background orb on mount
   useEffect(() => {
-    const animations = [
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(floatAnim1, {
-            toValue: 1,
-            duration: 8000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(floatAnim1, {
-            toValue: 0,
-            duration: 8000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(cloudAnim1, {
-            toValue: 1,
-            duration: 15000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cloudAnim1, {
-            toValue: 0,
-            duration: 15000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(cloudAnim2, {
-            toValue: 1,
-            duration: 20000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(cloudAnim2, {
-            toValue: 0,
-            duration: 20000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot1, {
-            toValue: 1,
-            duration: 12000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot1, {
-            toValue: 0,
-            duration: 12000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot2, {
-            toValue: 1,
-            duration: 18000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot2, {
-            toValue: 0,
-            duration: 18000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(lightSpot3, {
-            toValue: 1,
-            duration: 14000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(lightSpot3, {
-            toValue: 0,
-            duration: 14000,
-            useNativeDriver: true,
-          }),
-        ])
-      ),
-    ];
-
-    animations.forEach(anim => anim.start());
-  }, []);
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim1, {
+          toValue: 1,
+          duration: 8000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim1, {
+          toValue: 0,
+          duration: 8000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [floatAnim1]);
 
   return (
     <View style={styles.container}>
@@ -199,79 +123,52 @@ const EmailSettings = () => {
         style={styles.backgroundGradient}
       />
 
-      {/* Animated Floating Background Orbs */}
-      <View style={styles.floatingBgContainer} pointerEvents="none">
+      {/* Animated Floating Background Orb (Copilot-style) */}
+      <View style={styles.floatingBgContainer} pointerEvents="none" collapsable={false}>
+        {/* Orb 1 - Soft Blue Glow (Center area) */}
         <Animated.View
           style={[
-            styles.cloudWrapper,
+            styles.floatingOrbWrapper,
             {
+              top: '35%',
+              left: '50%',
+              marginLeft: -250,
               transform: [
                 {
-                  translateY: cloudAnim1.interpolate({
+                  translateX: floatAnim1.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [0, -30],
+                    outputRange: [-30, 30],
+                  }),
+                },
+                {
+                  translateY: floatAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-20, 20],
+                  }),
+                },
+                {
+                  scale: floatAnim1.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.05, 1],
                   }),
                 },
               ],
             },
           ]}
         >
-          <View style={styles.cloudPatch1}>
+          <View style={styles.floatingOrb1}>
             <LinearGradient
-              colors={[t.colors.orbColors.orange4, 'transparent']}
+              colors={[t.colors.orbColors.orange1, t.colors.orbColors.orange2, t.colors.orbColors.orange3]}
+              style={StyleSheet.absoluteFillObject}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={{ flex: 1 }}
+            />
+            <BlurView
+              intensity={Platform.OS === 'ios' ? 60 : 45}
+              tint="default"
+              style={StyleSheet.absoluteFillObject}
             />
           </View>
-        </Animated.View>
-
-        <Animated.View
-          style={[
-            styles.cloudWrapper,
-            {
-              transform: [
-                {
-                  translateY: cloudAnim2.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 40],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.cloudPatch2}>
-            <LinearGradient
-              colors={[t.colors.orbColors.orange2, 'transparent']}
-              start={{ x: 1, y: 0 }}
-              end={{ x: 0, y: 1 }}
-              style={{ flex: 1 }}
-            />
-          </View>
-        </Animated.View>
-
-        <Animated.View
-          style={[
-            styles.lightSpot1,
-            {
-              transform: [
-                {
-                  scale: lightSpot1.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.8, 1.2],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <LinearGradient
-            colors={[t.colors.orbColors.orange5, 'transparent']}
-            start={{ x: 0.5, y: 0 }}
-            end={{ x: 0.5, y: 1 }}
-            style={{ flex: 1 }}
-          />
         </Animated.View>
       </View>
 
@@ -401,36 +298,21 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   floatingBgContainer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+    overflow: 'hidden',
+  },
+  floatingOrbWrapper: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    overflow: 'hidden',
-    zIndex: 0,
-  },
-  cloudWrapper: {
-    position: 'absolute',
-  },
-  cloudPatch1: {
-    width: 350,
-    height: 350,
-    borderRadius: 175,
-    opacity: 0.25,
+    width: 500,
+    height: 500,
+    borderRadius: 250,
     overflow: 'hidden',
   },
-  cloudPatch2: {
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    opacity: 0.22,
-    overflow: 'hidden',
-  },
-  lightSpot1: {
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    opacity: 0.2,
+  floatingOrb1: {
+    width: 500,
+    height: 500,
+    borderRadius: 250,
     overflow: 'hidden',
   },
 });

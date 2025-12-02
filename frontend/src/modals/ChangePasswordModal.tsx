@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity, TextInput, Animated, ActivityIndicator, Platform, KeyboardAvoidingView, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../contexts/ThemeContext';
 import ProfileService from '../services/ProfileService';
@@ -102,25 +100,17 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <LinearGradient
-        colors={[
-          isDarkMode ? 'rgba(0, 0, 0, 0.55)' : 'rgba(0, 0, 0, 0.4)',
-          isDarkMode ? 'rgba(0, 0, 0, 0.65)' : 'rgba(0, 0, 0, 0.5)',
-        ]}
-        style={styles.modalOverlay}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      >
+      <View style={styles.modalOverlay}>
         <TouchableOpacity style={styles.overlayTouch} activeOpacity={1} onPress={onClose} />
-        <Animated.View style={[styles.sheetContainer, { transform: [{ translateY: sheetY }] }]}>
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 60 : 50}
-            tint={isDarkMode ? 'dark' : 'light'}
-            style={styles.blurContainer}
-          >
+        <Animated.View style={[styles.sheetContainer, { 
+          transform: [{ translateY: sheetY }],
+          backgroundColor: t.colors.card,
+          maxHeight: '90%',
+        }]}>
             <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
               style={styles.sheet}
+              keyboardVerticalOffset={0}
             >
               <ScrollView
                 contentContainerStyle={[
@@ -130,6 +120,8 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
                   },
                 ]}
                 keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                bounces={false}
               >
                 <View style={styles.sheetHandle} />
                 <View style={styles.iconContainer}>
@@ -280,14 +272,13 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
                     )}
                   </TouchableOpacity>
                 </View>
-              </ScrollView>
-            </KeyboardAvoidingView>
-          </BlurView>
-        </Animated.View>
-      </LinearGradient>
-    </Modal>
-  );
-};
+               </ScrollView>
+             </KeyboardAvoidingView>
+         </Animated.View>
+       </View>
+     </Modal>
+   );
+ };
 
 const styles = StyleSheet.create({
   modalOverlay: {
@@ -297,6 +288,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     justifyContent: 'flex-end',
+    backgroundColor: 'transparent',
   },
   overlayTouch: {
     position: 'absolute',
@@ -306,23 +298,23 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   sheetContainer: {
-    overflow: 'hidden',
-  },
-  blurContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: 'hidden',
+    width: '100%',
   },
   sheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderTopWidth: 1,
-    borderColor: 'transparent',
-    backgroundColor: 'transparent',
+    width: '100%',
+    flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 24,
     paddingTop: 16,
+    flexGrow: 1,
   },
   sheetHandle: {
     alignSelf: 'center',

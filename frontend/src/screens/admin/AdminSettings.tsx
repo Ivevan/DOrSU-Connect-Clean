@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
 import * as DocumentPicker from 'expo-document-picker';
@@ -153,23 +153,33 @@ const AdminSettings = () => {
   const handleLicensesPress = useCallback(() => navigation.navigate('Licenses'), [navigation]);
 
   // Load admin profile data on mount and screen focus
-  useEffect(() => {
-    const loadAdminData = async () => {
-      try {
-        const userPhoto = await AsyncStorage.getItem('userPhoto');
-        const firstName = await AsyncStorage.getItem('userFirstName');
-        const lastName = await AsyncStorage.getItem('userLastName');
-        const email = await AsyncStorage.getItem('userEmail');
-        setAdminUserPhoto(userPhoto);
-        setAdminFirstName(firstName);
-        setAdminLastName(lastName);
-        setAdminEmail(email);
-      } catch (error) {
-        console.error('Failed to load admin data:', error);
-      }
-    };
-    loadAdminData();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      const loadAdminData = async () => {
+        try {
+          const userPhoto = await AsyncStorage.getItem('userPhoto');
+          const firstName = await AsyncStorage.getItem('userFirstName');
+          const lastName = await AsyncStorage.getItem('userLastName');
+          const userName = await AsyncStorage.getItem('userName'); // Fallback for full name
+          const email = await AsyncStorage.getItem('userEmail');
+          setAdminUserPhoto(userPhoto);
+          setAdminFirstName(firstName);
+          setAdminLastName(lastName);
+          setAdminEmail(email);
+          
+          // If firstName/lastName are not set but userName is, parse it
+          if (!firstName && !lastName && userName) {
+            const nameParts = userName.split(' ');
+            setAdminFirstName(nameParts[0] || '');
+            setAdminLastName(nameParts.slice(1).join(' ') || '');
+          }
+        } catch (error) {
+          console.error('Failed to load admin data:', error);
+        }
+      };
+      loadAdminData();
+    }, [])
+  );
 
   // Handle profile picture upload
   const handleProfilePictureUpload = useCallback(async () => {
@@ -355,20 +365,17 @@ const AdminSettings = () => {
         marginLeft: insets.left,
         marginRight: insets.right,
       }]}>
-        <View style={styles.headerLeft} pointerEvents="box-none">
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            activeOpacity={0.7}
-            accessibilityLabel="Go back"
-            accessibilityRole="button"
-          >
-            <Ionicons name="chevron-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          activeOpacity={0.7}
+          accessibilityLabel="Go back"
+          accessibilityRole="button"
+        >
+          <Ionicons name="chevron-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+        </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]} pointerEvents="none">Settings</Text>
-        <View style={styles.headerRight} />
       </View>
 
       <ScrollView
@@ -601,16 +608,12 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     paddingHorizontal: 16,
     paddingVertical: 14,
     backgroundColor: 'transparent',
     zIndex: 10,
     // Ensure header blends with background - matches AdminCalendar
-  },
-  headerLeft: {
-    width: 44,
-    zIndex: 11,
   },
   backButton: {
     width: 44,
@@ -624,14 +627,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     letterSpacing: -0.3,
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    textAlign: 'center',
-  },
-  headerRight: {
-    width: 44,
-    alignItems: 'flex-end',
+    marginLeft: 8,
   },
   scrollView: {
     flex: 1,

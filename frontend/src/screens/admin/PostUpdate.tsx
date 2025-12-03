@@ -22,6 +22,7 @@ import { BlurView } from 'expo-blur';
 import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import AdminDataService from '../../services/AdminDataService';
+import NotificationService from '../../services/NotificationService';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as DocumentPicker from 'expo-document-picker';
@@ -640,6 +641,22 @@ const PostUpdate: React.FC = () => {
       .then(async (result) => {
         console.log('✅ Post operation successful', { result: !!result });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        
+        // Trigger notification check for new posts (only for new posts, not updates)
+        if (!editingPostId && result?.id) {
+          try {
+            // Wait a bit for backend to process, then send notification for this specific post
+            setTimeout(() => {
+              NotificationService.notifyNewPost(result.id).catch((err: any) => {
+                console.warn('Failed to send notification after post creation:', err);
+                // Fallback to general check
+                NotificationService.checkNewPosts().catch(() => {});
+              });
+            }, 1500);
+          } catch (error) {
+            console.warn('Could not trigger notifications:', error);
+          }
+        }
         
         // Add a small delay to ensure backend has fully processed the update
         await new Promise(resolve => setTimeout(resolve, 300));

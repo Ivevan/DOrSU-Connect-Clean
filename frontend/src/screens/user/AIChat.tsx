@@ -1472,64 +1472,6 @@ const AIChat = () => {
         paddingRight: 16 + insets.right,
         paddingBottom: 12 + insets.bottom,
       }]}>
-        {/* Student/Faculty Toggle - Perplexity style in input bar */}
-        <View style={styles.userTypeToggleContainer}>
-          <View 
-            style={[styles.userTypeToggle, { backgroundColor: selectedUserType === 'student' ? t.colors.accent : (colorTheme === 'dorsu' ? '#FBBF24' : '#6B7280') }]}
-            onLayout={(e) => {
-              segmentWidth.current = e.nativeEvent.layout.width;
-              const targetX = selectedUserType === 'faculty' 
-                ? segmentWidth.current / 2 - 2 
-                : 2;
-              segmentAnim.setValue(targetX);
-            }}
-          >
-            <Animated.View
-              style={[
-                styles.userTypeToggleSelector,
-                {
-                  transform: [
-                    {
-                      translateX: segmentAnim,
-                    },
-                  ],
-                }
-              ]}
-            />
-            <View style={styles.userTypeToggleOptions}>
-              <TouchableOpacity
-                style={styles.userTypeToggleOption}
-                onPress={() => {
-                  setSelectedUserType('student');
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={[
-                  styles.userTypeToggleText,
-                  { color: selectedUserType === 'student' ? '#10B981' : '#FFFFFF', fontSize: t.fontSize.scaleSize(12) }
-                ]}>
-                  Student
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.userTypeToggleOption}
-                onPress={() => {
-                  setSelectedUserType('faculty');
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={[
-                  styles.userTypeToggleText,
-                  { color: selectedUserType === 'faculty' ? t.colors.accent : '#FFFFFF', fontSize: t.fontSize.scaleSize(12) }
-                ]}>
-                  Faculty
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
 
         {/* Editing Message Indicator */}
         {isEditing && (

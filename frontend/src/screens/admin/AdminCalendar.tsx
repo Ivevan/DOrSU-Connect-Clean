@@ -16,13 +16,14 @@ import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import AdminSidebar from '../../components/navigation/AdminSidebar';
 import { theme } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
+import { useUpdates } from '../../contexts/UpdatesContext';
 import DeleteAllModal from '../../modals/DeleteAllModal';
 import MonthPickerModal from '../../modals/MonthPickerModal';
 import ViewEventModal from '../../modals/ViewEventModal';
 import AdminDataService from '../../services/AdminDataService';
 import AdminFileService from '../../services/AdminFileService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
-import CalendarService, { CalendarEvent } from '../../services/CalendarService';
+import CalendarService from '../../services/CalendarService';
 import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
 import { formatDate } from '../../utils/dateUtils';
 
@@ -302,9 +303,8 @@ const AdminCalendar = () => {
   }, [floatAnim1]);
 
 
-  // Data from AdminDataService
-  const [posts, setPosts] = useState<any[]>([]);
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  // Shared posts & calendarEvents via UpdatesContext (kept in memory across screens)
+  const { posts, setPosts, calendarEvents, setCalendarEvents } = useUpdates();
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
   const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
   const [isUploadingCSV, setIsUploadingCSV] = useState<boolean>(false);
@@ -526,70 +526,70 @@ const AdminCalendar = () => {
     }
   }, []);
 
-  // OPTIMIZED: Load calendar events and posts from backend
+  // OPTIMIZED: Load calendar events and posts from backend (run once on mount)
   // Only load current month ± 1 month for fast initial load (like AdminDashboard)
-  // Load more data on-demand when user navigates to different months
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      const loadData = async () => {
-        try {
-          setIsLoadingEvents(true);
-          setIsLoadingPosts(true);
-          
-          // OPTIMIZED: Only load current month ± 1 month for fast loading (like AdminDashboard)
-          // This is much faster than loading 5 years!
-          const now = new Date();
-          const currentYear = now.getFullYear();
-          const currentMonth = now.getMonth();
-          
-          // Load current month ± 1 month for smooth navigation
-          const startDate = new Date(currentYear, currentMonth - 1, 1);
-          const endDate = new Date(currentYear, currentMonth + 2, 0, 23, 59, 59); // Last day of next month
-          
-          console.log(`📅 Fast load: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()} (3 months)`);
-          
-          const [events, postsData] = await Promise.all([
-            CalendarService.getEvents({
-              startDate: startDate.toISOString(),
-              endDate: endDate.toISOString(),
-              limit: 500, // Reduced limit for 3 months
-            }),
-            AdminDataService.getPosts(),
-          ]);
-          
-          console.log(`✅ Fast load complete: ${events.length} events, ${postsData.length} posts`);
-          
-          if (!cancelled) {
-            setCalendarEvents(Array.isArray(events) ? events : []);
-            setPosts(Array.isArray(postsData) ? postsData : []);
-            
-            // Mark loaded months in cache (for smart navigation)
-            for (let i = -1; i <= 1; i++) {
-              const checkMonth = new Date(currentYear, currentMonth + i, 1);
-              loadedMonthsRef.current.add(`${checkMonth.getFullYear()}-${checkMonth.getMonth()}`);
-            }
-          }
-        } catch (error) {
-          console.error('Failed to load calendar data:', error);
-          if (!cancelled) {
-            setCalendarEvents([]);
-            setPosts([]);
-          }
-        } finally {
-          if (!cancelled) {
-            setIsLoadingEvents(false);
-            setIsLoadingPosts(false);
+  // Further sync is done manually via pull-to-refresh
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadData = async () => {
+      try {
+        setIsLoadingEvents(true);
+        setIsLoadingPosts(true);
+
+        // OPTIMIZED: Only load current month ± 1 month for fast loading (like AdminDashboard)
+        // This is much faster than loading 5 years!
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+
+        // Load current month ± 1 month for smooth navigation
+        const startDate = new Date(currentYear, currentMonth - 1, 1);
+        const endDate = new Date(currentYear, currentMonth + 2, 0, 23, 59, 59); // Last day of next month
+
+        console.log(`📅 Fast load: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()} (3 months)`);
+
+        const [events, postsData] = await Promise.all([
+          CalendarService.getEvents({
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+            limit: 500, // Reduced limit for 3 months
+          }),
+          AdminDataService.getPosts(),
+        ]);
+
+        console.log(`✅ Fast load complete: ${events.length} events, ${postsData.length} posts`);
+
+        if (!cancelled) {
+          setCalendarEvents(Array.isArray(events) ? events : []);
+          setPosts(Array.isArray(postsData) ? postsData : []);
+
+          // Mark loaded months in cache (for smart navigation)
+          for (let i = -1; i <= 1; i++) {
+            const checkMonth = new Date(currentYear, currentMonth + i, 1);
+            loadedMonthsRef.current.add(`${checkMonth.getFullYear()}-${checkMonth.getMonth()}`);
           }
         }
-      };
-      
-      loadData();
-      return () => {
-        cancelled = true;
-      };
-    }, [])
-  );
+      } catch (error) {
+        console.error('Failed to load calendar data:', error);
+        if (!cancelled) {
+          setCalendarEvents([]);
+          setPosts([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingEvents(false);
+          setIsLoadingPosts(false);
+        }
+      }
+    };
+
+    loadData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Entrance animation disabled for debugging
 

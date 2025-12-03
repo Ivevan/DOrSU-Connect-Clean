@@ -6,8 +6,8 @@ import utc from 'dayjs/plugin/utc';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { memo, useCallback, useMemo, useRef, useState } from 'react';
-import { Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Image, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
@@ -19,6 +19,11 @@ import ViewEventModal from '../../modals/ViewEventModal';
 import AdminDataService from '../../services/AdminDataService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
 import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
+import { useUpdates } from '../../contexts/UpdatesContext';
+
+// Session-scoped flag so the calendar only does a full initial load once per app session.
+// After that, data is updated via pull-to-refresh and month navigation, not on every mount.
+let hasLoadedUserCalendarOnce = false;
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -123,9 +128,9 @@ const CalendarScreen = () => {
   };
 
   // Data from AdminDataService (for backward compatibility) and CalendarService
-  const [posts, setPosts] = useState<any[]>([]);
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const { posts, setPosts, calendarEvents, setCalendarEvents } = useUpdates();
   const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
 
   // Track last calendar fetch time
@@ -249,70 +254,119 @@ const CalendarScreen = () => {
     }
   }, [hasEventsForMonth]);
 
-  // OPTIMIZED: Load calendar events and posts from backend
-  // Only load current month ± 1 month for fast initial load (like AdminCalendar)
-  // Load more data on-demand when user navigates to different months
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      const loadData = async () => {
-        try {
-          setIsLoadingEvents(true);
-          setIsLoadingPosts(true);
-          
-          // OPTIMIZED: Only load current month ± 1 month for fast loading (like AdminCalendar)
-          // This is much faster than loading 10 years!
-          const now = new Date();
-          const currentYear = now.getFullYear();
-          const currentMonth = now.getMonth();
-          
-          // Load current month ± 1 month for smooth navigation
-          const startDate = new Date(currentYear, currentMonth - 1, 1);
-          const endDate = new Date(currentYear, currentMonth + 2, 0, 23, 59, 59); // Last day of next month
-          
-          console.log(`📅 Fast load: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()} (3 months)`);
-          
-          const [events, postsData] = await Promise.all([
-            CalendarService.getEvents({
-              startDate: startDate.toISOString(),
-              endDate: endDate.toISOString(),
-              limit: 500, // Reduced limit for 3 months
-            }),
-            AdminDataService.getPosts(),
-          ]);
-          
-          console.log(`✅ Fast load complete: ${events.length} events, ${postsData.length} posts`);
-          
-          if (!cancelled) {
-            setCalendarEvents(Array.isArray(events) ? events : []);
-            setPosts(Array.isArray(postsData) ? postsData : []);
-            
-            // Mark loaded months in cache (for smart navigation)
-            for (let i = -1; i <= 1; i++) {
-              const checkMonth = new Date(currentYear, currentMonth + i, 1);
-              loadedMonthsRef.current.add(`${checkMonth.getFullYear()}-${checkMonth.getMonth()}`);
-            }
-          }
-        } catch (error) {
-          console.error('Failed to load calendar data:', error);
-          if (!cancelled) {
-            setCalendarEvents([]);
-            setPosts([]);
-          }
-        } finally {
-          if (!cancelled) {
-            setIsLoadingEvents(false);
-            setIsLoadingPosts(false);
-          }
+  // Load calendar events and posts from backend (only once per app session; manual refresh via pull-to-refresh)
+  // Initial load: current month only for fastest possible startup, plus staggered prefetch of neighbors.
+  useEffect(() => {
+    // If we've already done the initial session load, don't do it again on remount (e.g., web screen switches)
+    if (hasLoadedUserCalendarOnce) {
+      return;
+    }
+    hasLoadedUserCalendarOnce = true;
+
+    let cancelled = false;
+    let t1: ReturnType<typeof setTimeout> | undefined;
+    let t2: ReturnType<typeof setTimeout> | undefined;
+
+    const loadData = async () => {
+      try {
+        setIsLoadingEvents(true);
+        setIsLoadingPosts(true);
+
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+
+        // Load ONLY the current month for fastest initial render
+        const startDate = new Date(currentYear, currentMonth, 1);
+        const endDate = new Date(currentYear, currentMonth + 1, 0, 23, 59, 59);
+
+        console.log(`📅 Initial load (user calendar): ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()} (current month only)`);
+
+        const [events, postsData] = await Promise.all([
+          CalendarService.getEvents({
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+            limit: 200,
+          }),
+          AdminDataService.getPosts(),
+        ]);
+
+        console.log(`✅ Initial load complete (user calendar): ${events.length} events, ${postsData.length} posts`);
+
+        if (!cancelled) {
+          setCalendarEvents(Array.isArray(events) ? events : []);
+          setPosts(Array.isArray(postsData) ? postsData : []);
+
+          // Mark current month as loaded in cache
+          const currentKey = `${currentYear}-${currentMonth}`;
+          loadedMonthsRef.current.add(currentKey);
+
+          // Background prefetch: load adjacent months one-by-one with a delay to keep UI fast
+          const nextMonth = new Date(currentYear, currentMonth + 1, 1);
+          const prevMonth = new Date(currentYear, currentMonth - 1, 1);
+
+          // Prefetch next month after 1s
+          t1 = setTimeout(() => {
+            refreshCalendarEvents(false, undefined, nextMonth);
+          }, 1000);
+
+          // Prefetch previous month after 2s
+          t2 = setTimeout(() => {
+            refreshCalendarEvents(false, undefined, prevMonth);
+          }, 2000);
         }
-      };
-      
-      loadData();
-      return () => {
-        cancelled = true;
-      };
-    }, [])
-  );
+      } catch (error) {
+        console.error('Failed to load calendar data:', error);
+        if (!cancelled) {
+          setCalendarEvents([]);
+          setPosts([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingEvents(false);
+          setIsLoadingPosts(false);
+        }
+      }
+    };
+
+    loadData();
+
+    return () => {
+      cancelled = true;
+      if (t1) clearTimeout(t1);
+      if (t2) clearTimeout(t2);
+    };
+  }, [refreshCalendarEvents]);
+
+  // Pull-to-refresh handler for user calendar (reload current month + immediate neighbors)
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+
+      const startDate = new Date(currentYear, currentMonth - 1, 1);
+      const endDate = new Date(currentYear, currentMonth + 2, 0, 23, 59, 59);
+
+      const [events, postsData] = await Promise.all([
+        CalendarService.getEvents({
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+          limit: 500,
+        }),
+        AdminDataService.getPosts(),
+      ]);
+
+      setCalendarEvents(Array.isArray(events) ? events : []);
+      setPosts(Array.isArray(postsData) ? postsData : []);
+    } catch (error) {
+      console.error('Refresh error (user calendar):', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
 
   // Get cell background color based on event types
   const getCellColor = (events: any[]): string | null => {
@@ -1198,6 +1252,14 @@ const CalendarScreen = () => {
         keyboardShouldPersistTaps="handled"
         bounces={true}
         scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={t.colors.accent}
+            colors={[t.colors.accent]}
+          />
+        }
       >
         <View>
           <BlurView

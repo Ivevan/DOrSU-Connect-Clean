@@ -7,33 +7,34 @@ import { ActivityIndicator, Platform, View } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 
+import { UpdatesProvider } from '../contexts/UpdatesContext';
 import UserHelpCenterScreen from '../screens/about/HelpCenterScreen';
 import LicensesScreen from '../screens/about/LicensesScreen';
 import PrivacyPolicyScreen from '../screens/about/PrivacyPolicyScreen';
 import TermsOfUseScreen from '../screens/about/TermsOfUseScreen';
+import AdminAbout from '../screens/admin/AdminAbout';
+import AdminAccountSettings from '../screens/admin/AdminAccountSettings';
 import AdminAIChat from '../screens/admin/AdminAIChat';
 import AdminCalendar from '../screens/admin/AdminCalendar';
-import CalendarHelpScreen from '../screens/admin/CalendarHelpScreen';
 import AdminDashboard from '../screens/admin/AdminDashboard';
-import AdminSettings from '../screens/admin/AdminSettings';
-import AdminAccountSettings from '../screens/admin/AdminAccountSettings';
-import AdminGeneralSettings from '../screens/admin/AdminGeneralSettings';
 import AdminEmailSettings from '../screens/admin/AdminEmailSettings';
-import AdminAbout from '../screens/admin/AdminAbout';
+import AdminGeneralSettings from '../screens/admin/AdminGeneralSettings';
+import AdminSettings from '../screens/admin/AdminSettings';
+import CalendarHelpScreen from '../screens/admin/CalendarHelpScreen';
 import ManagePosts from '../screens/admin/ManagePosts';
 import PostUpdate from '../screens/admin/PostUpdate';
 import CreateAccount from '../screens/auth/CreateAccount';
 import GetStarted from '../screens/auth/GetStarted';
 import SignIn from '../screens/auth/SignIn';
 import SplashScreen from '../screens/auth/SplashScreen';
+import About from '../screens/user/About';
+import AccountSettings from '../screens/user/AccountSettings';
 import AIChat from '../screens/user/AIChat';
 import Calendar from '../screens/user/Calendar';
+import EmailSettings from '../screens/user/EmailSettings';
+import GeneralSettings from '../screens/user/GeneralSettings';
 import SchoolUpdates from '../screens/user/SchoolUpdates';
 import UserSettings from '../screens/user/UserSettings';
-import AccountSettings from '../screens/user/AccountSettings';
-import GeneralSettings from '../screens/user/GeneralSettings';
-import EmailSettings from '../screens/user/EmailSettings';
-import About from '../screens/user/About';
 
 const Stack = createNativeStackNavigator();
 
@@ -49,7 +50,9 @@ const useScreenOptions = () => {
     contentStyle: {
       backgroundColor: 'transparent',
     },
-    detachInactiveScreens: true,
+    // Keep screens mounted between navigations so heavy screens like SchoolUpdates
+    // don't unmount/remount (which feels like a reload) on every tab switch.
+    detachInactiveScreens: false,
     freezeOnBlur: false,
     // Remove runtime nav bar color to avoid live switching; rely on OS/app.json on minimize/resume
   }), [theme]);
@@ -321,6 +324,7 @@ const AppNavigator = () => {
   }
 
   return (
+    <UpdatesProvider>
     <NavigationContainer 
       ref={navigationRef}
       onReady={() => {
@@ -518,6 +522,7 @@ const AppNavigator = () => {
         <Stack.Screen name="Licenses" component={LicensesScreen} />
       </Stack.Navigator>
     </NavigationContainer>
+    </UpdatesProvider>
   );
 };
 

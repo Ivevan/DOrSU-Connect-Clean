@@ -14,10 +14,16 @@ import ViewEventModal from '../../modals/ViewEventModal';
 import AdminDataService from '../../services/AdminDataService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
 import NotificationService from '../../services/NotificationService';
+import { useUpdates } from '../../contexts/UpdatesContext';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import { categoryToColors } from '../../utils/calendarUtils';
 import { formatDate } from '../../utils/dateUtils';
 import NotificationModal from '../../modals/NotificationModal';
+
+// Session-scoped flags to avoid re-loading on every mount (especially on web)
+// Initial data will load once per app session; further loads are manual (pull-to-refresh)
+let hasLoadedSchoolUpdatesOnce = false;
+let hasPrefetchedSchoolUpdatesCalendarWide = false;
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -414,13 +420,13 @@ const SchoolUpdates = () => {
   };
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [searchQuery, setSearchQuery] = useState('');
-  const [updates, setUpdates] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { posts: updates, setPosts: setUpdates, calendarEvents, setCalendarEvents } = useUpdates();
+  // Initialize loading state based on whether shared data already exists
+  const [isLoading, setIsLoading] = useState(() => updates.length === 0);
   const [error, setError] = useState<string | null>(null);
   const [timeFilter, setTimeFilter] = useState<'all' | 'upcomingmonth' | 'lastmonth' | 'thismonth'>('thismonth');
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
-  const [isLoadingCalendarEvents, setIsLoadingCalendarEvents] = useState(false);
+  const [isLoadingCalendarEvents, setIsLoadingCalendarEvents] = useState(() => calendarEvents.length === 0);
   const [calendarEventsError, setCalendarEventsError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -603,16 +609,7 @@ const SchoolUpdates = () => {
       // Fetch recent updates (posts/announcements) - use cache if available
       const posts = await AdminDataService.getPosts();
       
-      console.log('📥 Fetched posts from API:', posts.length);
-      if (posts.length > 0) {
-        console.log('📝 Sample post:', {
-          id: posts[0].id,
-          title: posts[0].title,
-          date: posts[0].date,
-          isoDate: posts[0].isoDate,
-          category: posts[0].category
-        });
-      }
+      // Debug logging removed for performance in development (large payloads can cause noticeable lag)
       
       const postsData = posts.map(post => {
         // Ensure images array is properly set
@@ -657,18 +654,6 @@ const SchoolUpdates = () => {
         return dateA - dateB;
       });
       
-      console.log('✅ Processed updates:', {
-        total: uniqueUpdates.length,
-        withDates: uniqueUpdates.filter(u => u.isoDate).length,
-        withoutDates: uniqueUpdates.filter(u => !u.isoDate).length,
-        sample: uniqueUpdates.length > 0 ? {
-          id: uniqueUpdates[0].id,
-          title: uniqueUpdates[0].title,
-          isoDate: uniqueUpdates[0].isoDate,
-          tag: uniqueUpdates[0].tag
-        } : null
-      });
-      
       setUpdates(uniqueUpdates);
     } catch (err: any) {
       console.error('❌ Error fetching updates:', err);
@@ -678,11 +663,6 @@ const SchoolUpdates = () => {
       setIsLoading(false);
       isFetching.current = false;
     }
-  }, []);
-
-  // Fetch updates on mount
-  useEffect(() => {
-    fetchUpdates(true);
   }, []);
 
   // Request notification permissions and check notifications on mount
@@ -702,25 +682,7 @@ const SchoolUpdates = () => {
     setupNotifications();
   }, []); // Empty deps - only run on mount
 
-  // Refresh updates when screen comes into focus (always refresh to show new posts)
-  // Note: This is defined before refreshCalendarEvents, so we'll refresh calendar events separately
-  useFocusEffect(
-    useCallback(() => {
-      // Add a delay to ensure backend has processed any updates
-      // This is especially important when coming back from PostUpdate screen
-      // PostUpdate waits 300ms after publishing before navigating, so we wait longer to ensure backend processing
-      const refreshTimer = setTimeout(() => {
-        // Always refresh when screen comes into focus to ensure new posts appear immediately
-        // Force refresh (bypass cache) to get the latest data including newly created posts
-        // The fetchUpdates function has its own cooldown to prevent too many requests
-        fetchUpdates(true); // Force refresh to bypass cache and get latest posts
-      }, 800); // Delay to ensure backend has fully processed updates from PostUpdate screen
-      
-      return () => {
-        clearTimeout(refreshTimer);
-      };
-    }, [fetchUpdates])
-  );
+  // Note: Further updates are fetched manually via pull-to-refresh
 
   const filtered = useMemo(() => {
     const result = updates.filter(u => {
@@ -734,19 +696,6 @@ const SchoolUpdates = () => {
       
       return titleMatch || descriptionMatch || tagMatch;
     });
-    if (__DEV__) {
-      console.log('🔍 Filtered updates:', { 
-        total: updates.length, 
-        query: searchQuery.trim(), 
-        filtered: result.length,
-        sampleUpdate: updates.length > 0 ? {
-          id: updates[0].id,
-          title: updates[0].title,
-          isoDate: updates[0].isoDate,
-          hasDescription: !!updates[0].description
-        } : null
-      });
-    }
     return result;
   }, [updates, searchQuery]);
 
@@ -1182,40 +1131,32 @@ const SchoolUpdates = () => {
     const bottomNavHeight = safeInsets.bottom + 80; // Bottom nav + safe area
     const calculatedHeight = screenHeight - headerHeight - welcomeSectionHeight - calendarSectionHeight - updatesHeaderHeight - bottomNavHeight - 50; // 50 for padding/margins
     const finalHeight = Math.max(calculatedHeight, 300); // Ensure minimum 300px height
-    console.log('📏 ScrollView height calculation:', {
-      screenHeight,
-      calculatedHeight,
-      finalHeight,
-      calendarSectionHeight,
-    });
     return finalHeight;
   }, [screenHeight, safeInsets.top, safeInsets.bottom, currentMonthEvents.length]);
 
   // Refresh calendar events function with error handling and retry
+  // Initial load: current month ± 1 month (3 months total) to match user Calendar behavior
+  // Wider range is prefetched in the background after UI is rendered
   const refreshCalendarEvents = useCallback(async (isRetry: boolean = false) => {
     try {
       setIsLoadingCalendarEvents(true);
       setCalendarEventsError(null);
       
-      // Fetch from API - Load current month ± 2 months to support filtering by last month and next month
-      // This matches the pattern used in Calendar.tsx
+      // Fetch from API - Load current month ± 1 month (3 months) for fast initial load
+      // Wider ranges will be prefetched in the background
       const now = new Date();
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth();
       
-      // Load current month ± 2 months for buffer (so filtering by last/next month works)
-      const startDate = new Date(currentYear, currentMonth - 2, 1);
-      const endDate = new Date(currentYear, currentMonth + 3, 0, 23, 59, 59); // Last day of month + 2
-      
-      console.log(`📅 Loading calendar events: ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()} (5 months buffer)`);
+      // Load current month ± 1 month for buffer (so filtering by last/next month works)
+      const startDate = new Date(currentYear, currentMonth - 1, 1);
+      const endDate = new Date(currentYear, currentMonth + 2, 0, 23, 59, 59); // Last day of next month
       
       const events = await CalendarService.getEvents({
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
-        limit: 1000,
+        limit: 500,
       });
-      
-      console.log(`✅ Loaded ${events.length} calendar events for filtering`);
       
       setCalendarEvents(Array.isArray(events) ? events : []);
       setRetryCount(0);
@@ -1238,24 +1179,77 @@ const SchoolUpdates = () => {
     }
   }, [retryCount]);
 
-  // Fetch calendar events for current month
+  // Fetch updates and calendar events once per app session (no re-load on screen switch)
   useEffect(() => {
+    if (hasLoadedSchoolUpdatesOnce) {
+      // If we've already loaded once this session, ensure loading flags reflect existing shared data
+      if (updates.length > 0) {
+        setIsLoading(false);
+      }
+      if (calendarEvents.length > 0) {
+        setIsLoadingCalendarEvents(false);
+      }
+      return;
+    }
+    hasLoadedSchoolUpdatesOnce = true;
+    fetchUpdates(true);
     refreshCalendarEvents();
-  }, [refreshCalendarEvents]);
+  }, [fetchUpdates, refreshCalendarEvents]);
 
-  // Also refresh calendar events when screen comes into focus (after refreshCalendarEvents is defined)
-  useFocusEffect(
-    useCallback(() => {
-      // Add a small delay to ensure backend has processed any updates
-      const refreshTimer = setTimeout(() => {
-        refreshCalendarEvents();
-      }, 150); // Slightly longer delay to ensure posts refresh first
-      
-      return () => {
-        clearTimeout(refreshTimer);
-      };
-    }, [refreshCalendarEvents])
-  );
+  // Note: further calendar event sync is handled via pull-to-refresh
+
+  // Background prefetch: once we have initial calendar events,
+  // load a wider 5‑month window in the background and merge into shared context.
+  useEffect(() => {
+    if (hasPrefetchedSchoolUpdatesCalendarWide) return;
+    if (!calendarEvents || calendarEvents.length === 0) return;
+
+    let cancelled = false;
+
+    const prefetchWideRange = async () => {
+      try {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+
+        // Wider range: current month ± 2 months (5 months total)
+        const startDate = new Date(currentYear, currentMonth - 2, 1);
+        const endDate = new Date(currentYear, currentMonth + 3, 0, 23, 59, 59);
+
+        const wideEvents = await CalendarService.getEvents({
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+          limit: 1000,
+        });
+
+        if (cancelled || !Array.isArray(wideEvents) || wideEvents.length === 0) return;
+
+        // Merge into shared calendarEvents without duplicates
+        setCalendarEvents(prev => {
+          const existingIds = new Set(
+            prev.map(e => (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`)
+          );
+          const newOnes = wideEvents.filter(e => {
+            const id = (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`;
+            return !existingIds.has(id);
+          });
+          return [...prev, ...newOnes];
+        });
+
+        hasPrefetchedSchoolUpdatesCalendarWide = true;
+      } catch {
+        // Silent failure; we keep initial range
+      }
+    };
+
+    // Small delay to avoid competing with initial render
+    const t = setTimeout(prefetchWideRange, 800);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [calendarEvents, setCalendarEvents]);
 
   // Auto-scroll to center today's events when events load
   // Layout: Past events (left) -> Today's events (center) -> Future events (right)
@@ -1269,37 +1263,12 @@ const SchoolUpdates = () => {
         const todayKey = getPHDateKey(now);
         const screenWidth = Dimensions.get('window').width;
         
-        // Debug: Log all events and their dates
-        if (__DEV__) {
-          console.log('📅 Calendar Events Debug:', {
-            totalEvents: currentMonthEvents.length,
-            todayKey,
-            currentDate: now.toISOString(),
-            events: currentMonthEvents.map((e, idx) => ({
-              index: idx,
-              title: e.title,
-              isoDate: e.isoDate,
-              eventKey: e.isoDate ? getPHDateKey(e.isoDate) : null,
-              isToday: e.isoDate ? getPHDateKey(e.isoDate) === todayKey : false
-            }))
-          });
-        }
-        
         // Find the index of the first today's event
         const todayEventIndex = currentMonthEvents.findIndex(event => {
           if (!event.isoDate) return false;
           try {
             const eventKey = getPHDateKey(event.isoDate);
             const isToday = eventKey === todayKey;
-            if (__DEV__ && isToday) {
-              console.log('✅ Found today\'s event:', {
-                title: event.title,
-                isoDate: event.isoDate,
-                eventKey,
-                todayKey,
-                match: isToday
-              });
-            }
             return isToday;
           } catch (error) {
             console.error('Error in findIndex for today:', error);
@@ -1324,17 +1293,6 @@ const SchoolUpdates = () => {
           // Ensure we don't scroll to negative position
           const scrollPosition = Math.max(0, centerPosition);
           
-          if (__DEV__) {
-            console.log('📅 Auto-scrolling to today\'s event:', {
-              todayEventIndex,
-              firstTodayEventPosition,
-              screenWidth,
-              centerPosition,
-              scrollPosition,
-              eventTitle: currentMonthEvents[todayEventIndex]?.title
-            });
-          }
-          
           // Scroll with animation
           calendarEventsScrollRef.current.scrollTo({ x: scrollPosition, animated: true });
           
@@ -1345,10 +1303,6 @@ const SchoolUpdates = () => {
             }
           }, 600);
         } else {
-          if (__DEV__) {
-            console.log('⚠️ No today\'s events found. Total events:', currentMonthEvents.length);
-            console.log('📅 Today key:', todayKey, 'Current date:', now.toISOString());
-          }
           // If no today's events, check if we have future events
           // If future events exist, scroll to show the transition from past to future
           // Otherwise, just show past events from the start

@@ -5,12 +5,14 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Image, Modal, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Image, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // import AddPostDrawer from '../../components/dashboard/AddPostDrawer'; // Replaced with PostUpdate screen navigation
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import AdminSidebar from '../../components/navigation/AdminSidebar';
 import { useThemeValues } from '../../contexts/ThemeContext';
+import { useUpdates } from '../../contexts/UpdatesContext';
+import NotificationModal from '../../modals/NotificationModal';
 import ViewEventModal from '../../modals/ViewEventModal';
 import AdminDataService from '../../services/AdminDataService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
@@ -18,7 +20,6 @@ import NotificationService from '../../services/NotificationService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
 import { formatDate } from '../../utils/dateUtils';
-import NotificationModal from '../../modals/NotificationModal';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -181,8 +182,8 @@ const AdminDashboard = () => {
   });
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
+  const { posts, setPosts, calendarEvents, setCalendarEvents } = useUpdates();
   const [allUpdates, setAllUpdates] = useState<DashboardUpdate[]>([]);
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
   const [isLoadingCalendarEvents, setIsLoadingCalendarEvents] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   
@@ -813,8 +814,8 @@ const AdminDashboard = () => {
       const dashboardStats = await AdminDataService.getDashboard();
       
       // Fetch recent updates (posts/announcements) - use cache if available
-      const posts = await AdminDataService.getPosts();
-        const postsData = posts.map(post => {
+      const rawPosts = await AdminDataService.getPosts();
+        const postsData = rawPosts.map(post => {
           // Ensure images array is properly set
           let images = post.images;
           if (!images || !Array.isArray(images) || images.length === 0) {
@@ -889,6 +890,9 @@ const AdminDashboard = () => {
         });
         
         setAllUpdates(uniqueUpdates);
+        // Also update shared posts context so other screens (SchoolUpdates/Calendar/admin)
+        // see the same processed posts without refetching.
+        setPosts(uniqueUpdates as any[]);
         setDashboardData({
           recentUpdates: uniqueUpdates.slice(0, 5),
         });
@@ -920,26 +924,6 @@ const AdminDashboard = () => {
     
     setupNotifications();
   }, []); // Empty deps - only run on mount
-
-  // Refresh dashboard data when screen comes into focus (always refresh to show new posts)
-  useFocusEffect(
-    useCallback(() => {
-      // Add a small delay to ensure backend has processed any updates
-      // This is especially important when coming back from PostUpdate screen
-      const refreshTimer = setTimeout(() => {
-        // Always refresh when screen comes into focus to ensure new posts appear immediately
-        // Force refresh (bypass cache) to get the latest data including newly created posts
-        // The fetchDashboardData function has its own cooldown to prevent too many requests
-        fetchDashboardData(true); // Force refresh to bypass cache and get latest posts
-        // Also refresh calendar events in case posts appear there
-        refreshCalendarEvents(true);
-      }, 100); // Small delay to ensure backend has processed updates
-      
-      return () => {
-        clearTimeout(refreshTimer);
-      };
-    }, [fetchDashboardData, refreshCalendarEvents])
-  );
 
   // Pull-to-refresh handler
   const onRefresh = useCallback(async () => {

@@ -13,14 +13,14 @@
         { "name": "JWT_SECRET", "value": "dorsu-connect-jwt-secret-change-in-production-2025" },
         { "name": "LOG_LEVEL", "value": "DEBUG" },
         { "name": "NODE_ENV", "value": "production" },
-        { "name": "GROQ_MODEL_1", "value": "llama-3.3-70b-versatile" },
-        { "name": "GROQ_MODEL_2", "value": "llama-3.1-8b-instant" },
+        { "name": "GROQ_MODEL_2", "value": "llama-3.3-70b-versatile" },
+        { "name": "GROQ_MODEL_1", "value": "llama-3.1-8b-instant" },
         { "name": "GROQ_MODEL_FALLBACK_PRIORITY", "value": "model_first" },
         { "name": "CACHE_CLEAR_TIMES", "value": "00:00,12:00" },
         { "name": "WEB_CLIENT_ID", "value": "473603633094-s78o8vdig63os6dgpjtoiqkhscspfbua.apps.googleusercontent.com" },
         { "name": "ANDROID_CLIENT_ID", "value": "473603633094-b8ipfi3qajlds4rm3kvvi4o3dgoabqq4.apps.googleusercontent.com" },
-        { "name": "BACKEND_URL", "value": "http://54.255.195.61:3000" },
-        { "name": "PUBLIC_BACKEND_URL", "value": "http://54.255.195.61:3000" }
+        { "name": "BACKEND_URL", "value": "http://dorsu-backend-alb-2059766618.ap-southeast-1.elb.amazonaws.com" },
+        { "name": "PUBLIC_BACKEND_URL", "value": "http://dorsu-backend-alb-2059766618.ap-southeast-1.elb.amazonaws.com" }
       ]
     }
   ]

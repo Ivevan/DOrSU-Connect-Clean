@@ -12,6 +12,7 @@ import { Alert, Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Te
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet from '../../components/common/BottomSheet';
 import { theme as themeConfig } from '../../config/theme';
+import { useAuth } from '../../contexts/AuthContext';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import LogoutModal from '../../modals/LogoutModal';
 import AdminFileService from '../../services/AdminFileService';
@@ -109,22 +110,19 @@ const AdminSettings = () => {
     });
   }, [knowledgeBaseSheetY]);
 
+  const { logout: authLogout } = useAuth();
+
   const confirmLogout = useCallback(async () => {
     try {
       // Clear conversation data from AsyncStorage
       await AsyncStorage.multiRemove(['adminCurrentConversation', 'adminConversationLastSaveTime']);
       
-      // Clear all admin and user data from AsyncStorage
-      await AsyncStorage.multiRemove([
-        'userToken', 
-        'userEmail', 
-        'userName',
-        'userFirstName',
-        'userLastName',
-        'userId', 
-        'isAdmin',
-        'authProvider'
-      ]);
+      // Use AuthContext logout function which handles:
+      // - Clearing UpdatesContext data
+      // - Resetting session flags
+      // - Clearing AsyncStorage (including userToken, userEmail, userName, userId, isAdmin, adminToken, adminEmail)
+      // - Signing out from Firebase
+      await authLogout();
       
       closeLogout();
       navigation.navigate('GetStarted');
@@ -134,7 +132,7 @@ const AdminSettings = () => {
       closeLogout();
       navigation.navigate('GetStarted');
     }
-  }, [closeLogout, navigation]);
+  }, [closeLogout, navigation, authLogout]);
 
   // Load admin profile data on mount and screen focus
   useFocusEffect(

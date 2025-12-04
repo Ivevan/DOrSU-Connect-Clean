@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import React, { useCallback, useMemo, useRef } from 'react';
-import { Animated, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet from '../components/common/BottomSheet';
 import { useThemeValues } from '../contexts/ThemeContext';
@@ -31,6 +32,7 @@ interface ViewEventModalProps {
   selectedDate?: Date | string | null;
   onEdit?: () => void;
   onDelete?: () => void;
+  showImage?: boolean; // Control whether to show images (default: true)
 }
 
 const ViewEventModal: React.FC<ViewEventModalProps> = ({
@@ -41,8 +43,9 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
   selectedDate,
   onEdit,
   onDelete,
+  showImage = true, // Default to showing images
 }) => {
-  const { theme } = useThemeValues();
+  const { theme, isDarkMode } = useThemeValues();
   const insets = useSafeAreaInsets();
   const sheetY = useRef(new Animated.Value(500)).current;
   const [selectedEventFromList, setSelectedEventFromList] = React.useState<any | null>(null);
@@ -85,6 +88,19 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
     }
   }, [showDeleteConfirm, deleteModalOpacity]);
 
+  const handleClose = useCallback(() => {
+    // Start the close animation
+    Animated.timing(sheetY, {
+      toValue: 500,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+    
+    // Call onClose immediately to update parent state and hide Modal
+    // This prevents the black overlay from showing
+    onClose();
+  }, [sheetY, onClose]);
+
   const handleDeletePress = useCallback(() => {
     setShowDeleteConfirm(true);
   }, []);
@@ -98,20 +114,9 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
     if (onDelete) {
       onDelete();
     }
-  }, [onDelete]);
-
-  const handleClose = useCallback(() => {
-    // Start the close animation
-    Animated.timing(sheetY, {
-      toValue: 500,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
-    
-    // Call onClose immediately to update parent state and hide Modal
-    // This prevents the black overlay from showing
-    onClose();
-  }, [sheetY, onClose]);
+    // Close the main modal after deletion
+    handleClose();
+  }, [onDelete, handleClose]);
 
   // If there are multiple events, show the list; otherwise show single event
   const allEvents = selectedDateEvents.length > 0 ? selectedDateEvents : (selectedEvent ? [selectedEvent] : []);
@@ -193,10 +198,17 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
   }, [primaryEvent]);
 
   // Check if there's an image to determine if we should auto-size
+  // Only consider image if showImage is true
   // Memoize to ensure it updates when primaryEvent changes
   // MUST be called before any early returns
   const hasImage = useMemo(() => {
-    return !!(primaryEvent?.images?.[0] || primaryEvent?.image);
+    return showImage && !!(primaryEvent?.images?.[0] || primaryEvent?.image);
+  }, [primaryEvent, showImage]);
+  
+  // Check if there's a description - used for auto-sizing
+  // Auto-size when there's no image OR when there's only an image with no description
+  const hasDescriptionContent = useMemo(() => {
+    return hasDescription(primaryEvent?.description);
   }, [primaryEvent]);
   
   // Get image URI - memoized to ensure it updates when primaryEvent changes
@@ -310,8 +322,8 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
       {/* Single Event Details - Show when there's a primary event */}
       {primaryEvent && (
         <View style={styles.eventDetails}>
-          {/* Image (if available) - key forces remount when event changes */}
-          {imageUri ? (
+          {/* Image (if available and showImage is true) - key forces remount when event changes */}
+          {showImage && imageUri ? (
             <Image
               key={imageKey || `image-${primaryEvent?.id || primaryEvent?._id || 'default'}`}
               source={{ uri: imageUri }}
@@ -401,13 +413,13 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
       sheetY={sheetY}
       maxHeight="90%"
       backgroundColor={theme.colors.card}
-      autoSize={!hasImage}
-      sheetPaddingBottom={hasImage ? undefined : (onEdit || onDelete ? Math.max(insets.bottom, 12) : 0)}
+      autoSize={!hasDescriptionContent}
+      sheetPaddingBottom={hasDescriptionContent ? undefined : (onEdit || onDelete ? Math.max(insets.bottom, 12) : 0)}
     >
       <View style={[
         styles.container, 
-        !hasImage && styles.containerAutoSize,
-        !hasImage && (onEdit || onDelete) && styles.containerWithActions
+        !hasDescriptionContent && styles.containerAutoSize,
+        !hasDescriptionContent && (onEdit || onDelete) && styles.containerWithActions
       ]}>
         {/* Header */}
         <View style={styles.header}>
@@ -428,7 +440,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
           </TouchableOpacity>
         </View>
 
-        {hasImage ? (
+        {hasDescriptionContent ? (
           <ScrollView 
             style={styles.scrollView}
             showsVerticalScrollIndicator={false}
@@ -491,7 +503,13 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
             style={styles.deleteModalBackdrop} 
             activeOpacity={1} 
             onPress={handleDeleteCancel}
-          />
+          >
+            <BlurView
+              intensity={Platform.OS === 'ios' ? 20 : 15}
+              tint="dark"
+              style={StyleSheet.absoluteFillObject}
+            />
+          </TouchableOpacity>
           <Animated.View 
             style={[
               styles.deleteModalContainer,
@@ -508,7 +526,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
           >
             <View style={[styles.deleteModalContent, { backgroundColor: theme.colors.card }]}>
               <View style={[styles.deleteModalIconWrapper, { backgroundColor: '#DC2626' + '15' }]}>
-                <Ionicons name="trash" size={32} color="#DC2626" />
+                <Ionicons name="trash" size={24} color="#DC2626" />
               </View>
               <Text style={[styles.deleteModalTitle, { color: theme.colors.text }]}>Delete Event</Text>
               <Text style={[styles.deleteModalMessage, { color: theme.colors.textMuted }]}>
@@ -592,6 +610,7 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
     minHeight: 0,
+    maxHeight: '100%',
   },
   scrollContent: {
     paddingTop: 12,
@@ -825,16 +844,17 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    overflow: 'hidden',
   },
   deleteModalContainer: {
-    width: '85%',
-    maxWidth: 400,
+    width: '75%',
+    maxWidth: 300,
     zIndex: 1001,
   },
   deleteModalContent: {
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: 14,
+    padding: 20,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
@@ -843,45 +863,45 @@ const styles = StyleSheet.create({
     elevation: 20,
   },
   deleteModalIconWrapper: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   deleteModalTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
-    marginBottom: 12,
+    marginBottom: 8,
     textAlign: 'center',
     letterSpacing: -0.3,
   },
   deleteModalMessage: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 18,
     textAlign: 'center',
-    marginBottom: 24,
-    paddingHorizontal: 8,
+    marginBottom: 20,
+    paddingHorizontal: 4,
   },
   deleteModalActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
     width: '100%',
   },
   deleteModalButton: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     borderRadius: 10,
-    minHeight: 44,
+    minHeight: 40,
   },
   deleteModalCancelButton: {
     borderWidth: 1.5,
   },
   deleteModalCancelText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.5,
   },
@@ -893,7 +913,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   deleteModalConfirmText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.5,

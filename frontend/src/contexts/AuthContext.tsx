@@ -3,6 +3,8 @@ import React, { createContext, ReactNode, useCallback, useContext, useEffect, us
 import { AppState, AppStateStatus } from 'react-native';
 import { API_BASE_URL } from '../config/api.config';
 import { getCurrentUser, User } from '../services/authService';
+import { globalClearUpdatesFn } from './UpdatesContext';
+import { resetAllSessionFlags } from '../utils/sessionReset';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -275,27 +277,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       // Clear UpdatesContext data and reset session flags
       try {
-        // Access global clear function from UpdatesContext
-        const { globalClearUpdatesFn } = require('./UpdatesContext');
+        // Call global clear function from UpdatesContext
         if (globalClearUpdatesFn) {
           globalClearUpdatesFn();
         } else {
           // Fallback: just reset session flags
-          const { resetAllSessionFlags } = require('../utils/sessionReset');
           resetAllSessionFlags();
         }
       } catch (error) {
         if (__DEV__) console.warn('Could not clear updates context on logout:', error);
         // Still try to reset session flags as fallback
         try {
-          const { resetAllSessionFlags } = require('../utils/sessionReset');
           resetAllSessionFlags();
         } catch (e) {
           // Ignore
         }
       }
       
-      // Clear AsyncStorage (including admin tokens)
+      // Clear AsyncStorage (including admin tokens and user profile data)
       await AsyncStorage.multiRemove([
         'userToken', 
         'userEmail', 
@@ -303,7 +302,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         'userId',
         'isAdmin',
         'adminToken',
-        'adminEmail'
+        'adminEmail',
+        'userFirstName',
+        'userLastName',
+        'userPhoto',
+        'authProvider',
+        'currentConversation',
+        'conversationLastSaveTime',
+        'adminCurrentConversation',
+        'adminConversationLastSaveTime'
       ]);
       
       // Clear Firebase auth if logged in

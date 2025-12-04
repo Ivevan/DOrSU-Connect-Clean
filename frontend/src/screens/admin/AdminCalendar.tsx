@@ -426,25 +426,73 @@ const AdminCalendar = () => {
       
       console.log(`✅ Loaded ${events.length} calendar events`);
       
-      // Merge with existing events (avoid duplicates and normalize categories)
-      setCalendarEvents(prevEvents => {
-        const existingIds = new Set(
-          prevEvents.map(e => (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`)
-        );
-        const newEvents = events
-          .filter(e => {
-          const id = (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`;
-          return !existingIds.has(id);
-          })
-          .map(e => {
-            // Normalize category to ensure consistent casing
-            if (e.category) {
-              return { ...e, category: normalizeCategory(e.category) };
-            }
-            return e;
-        });
-        return [...prevEvents, ...newEvents];
+      // Normalize categories in events
+      const normalizedEvents = events.map(e => {
+        if (e.category) {
+          return { ...e, category: normalizeCategory(e.category) };
+        }
+        return e;
       });
+      
+      // If forceRefresh, replace events for the date range instead of merging
+      if (forceRefresh) {
+        // For force refresh, replace events in the date range but keep events outside the range
+        setCalendarEvents(prevEvents => {
+          const eventIds = new Set(
+            normalizedEvents.map(e => (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`)
+          );
+          
+          // Keep events outside the date range
+          const eventsOutsideRange = prevEvents.filter((e: any) => {
+            // Handle date range events
+            if (e.startDate && e.endDate) {
+              const start = new Date(e.startDate);
+              const end = new Date(e.endDate);
+              if (isNaN(start.getTime()) || isNaN(end.getTime())) return true; // Keep invalid dates
+              // Keep if range doesn't overlap with refresh range
+              return end < startDate || start > endDate;
+            }
+            
+            // Handle month-only or week-only events
+            if (e.year && e.month && (e.dateType === 'month_only' || e.dateType === 'week_in_month')) {
+              const eventYear = e.year;
+              const eventMonth = e.month - 1; // Convert to 0-indexed
+              const refreshStartYear = startDate.getFullYear();
+              const refreshStartMonth = startDate.getMonth();
+              const refreshEndYear = endDate.getFullYear();
+              const refreshEndMonth = endDate.getMonth();
+              
+              // Keep if event month is outside refresh range
+              if (eventYear < refreshStartYear || eventYear > refreshEndYear) return true;
+              if (eventYear === refreshStartYear && eventMonth < refreshStartMonth) return true;
+              if (eventYear === refreshEndYear && eventMonth > refreshEndMonth) return true;
+              return false; // Event is in range, should be replaced
+            }
+            
+            // Handle single date events
+            const eventDate = e.isoDate || e.date || e.startDate;
+            if (!eventDate) return true; // Keep events without dates
+            const eventDateObj = new Date(eventDate);
+            if (isNaN(eventDateObj.getTime())) return true; // Keep invalid dates
+            return eventDateObj < startDate || eventDateObj > endDate;
+          });
+          
+          // Return events outside range + new events (this replaces events in the range)
+          return [...eventsOutsideRange, ...normalizedEvents];
+        });
+      } else {
+        // Merge with existing events (avoid duplicates and normalize categories)
+        setCalendarEvents(prevEvents => {
+          const existingIds = new Set(
+            prevEvents.map(e => (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`)
+          );
+          const newEvents = normalizedEvents.filter(e => {
+            const id = (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`;
+            return !existingIds.has(id);
+          });
+          return [...prevEvents, ...newEvents];
+        });
+      }
     } catch (error) {
       if (__DEV__) console.error('Failed to refresh calendar events:', error);
       // Don't clear events on error, keep what we have
@@ -1130,6 +1178,7 @@ const AdminCalendar = () => {
         selectedEvent={selectedEvent}
         selectedDateEvents={selectedDateEvents}
         selectedDate={selectedDateForDrawer}
+        showImage={false}
         onEdit={() => {
           // Navigate to PostUpdate for editing if it's a post
           if (selectedEvent?.source === 'post') {
@@ -1146,14 +1195,33 @@ const AdminCalendar = () => {
           
           // ViewEventModal handles confirmation, just execute deletion
           try {
+            const eventId = selectedEvent._id || selectedEvent.id;
+            
             if (selectedEvent.source === 'post') {
               // Delete post using AdminDataService
               await AdminDataService.deletePost(selectedEvent.id);
+              
+              // Immediately remove from context for instant UI update
+              setPosts(prevPosts => prevPosts.filter((p: any) => p.id !== selectedEvent.id));
+              
+              // Refresh posts to ensure consistency
+              await loadPosts();
             } else {
               // Delete calendar event
-              await CalendarService.deleteEvent(selectedEvent._id || selectedEvent.id);
+              await CalendarService.deleteEvent(eventId);
+              
+              // Immediately remove from context for instant UI update
+              setCalendarEvents(prevEvents => 
+                prevEvents.filter((e: any) => {
+                  const eId = e._id || e.id || `${e.isoDate}-${e.title}`;
+                  return eId !== eventId && eId !== selectedEvent.id;
+                })
+              );
             }
-            await refreshCalendarEvents(true);
+            
+            // Refresh calendar events to ensure consistency
+            await refreshCalendarEvents(true, undefined, currentMonth);
+            
             closeEventDrawer();
             setSelectedEvent(null);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

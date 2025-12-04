@@ -1582,7 +1582,17 @@ const AdminDashboard = () => {
             // Calendar event deletion - ViewEventModal handles confirmation, just execute deletion
             try {
               setIsDeleting(true);
-              await CalendarService.deleteEvent(event._id || '');
+              const eventId = event._id || '';
+              await CalendarService.deleteEvent(eventId);
+              
+              // Immediately remove from context for instant UI update
+              setCalendarEvents(prevEvents => 
+                prevEvents.filter((e: any) => {
+                  const eId = e._id || e.id || `${e.isoDate}-${e.title}`;
+                  return eId !== eventId;
+                })
+              );
+              
               await refreshCalendarEvents(true);
               closeEventDrawer();
               setSelectedEvent(null);
@@ -1597,6 +1607,10 @@ const AdminDashboard = () => {
             try {
               setIsDeleting(true);
               await AdminDataService.deletePost(event.id);
+              
+              // Immediately remove from context for instant UI update
+              setPosts(prevPosts => prevPosts.filter((p: any) => p.id !== event.id));
+              
               // Refresh dashboard data after deletion
               await fetchDashboardData(true);
               closeEventDrawer();

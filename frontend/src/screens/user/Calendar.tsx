@@ -691,11 +691,11 @@ const CalendarScreen = () => {
             accessibilityRole="button"
           >
             {userPhoto ? (
-              <Image 
+                <Image 
                 source={{ uri: userPhoto }} 
-                style={styles.profileImage}
+                  style={styles.profileImage}
                 resizeMode="cover"
-              />
+                />
             ) : (
               <View style={[styles.profileIconCircle, { backgroundColor: t.colors.accent }]} pointerEvents="none">
                 <Text style={[styles.profileInitials, { fontSize: t.fontSize.scaleSize(13) }]}>{getUserInitials()}</Text>
@@ -870,6 +870,7 @@ const CalendarScreen = () => {
         selectedEvent={selectedEvent}
         selectedDateEvents={selectedDateEvents}
         selectedDate={selectedDateForDrawer}
+        showImage={false}
       />
 
       <View style={[styles.bottomNavContainer, {

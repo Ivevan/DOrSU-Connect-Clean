@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../config/theme';
+import { useAuth } from '../../contexts/AuthContext';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import LogoutModal from '../../modals/LogoutModal';
 import { getCurrentUser, User } from '../../services/authService';
@@ -370,36 +371,19 @@ const UserSettings = () => {
   }, []);
 
 
+  const { logout: authLogout } = useAuth();
+
   const confirmLogout = useCallback(async () => {
     try {
       // Clear conversation data from AsyncStorage
       await AsyncStorage.multiRemove(['currentConversation', 'conversationLastSaveTime']);
       
-      // Clear backend auth data from AsyncStorage
-      await AsyncStorage.multiRemove(['userToken', 'userEmail', 'userName', 'userFirstName', 'userLastName', 'userId', 'userPhoto', 'authProvider']);
-      
-      // Sign out from Firebase if user is signed in
-      if (currentUser) {
-        try {
-          const { getFirebaseAuth } = require('../../config/firebase');
-          const auth = getFirebaseAuth();
-          
-          // Check if using Firebase JS SDK or React Native Firebase
-          const isJSSDK = auth.signOut !== undefined;
-          
-          if (isJSSDK) {
-            // Firebase JS SDK (Web/Expo Go)
-            const { signOut } = require('firebase/auth');
-            await signOut(auth);
-          } else {
-            // React Native Firebase (Native build)
-            await auth.signOut();
-          }
-        } catch (firebaseError) {
-          console.error('Firebase sign out error:', firebaseError);
-          // Continue with logout even if Firebase sign out fails
-        }
-      }
+      // Use AuthContext logout function which handles:
+      // - Clearing UpdatesContext data
+      // - Resetting session flags
+      // - Clearing AsyncStorage (including userToken, userEmail, userName, userId, isAdmin, adminToken, adminEmail)
+      // - Signing out from Firebase
+      await authLogout();
       
       closeLogout();
       navigation.navigate('GetStarted');
@@ -409,7 +393,7 @@ const UserSettings = () => {
       closeLogout();
       navigation.navigate('GetStarted');
     }
-  }, [closeLogout, navigation, currentUser]);
+  }, [closeLogout, navigation, authLogout]);
   
   return (
     <View style={[styles.container, {

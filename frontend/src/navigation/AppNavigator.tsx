@@ -12,12 +12,10 @@ import UserHelpCenterScreen from '../screens/about/HelpCenterScreen';
 import LicensesScreen from '../screens/about/LicensesScreen';
 import PrivacyPolicyScreen from '../screens/about/PrivacyPolicyScreen';
 import TermsOfUseScreen from '../screens/about/TermsOfUseScreen';
-import AdminAbout from '../screens/admin/AdminAbout';
 import AdminAccountSettings from '../screens/admin/AdminAccountSettings';
 import AdminAIChat from '../screens/admin/AdminAIChat';
 import AdminCalendar from '../screens/admin/AdminCalendar';
 import AdminDashboard from '../screens/admin/AdminDashboard';
-import AdminEmailSettings from '../screens/admin/AdminEmailSettings';
 import AdminGeneralSettings from '../screens/admin/AdminGeneralSettings';
 import AdminSettings from '../screens/admin/AdminSettings';
 import CalendarHelpScreen from '../screens/admin/CalendarHelpScreen';
@@ -27,11 +25,11 @@ import CreateAccount from '../screens/auth/CreateAccount';
 import GetStarted from '../screens/auth/GetStarted';
 import SignIn from '../screens/auth/SignIn';
 import SplashScreen from '../screens/auth/SplashScreen';
-import About from '../screens/user/About';
+import About from '../screens/shared/About';
+import EmailSettings from '../screens/shared/EmailSettings';
 import AccountSettings from '../screens/user/AccountSettings';
 import AIChat from '../screens/user/AIChat';
 import Calendar from '../screens/user/Calendar';
-import EmailSettings from '../screens/user/EmailSettings';
 import GeneralSettings from '../screens/user/GeneralSettings';
 import SchoolUpdates from '../screens/user/SchoolUpdates';
 import UserSettings from '../screens/user/UserSettings';
@@ -431,6 +429,22 @@ const AppNavigator = () => {
           }}
         />
         <Stack.Screen 
+          name="AdminEmailSettings" 
+          component={EmailSettings}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
+        />
+        <Stack.Screen 
+          name="AdminAbout" 
+          component={About}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
+        />
+        <Stack.Screen 
           name="AdminDashboard" 
           component={AdminDashboard}
           options={{
@@ -469,22 +483,6 @@ const AppNavigator = () => {
         <Stack.Screen 
           name="AdminGeneralSettings" 
           component={AdminGeneralSettings}
-          options={{
-            headerShown: false,
-            animationDuration: 0,
-          }}
-        />
-        <Stack.Screen 
-          name="AdminEmailSettings" 
-          component={AdminEmailSettings}
-          options={{
-            headerShown: false,
-            animationDuration: 0,
-          }}
-        />
-        <Stack.Screen 
-          name="AdminAbout" 
-          component={AdminAbout}
           options={{
             headerShown: false,
             animationDuration: 0,

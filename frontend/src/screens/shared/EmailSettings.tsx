@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,7 +13,9 @@ import { useThemeValues } from '../../contexts/ThemeContext';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 
 type RootStackParamList = {
+  AdminSettings: undefined;
   UserSettings: undefined;
+  AdminEmailSettings: undefined;
   EmailSettings: undefined;
 };
 
@@ -21,6 +23,10 @@ const EmailSettings = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme: t } = useThemeValues();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute();
+  
+  // Determine if this is admin context based on route name
+  const isAdmin = route.name === 'AdminEmailSettings';
 
   const floatAnim1 = useRef(new Animated.Value(0)).current;
 
@@ -74,8 +80,9 @@ const EmailSettings = () => {
   const userEmail = useMemo(() => {
     if (backendUserEmail) return backendUserEmail;
     if (currentUser?.email) return currentUser.email;
-    return 'No email';
-  }, [currentUser, backendUserEmail]);
+    // Different default based on context
+    return isAdmin ? 'admin@dorsu.edu.ph' : 'No email';
+  }, [currentUser, backendUserEmail, isAdmin]);
 
   // Animate floating background orb on mount
   useEffect(() => {
@@ -318,3 +325,4 @@ const styles = StyleSheet.create({
 });
 
 export default EmailSettings;
+

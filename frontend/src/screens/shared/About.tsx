@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,17 +11,24 @@ import { theme } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
 
 type RootStackParamList = {
+  AdminSettings: undefined;
   UserSettings: undefined;
   UserHelpCenter: undefined;
   TermsOfUse: undefined;
   PrivacyPolicy: undefined;
   Licenses: undefined;
+  AdminAbout: undefined;
+  About: undefined;
 };
 
 const About = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme: t } = useThemeValues();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute();
+  
+  // Determine if this is admin context based on route name
+  const isAdmin = route.name === 'AdminAbout';
 
   // Animated floating background orb
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -340,3 +347,4 @@ const styles = StyleSheet.create({
 });
 
 export default About;
+

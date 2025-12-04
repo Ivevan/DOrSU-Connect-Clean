@@ -9,14 +9,12 @@ import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../config/theme';
-import { useThemeActions, useThemeValues } from '../../contexts/ThemeContext';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import LogoutModal from '../../modals/LogoutModal';
-import ConfirmationModal from '../../modals/ConfirmationModal';
-import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
-import { useAuth } from '../../contexts/AuthContext';
+import { getCurrentUser, User } from '../../services/authService';
 import ProfileService from '../../services/ProfileService';
 
 type RootStackParamList = {
@@ -41,9 +39,7 @@ const UserSettings = () => {
   const insets = useSafeAreaInsets();
   // Use split hooks to reduce re-renders - only subscribe to what we need
   const { isDarkMode, theme: t } = useThemeValues();
-  const { toggleTheme } = useThemeActions();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { getUserToken } = useAuth();
   const scrollRef = useRef<ScrollView>(null);
   
   // Memoize safe area insets to prevent recalculation during navigation
@@ -53,9 +49,6 @@ const UserSettings = () => {
     left: insets.left,
     right: insets.right,
   }), [insets.top, insets.bottom, insets.left, insets.right]);
-  
-  // State for various settings
-  const [language, setLanguage] = useState('English');
   
   // User state from Firebase Auth - Initialize with current user to prevent layout shift
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -687,13 +680,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.surfaceAlt,
   },
-  safeAreaTop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 1000,
-  },
   header: {
     position: 'absolute',
     left: 0,
@@ -727,12 +713,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: theme.spacing(1.5),
     paddingBottom: 20,
-  },
-  bottomNavContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 998,
   },
   profileSection: {
     flexDirection: 'row',
@@ -860,84 +840,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: theme.spacing(2),
     marginBottom: 0,
-  },
-  settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: theme.spacing(1.5),
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  settingItemNoBorder: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: theme.spacing(1.5),
-  },
-  settingItemLast: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: theme.spacing(1.5),
-  },
-  settingLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: theme.spacing(1.5),
-  },
-  settingIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  settingTitle: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: theme.colors.text,
-  },
-  settingRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  inlineActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: theme.spacing(1.75),
-    gap: theme.spacing(1.5),
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  inlineActionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing(1.5),
-    flex: 1,
-  },
-  inlineActionIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inlineActionTitle: {
-    fontWeight: '600',
-    letterSpacing: -0.2,
-  },
-  inlineActionSubtitle: {
-    marginTop: 2,
-    fontWeight: '400',
-    letterSpacing: 0.1,
-  },
-  settingValue: {
-    fontSize: 14,
-    fontWeight: '400',
   },
   signOutButton: {
     flexDirection: 'row',

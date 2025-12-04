@@ -12,7 +12,7 @@ import { Alert, Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Te
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet from '../../components/common/BottomSheet';
 import { theme as themeConfig } from '../../config/theme';
-import { useThemeActions, useThemeValues } from '../../contexts/ThemeContext';
+import { useThemeValues } from '../../contexts/ThemeContext';
 import LogoutModal from '../../modals/LogoutModal';
 import AdminFileService from '../../services/AdminFileService';
 import ProfileService from '../../services/ProfileService';
@@ -45,7 +45,6 @@ const AdminSettings = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { isDarkMode, theme } = useThemeValues();
-  const { toggleTheme } = useThemeActions();
   const scrollRef = useRef<ScrollView>(null);
   
   // Animated floating background orb
@@ -72,7 +71,6 @@ const AdminSettings = () => {
   }, [floatAnim1]);
   
   // State for various settings
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isKnowledgeBaseModalOpen, setIsKnowledgeBaseModalOpen] = useState(false);
@@ -81,14 +79,6 @@ const AdminSettings = () => {
   const [adminFirstName, setAdminFirstName] = useState<string | null>(null);
   const [adminLastName, setAdminLastName] = useState<string | null>(null);
   const [adminEmail, setAdminEmail] = useState<string | null>(null);
-
-  // Lock header height to prevent layout shifts
-  const headerHeightRef = useRef<number>(64);
-  const [headerHeight, setHeaderHeight] = useState(64);
-
-  // Animation values - DISABLED FOR LAYOUT STABILITY
-  const fadeAnim = useRef(new Animated.Value(1)).current; // Set to 1 (visible) immediately
-  const slideAnim = useRef(new Animated.Value(0)).current; // Set to 0 (no offset) immediately
 
   const sheetY = useRef(new Animated.Value(300)).current;
   const knowledgeBaseSheetY = useRef(new Animated.Value(300)).current;
@@ -145,12 +135,6 @@ const AdminSettings = () => {
       navigation.navigate('GetStarted');
     }
   }, [closeLogout, navigation]);
-
-  // Navigation handlers for About section
-  const handleUserHelpCenterPress = useCallback(() => navigation.navigate('UserHelpCenter'), [navigation]);
-  const handleTermsOfUsePress = useCallback(() => navigation.navigate('TermsOfUse'), [navigation]);
-  const handlePrivacyPolicyPress = useCallback(() => navigation.navigate('PrivacyPolicy'), [navigation]);
-  const handleLicensesPress = useCallback(() => navigation.navigate('Licenses'), [navigation]);
 
   // Load admin profile data on mount and screen focus
   useFocusEffect(
@@ -763,83 +747,6 @@ const styles = StyleSheet.create({
     paddingVertical: themeConfig.spacing(2),
     marginBottom: 0,
   },
-  inlineActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: themeConfig.spacing(1.75),
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-    gap: themeConfig.spacing(1.5),
-  },
-  inlineActionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: themeConfig.spacing(1.5),
-    flex: 1,
-  },
-  inlineActionIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inlineActionTitle: {
-    fontWeight: '600',
-    letterSpacing: -0.2,
-  },
-  inlineActionSubtitle: {
-    marginTop: 2,
-    fontWeight: '400',
-    letterSpacing: 0.1,
-  },
-  settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: themeConfig.spacing(1.5),
-    borderBottomWidth: 1,
-    borderBottomColor: themeConfig.colors.border,
-  },
-  settingItemLast: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: themeConfig.spacing(1.5),
-  },
-  settingLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: themeConfig.spacing(1.5),
-  },
-  settingIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  settingTitle: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: themeConfig.colors.text,
-  },
-  settingRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  settingValue: {
-    fontSize: 14,
-    fontWeight: '400',
-  },
-  settingSubtitle: {
-    fontSize: 12,
-    fontWeight: '400',
-    marginTop: 2,
-  },
   signOutButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -851,24 +758,6 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     gap: themeConfig.spacing(1),
     borderWidth: 1,
-  },
-  signOutButtonInCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: themeConfig.spacing(1.5),
-    paddingHorizontal: themeConfig.spacing(2),
-    borderRadius: themeConfig.radii.md,
-    marginTop: themeConfig.spacing(1.5),
-    marginBottom: 0,
-    gap: themeConfig.spacing(1),
-    borderWidth: 1,
-  },
-  sectionDivider: {
-    height: 1,
-    width: '100%',
-    marginTop: themeConfig.spacing(2),
-    marginBottom: 0,
   },
   signOutText: {
     fontSize: 14,

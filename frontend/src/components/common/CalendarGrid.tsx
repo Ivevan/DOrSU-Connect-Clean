@@ -428,6 +428,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     minHeight: 0, // Allow flexbox to shrink if needed
+    overflow: 'visible', // Ensure indicators are not clipped
   },
   dayNumberContainer: {
     width: 24,
@@ -451,21 +452,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    gap: 1.5,
     marginTop: 2,
     flexWrap: 'wrap',
     maxWidth: '100%',
-    paddingHorizontal: 1,
-    paddingVertical: 1,
-    minHeight: 6,
+    paddingHorizontal: 0.5,
+    paddingVertical: 0.5,
+    minHeight: 5,
+    maxHeight: 20, // Allow up to 3 rows of dots (5px dot + 1.5px gap * 2 rows)
     flexShrink: 0, // Prevent container from shrinking
+    overflow: 'visible', // Ensure all dots are visible
   },
   eventIndicatorDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    minWidth: 6,
-    minHeight: 6,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    minWidth: 5,
+    minHeight: 5,
     flexShrink: 0, // Prevent dots from shrinking
   },
 });

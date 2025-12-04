@@ -21,6 +21,11 @@ import { getCurrentUser, onAuthStateChange, User } from '../../services/authServ
 import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
 import { formatDate } from '../../utils/dateUtils';
 
+// Session-scoped flags to avoid re-loading on every mount (especially on web)
+// Initial data will load once per app session; further loads are manual (pull-to-refresh)
+let hasLoadedAdminDashboardOnce = false;
+let hasPrefetchedAdminDashboardCalendarWide = false;
+
 type RootStackParamList = {
   GetStarted: undefined;
   SignIn: undefined;
@@ -173,11 +178,13 @@ const AdminDashboard = () => {
   const [dashboardData, setDashboardData] = useState({
     recentUpdates: [] as DashboardUpdate[],
   });
-  const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
-  const [dashboardError, setDashboardError] = useState<string | null>(null);
   const { posts, setPosts, calendarEvents, setCalendarEvents } = useUpdates();
+  // Initialize loading state based on whether shared data already exists
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState(() => posts.length === 0);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [allUpdates, setAllUpdates] = useState<DashboardUpdate[]>([]);
-  const [isLoadingCalendarEvents, setIsLoadingCalendarEvents] = useState(false);
+  // Initialize loading state based on whether shared data already exists
+  const [isLoadingCalendarEvents, setIsLoadingCalendarEvents] = useState(() => calendarEvents.length === 0);
   const [refreshing, setRefreshing] = useState(false);
   
   // Search state
@@ -617,10 +624,8 @@ const AdminDashboard = () => {
     }
   }, []);
 
-  // Fetch calendar events for current month
-  useEffect(() => {
-    refreshCalendarEvents(true);
-  }, []);
+  // Note: Calendar events are loaded once per session via the main useEffect above
+  // Further calendar event sync is handled via pull-to-refresh
   
   
   // Open event modal - optimized for performance
@@ -790,9 +795,80 @@ const AdminDashboard = () => {
       }
   }, []);
 
-  // Fetch dashboard data on mount only
+  // Sync allUpdates when posts change (from context or after fetch)
   useEffect(() => {
-    fetchDashboardData(true); // Force refresh on mount
+    if (posts.length > 0) {
+      setIsLoadingDashboard(false);
+      // Process existing posts into allUpdates format
+      const postsData = posts.map((post: any) => {
+        let images = post.images;
+        if (!images || !Array.isArray(images) || images.length === 0) {
+          if (post.image) {
+            images = [post.image];
+          } else {
+            images = [];
+          }
+        }
+        
+        const dateValue = post.isoDate || post.date;
+        let formattedDate = 'No date';
+        if (dateValue && typeof dateValue === 'string' && dateValue.trim() !== '') {
+          const formatted = formatDate(dateValue);
+          if (formatted && formatted.trim() !== '') {
+            formattedDate = formatted;
+          }
+        }
+        
+        return {
+          id: post.id,
+          title: post.title,
+          date: formattedDate,
+          tag: post.category,
+          description: post.description,
+          image: post.image,
+          images: images,
+          pinned: (post as any).pinned || false,
+          isoDate: dateValue || '',
+          time: (post as any).time || '',
+        };
+      });
+      
+      const uniqueUpdates = postsData.filter((update, index, self) =>
+        index === self.findIndex(u => u.id === update.id)
+      );
+      
+      uniqueUpdates.sort((a, b) => {
+        const dateA = new Date(a.isoDate || a.date).getTime();
+        const dateB = new Date(b.isoDate || b.date).getTime();
+        return dateB - dateA;
+      });
+      
+      setAllUpdates(uniqueUpdates);
+    }
+  }, [posts]);
+
+  // Sync calendar events loading state when context data changes
+  useEffect(() => {
+    if (calendarEvents.length > 0) {
+      setIsLoadingCalendarEvents(false);
+    }
+  }, [calendarEvents]);
+
+  // Fetch dashboard data and calendar events once per app session (no re-load on screen switch)
+  useEffect(() => {
+    if (hasLoadedAdminDashboardOnce) {
+      // If we've already loaded once this session, just ensure loading flags reflect existing shared data
+      if (posts.length > 0) {
+        setIsLoadingDashboard(false);
+      }
+      if (calendarEvents.length > 0) {
+        setIsLoadingCalendarEvents(false);
+      }
+      return;
+    }
+    hasLoadedAdminDashboardOnce = true;
+    fetchDashboardData(true);
+    refreshCalendarEvents(true);
     
     // Request notification permissions and check notifications on mount
     const setupNotifications = async () => {
@@ -808,7 +884,8 @@ const AdminDashboard = () => {
     };
     
     setupNotifications();
-  }, []); // Empty deps - only run on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run once per session - fetchDashboardData and refreshCalendarEvents are stable
 
   // Pull-to-refresh handler
   const onRefresh = useCallback(async () => {

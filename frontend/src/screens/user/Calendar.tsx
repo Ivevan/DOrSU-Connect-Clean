@@ -6,19 +6,20 @@ import utc from 'dayjs/plugin/utc';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Image, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import CalendarGrid from '../../components/common/CalendarGrid';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import UserSidebar from '../../components/navigation/UserSidebar';
-import { theme } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
+import { useCalendar } from '../../hooks/useCalendar';
 import MonthPickerModal from '../../modals/MonthPickerModal';
 import ViewEventModal from '../../modals/ViewEventModal';
 import AdminDataService from '../../services/AdminDataService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
-import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
+import { formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
 import { useUpdates } from '../../contexts/UpdatesContext';
 
 // Session-scoped flag so the calendar only does a full initial load once per app session.
@@ -56,14 +57,9 @@ const CalendarScreen = () => {
     right: insets.right,
   }), [insets.top, insets.bottom, insets.left, insets.right]);
   
-  // Lock header height to prevent layout shifts
-  const headerHeightRef = useRef<number>(64);
-  const [headerHeight, setHeaderHeight] = useState(64);
-  
   // Calendar state
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
-  const [currentUser, setCurrentUser] = useState<any>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
   
   // Load backend user photo on screen focus
@@ -99,39 +95,21 @@ const CalendarScreen = () => {
     return new Set(types.map(t => t.toLowerCase()));
   }, [selectedLegendType]);
   
-  // Keep array version for backward compatibility with existing code
-  const selectedContentTypes = React.useMemo(() => {
-    return selectedLegendType 
-      ? [selectedLegendType] 
-      : ['academic', 'institutional', 'event', 'announcement', 'news'];
-  }, [selectedLegendType]);
-  
   // Animation values
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
   const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
-  const listAnim = useRef(new Animated.Value(0)).current;
-  const dotScale = useRef(new Animated.Value(0.8)).current;
-  
-  // Drawer animation values
-  const drawerSlideAnim = useRef(new Animated.Value(0)).current;
-  const drawerBackdropOpacity = useRef(new Animated.Value(0)).current;
-
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const slideAnim = useRef(new Animated.Value(0)).current;
-
-  const formatEventTitle = (raw?: string) => {
-    const title = String(raw || '').trim();
-    if (title.length < 3) return 'Untitled';
-    // Capitalize first letter, collapse spaces
-    const cleaned = title.replace(/\s+/g, ' ');
-    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-  };
 
   // Data from AdminDataService (for backward compatibility) and CalendarService
   const { posts, setPosts, calendarEvents, setCalendarEvents } = useUpdates();
-  const [isLoadingPosts, setIsLoadingPosts] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(false);
+
+  // Use shared calendar hook
+  const { eventsByDateMap, getMonthEventCount, getEventsForDate } = useCalendar({
+    posts,
+    calendarEvents,
+    selectedContentTypesSet,
+  });
 
   // Track last calendar fetch time
   const lastCalendarFetchTime = useRef<number>(0);
@@ -270,7 +248,6 @@ const CalendarScreen = () => {
     const loadData = async () => {
       try {
         setIsLoadingEvents(true);
-        setIsLoadingPosts(true);
 
         const now = new Date();
         const currentYear = now.getFullYear();
@@ -324,7 +301,6 @@ const CalendarScreen = () => {
       } finally {
         if (!cancelled) {
           setIsLoadingEvents(false);
-          setIsLoadingPosts(false);
         }
       }
     };
@@ -368,269 +344,8 @@ const CalendarScreen = () => {
     }
   }, []);
 
-  // Get cell background color based on event types
-  const getCellColor = (events: any[]): string | null => {
-    if (!events || events.length === 0) return null;
-    
-    // Priority order: Institutional > Academic > Event > News > Announcement
-    const hasInstitutional = events.some(e => {
-      const type = String(e.type || e.category || '').toLowerCase();
-      return type === 'institutional';
-    });
-    
-    const hasAcademic = events.some(e => {
-      const type = String(e.type || e.category || '').toLowerCase();
-      return type === 'academic';
-    });
-    
-    const hasEvent = events.some(e => {
-      const type = String(e.type || e.category || '').toLowerCase();
-      return type === 'event';
-    });
-    
-    const hasNews = events.some(e => {
-      const type = String(e.type || e.category || '').toLowerCase();
-      return type === 'news';
-    });
-    
-    const hasAnnouncement = events.some(e => {
-      const type = String(e.type || e.category || '').toLowerCase();
-      return type === 'announcement';
-    });
-    
-    // Return color based on priority
-    if (hasInstitutional) return '#2563EB'; // Blue
-    if (hasAcademic) return '#10B981'; // Green
-    if (hasEvent) return '#D97706'; // Orange
-    if (hasNews) return '#8B5CF6'; // Purple
-    if (hasAnnouncement) return '#1A3E7A'; // Dark Blue
-    
-    // Fallback: use first event's category color
-    const firstEvent = events[0];
-    if (firstEvent) {
-      const colors = categoryToColors(firstEvent.type || firstEvent.category);
-      return colors.cellColor || null;
-    }
-    
-    return null;
-  };
-
-  const getDaysInMonth = (date: Date) => {
-    const start = dayjs.utc(date).tz(PH_TZ).startOf('month');
-    const daysInMonth = start.daysInMonth();
-    const firstDayOfMonth = start.day(); // 0=Sun..6=Sat in PH tz
-    
-    const days: Array<number | null> = [];
-    
-    // Add leading empty cells so week starts on Sunday
-    for (let i = 0; i < firstDayOfMonth; i++) {
-      days.push(null);
-    }
-    
-    // Add all days of the month
-    for (let i = 1; i <= daysInMonth; i++) {
-      days.push(i);
-    }
-    
-    // Add trailing empty cells so total cells is multiple of 7 (complete rows)
-    const remainder = days.length % 7;
-    if (remainder !== 0) {
-      const toAdd = 7 - remainder;
-      for (let i = 0; i < toAdd; i++) days.push(null);
-    }
-    
-    return days;
-  };
-
   const getMonthName = (date: Date) => {
     return dayjs.utc(date).tz(PH_TZ).format('MMMM');
-  };
-
-  const getMonthEventCount = (dateRef: Date) => {
-    const y = dateRef.getFullYear();
-    const m = dateRef.getMonth() + 1;
-    
-    let count = 0;
-    
-    // Count events from posts (AdminDataService) - filtered by selected content types
-    count += posts
-      .filter(p => {
-        if (p.source === 'CSV Upload') return false;
-        const postType = String(p.category || 'Announcement').toLowerCase();
-        return selectedContentTypesSet.has(postType);
-      })
-      .reduce((acc, p) => {
-        const key = parseAnyDateToKey(p.isoDate || p.date);
-        if (!key) return acc;
-        const [yy, mm] = key.split('-');
-        return acc + ((Number(yy) === y && Number(mm) === m) ? 1 : 0);
-      }, 0);
-    
-    // Count events from calendarEvents (CalendarService) - filtered by selected content types
-    // For date ranges, count if any date in range falls in the month
-    // For week/month-only events, count if the month matches
-    count += calendarEvents.reduce((acc, event) => {
-      // Apply content type filter
-      const eventType = String(event.category || 'Announcement').toLowerCase();
-      if (!selectedContentTypesSet.has(eventType)) return acc;
-      
-      // Skip week/month-only events for calendar grid count
-      if (event.dateType === 'week' || event.dateType === 'month') {
-        // Only count if month matches
-        if (event.month === m && event.year === y) {
-          return acc + 1;
-        }
-        return acc;
-      }
-      
-      if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-        const startDate = new Date(event.startDate);
-        const endDate = new Date(event.endDate);
-        // Check if range overlaps with the month
-        const monthStart = new Date(y, m - 1, 1);
-        const monthEnd = new Date(y, m, 0);
-        if (startDate <= monthEnd && endDate >= monthStart) {
-          return acc + 1;
-        }
-        return acc;
-      }
-      
-      const key = parseAnyDateToKey(event.isoDate || event.date);
-      if (!key) return acc;
-      const [yy, mm] = key.split('-');
-      return acc + ((Number(yy) === y && Number(mm) === m) ? 1 : 0);
-    }, 0);
-    
-    return count;
-  };
-
-  const transformPostToEvent = (p: any) => ({
-    id: p.id,
-    title: p.title,
-    dateKey: parseAnyDateToKey(p.isoDate || p.date),
-    time: p.time || '',
-    type: p.category || 'Announcement',
-    color: categoryToColors(p.category).dot,
-    chip: categoryToColors(p.category),
-    isPinned: !!p.isPinned,
-    isUrgent: !!p.isUrgent,
-  });
-
-  const getEventsForDate = useCallback((date: Date) => {
-    const key = formatDateKey(date);
-    const events: any[] = [];
-    
-    // Add posts/announcements from AdminDataService
-    if (Array.isArray(posts)) {
-      posts.forEach(p => {
-        // Only include posts that are NOT from CSV uploads (to avoid duplicates)
-        if (p.source !== 'CSV Upload') {
-          // Apply content type filter
-          const postType = String(p.category || 'Announcement').toLowerCase();
-          if (!selectedContentTypesSet.has(postType)) return;
-          
-          const eventDateKey = parseAnyDateToKey(p.isoDate || p.date);
-          if (eventDateKey === key) {
-            events.push({
-              id: p.id,
-              title: p.title,
-              dateKey: eventDateKey,
-              time: p.time || '',
-              type: p.category || 'Announcement',
-              color: categoryToColors(p.category).dot,
-              chip: categoryToColors(p.category),
-              description: p.description,
-              isPinned: p.isPinned,
-              isUrgent: p.isUrgent,
-              source: 'post', // Mark as post to distinguish from calendar events
-            });
-          }
-        }
-      });
-    }
-    
-    // Add events from CalendarService (backend calendar events)
-    if (Array.isArray(calendarEvents)) {
-      calendarEvents.forEach(event => {
-        // Skip week/month-only events for calendar grid (they only show in All tab)
-        if (event.dateType === 'week' || event.dateType === 'month') {
-          return;
-        }
-        
-        // Apply content type filter
-        const eventType = String(event.category || 'Announcement').toLowerCase();
-        if (!selectedContentTypesSet.has(eventType)) return;
-        
-        // Handle date ranges - check if date falls within range
-        if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-          const startDate = new Date(event.startDate);
-          const endDate = new Date(event.endDate);
-          const checkDate = new Date(date);
-          
-          // Normalize to start of day for comparison
-          startDate.setHours(0, 0, 0, 0);
-          endDate.setHours(0, 0, 0, 0);
-          checkDate.setHours(0, 0, 0, 0);
-          
-          if (checkDate >= startDate && checkDate <= endDate) {
-            events.push({
-              id: event._id || `calendar-${event.isoDate}-${event.title}`,
-              title: event.title,
-              dateKey: key,
-              time: event.time || 'All Day',
-              type: event.category || 'Announcement',
-              color: categoryToColors(event.category).dot,
-              chip: categoryToColors(event.category),
-              dateType: event.dateType,
-              category: event.category,
-              description: event.description,
-              startDate: event.startDate,
-              endDate: event.endDate,
-            });
-          }
-        } else {
-          // Single date event
-          const eventDateKey = parseAnyDateToKey(event.isoDate || event.date);
-          if (eventDateKey === key) {
-            events.push({
-              id: event._id || `calendar-${event.isoDate}-${event.title}`,
-              title: event.title,
-              dateKey: eventDateKey,
-              time: event.time || 'All Day',
-              type: event.category || 'Announcement',
-              color: categoryToColors(event.category).dot,
-              chip: categoryToColors(event.category),
-              dateType: event.dateType,
-              category: event.category,
-              description: event.description,
-              startDate: event.startDate,
-              endDate: event.endDate,
-            });
-          }
-        }
-      });
-    }
-    
-    return events;
-  }, [posts, calendarEvents, selectedContentTypesSet]);
-
-  // Robust PH date-key comparison (avoids off-by-one no matter device tz)
-  const getPHDateKey = (d: Date) => {
-    try {
-      const dtf = new Intl.DateTimeFormat('en-PH', {
-        timeZone: PH_TZ,
-        year: 'numeric',
-        month: 'numeric',
-        day: 'numeric',
-      });
-      const parts = dtf.formatToParts(d);
-      const y = Number(parts.find(p => p.type === 'year')?.value);
-      const m = Number(parts.find(p => p.type === 'month')?.value) - 1;
-      const day = Number(parts.find(p => p.type === 'day')?.value);
-      return Date.UTC(y, m, day);
-    } catch {
-      return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
-    }
   };
   
   const navigateToNextMonth = useCallback(() => {
@@ -667,67 +382,29 @@ const CalendarScreen = () => {
     refreshCalendarEvents(false, undefined, newMonth);
   };
   
-  const getUserInitials = () => {
-    if (!currentUser?.displayName) return '?';
-    const names = currentUser.displayName.split(' ');
-    if (names.length >= 2) {
-      return (names[0][0] + names[1][0]).toUpperCase();
-    }
-    return currentUser.displayName.substring(0, 2).toUpperCase();
-  };
 
-  const isToday = (date: Date) => {
-    return getPHDateKey(date) === getPHDateKey(new Date());
-  };
-
-  const isSelected = (date: Date) => {
-    return selectedDate ? getPHDateKey(date) === getPHDateKey(selectedDate) : false;
-  };
 
   const handleDayPress = useCallback((date: Date) => {
     setSelectedDate(date);
     const events = getEventsForDate(date);
     if (events && events.length > 0) {
-      // Get the first event and find its full data from calendarEvents or posts
       const firstEvent = events[0];
       
-      // Check if it's a post (from AdminDataService)
       let fullEvent = null;
       if (firstEvent.source === 'post') {
         fullEvent = posts.find((p: any) => p.id === firstEvent.id) || firstEvent;
       } else {
-        // It's a calendar event (from CalendarService)
         fullEvent = calendarEvents.find((e: CalendarEvent) => {
-          // Try to match by _id first
           if (e._id === firstEvent.id) return true;
-          // Try to match by constructed ID
           if (`calendar-${e.isoDate}-${e.title}` === firstEvent.id) return true;
-          // Try to match by date and title
           const eventDateKey = parseAnyDateToKey(e.isoDate || e.date);
           const checkDateKey = formatDateKey(date);
           return eventDateKey === checkDateKey && e.title === firstEvent.title;
         }) || firstEvent;
       }
       
-      const eventData = fullEvent || firstEvent;
-      
-      // Set the selected event
-      setSelectedEvent(eventData as CalendarEvent);
-      
-      // Set selectedDateEvents for the modal
-      setSelectedDateEvents(events.map(e => ({
-        id: e.id,
-        title: e.title,
-        color: e.color,
-        type: e.type,
-        category: e.category,
-        description: e.description,
-        isoDate: e.dateKey ? new Date(e.dateKey).toISOString() : undefined,
-        date: e.dateKey,
-        time: e.time,
-        startDate: e.startDate,
-        endDate: e.endDate,
-      })));
+      setSelectedEvent(fullEvent || firstEvent as CalendarEvent);
+      setSelectedDateEvents(events);
       setSelectedDateForDrawer(date);
       setShowEventDrawer(true);
       
@@ -737,48 +414,6 @@ const CalendarScreen = () => {
     }
   }, [getEventsForDate, calendarEvents, posts]);
 
-  // Open event modal
-  const openEventDrawer = useCallback((event: any) => {
-    // Check if it's a post (from AdminDataService)
-    let matchingEvent = null;
-    if (event.source === 'post') {
-      matchingEvent = posts.find((p: any) => p.id === event.id) || event;
-    } else {
-      // It's a calendar event (from CalendarService)
-      matchingEvent = calendarEvents.find((e: CalendarEvent) => {
-        return e._id === event.id || 
-               `calendar-${e.isoDate}-${e.title}` === event.id ||
-               (e.title === event.title && parseAnyDateToKey(e.isoDate || e.date) === event.dateKey);
-      }) || event;
-    }
-    
-    if (matchingEvent) {
-      setSelectedEvent(matchingEvent as CalendarEvent);
-      // Get all events for the same date
-      const dateKey = event.dateKey || parseAnyDateToKey(matchingEvent.isoDate || matchingEvent.date);
-      const dateForDrawer = new Date(dateKey);
-      const eventsForDate = getEventsForDate(dateForDrawer);
-      setSelectedDateEvents(eventsForDate.map(e => ({
-        id: e.id,
-        title: e.title,
-        color: e.color,
-        type: e.type,
-        category: e.category,
-        description: e.description,
-        isoDate: e.dateKey ? new Date(e.dateKey).toISOString() : undefined,
-        date: e.dateKey,
-        time: e.time,
-        startDate: e.startDate,
-        endDate: e.endDate,
-      })));
-      setSelectedDateForDrawer(dateForDrawer);
-      setShowEventDrawer(true);
-      
-      Haptics.selectionAsync();
-    }
-  }, [calendarEvents, posts, getEventsForDate]);
-  
-  // Close event modal
   const closeEventDrawer = useCallback(() => {
     setShowEventDrawer(false);
     setSelectedEvent(null);
@@ -787,260 +422,7 @@ const CalendarScreen = () => {
   }, []);
 
 
-  // Memoized Calendar Day Component
-  const CalendarDay = memo(({ date, day, isCurrentDay, isSelectedDay, index, eventsForDay, theme, onPress }: { date: Date; day: number | null; isCurrentDay: boolean; isSelectedDay: boolean; index: number; eventsForDay: any[]; theme: any; onPress: (date: Date) => void }) => {
-    if (!day) return (
-      <View
-        style={[
-          styles.calendarDay,
-          {
-            backgroundColor: theme.colors.surfaceAlt,
-            borderRightColor: theme.colors.border,
-            borderBottomColor: theme.colors.border,
-            borderRightWidth: (index % 7) === 6 ? 0 : StyleSheet.hairlineWidth,
-          },
-        ]}
-      />
-    );
-    
-    // Get cell color based on event types
-    const cellColor = getCellColor(eventsForDay);
-    
-    // Determine border styling
-    const isLastColumn = (index % 7) === 6;
-    const isSelected = isSelectedDay && !isCurrentDay;
-    
-    return (
-      <TouchableOpacity 
-        style={[
-          styles.calendarDay,
-          { 
-            backgroundColor: cellColor || theme.colors.card,
-            // Selected day: blue border around entire cell (2px)
-            // Non-selected: normal grid borders (hairline)
-            borderTopWidth: isSelected ? 2 : 0,
-            borderTopColor: isSelected ? theme.colors.accent : 'transparent',
-            borderLeftWidth: isSelected ? 2 : 0,
-            borderLeftColor: isSelected ? theme.colors.accent : 'transparent',
-            borderRightWidth: isLastColumn ? (isSelected ? 2 : 0) : (isSelected ? 2 : StyleSheet.hairlineWidth),
-            borderRightColor: isSelected ? theme.colors.accent : theme.colors.border,
-            borderBottomWidth: isSelected ? 2 : StyleSheet.hairlineWidth,
-            borderBottomColor: isSelected ? theme.colors.accent : theme.colors.border,
-            opacity: cellColor ? 0.85 : 1,
-          }
-        ]}
-        onPress={() => onPress(date)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.dayContent}>
-          <View style={[
-            styles.dayNumberContainer,
-            isCurrentDay && styles.todayContainer,
-            isCurrentDay && { backgroundColor: theme.colors.accent }, // Theme color for current day
-            !isCurrentDay && cellColor && { backgroundColor: cellColor }, // Only apply cell color if not current day
-          ]}>
-            <Text
-              accessibilityRole="button"
-              accessibilityLabel={`Select ${date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`}
-              accessibilityHint="Selects this date to view events"
-              style={[
-                styles.dayNumber,
-                { fontSize: theme.fontSize.scaleSize(12) },
-                isCurrentDay && { color: '#FFFFFF', fontWeight: '700' }, // White text for current day (blue background)
-                !isCurrentDay && { color: cellColor ? '#FFFFFF' : theme.colors.text }, // White if cell has color, otherwise theme text
-                isCurrentDay && styles.todayText,
-                !isCurrentDay && cellColor && { color: '#FFFFFF', fontWeight: '700' } // White text for colored cells (non-current day)
-              ]}
-            >
-              {day}
-            </Text>
-          </View>
-        </View>
-      </TouchableOpacity>
-    );
-  });
 
-  const renderCalendarDay = useCallback((date: Date, day: number | null, isCurrentDay: boolean, isSelectedDay: boolean, key: number) => {
-    const eventsForDay = getEventsForDate(date);
-    return (
-      <CalendarDay
-        key={key}
-        date={date}
-        day={day}
-        isCurrentDay={isCurrentDay}
-        isSelectedDay={isSelectedDay}
-        index={key}
-        eventsForDay={eventsForDay}
-        theme={t}
-        onPress={handleDayPress}
-      />
-    );
-  }, [getEventsForDate, t, handleDayPress]);
-
-  const filteredEvents = React.useMemo(() => {
-    if (!Array.isArray(calendarEvents)) return [];
-    
-    // Combine all events from calendarEvents (backend) - include ALL events including week/month-only
-    // Use a Set to track date ranges we've already added (to avoid duplicates)
-    const dateRangeKeys = new Set<string>();
-    const allEvents: any[] = [];
-    
-    if (Array.isArray(calendarEvents)) {
-      calendarEvents.forEach(event => {
-        const eventType = String(event.category || 'Announcement').toLowerCase();
-        
-        // Apply filters - check if event type is in selected content types
-        if (!selectedContentTypesSet.has(eventType)) return;
-        
-        // For date ranges, create a single entry with range info (avoid duplicates)
-        if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-          const rangeKey = `${event.title}-${event.startDate}-${event.endDate}`;
-          if (!dateRangeKeys.has(rangeKey)) {
-            dateRangeKeys.add(rangeKey);
-            allEvents.push({
-              id: event._id || `calendar-${event.startDate}-${event.title}`,
-              title: event.title,
-              dateKey: parseAnyDateToKey(event.startDate),
-              time: event.time || 'All Day',
-              type: event.category || 'Announcement',
-              color: categoryToColors(event.category).dot,
-              chip: categoryToColors(event.category),
-              dateType: event.dateType,
-              startDate: event.startDate,
-              endDate: event.endDate,
-            });
-          }
-        } else if (event.dateType === 'week' || event.dateType === 'month') {
-          // Week/month-only events
-          allEvents.push({
-            id: event._id || `calendar-${event.isoDate}-${event.title}`,
-            title: event.title,
-            dateKey: parseAnyDateToKey(event.isoDate || event.date),
-            time: event.time || 'All Day',
-            type: event.category || 'Announcement',
-            color: categoryToColors(event.category).dot,
-            chip: categoryToColors(event.category),
-            dateType: event.dateType,
-            weekOfMonth: event.weekOfMonth,
-            month: event.month,
-            year: event.year,
-          });
-        } else {
-          // Single date events
-          allEvents.push({
-            id: event._id || `calendar-${event.isoDate}-${event.title}`,
-            title: event.title,
-            dateKey: parseAnyDateToKey(event.isoDate || event.date),
-            time: event.time || 'All Day',
-            type: event.category || 'Announcement',
-            color: categoryToColors(event.category).dot,
-            chip: categoryToColors(event.category),
-            dateType: event.dateType,
-          });
-        }
-      });
-    }
-    
-    return allEvents;
-  }, [calendarEvents, selectedContentTypesSet]);
-
-  const getAllEventsGrouped = React.useCallback(() => {
-    if (!Array.isArray(calendarEvents)) return [];
-    
-    const all: any[] = [];
-    
-    // Get current month and year for filtering
-    const currentYear = currentMonth.getUTCFullYear();
-    const currentMonthIndex = currentMonth.getUTCMonth() + 1; // 1-12
-    
-    // Add events from calendarEvents (CalendarService)
-    // Use a Set to track date ranges we've already added (to avoid duplicates)
-    const dateRangeKeys = new Set<string>();
-    
-    if (Array.isArray(calendarEvents)) {
-      calendarEvents.forEach(event => {
-        const eventType = String(event.category || 'Announcement').toLowerCase();
-        
-        // Apply filters - check if event type is in selected content types
-        if (!selectedContentTypesSet.has(eventType)) return;
-        
-        // For date ranges, use start date as the key and avoid duplicates
-        let eventDateKey: string | null = null;
-        let dateObj: Date | null = null;
-        let eventYear: number | null = null;
-        
-        if (event.dateType === 'date_range' && event.startDate && event.endDate) {
-          const rangeKey = `${event.title}-${event.startDate}-${event.endDate}`;
-          if (dateRangeKeys.has(rangeKey)) {
-            return; // Skip duplicate date range
-          }
-          dateRangeKeys.add(rangeKey);
-          eventDateKey = parseAnyDateToKey(event.startDate);
-          dateObj = new Date(event.startDate);
-          eventYear = dateObj.getFullYear();
-        } else if (event.dateType === 'week' || event.dateType === 'month') {
-          // Week/month-only events - use placeholder date for grouping
-          eventDateKey = parseAnyDateToKey(event.isoDate || event.date);
-          dateObj = new Date(event.isoDate || event.date);
-          eventYear = event.year || dateObj.getFullYear();
-        } else {
-          eventDateKey = parseAnyDateToKey(event.isoDate || event.date);
-          dateObj = new Date(event.isoDate || event.date);
-          eventYear = dateObj.getFullYear();
-        }
-        
-        if (eventDateKey) {
-          all.push({
-            id: event._id || `calendar-${event.isoDate}-${event.title}`,
-            title: event.title,
-            dateKey: eventDateKey,
-            time: event.time || 'All Day',
-            type: event.category || 'Announcement',
-            color: categoryToColors(event.category).dot,
-            chip: categoryToColors(event.category),
-            dateObj: dateObj,
-            year: eventYear,
-            dateType: event.dateType,
-            startDate: event.startDate,
-            endDate: event.endDate,
-            weekOfMonth: event.weekOfMonth,
-            month: event.month,
-          });
-        }
-      });
-    }
-    
-    // Group by year first, then by date
-    const yearMap = new Map<number, Map<string, any[]>>();
-    
-    all.forEach(e => {
-      const year = e.year || new Date(e.dateKey).getFullYear();
-      const dateKey = e.dateKey;
-      
-      if (!yearMap.has(year)) {
-        yearMap.set(year, new Map());
-      }
-      const dateMap = yearMap.get(year)!;
-      if (!dateMap.has(dateKey)) {
-        dateMap.set(dateKey, []);
-      }
-      dateMap.get(dateKey)!.push(e);
-    });
-    
-    // Convert to nested structure: year -> dates -> events
-    const result: Array<{ year: number; dates: Array<{ key: string; items: any[] }> }> = [];
-    
-    Array.from(yearMap.entries())
-      .sort((a, b) => a[0] - b[0]) // Sort years ascending
-      .forEach(([year, dateMap]) => {
-        const dates = Array.from(dateMap.entries())
-          .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime()) // Sort dates ascending
-          .map(([key, items]) => ({ key, items }));
-        result.push({ year, dates });
-      });
-    
-    return result;
-  }, [calendarEvents, selectedContentTypesSet, currentMonth]);
 
 
   const openMonthPicker = () => {
@@ -1106,13 +488,7 @@ const CalendarScreen = () => {
     return () => animation.stop();
   }, [floatAnim1]);
 
-  React.useEffect(() => {
-    listAnim.setValue(1);
-    dotScale.setValue(1);
-  }, [selectedDate]);
-
-  const days = useMemo(() => getDaysInMonth(currentMonth), [currentMonth]);
-  const weekDays = useMemo(() => ['S', 'M', 'T', 'W', 'T', 'F', 'S'], []); // Sunday -> Saturday
+  const weekDays = useMemo(() => ['S', 'M', 'T', 'W', 'T', 'F', 'S'], []);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -1233,7 +609,7 @@ const CalendarScreen = () => {
               </View>
             ) : (
               <View style={[styles.profileIconCircle, { backgroundColor: t.colors.accent }]} pointerEvents="none">
-                <Text style={[styles.profileInitials, { fontSize: t.fontSize.scaleSize(13) }]}>{getUserInitials()}</Text>
+                <Text style={[styles.profileInitials, { fontSize: t.fontSize.scaleSize(13) }]}>U</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -1324,14 +700,13 @@ const CalendarScreen = () => {
             ))}
           </View>
 
-          <View style={styles.calendarGrid}>
-            {days && Array.isArray(days) && days.map((day, index) => {
-                const currentDate = day ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day) : null;
-                const isCurrentDay = currentDate ? isToday(currentDate) : false;
-                const isSelectedDay = currentDate ? isSelected(currentDate) : false;
-              return renderCalendarDay(currentDate || new Date(), day, isCurrentDay, !!isSelectedDay, index);
-            })}
-          </View>
+          <CalendarGrid
+            currentMonth={currentMonth}
+            selectedDate={selectedDate}
+            eventsByDateMap={eventsByDateMap}
+            theme={t}
+            onDayPress={handleDayPress}
+          />
 
           {/* Event Type Legend - Inside Calendar Card */}
           <View style={styles.legendContainer}>
@@ -1638,7 +1013,6 @@ const styles = StyleSheet.create({
   },
   weekHeader: {
     flexDirection: 'row',
-    backgroundColor: theme.colors.surface,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -1647,393 +1021,16 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     alignItems: 'center',
     borderRightWidth: 1,
-    borderRightColor: theme.colors.border,
   },
   weekDayText: {
     fontSize: 12,
     fontWeight: '600',
-    color: theme.colors.textMuted,
   },
   calendarGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 12,
     paddingVertical: 8,
-  },
-  calendarDay: {
-    width: '14.285%', // 100% / 7 days
-    aspectRatio: 1,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  dayContent: {
-    flex: 1,
-    padding: 2,
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  dayNumberContainer: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dayNumber: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: theme.colors.text,
-  },
-  todayContainer: {
-    // backgroundColor set dynamically via theme
-  },
-  todayText: {
-    // color set dynamically via theme
-    fontWeight: '700',
-  },
-  selectedContainer: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    // borderColor set dynamically via theme
-  },
-  selectedText: {
-    // color set dynamically via theme
-    fontWeight: '700',
-  },
-  eventIndicators: {
-    flexDirection: 'row',
-    gap: 2,
-    justifyContent: 'center',
-  },
-  eventDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-  },
-  eventsSection: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 0,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  emptyStateCard: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 20,
-    borderWidth: 1,
-    borderRadius: 12,
-    shadowColor: theme.colors.text,
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  emptyStateIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  emptyStateTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  emptyStateSubtitle: {
-    fontSize: 12,
-    marginBottom: 12,
-  },
-  eventsHeader: {
-    flexDirection: 'column',
-    gap: 8,
-    marginBottom: 16,
-  },
-  eventsHeaderTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  eventsHeaderTopRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    flexShrink: 1,
-  },
-  eventsHeaderBottomRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  eventFilterContainer: {
-    flexDirection: 'row',
-    gap: 6,
-    alignItems: 'center',
-    flexShrink: 1,
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  eventsTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  eventTypeToggleContainer: {
-    flexDirection: 'row',
-    gap: 4,
-    alignItems: 'center',
-  },
-  eventTypeToggleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1,
-    flexShrink: 1,
-    minWidth: 80,
-  },
-  eventTypeToggleText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  timeRangeDropdownWrapper: {
-    position: 'relative',
-    zIndex: 10,
-  },
-  timeRangeDropdownButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    minWidth: 100,
-  },
-  timeRangeDropdownText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  timeRangeDropdownOptions: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    marginTop: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    overflow: 'hidden',
-    zIndex: 1000,
-  },
-  timeRangeDropdownOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-  },
-  timeRangeDropdownOptionText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  segmentedToggle: {
-    flexDirection: 'row',
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  segmentItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  segmentItemActive: {
-    // Background color applied inline for theme awareness
-  },
-  segmentText: {
-    fontSize: 12,
-    color: theme.colors.textMuted,
-    fontWeight: '700',
-  },
-  segmentTextActive: {
-    color: theme.colors.accent,
-  },
-  eventsHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  eventsIconWrap: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  eventsTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: theme.colors.text,
-  },
-  eventsSubtitle: {
-    fontSize: 12,
-    color: theme.colors.textMuted,
-    marginTop: -6,
-    marginBottom: 12,
-  },
-  eventsSubtitleRowEnhanced: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginTop: -6,
-    marginBottom: 12,
-  },
-  eventCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    // backgroundColor set dynamically via theme
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    // borderColor set dynamically via theme
-    shadowColor: theme.colors.text,
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
-  },
-  eventAccent: {
-    width: 2,
-    height: '100%',
-    borderRadius: 1,
-    marginRight: 10,
-  },
-  eventContent: {
-    flex: 1,
-  },
-  eventTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    // color set dynamically via theme
-    marginBottom: 4,
-  },
-  eventTimeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
-  },
-  eventTimeText: {
-    fontSize: 12,
-    // color set dynamically via theme
-    fontWeight: '700',
-  },
-  statusInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  statusItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  statusSep: {
-    fontSize: 12,
-    // color set dynamically via theme
-    fontWeight: '700',
-  },
-  eventInnerDivider: {
-    height: 1,
-    backgroundColor: theme.colors.border,
-    marginVertical: 6,
-  },
-  groupContainer: {
-    marginBottom: 12,
-  },
-  groupHeaderText: {
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  eventDateRow: {
-    marginBottom: 4,
-  },
-  eventDateText: {
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  segmentedControlContainer: {
-    marginBottom: 12,
-    paddingHorizontal: 4,
-  },
-  segmentedControl: {
-    flexDirection: 'row',
-    borderRadius: 12,
-    padding: 2,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  segmentedSelector: {
-    position: 'absolute',
-    top: 2,
-    bottom: 2,
-    left: 0,
-    width: '48%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  segmentedOptionsContainer: {
-    flexDirection: 'row',
-    width: '100%',
-    zIndex: 1,
-  },
-  segmentedOption: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  segmentedOptionText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  yearGroupContainer: {
-    marginBottom: 24,
-  },
-  yearHeaderText: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 12,
-    marginTop: 4,
   },
 });
 

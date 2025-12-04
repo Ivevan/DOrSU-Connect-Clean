@@ -10,51 +10,83 @@ dayjs.extend(timezone);
 
 const PH_TZ = 'Asia/Manila';
 
-// Get cell background color based on event types
+// Get cell background color based on event types (highest priority)
+// Note: This function is kept for backward compatibility but cell colors are no longer used
+// We now use dot indicators instead of color fills
 const getCellColor = (events: any[]): string | null => {
-  if (!events || events.length === 0) return null;
-  
-  // Priority order: Institutional > Academic > Event > News > Announcement
-  const hasInstitutional = events.some(e => {
-    const type = String(e.type || e.category || '').toLowerCase();
-    return type === 'institutional';
-  });
-  
-  const hasAcademic = events.some(e => {
-    const type = String(e.type || e.category || '').toLowerCase();
-    return type === 'academic';
-  });
-  
-  const hasEvent = events.some(e => {
-    const type = String(e.type || e.category || '').toLowerCase();
-    return type === 'event';
-  });
-  
-  const hasNews = events.some(e => {
-    const type = String(e.type || e.category || '').toLowerCase();
-    return type === 'news';
-  });
-  
-  const hasAnnouncement = events.some(e => {
-    const type = String(e.type || e.category || '').toLowerCase();
-    return type === 'announcement';
-  });
-  
-  // Return color based on priority
-  if (hasInstitutional) return '#2563EB'; // Blue
-  if (hasAcademic) return '#10B981'; // Green
-  if (hasEvent) return '#D97706'; // Orange
-  if (hasNews) return '#8B5CF6'; // Purple
-  if (hasAnnouncement) return '#1A3E7A'; // Dark Blue
-  
-  // Fallback: use first event's category color
-  const firstEvent = events[0];
-  if (firstEvent) {
-    const colors = categoryToColors(firstEvent.type || firstEvent.category);
-    return colors.cellColor || null;
-  }
-  
+  // Return null - we don't use cell background colors anymore, only dot indicators
   return null;
+};
+
+// Get unique event type colors for indicators
+// Returns: { indicators: string[], totalUniqueTypes: number }
+const getEventTypeIndicators = (events: any[]): { indicators: string[]; totalUniqueTypes: number } => {
+  if (!events || events.length === 0) return { indicators: [], totalUniqueTypes: 0 };
+  
+  const typeColorMap: { [key: string]: string } = {
+    'academic': '#2563EB', // Blue - calm, serious, organized
+    'institutional': '#4B5563', // Dark Gray - neutral, official-looking
+    'announcement': '#EAB308', // Yellow - bright, attention-grabbing
+    'event': '#10B981', // Green - friendly, inviting
+    'news': '#EF4444', // Red - stands out, signals new/important
+  };
+  
+  // Priority order for sorting
+  const priorityOrder: { [key: string]: number } = {
+    'institutional': 1,
+    'academic': 2,
+    'event': 3,
+    'announcement': 4,
+    'news': 5,
+  };
+  
+  // Get unique event types - normalize to ensure consistent type extraction
+  const uniqueTypes = new Set<string>();
+  events.forEach(e => {
+    // Normalize: use type first, then category, with proper fallback
+    // The type field should already be set by useCalendar hook, but we check both for safety
+    let eventType = e.type || e.category;
+    
+    // If still no type, check source-specific fields
+    if (!eventType) {
+      if (e.source === 'post') {
+        eventType = e.category || 'Announcement';
+      } else if (e.source === 'calendar') {
+        eventType = e.category || 'Announcement';
+      } else {
+        eventType = 'Announcement';
+      }
+    }
+    
+    // Normalize to lowercase and trim whitespace
+    const normalizedType = String(eventType).toLowerCase().trim();
+    if (normalizedType) {
+      uniqueTypes.add(normalizedType);
+    }
+  });
+  
+  const totalUniqueTypes = uniqueTypes.size;
+  
+  // Convert to array of colors, sorted by priority, limit to 4 indicators
+  // Use stable sort to ensure consistent ordering regardless of when events are added
+  const indicators = Array.from(uniqueTypes)
+    .map(type => ({
+      type,
+      color: typeColorMap[type] || categoryToColors(type).cellColor || '#2563EB',
+      priority: priorityOrder[type] || 99,
+    }))
+    .sort((a, b) => {
+      // Primary sort by priority
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
+      }
+      // Secondary sort by type name for stability when priorities are equal
+      return a.type.localeCompare(b.type);
+    })
+    .slice(0, 4) // Limit to 4 indicators to avoid clutter
+    .map(item => item.color);
+  
+  return { indicators, totalUniqueTypes };
 };
 
 // Robust PH date-key comparison (avoids off-by-one no matter device tz)
@@ -125,16 +157,17 @@ const CalendarDay = memo(({
     />
   );
   
-  const cellColor = getCellColor(eventsForDay);
+  const { indicators: eventIndicators, totalUniqueTypes } = getEventTypeIndicators(eventsForDay);
   const isLastColumn = (index % 7) === 6;
   const isSelected = isSelectedDay && !isCurrentDay;
+  const hasMoreTypes = totalUniqueTypes > eventIndicators.length;
   
   return (
     <TouchableOpacity 
       style={[
         styles.calendarDay,
         { 
-          backgroundColor: cellColor || theme.colors.card,
+          backgroundColor: theme.colors.card,
           borderTopWidth: isSelected ? 2 : 0,
           borderTopColor: isSelected ? theme.colors.accent : 'transparent',
           borderLeftWidth: isSelected ? 2 : 0,
@@ -143,7 +176,6 @@ const CalendarDay = memo(({
           borderRightColor: isSelected ? theme.colors.accent : theme.colors.border,
           borderBottomWidth: isSelected ? 2 : StyleSheet.hairlineWidth,
           borderBottomColor: isSelected ? theme.colors.accent : theme.colors.border,
-          opacity: cellColor ? 0.85 : 1,
         }
       ]}
       onPress={handlePress}
@@ -155,24 +187,49 @@ const CalendarDay = memo(({
           styles.dayNumberContainer,
           isCurrentDay && styles.todayContainer,
           isCurrentDay && { backgroundColor: theme.colors.accent },
-          !isCurrentDay && cellColor && { backgroundColor: cellColor },
         ]}>
           <Text
             accessibilityRole="button"
             accessibilityLabel={`Select ${date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}`}
-            accessibilityHint={hasEvents ? "Tap to view events for this date" : "Selects this date"}
+            accessibilityHint={hasEvents ? `Tap to view ${eventsForDay.length} event${eventsForDay.length > 1 ? 's' : ''} for this date` : "Selects this date"}
             style={[
               styles.dayNumber,
               { fontSize: theme.fontSize.scaleSize(12) },
               isCurrentDay && { color: '#FFFFFF', fontWeight: '700' },
-              !isCurrentDay && { color: cellColor ? '#FFFFFF' : theme.colors.text },
+              !isCurrentDay && { color: theme.colors.text },
               isCurrentDay && styles.todayText,
-              !isCurrentDay && cellColor && { color: '#FFFFFF', fontWeight: '700' }
             ]}
           >
             {day}
           </Text>
         </View>
+        
+        {/* Event Indicators - Show colored dots for all events */}
+        {hasEvents && eventIndicators.length > 0 && (
+          <View style={styles.eventIndicatorsContainer}>
+            {eventIndicators.map((color, idx) => (
+              <View
+                key={idx}
+                style={[
+                  styles.eventIndicatorDot,
+                  { 
+                    backgroundColor: color,
+                    shadowColor: color,
+                    shadowOffset: { width: 0, height: 0 },
+                    shadowOpacity: 0.4,
+                    shadowRadius: 1.5,
+                    elevation: 2,
+                  }
+                ]}
+              />
+            ))}
+            {hasMoreTypes && (
+              <Text style={styles.moreEventsText}>
+                +{totalUniqueTypes - eventIndicators.length}
+              </Text>
+            )}
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -294,6 +351,31 @@ const styles = StyleSheet.create({
   todayText: {
     color: '#fff',
     fontWeight: '700',
+  },
+  eventIndicatorsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    marginTop: 3,
+    flexWrap: 'wrap',
+    maxWidth: '100%',
+    paddingHorizontal: 2,
+    paddingVertical: 2,
+  },
+  eventIndicatorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    minWidth: 6,
+    minHeight: 6,
+  },
+  moreEventsText: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: 'rgba(0, 0, 0, 0.6)',
+    marginLeft: 2,
+    lineHeight: 10,
   },
 });
 

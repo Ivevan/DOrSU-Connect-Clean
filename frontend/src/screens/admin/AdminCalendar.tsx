@@ -25,8 +25,7 @@ import AdminDataService from '../../services/AdminDataService';
 import AdminFileService from '../../services/AdminFileService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import CalendarService from '../../services/CalendarService';
-import { formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDateKey, normalizeCategory, parseAnyDateToKey } from '../../utils/calendarUtils';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -78,16 +77,6 @@ const AdminCalendar = () => {
   const [selectedDateEvents, setSelectedDateEvents] = useState<any[]>([]);
   const [selectedDateForDrawer, setSelectedDateForDrawer] = useState<Date | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editTitle, setEditTitle] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-  const [editDate, setEditDate] = useState('');
-  const [editTime, setEditTime] = useState('');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
-  const [selectedDateObj, setSelectedDateObj] = useState<Date | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
   const [isDeletingAll, setIsDeletingAll] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
   
@@ -106,27 +95,9 @@ const AdminCalendar = () => {
     return new Set(types.map(t => t.toLowerCase()));
   }, [selectedLegendType]);
   
-  // Keep array version for backward compatibility with existing code
-  const selectedContentTypes = React.useMemo(() => {
-    return selectedLegendType 
-      ? [selectedLegendType] 
-      : ['academic', 'institutional', 'event', 'announcement', 'news'];
-  }, [selectedLegendType]);
-  
   // Animation values
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
   const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
-  const listAnim = useRef(new Animated.Value(0)).current;
-  const dotScale = useRef(new Animated.Value(0.8)).current;
-
-  const getUserInitials = () => {
-    if (!currentUser?.displayName) return '?';
-    const names = currentUser.displayName.split(' ');
-    if (names.length >= 2) {
-      return (names[0][0] + names[1][0]).toUpperCase();
-    }
-    return currentUser.displayName.substring(0, 2).toUpperCase();
-  };
 
   // Load user data on mount
   useEffect(() => {
@@ -303,7 +274,15 @@ const AdminCalendar = () => {
         console.log(`✅ Fast load complete: ${events.length} events, ${postsData.length} posts`);
 
         if (!cancelled) {
-          setCalendarEvents(Array.isArray(events) ? events : []);
+          // Normalize categories in events to ensure consistent casing
+          const normalizedEvents = Array.isArray(events) ? events.map(e => {
+            if (e.category) {
+              return { ...e, category: normalizeCategory(e.category) };
+            }
+            return e;
+          }) : [];
+          
+          setCalendarEvents(normalizedEvents);
           setPosts(Array.isArray(postsData) ? postsData : []);
 
           // Mark loaded months in cache (for smart navigation)
@@ -331,11 +310,6 @@ const AdminCalendar = () => {
       cancelled = true;
     };
   }, []);
-
-  // Entrance animation disabled for debugging
-
-
-
 
   const getMonthName = (date: Date) => {
     return dayjs.utc(date).tz(PH_TZ).format('MMMM');
@@ -442,15 +416,23 @@ const AdminCalendar = () => {
       
       console.log(`✅ Loaded ${events.length} calendar events`);
       
-      // Merge with existing events (avoid duplicates)
+      // Merge with existing events (avoid duplicates and normalize categories)
       setCalendarEvents(prevEvents => {
         const existingIds = new Set(
           prevEvents.map(e => (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`)
         );
-        const newEvents = events.filter(e => {
-          const id = (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`;
-          return !existingIds.has(id);
-        });
+        const newEvents = events
+          .filter(e => {
+            const id = (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`;
+            return !existingIds.has(id);
+          })
+          .map(e => {
+            // Normalize category to ensure consistent casing
+            if (e.category) {
+              return { ...e, category: normalizeCategory(e.category) };
+            }
+            return e;
+          });
         return [...prevEvents, ...newEvents];
       });
     } catch (error) {
@@ -565,23 +547,8 @@ const AdminCalendar = () => {
       
       const eventData = fullEvent || firstEvent;
       
-      // Set the selected event and initialize edit fields
+      // Set the selected event
       setSelectedEvent(eventData);
-      setEditTitle(eventData?.title || '');
-      setEditDescription(eventData?.description || '');
-      
-      // Set date and time for editing
-      if (eventData?.isoDate || eventData?.date) {
-        const eventDate = new Date(eventData.isoDate || eventData.date);
-        setSelectedDateObj(eventDate);
-        setEditDate(formatDate(eventDate));
-      } else {
-        // If no date in event, use the clicked date
-        setSelectedDateObj(date);
-        setEditDate(formatDate(date));
-      }
-      setEditTime(eventData?.time || '');
-      setIsEditing(false);
       
       // Also keep selectedDateEvents for backward compatibility
       setSelectedDateEvents(events);
@@ -644,12 +611,6 @@ const AdminCalendar = () => {
 
 
 
-
-  // OPTIMIZED: Don't fetch on mount - useFocusEffect handles initial load
-  // This prevents double loading when screen first mounts
-  // useEffect(() => {
-  //   refreshCalendarEvents(true); // Force refresh on mount
-  // }, []); // Empty deps - only run on mount
 
   // Pull-to-refresh handler
   const onRefresh = useCallback(async () => {
@@ -1020,11 +981,11 @@ const AdminCalendar = () => {
             </View>
             <View style={styles.legendItems}>
               {[
-                { type: 'Academic', key: 'academic', color: '#10B981' },
-                { type: 'Institutional', key: 'institutional', color: t.colors.accent },
-                { type: 'Event', key: 'event', color: '#F59E0B' },
-                { type: 'Announcement', key: 'announcement', color: '#3B82F6' },
-                { type: 'News', key: 'news', color: '#8B5CF6' },
+                { type: 'Academic', key: 'academic', color: '#2563EB' }, // Blue
+                { type: 'Institutional', key: 'institutional', color: '#4B5563' }, // Dark Gray
+                { type: 'Announcement', key: 'announcement', color: '#EAB308' }, // Yellow
+                { type: 'Event', key: 'event', color: '#10B981' }, // Green
+                { type: 'News', key: 'news', color: '#EF4444' }, // Red
               ].map((item) => {
                 const isSelected = selectedLegendType === item.key;
                 return (
@@ -1175,7 +1136,6 @@ const AdminCalendar = () => {
           
           // ViewEventModal handles confirmation, just execute deletion
           try {
-            setIsDeleting(true);
             if (selectedEvent.source === 'post') {
               // Delete post using AdminDataService
               await AdminDataService.deletePost(selectedEvent.id);
@@ -1189,8 +1149,6 @@ const AdminCalendar = () => {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           } catch (error) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-          } finally {
-            setIsDeleting(false);
           }
         }}
       />
@@ -1379,19 +1337,6 @@ const styles = StyleSheet.create({
     gap: 8,
     alignItems: 'center',
   },
-  legendWrapper: {
-    position: 'relative',
-    zIndex: 2000,
-    marginBottom: 12,
-    elevation: 20,
-  },
-  legendCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    padding: 12,
-  },
   legendContainer: {
     gap: 8,
     paddingTop: 16,
@@ -1400,13 +1345,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.2)',
     marginTop: 8,
-  },
-  legendLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 4,
   },
   legendHeaderRow: {
     flexDirection: 'row',
@@ -1506,488 +1444,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
-  calendarGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  calendarDay: {
-    width: '14.285%', // 100% / 7 days
-    aspectRatio: 1,
-    // Border widths and colors are set dynamically in the component
-  },
-  dayContent: {
-    flex: 1,
-    padding: 2,
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  dayNumberContainer: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  dayNumber: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  todayContainer: {
-    backgroundColor: 'transparent', // Will be set dynamically via theme // Blue for current day
-  },
-  todayText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-  selectedContainer: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#3B82F6',
-  },
-  selectedText: {
-    color: '#1D4ED8',
-    fontWeight: '700',
-  },
-  eventIndicators: {
-    flexDirection: 'row',
-    gap: 2,
-    justifyContent: 'center',
-  },
-  eventDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-  },
-  eventsSection: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 0,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  emptyStateCard: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 20,
-    borderWidth: 1,
-    borderRadius: 12,
-  },
-  emptyStateIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  emptyStateTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    marginBottom: 4,
-  },
-  emptyStateSubtitle: {
-    fontSize: 12,
-    marginBottom: 12,
-  },
-  emptyStateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-  },
-  emptyStateBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  eventsHeader: {
-    flexDirection: 'column',
-    gap: 8,
-    marginBottom: 16,
-  },
-  eventsHeaderTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  eventsHeaderTopRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    flexShrink: 1,
-  },
-  eventsHeaderBottomRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  eventsTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  filterEventsLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  eventFilterContainer: {
-    flexDirection: 'row',
-    gap: 6,
-    alignItems: 'center',
-    flexShrink: 1,
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  timeRangeToggleContainer: {
-    flexDirection: 'row',
-    gap: 4,
-    alignItems: 'center',
-  },
-  timeRangeDropdownWrapper: {
-    position: 'relative',
-    zIndex: 10,
-  },
-  timeRangeDropdownButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    minWidth: 100,
-  },
-  timeRangeDropdownText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  timeRangeDropdownOptions: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    marginTop: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    overflow: 'hidden',
-    zIndex: 1000,
-  },
-  timeRangeDropdownOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-  },
-  timeRangeDropdownOptionText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  eventTypeToggleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 8,
-    borderWidth: 1,
-    flexShrink: 1,
-    minWidth: 80,
-  },
-  eventTypeToggleText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  segmentedToggle: {
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  segmentItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  segmentItemActive: {
-    // Background color applied inline for theme awareness
-  },
-  segmentText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  segmentTextActive: {
-    // Color set dynamically
-  },
-  infoIconButton: {
-    padding: 2,
-    marginLeft: -6,
-  },
-  eventTypeToggleContainer: {
-    flexDirection: 'row',
-    gap: 4,
-    alignItems: 'center',
-  },
-  eventsIconWrap: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  eventsTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  eventsBadge: {
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: 6,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  eventsBadgeCompact: {
-    minWidth: 16,
-    height: 16,
-    paddingHorizontal: 6,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    marginLeft: 6,
-  },
-  eventsBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  eventsSubtitle: {
-    fontSize: 12,
-    marginTop: -6,
-    marginBottom: 12,
-  },
-  eventsSubtitleRowEnhanced: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginTop: -6,
-    marginBottom: 12,
-  },
-  eventsHeaderDivider: {
-    height: 1,
-    marginBottom: 10,
-  },
-  monthHelperText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  toggleAllBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  toggleAllBtnText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  groupContainer: {
-    marginBottom: 12,
-  },
-  groupHeaderText: {
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  eventDateRow: {
-    marginBottom: 4,
-  },
-  eventDateText: {
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  eventSmallTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignSelf: 'flex-start',
-  },
-  eventSmallTagText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  addEventButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    gap: 6,
-  },
-  addEventText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  eventCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-  },
-  eventAccent: {
-    width: 2,
-    height: '100%',
-    borderRadius: 1,
-    marginRight: 10,
-  },
-  eventContent: {
-    flex: 1,
-  },
-  eventTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  eventTimeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
-  },
-  eventTimeText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  statusStrip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-    justifyContent: 'flex-start',
-  },
-  statusInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  statusItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  statusSep: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    fontWeight: '700',
-  },
-  eventTypeChip: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignSelf: 'flex-start',
-  },
-  eventTypeText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  daySummarySection: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  daySummaryContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  daySummaryLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  daySummaryDate: {
-    fontSize: 24,
-    fontWeight: '800',
-  },
-  daySummaryInfo: {
-    flex: 1,
-  },
-  daySummaryDay: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  daySummaryCount: {
-    fontSize: 12,
-  },
-  eventInnerDivider: {
-    height: 1,
-    marginVertical: 6,
-  },
-  inlineCallout: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 10,
-    marginBottom: 10,
-  },
-  inlineCalloutText: {
-    fontSize: 12,
-    fontWeight: '700',
-    flex: 1,
-    marginRight: 8,
-  },
-  inlineCreateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  inlineCreateText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
   csvUploadButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2014,321 +1470,6 @@ const styles = StyleSheet.create({
   },
   deleteAllText: {
     fontSize: 11,
-    fontWeight: '600',
-  },
-  helpButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  segmentedControlContainer: {
-    marginBottom: 12,
-    paddingHorizontal: 4,
-  },
-  segmentedControl: {
-    flexDirection: 'row',
-    borderRadius: 12,
-    padding: 2,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  segmentedSelector: {
-    position: 'absolute',
-    top: 2,
-    bottom: 2,
-    left: 0,
-    width: '48%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  segmentedOptionsContainer: {
-    flexDirection: 'row',
-    width: '100%',
-    zIndex: 1,
-  },
-  segmentedOption: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  segmentedOptionText: {
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  yearGroupContainer: {
-    marginBottom: 24,
-  },
-  yearHeaderText: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 12,
-    marginTop: 4,
-  },
-  drawerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  drawerContentContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '85%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 20,
-  },
-  drawerHandle: {
-    alignItems: 'center',
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  drawerHandleBar: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    opacity: 0.3,
-  },
-  drawerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    paddingTop: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(0, 0, 0, 0.08)',
-  },
-  drawerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-  },
-  drawerCloseButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.05)',
-  },
-  drawerScrollView: {
-    flex: 1,
-  },
-  drawerScrollContent: {
-    padding: 20,
-    paddingTop: 16,
-  },
-  drawerEventCard: {
-    flexDirection: 'row',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  drawerEventAccent: {
-    width: 3,
-    borderRadius: 2,
-    marginRight: 12,
-  },
-  drawerEventContent: {
-    flex: 1,
-  },
-  drawerEventTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  drawerEventDivider: {
-    height: 1,
-    marginVertical: 8,
-  },
-  drawerEventRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 6,
-  },
-  drawerEventText: {
-    fontSize: 14,
-    flex: 1,
-  },
-  drawerEventDescription: {
-    fontSize: 13,
-    lineHeight: 20,
-    marginTop: 4,
-  },
-  drawerEmptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 40,
-  },
-  drawerEmptyText: {
-    fontSize: 14,
-  },
-  drawerSection: {
-    marginBottom: 20,
-  },
-  drawerEditField: {
-    marginBottom: 20,
-  },
-  drawerFieldLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  drawerInputContainer: {
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  drawerInput: {
-    flex: 1,
-    fontSize: 16,
-    padding: 0,
-  },
-  drawerTextAreaContainer: {
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minHeight: 120,
-  },
-  drawerTextArea: {
-    flex: 1,
-    fontSize: 16,
-    padding: 0,
-    minHeight: 100,
-  },
-  drawerCharCount: {
-    fontSize: 12,
-    marginTop: 4,
-    alignSelf: 'flex-end',
-  },
-  drawerAttachmentsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 8,
-  },
-  drawerAttachmentItem: {
-    width: 100,
-    height: 100,
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  drawerAttachmentImage: {
-    width: '100%',
-    height: '100%',
-  },
-  drawerAttachmentIcon: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  drawerActions: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 12,
-  },
-  drawerActionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
-  },
-  drawerDeleteButton: {
-    backgroundColor: '#DC2626',
-  },
-  drawerEditButton: {
-    backgroundColor: 'transparent', // Will be set dynamically via theme
-  },
-  drawerSaveButton: {
-    backgroundColor: '#10B981',
-  },
-  drawerCancelButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-  },
-  drawerActionButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  deleteAllWarningContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 16,
-    gap: 12,
-  },
-  deleteAllWarningText: {
-    fontSize: 16,
-    fontWeight: '600',
-    flex: 1,
-  },
-  deleteAllDescription: {
-    fontSize: 15,
-    lineHeight: 22,
-    marginBottom: 12,
-  },
-  deleteAllSubtext: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  drawerEventSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    gap: 12,
-  },
-  drawerEventSelectorAccent: {
-    width: 3,
-    height: 24,
-    borderRadius: 2,
-  },
-  drawerEventSelectorText: {
-    flex: 1,
-    fontSize: 15,
     fontWeight: '600',
   },
 });

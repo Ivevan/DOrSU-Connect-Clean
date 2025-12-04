@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Dimensions, Easing, Image, Modal, Platform, Pressable, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Dimensions, Image, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
 import UserSidebar from '../../components/navigation/UserSidebar';
@@ -35,125 +35,6 @@ type RootStackParamList = {
   Calendar: undefined;
 };
 
-// Animated No Events Component
-const NoEventsAnimation = memo(({ theme }: { theme: any }) => {
-  const floatAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(floatAnim, {
-            toValue: -6,
-            duration: 2000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(floatAnim, {
-            toValue: 0,
-            duration: 2000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-        Animated.sequence([
-          Animated.timing(scaleAnim, {
-            toValue: 1.08,
-            duration: 2000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(scaleAnim, {
-            toValue: 1,
-            duration: 2000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-      ])
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [floatAnim, scaleAnim]);
-
-  return (
-    <Animated.View 
-      style={{
-        transform: [
-          { translateY: floatAnim },
-          { scale: scaleAnim }
-        ],
-      }}
-    >
-      <Ionicons name="calendar-clear-outline" size={100} color={theme.colors.textMuted} style={{ opacity: 0.4 }} />
-    </Animated.View>
-  );
-});
-
-// Loading Skeleton Component for Calendar Events
-const CalendarEventSkeleton = memo(({ theme }: { theme: any }) => {
-  const shimmerAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmerAnim, {
-          toValue: 1,
-          duration: 1500,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmerAnim, {
-          toValue: 0,
-          duration: 1500,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [shimmerAnim]);
-
-  const opacity = shimmerAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.3, 0.6],
-  });
-
-  return (
-    <View style={[styles.calendarEventCard, { 
-      backgroundColor: theme.colors.surface, 
-      borderColor: theme.colors.border,
-      width: 280,
-    }]}>
-      <View style={[styles.calendarEventAccent, { backgroundColor: theme.colors.border }]} />
-      <View style={styles.calendarEventContent}>
-        <View style={styles.calendarEventHeader}>
-          <Animated.View style={[
-            styles.calendarEventIconWrapper, 
-            { backgroundColor: theme.colors.border, opacity }
-          ]} />
-          <Animated.View style={[
-            { width: 80, height: 12, borderRadius: 6, backgroundColor: theme.colors.border, opacity }
-          ]} />
-        </View>
-        <Animated.View style={[
-          { width: '100%', height: 16, borderRadius: 4, backgroundColor: theme.colors.border, marginBottom: 8, opacity }
-        ]} />
-        <Animated.View style={[
-          { width: '70%', height: 12, borderRadius: 4, backgroundColor: theme.colors.border, marginBottom: 6, opacity }
-        ]} />
-        <Animated.View style={[
-          { width: '100%', height: 12, borderRadius: 4, backgroundColor: theme.colors.border, marginBottom: 4, opacity }
-        ]} />
-        <Animated.View style={[
-          { width: '85%', height: 12, borderRadius: 4, backgroundColor: theme.colors.border, opacity }
-        ]} />
-      </View>
-    </View>
-  );
-});
 
 // Memoized Calendar Event Card Component
 interface CalendarEventCardProps {
@@ -242,7 +123,6 @@ const CalendarEventCard = memo<CalendarEventCardProps>(({ event, onPress, theme,
 });
 
 CalendarEventCard.displayName = 'CalendarEventCard';
-CalendarEventSkeleton.displayName = 'CalendarEventSkeleton';
 
 // Helper function to get Philippines timezone date key (moved outside component for performance)
 const getPHDateKey = (d: Date | string) => {
@@ -265,40 +145,6 @@ const getPHDateKey = (d: Date | string) => {
   }
 };
 
-// Helper functions for tag colors
-const getTagColor = (tag: string) => {
-  switch (tag.toLowerCase()) {
-    case 'announcement':
-      return '#E8F0FF';
-    case 'academic':
-      return '#F0F9FF';
-    case 'event':
-      return '#FEF3C7';
-    case 'service':
-      return '#ECFDF5';
-    case 'infrastructure':
-      return '#FEF2F2';
-    default:
-      return '#E8F0FF';
-  }
-};
-
-const getTagTextColor = (tag: string) => {
-  switch (tag.toLowerCase()) {
-    case 'announcement':
-      return '#1A3E7A';
-    case 'academic':
-      return '#0369A1';
-    case 'event':
-      return '#D97706';
-    case 'service':
-      return '#059669';
-    case 'infrastructure':
-      return '#DC2626';
-    default:
-      return '#1A3E7A';
-  }
-};
 
 type LegendItem = {
   type: string;
@@ -307,11 +153,11 @@ type LegendItem = {
 };
 
 const legendItemsData: LegendItem[] = [
-  { type: 'Academic', key: 'academic', color: '#10B981' },
-  { type: 'Institutional', key: 'institutional', color: '#2563EB' },
-  { type: 'News', key: 'news', color: '#8B5CF6' },
-  { type: 'Event', key: 'event', color: '#F59E0B' },
-  { type: 'Announcement', key: 'announcement', color: '#3B82F6' },
+  { type: 'Academic', key: 'academic', color: '#2563EB' }, // Blue
+  { type: 'Institutional', key: 'institutional', color: '#4B5563' }, // Dark Gray
+  { type: 'Announcement', key: 'announcement', color: '#EAB308' }, // Yellow
+  { type: 'Event', key: 'event', color: '#10B981' }, // Green
+  { type: 'News', key: 'news', color: '#EF4444' }, // Red
 ];
 
 const timeFilterOptions = [
@@ -320,55 +166,11 @@ const timeFilterOptions = [
   { key: 'upcomingmonth' as const, label: 'Upcoming Month' },
 ];
 
-// Note: UpdateCard component is no longer used - cards are rendered inline to match AdminDashboard design
-
-// Event Card with Image Preview (Horizontal Scrollable)
-const EventCard = memo(({ update, onPress, theme }: { update: any; onPress: () => void; theme: any }) => {
-  const imageUrl = update.images?.[0] || update.image;
-  
-  return (
-    <Pressable style={[styles.eventCardHorizontal, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]} onPress={onPress}>
-      {imageUrl ? (
-        <Image 
-          source={{ uri: imageUrl }} 
-          style={styles.eventImageHorizontal}
-          resizeMode="cover"
-        />
-      ) : (
-        <View style={[styles.eventImagePlaceholder, { backgroundColor: theme.colors.surface }]}>
-          <Ionicons name="calendar-outline" size={40} color={theme.colors.textMuted} />
-        </View>
-      )}
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.7)']}
-        style={styles.eventGradient}
-      >
-        <View style={styles.eventOverlayContent}>
-          <View style={[styles.eventTagOverlay, { backgroundColor: getTagColor(update.tag) }]}>
-            <Text style={[styles.eventTagText, { color: getTagTextColor(update.tag), fontSize: theme.fontSize.scaleSize(11) }]}>{update.tag}</Text>
-          </View>
-          <Text style={[styles.eventTitleOverlay, { fontSize: theme.fontSize.scaleSize(20) }]} numberOfLines={2}>{update.title}</Text>
-          <View style={styles.eventDateTimeRow}>
-            <Ionicons name="calendar-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-            <Text style={[styles.eventDateOverlay, { fontSize: theme.fontSize.scaleSize(14) }]}>{update.date}</Text>
-          </View>
-        </View>
-      </LinearGradient>
-    </Pressable>
-  );
-});
 
 const SchoolUpdates = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
-  const resolvedLegendItems = useMemo<LegendItem[]>(() => (
-    legendItemsData.map(item => {
-      if (item.key === 'institutional') {
-        return { ...item, color: theme.colors.accent };
-      }
-      return item;
-    })
-  ), [theme.colors.accent]);
+  const resolvedLegendItems = useMemo<LegendItem[]>(() => legendItemsData, []);
   const legendRows = useMemo<(LegendItem | null)[][]>(() => {
     const firstRow: (LegendItem | null)[] = resolvedLegendItems.slice(0, 3);
     const secondRow: (LegendItem | null)[] = resolvedLegendItems.slice(3, 5);
@@ -699,25 +501,6 @@ const SchoolUpdates = () => {
     return result;
   }, [updates, searchQuery]);
 
-  // Upcoming updates (future dates)
-  const upcomingUpdates = useMemo(() => {
-    const todayKey = getPHDateKey(new Date());
-    return filtered.filter(u => {
-      if (!u.isoDate) return false;
-      const eventKey = getPHDateKey(u.isoDate);
-      return eventKey > todayKey;
-    });
-  }, [filtered]);
-
-  // Recent updates (today and past dates)
-  const recentUpdates = useMemo(() => {
-    const todayKey = getPHDateKey(new Date());
-    return filtered.filter(u => {
-      if (!u.isoDate) return false;
-      const eventKey = getPHDateKey(u.isoDate);
-      return eventKey <= todayKey;
-    });
-  }, [filtered]);
 
   // Filtered updates based on selected time filter, content type, and search query
   // Includes both posts and calendar events
@@ -1880,19 +1663,9 @@ const SchoolUpdates = () => {
             )}
 
             {!isLoading && !error && displayedUpdates.map((update) => {
-              // Get color for accent bar based on category (institutional/academic)
-              const tagLower = update.tag?.toLowerCase() || '';
-              let accentColor = '#93C5FD'; // Default blue
-              
-              if (tagLower === 'institutional') {
-                accentColor = '#2563EB'; // Blue for Institutional
-              } else if (tagLower === 'academic') {
-                accentColor = '#10B981'; // Green for Academic
-              } else {
-                // For other categories (event, announcement, etc.), use categoryToColors
-                const colors = categoryToColors(update.tag);
-                accentColor = colors.dot || '#93C5FD';
-              }
+              // Get color for accent bar based on category using categoryToColors
+              const colors = categoryToColors(update.tag);
+              const accentColor = colors.dot || '#2563EB'; // Default to Academic Blue
               
               return (
                 <TouchableOpacity
@@ -2734,98 +2507,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   updateTagText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  noEventsContainer: {
-    borderWidth: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  noEventsBlur: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  noEventsCard: {
-    padding: 32,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  noEventsText: {
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  eventCardHorizontal: {
-    width: '100%',
-    height: 220,
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 0,
-  },
-  eventImageHorizontal: {
-    width: '100%',
-    height: '100%',
-  },
-  eventImagePlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  eventGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: '55%',
-    justifyContent: 'flex-end',
-    padding: 16,
-  },
-  eventOverlayContent: {
-    gap: 4,
-  },
-  eventTagOverlay: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    alignSelf: 'flex-start',
-    marginBottom: 8,
-  },
-  eventTitleOverlay: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    textShadowColor: 'rgba(0, 0, 0, 0.75)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-    lineHeight: 26,
-    letterSpacing: 0.3,
-  },
-  eventDateOverlay: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    opacity: 0.95,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  eventDateTimeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  eventTimeSeparator: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    opacity: 0.7,
-    marginHorizontal: 6,
-  },
-  eventTagText: {
     fontSize: 11,
     fontWeight: '700',
   },

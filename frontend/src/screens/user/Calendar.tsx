@@ -19,7 +19,7 @@ import MonthPickerModal from '../../modals/MonthPickerModal';
 import ViewEventModal from '../../modals/ViewEventModal';
 import AdminDataService from '../../services/AdminDataService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
-import { formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
+import { formatDateKey, normalizeCategory, parseAnyDateToKey } from '../../utils/calendarUtils';
 import { useUpdates } from '../../contexts/UpdatesContext';
 
 // Session-scoped flag so the calendar only does a full initial load once per app session.
@@ -212,14 +212,22 @@ const CalendarScreen = () => {
       
       console.log(`✅ Loaded ${events.length} calendar events`);
       
-      // Merge with existing events (avoid duplicates)
+      // Merge with existing events (avoid duplicates and normalize categories)
       setCalendarEvents(prevEvents => {
         const existingIds = new Set(
           prevEvents.map(e => (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`)
         );
-        const newEvents = events.filter(e => {
+        const newEvents = events
+          .filter(e => {
           const id = (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`;
           return !existingIds.has(id);
+          })
+          .map(e => {
+            // Normalize category to ensure consistent casing
+            if (e.category) {
+              return { ...e, category: normalizeCategory(e.category) };
+            }
+            return e;
         });
         return [...prevEvents, ...newEvents];
       });
@@ -271,7 +279,15 @@ const CalendarScreen = () => {
         console.log(`✅ Initial load complete (user calendar): ${events.length} events, ${postsData.length} posts`);
 
         if (!cancelled) {
-          setCalendarEvents(Array.isArray(events) ? events : []);
+          // Normalize categories in events to ensure consistent casing
+          const normalizedEvents = Array.isArray(events) ? events.map(e => {
+            if (e.category) {
+              return { ...e, category: normalizeCategory(e.category) };
+            }
+            return e;
+          }) : [];
+          
+          setCalendarEvents(normalizedEvents);
           setPosts(Array.isArray(postsData) ? postsData : []);
 
           // Mark current month as loaded in cache
@@ -335,7 +351,15 @@ const CalendarScreen = () => {
         AdminDataService.getPosts(),
       ]);
 
-      setCalendarEvents(Array.isArray(events) ? events : []);
+      // Normalize categories in events to ensure consistent casing
+      const normalizedEvents = Array.isArray(events) ? events.map(e => {
+        if (e.category) {
+          return { ...e, category: normalizeCategory(e.category) };
+        }
+        return e;
+      }) : [];
+
+      setCalendarEvents(normalizedEvents);
       setPosts(Array.isArray(postsData) ? postsData : []);
     } catch (error) {
       console.error('Refresh error (user calendar):', error);
@@ -459,15 +483,6 @@ const CalendarScreen = () => {
       setShowMonthPicker(false);
     });
   };
-
-  const getMonthNames = () => {
-    return [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-  };
-
-
 
   React.useEffect(() => {
     const animation = Animated.loop(
@@ -717,11 +732,11 @@ const CalendarScreen = () => {
             </View>
             <View style={styles.legendItems}>
               {[
-                { type: 'Academic', key: 'academic', color: '#10B981' },
-                { type: 'Institutional', key: 'institutional', color: t.colors.accent },
-                { type: 'Event', key: 'event', color: '#F59E0B' },
-                { type: 'Announcement', key: 'announcement', color: '#3B82F6' },
-                { type: 'News', key: 'news', color: '#8B5CF6' },
+                { type: 'Academic', key: 'academic', color: '#2563EB' }, // Blue
+                { type: 'Institutional', key: 'institutional', color: '#4B5563' }, // Dark Gray
+                { type: 'Announcement', key: 'announcement', color: '#EAB308' }, // Yellow
+                { type: 'Event', key: 'event', color: '#10B981' }, // Green
+                { type: 'News', key: 'news', color: '#EF4444' }, // Red
               ].map((item) => {
                 const isSelected = selectedLegendType === item.key;
                 return (
@@ -905,11 +920,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     zIndex: 11,
   },
-  headerSpacer: {
-    width: 40,
-    height: 33,
-    marginLeft: 4,
-  },
   scrollContent: {
     paddingHorizontal: 20,
   },
@@ -1025,12 +1035,6 @@ const styles = StyleSheet.create({
   weekDayText: {
     fontSize: 12,
     fontWeight: '600',
-  },
-  calendarGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
   },
 });
 

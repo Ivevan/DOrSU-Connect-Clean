@@ -4,7 +4,7 @@ import { Animated, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View }
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet from '../components/common/BottomSheet';
 import { useThemeValues } from '../contexts/ThemeContext';
-import { categoryToColors } from '../utils/calendarUtils';
+import { categoryToColors, normalizeCategory } from '../utils/calendarUtils';
 import { formatDate } from '../utils/dateUtils';
 
 // Helper function to get day name from date
@@ -182,13 +182,14 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
 
   // Memoize expensive color calculations - MUST be called before any early returns
   const eventColor = useMemo(() => {
-    if (!primaryEvent) return '#93C5FD'; // Default color
-    return primaryEvent.color || categoryToColors(primaryEvent.category || primaryEvent.type || 'Event').dot;
+    if (!primaryEvent) return '#2563EB'; // Default to Academic Blue
+    const category = normalizeCategory(primaryEvent.category || primaryEvent.type || 'Event');
+    return primaryEvent.color || categoryToColors(category).dot;
   }, [primaryEvent]);
   
   const eventCategory = useMemo(() => {
     if (!primaryEvent) return 'Event'; // Default category
-    return primaryEvent.category || primaryEvent.type || 'Event';
+    return normalizeCategory(primaryEvent.category || primaryEvent.type || 'Event');
   }, [primaryEvent]);
 
   // Check if there's an image to determine if we should auto-size
@@ -256,7 +257,8 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
             {eventsToShow.length} {eventsToShow.length === 1 ? 'Event' : 'Events'} on this date
           </Text>
           {eventsToShow.map((event, index) => {
-            const eventColor = event.color || categoryToColors(event.category || event.type || 'Event').dot;
+            const normalizedEventCategory = normalizeCategory(event.category || event.type || 'Event');
+            const eventColor = event.color || categoryToColors(normalizedEventCategory).dot;
             // Check if this event is selected - prioritize selectedEventFromList, then selectedEvent, then primaryEvent
             const isSelected = selectedEventFromList 
               ? isSameEvent(selectedEventFromList, event)

@@ -93,11 +93,11 @@ type LegendItem = {
 };
 
 const legendItemsData: LegendItem[] = [
-  { type: 'Academic', key: 'academic', color: '#10B981' },
-  { type: 'Institutional', key: 'institutional', color: '#2563EB' },
-  { type: 'News', key: 'news', color: '#8B5CF6' },
-  { type: 'Event', key: 'event', color: '#F59E0B' },
-  { type: 'Announcement', key: 'announcement', color: '#3B82F6' },
+  { type: 'Academic', key: 'academic', color: '#2563EB' }, // Blue
+  { type: 'Institutional', key: 'institutional', color: '#4B5563' }, // Dark Gray
+  { type: 'Announcement', key: 'announcement', color: '#EAB308' }, // Yellow
+  { type: 'Event', key: 'event', color: '#10B981' }, // Green
+  { type: 'News', key: 'news', color: '#EF4444' }, // Red
 ];
 
 const timeFilterOptions = [
@@ -109,14 +109,7 @@ const timeFilterOptions = [
 const AdminDashboard = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
-  const resolvedLegendItems = useMemo<LegendItem[]>(() => (
-    legendItemsData.map(item => {
-      if (item.key === 'institutional') {
-        return { ...item, color: theme.colors.accent };
-      }
-      return item;
-    })
-  ), [theme.colors.accent]);
+  const resolvedLegendItems = useMemo<LegendItem[]>(() => legendItemsData, []);
   const legendRows = useMemo<(LegendItem | null)[][]>(() => {
     const firstRow: (LegendItem | null)[] = resolvedLegendItems.slice(0, 3);
     const secondRow: (LegendItem | null)[] = resolvedLegendItems.slice(3, 5);
@@ -213,25 +206,6 @@ const AdminDashboard = () => {
   // Animated floating background orb (Copilot-style)
   const floatAnim1 = useRef(new Animated.Value(0)).current;
 
-  // Upcoming updates (future dates)
-  const upcomingUpdates = useMemo(() => {
-    const todayKey = getPHDateKey(new Date());
-    return allUpdates.filter(u => {
-      if (!u.isoDate) return false;
-      const eventKey = getPHDateKey(u.isoDate);
-      return eventKey > todayKey;
-    });
-  }, [allUpdates]);
-
-  // Recent updates (today and past dates)
-  const recentUpdates = useMemo(() => {
-    const todayKey = getPHDateKey(new Date());
-    return allUpdates.filter(u => {
-      if (!u.isoDate) return false;
-      const eventKey = getPHDateKey(u.isoDate);
-      return eventKey <= todayKey;
-    });
-  }, [allUpdates]);
 
   // Pre-filter updates by search query (matching SchoolUpdates.tsx approach exactly)
   const filtered = useMemo(() => {
@@ -518,95 +492,6 @@ const AdminDashboard = () => {
     return counts;
   }, [displayedUpdates]);
 
-  // Current month events - combines calendar events and posts/updates
-  // Filtered by selectedContentTypes and search query
-  const currentMonthEvents = useMemo(() => {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-    
-    const events: any[] = [];
-    
-    // Add calendar events for current month
-    calendarEvents
-      .filter(event => {
-        const eventDate = event.isoDate || event.date;
-        if (!eventDate) return false;
-        const eventDateObj = new Date(eventDate);
-        const isCurrentMonth = eventDateObj.getFullYear() === currentYear &&
-                               eventDateObj.getMonth() === currentMonth;
-        
-        if (!isCurrentMonth) return false;
-        
-        // Apply content type filter
-        const eventType = String(event.category || 'Event').toLowerCase();
-        return selectedContentTypesSet.has(eventType);
-      })
-      .forEach(event => {
-        events.push({
-          id: event._id || `calendar-${event.isoDate}-${event.title}`,
-          title: event.title,
-          date: formatDate(event.isoDate || event.date) || formatDateSafe(event.isoDate || event.date),
-          tag: event.category || 'Event',
-          description: event.description || '',
-          image: undefined,
-          images: undefined,
-          pinned: false,
-          isoDate: event.isoDate || event.date,
-          source: 'calendar', // Mark as calendar event
-          _id: event._id,
-        });
-      });
-    
-    // Add posts/updates for current month
-    allUpdates
-      .filter(update => {
-        if (!update.isoDate) return false;
-        const updateDate = new Date(update.isoDate);
-        const isCurrentMonth = updateDate.getFullYear() === currentYear &&
-                              updateDate.getMonth() === currentMonth;
-        
-        if (!isCurrentMonth) return false;
-        
-        // Apply content type filter
-        const updateType = String(update.tag || 'Announcement').toLowerCase();
-        return selectedContentTypesSet.has(updateType);
-      })
-      .forEach(update => {
-        events.push({
-          id: update.id,
-          title: update.title,
-          date: formatDate(update.isoDate || update.date) || formatDateSafe(update.isoDate || update.date),
-          tag: update.tag || 'Announcement',
-          description: update.description || '',
-          image: update.image,
-          images: update.images,
-          pinned: update.pinned || false,
-          isoDate: update.isoDate || update.date,
-          time: (update as any).time || '',
-          source: 'post', // Mark as post/update
-        });
-      });
-    
-    // Apply search filter if search query exists
-    let filteredEvents = events;
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      filteredEvents = events.filter(event => {
-        const title = (event.title || '').toLowerCase();
-        const description = (event.description || '').toLowerCase();
-        const tag = (event.tag || '').toLowerCase();
-        return title.includes(query) || description.includes(query) || tag.includes(query);
-      });
-    }
-    
-    // Sort by date (earliest first)
-    return filteredEvents.sort((a, b) => {
-      const dateA = new Date(a.isoDate || a.date).getTime();
-      const dateB = new Date(b.isoDate || b.date).getTime();
-      return dateA - dateB;
-    });
-  }, [calendarEvents, allUpdates, selectedContentTypesSet, searchQuery]);
 
   // Load current user and subscribe to auth changes
   useEffect(() => {
@@ -1384,19 +1269,9 @@ const AdminDashboard = () => {
             )}
 
             {!isLoadingDashboard && !dashboardError && displayedUpdates.map((update) => {
-              // Get color for accent bar based on category (institutional/academic)
-              const tagLower = update.tag?.toLowerCase() || '';
-              let accentColor = '#93C5FD'; // Default blue
-              
-              if (tagLower === 'institutional') {
-                accentColor = '#2563EB'; // Blue for Institutional
-              } else if (tagLower === 'academic') {
-                accentColor = '#10B981'; // Green for Academic
-              } else {
-                // For other categories (event, announcement, etc.), use categoryToColors
-                const colors = categoryToColors(update.tag);
-                accentColor = colors.dot || '#93C5FD';
-              }
+              // Get color for accent bar based on category using categoryToColors
+              const colors = categoryToColors(update.tag);
+              const accentColor = colors.dot || '#2563EB'; // Default to Academic Blue
               
               return (
                 <TouchableOpacity
@@ -1917,91 +1792,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 12,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  statCardContent: {
-    padding: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  statIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  statNumber: {
-    fontSize: 26,
-    fontWeight: '800',
-  },
-  statLabel: {
-    fontSize: 12,
-  },
-  recentUpdatesSection: {
-    borderWidth: 0,
-    borderRadius: 20,
-    marginBottom: 20,
-    overflow: 'hidden',
-    flex: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  updatesSectionBlur: {
-    borderRadius: 20,
-    overflow: 'hidden',
-    flex: 1,
-  },
-  updatesSectionContent: {
-    padding: 16,
-    borderRadius: 20,
-    flex: 1,
-  },
-  sectionHeaderEnhanced: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14,
-    gap: 14,
-    flexShrink: 0,
-  },
-  sectionIconWrapper: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: 'transparent', // Will be set dynamically via theme
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  sectionTitleWrapper: {
-    flex: 1,
-  },
-  sectionTitleEnhanced: {
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-    marginBottom: 4,
-  },
-  sectionSubtitle: {
-    fontSize: 11,
-    fontWeight: '600',
-    opacity: 0.7,
   },
   updateCard: {
     flexDirection: 'row',

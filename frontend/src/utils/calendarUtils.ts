@@ -2,19 +2,27 @@
  * Calendar utility functions
  */
 
+// Normalize category to consistent casing (first letter uppercase, rest lowercase)
+export const normalizeCategory = (category?: string): string => {
+  if (!category) return 'Announcement';
+  const trimmed = String(category).trim();
+  if (trimmed.length === 0) return 'Announcement';
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
+};
+
 export const categoryToColors = (category?: string) => {
   const key = String(category || '').toLowerCase();
   switch (key) {
-    case 'announcement':
-      return { dot: '#1A3E7A', chipBg: '#E8F0FF', chipBorder: '#CCE0FF', chipText: '#1A3E7A', cellColor: '#1A3E7A' }; // Blue for Announcement
     case 'academic':
-      return { dot: '#10B981', chipBg: '#ECFDF5', chipBorder: '#BBF7D0', chipText: '#065F46', cellColor: '#10B981' }; // Green for Academic
+      return { dot: '#2563EB', chipBg: '#EEF2FF', chipBorder: '#E0E7FF', chipText: '#1D4ED8', cellColor: '#2563EB' }; // Blue - calm, serious, organized
     case 'institutional':
-      return { dot: '#2563EB', chipBg: '#EEF2FF', chipBorder: '#E0E7FF', chipText: '#1D4ED8', cellColor: '#2563EB' }; // Blue for Institutional
+      return { dot: '#4B5563', chipBg: '#F3F4F6', chipBorder: '#E5E7EB', chipText: '#1F2937', cellColor: '#4B5563' }; // Dark Gray - neutral, official-looking
+    case 'announcement':
+      return { dot: '#EAB308', chipBg: '#FEF9C3', chipBorder: '#FDE047', chipText: '#854D0E', cellColor: '#EAB308' }; // Yellow - bright, attention-grabbing
     case 'event':
-      return { dot: '#D97706', chipBg: '#FEF3C7', chipBorder: '#FDE68A', chipText: '#92400E', cellColor: '#D97706' }; // Orange for Event
+      return { dot: '#10B981', chipBg: '#ECFDF5', chipBorder: '#BBF7D0', chipText: '#065F46', cellColor: '#10B981' }; // Green - friendly, inviting
     case 'news':
-      return { dot: '#8B5CF6', chipBg: '#F3E8FF', chipBorder: '#E9D5FF', chipText: '#6D28D9', cellColor: '#8B5CF6' }; // Purple for News
+      return { dot: '#EF4444', chipBg: '#FEE2E2', chipBorder: '#FECACA', chipText: '#991B1B', cellColor: '#EF4444' }; // Red - stands out, signals new/important
     case 'service':
       return { dot: '#059669', chipBg: '#ECFDF5', chipBorder: '#BBF7D0', chipText: '#065F46', cellColor: '#059669' };
     case 'infrastructure':

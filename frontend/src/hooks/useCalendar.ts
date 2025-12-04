@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../utils/calendarUtils';
+import { categoryToColors, formatDateKey, normalizeCategory, parseAnyDateToKey } from '../utils/calendarUtils';
 
 // Build date range more efficiently
 const buildDateRange = (startISO?: string, endISO?: string): Date[] => {
@@ -52,14 +52,26 @@ export const useCalendar = ({ posts, calendarEvents, selectedContentTypesSet }: 
       if (!dateMap.has(dateKey)) {
         dateMap.set(dateKey, []);
       }
-      dateMap.get(dateKey)!.push(payload);
-      incrementMonth(year, month);
+      // Check for duplicates before adding (by id)
+      const existingEvents = dateMap.get(dateKey)!;
+      const isDuplicate = existingEvents.some(e => 
+        e.id === payload.id || 
+        (e._id && payload._id && e._id === payload._id) ||
+        (e.source === payload.source && e.title === payload.title && e.dateKey === payload.dateKey)
+      );
+      
+      if (!isDuplicate) {
+        dateMap.get(dateKey)!.push(payload);
+        incrementMonth(year, month);
+      }
     };
 
     // Process posts
+    // Normalize categories BEFORE filtering to ensure consistent matching
     const postsForCalendar = posts.filter(post => {
       if (post.source === 'CSV Upload') return false;
-      const postType = String(post.category || 'Announcement').toLowerCase();
+      const normalizedCategory = normalizeCategory(post.category);
+      const postType = normalizedCategory.toLowerCase();
       return selectedContentTypesSet.has(postType);
     });
 
@@ -69,14 +81,18 @@ export const useCalendar = ({ posts, calendarEvents, selectedContentTypesSet }: 
       if (Number.isNaN(dateObj.getTime())) continue;
       
       const dateKey = formatDateKey(dateObj);
-      const colors = categoryToColors(post.category || 'Announcement');
+      
+      // Normalize category to ensure consistent type
+      const normalizedCategory = normalizeCategory(post.category);
+      const colors = categoryToColors(normalizedCategory);
       
       const payload = {
         id: post.id,
         title: post.title,
         dateKey,
         time: post.time || '',
-        type: post.category || 'Announcement',
+        type: normalizedCategory,
+        category: normalizedCategory, // Ensure both fields are set
         color: colors.dot,
         chip: colors,
         description: post.description,
@@ -89,19 +105,24 @@ export const useCalendar = ({ posts, calendarEvents, selectedContentTypesSet }: 
     }
 
     // Process calendar events
+    // Normalize categories BEFORE filtering to ensure consistent matching
     const calendarEventsForCalendar = calendarEvents.filter(event => {
-      const eventType = String(event.category || 'Announcement').toLowerCase();
+      const normalizedCategory = normalizeCategory(event.category);
+      const eventType = normalizedCategory.toLowerCase();
       return selectedContentTypesSet.has(eventType);
     });
 
     for (let i = 0; i < calendarEventsForCalendar.length; i++) {
       const event = calendarEventsForCalendar[i];
-      const colors = categoryToColors(event.category || 'Announcement');
+      // Normalize category to ensure consistent type
+      const normalizedCategory = normalizeCategory(event.category);
+      const colors = categoryToColors(normalizedCategory);
       
       const payload = {
         ...event,
         id: event._id || `calendar-${event.isoDate || event.startDate}-${event.title}`,
-        type: event.category || 'Announcement',
+        type: normalizedCategory,
+        category: normalizedCategory, // Ensure both fields are set consistently
         color: colors.dot,
         chip: colors,
         source: 'calendar',

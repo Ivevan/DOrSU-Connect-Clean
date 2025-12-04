@@ -273,6 +273,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         inactivityTimerRef.current = null;
       }
       
+      // Clear UpdatesContext data and reset session flags
+      try {
+        // Access global clear function from UpdatesContext
+        const { globalClearUpdatesFn } = require('./UpdatesContext');
+        if (globalClearUpdatesFn) {
+          globalClearUpdatesFn();
+        } else {
+          // Fallback: just reset session flags
+          const { resetAllSessionFlags } = require('../utils/sessionReset');
+          resetAllSessionFlags();
+        }
+      } catch (error) {
+        if (__DEV__) console.warn('Could not clear updates context on logout:', error);
+        // Still try to reset session flags as fallback
+        try {
+          const { resetAllSessionFlags } = require('../utils/sessionReset');
+          resetAllSessionFlags();
+        } catch (e) {
+          // Ignore
+        }
+      }
+      
       // Clear AsyncStorage (including admin tokens)
       await AsyncStorage.multiRemove([
         'userToken', 

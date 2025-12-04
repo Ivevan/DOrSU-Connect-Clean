@@ -25,6 +25,22 @@ import NotificationModal from '../../modals/NotificationModal';
 let hasLoadedSchoolUpdatesOnce = false;
 let hasPrefetchedSchoolUpdatesCalendarWide = false;
 
+// Reset function for clearing on logout
+const resetSchoolUpdatesSession = () => {
+  hasLoadedSchoolUpdatesOnce = false;
+  hasPrefetchedSchoolUpdatesCalendarWide = false;
+};
+
+// Register reset function on module load
+if (typeof require !== 'undefined') {
+  try {
+    const { registerSchoolUpdatesReset } = require('../../utils/sessionReset');
+    registerSchoolUpdatesReset(resetSchoolUpdatesSession);
+  } catch (error) {
+    // Ignore if module not available
+  }
+}
+
 type RootStackParamList = {
   GetStarted: undefined;
   SignIn: undefined;

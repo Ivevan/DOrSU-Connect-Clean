@@ -26,6 +26,22 @@ import { formatDate } from '../../utils/dateUtils';
 let hasLoadedAdminDashboardOnce = false;
 let hasPrefetchedAdminDashboardCalendarWide = false;
 
+// Reset function for clearing on logout
+const resetAdminDashboardSession = () => {
+  hasLoadedAdminDashboardOnce = false;
+  hasPrefetchedAdminDashboardCalendarWide = false;
+};
+
+// Register reset function on module load
+if (typeof require !== 'undefined') {
+  try {
+    const { registerAdminDashboardReset } = require('../../utils/sessionReset');
+    registerAdminDashboardReset(resetAdminDashboardSession);
+  } catch (error) {
+    // Ignore if module not available
+  }
+}
+
 type RootStackParamList = {
   GetStarted: undefined;
   SignIn: undefined;
@@ -785,7 +801,7 @@ const AdminDashboard = () => {
             id: post.id,
             title: post.title,
             date: formattedDate,
-            tag: post.category,
+            tag: post.category || 'Announcement', // Ensure tag is always set
             description: post.description,
             image: post.image,
             images: images,
@@ -852,7 +868,7 @@ const AdminDashboard = () => {
           id: post.id,
           title: post.title,
           date: formattedDate,
-          tag: post.category,
+          tag: post.category || post.tag || 'Announcement', // Ensure tag is always set
           description: post.description,
           image: post.image,
           images: images,
@@ -896,8 +912,26 @@ const AdminDashboard = () => {
       return;
     }
     hasLoadedAdminDashboardOnce = true;
-    fetchDashboardData(true);
-    refreshCalendarEvents(true);
+    
+    // Fetch both data sources in parallel and wait for both to complete
+    // This ensures all posts and calendar events display at the same time
+    const loadAllData = async () => {
+      try {
+        // Set loading states for both
+        setIsLoadingDashboard(true);
+        setIsLoadingCalendarEvents(true);
+        
+        // Fetch both in parallel
+        await Promise.all([
+          fetchDashboardData(true),
+          refreshCalendarEvents(true),
+        ]);
+      } catch (error) {
+        if (__DEV__) console.error('Error loading dashboard data:', error);
+      }
+    };
+    
+    loadAllData();
     
     // Request notification permissions and check notifications on mount
     const setupNotifications = async () => {
@@ -1351,14 +1385,14 @@ const AdminDashboard = () => {
               </View>
             )}
 
-            {isLoadingDashboard && (
+            {(isLoadingDashboard || isLoadingCalendarEvents) && (
               <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                 <Ionicons name="hourglass-outline" size={40} color={theme.colors.textMuted} />
                 <Text style={{ marginTop: 6, fontSize: theme.fontSize.scaleSize(12), color: theme.colors.textMuted, fontWeight: '600' }}>Loading dashboard...</Text>
               </View>
             )}
 
-            {!isLoadingDashboard && !dashboardError && displayedUpdates.length === 0 && (
+            {!isLoadingDashboard && !isLoadingCalendarEvents && !dashboardError && displayedUpdates.length === 0 && (
               <View style={{ alignItems: 'center', paddingVertical: 16 }}>
                 <Ionicons name="document-text-outline" size={40} color={theme.colors.textMuted} />
                 <Text style={{ marginTop: 6, fontSize: theme.fontSize.scaleSize(12), color: theme.colors.textMuted, fontWeight: '600' }}>
@@ -1375,9 +1409,12 @@ const AdminDashboard = () => {
               </View>
             )}
 
-            {!isLoadingDashboard && !dashboardError && displayedUpdates.map((update) => {
+            {!isLoadingDashboard && !isLoadingCalendarEvents && !dashboardError && displayedUpdates.map((update) => {
+              // Ensure tag is always a valid string (use tag field, fallback to 'Announcement')
+              const updateTag = (update.tag && update.tag.trim()) ? update.tag : 'Announcement';
+              
               // Get color for accent bar based on category using categoryToColors
-              const colors = categoryToColors(update.tag);
+              const colors = categoryToColors(updateTag);
               const accentColor = colors.dot || '#2563EB'; // Default to Academic Blue
               
               return (
@@ -1405,31 +1442,37 @@ const AdminDashboard = () => {
                       }
                     }
                     
-                    // Post/Update - convert to Event format for ViewEventModal
+                    // Post/Update - convert to CalendarEvent format for ViewEventModal
                     const eventDate = update.isoDate || update.date 
                       ? new Date(update.isoDate || update.date)
                       : new Date();
-                    const eventData: any = {
-                      id: update.id,
+                    
+                    const event: any = {
+                      _id: update.id,
                       title: update.title,
                       description: update.description,
-                      category: update.tag,
-                      type: update.tag,
+                      category: updateTag,
                       date: update.isoDate || update.date,
                       isoDate: update.isoDate || update.date,
-                      time: (update as any).time || '',
                       image: update.image,
                       images: update.images,
                     };
-                    console.log('📅 Event data for ViewEventModal:', { 
-                      title: eventData.title, 
-                      time: eventData.time, 
-                      updateTime: (update as any).time,
-                      hasTime: !!(update as any).time 
-                    });
-                    setSelectedEvent(eventData);
-                    setSelectedDateEvents([eventData]);
+                    
+                    setSelectedEvent(event);
                     setSelectedDateForDrawer(eventDate);
+                    setSelectedDateEvents([{
+                      id: update.id,
+                      title: update.title,
+                      color: accentColor,
+                      type: updateTag,
+                      category: updateTag,
+                      description: update.description,
+                      isoDate: update.isoDate || update.date,
+                      date: update.isoDate || update.date,
+                      time: (update as any).time || undefined, // Pass through time if available
+                      image: update.image,
+                      images: update.images,
+                    }]);
                     setShowEventDrawer(true);
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }}
@@ -1450,15 +1493,17 @@ const AdminDashboard = () => {
                     <View style={styles.updateTextContent}>
                       <View style={styles.updateTitleRow}>
                         <Text style={[styles.updateTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]} numberOfLines={2}>{update.title}</Text>
-                        <View style={[styles.updateCategoryBadge, { backgroundColor: accentColor + '20' }]}>
-                          <Text 
-                            style={[styles.updateCategoryText, { color: accentColor, fontSize: theme.fontSize.scaleSize(10) }]}
-                            numberOfLines={1}
-                            ellipsizeMode="tail"
-                          >
-                            {update.tag}
-                          </Text>
-                        </View>
+                        {updateTag && (
+                          <View style={[styles.updateCategoryBadge, { backgroundColor: accentColor + '20' }]}>
+                            <Text 
+                              style={[styles.updateCategoryText, { color: accentColor, fontSize: theme.fontSize.scaleSize(10) }]}
+                              numberOfLines={1}
+                              ellipsizeMode="tail"
+                            >
+                              {updateTag}
+                            </Text>
+                          </View>
+                        )}
                       </View>
                       <Text style={[styles.updateSubtitle, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>
                         {formatDate(update.isoDate || update.date) || update.date}
@@ -1941,6 +1986,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
     marginBottom: 4,
+    flexWrap: 'wrap',
   },
   updateTitle: {
     fontSize: 14,
@@ -1948,6 +1994,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     letterSpacing: -0.2,
     flex: 1,
+    minWidth: 0,
   },
   updateCategoryBadge: {
     paddingHorizontal: 8,
@@ -1955,6 +2002,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignSelf: 'flex-start',
     flexShrink: 0,
+    overflow: 'hidden',
   },
   updateCategoryText: {
     fontSize: 10,

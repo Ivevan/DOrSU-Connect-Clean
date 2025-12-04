@@ -15,6 +15,7 @@ import {
   FlatList,
   Animated,
   InteractionManager,
+  Modal,
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -115,8 +116,7 @@ const PostUpdate: React.FC = () => {
   const screenSlideY = useRef(new Animated.Value(1000)).current;
   const screenOpacity = useRef(new Animated.Value(0)).current;
 
-  // Bottom sheet animation refs
-  const categorySheetY = useRef(new Animated.Value(300)).current;
+  // Bottom sheet animation refs (category menu now uses floating modal, no animation needed)
   const datePickerSheetY = useRef(new Animated.Value(300)).current;
   const cancelAlertSheetY = useRef(new Animated.Value(300)).current;
   const publishAlertSheetY = useRef(new Animated.Value(300)).current;
@@ -132,9 +132,9 @@ const PostUpdate: React.FC = () => {
 
   // Category meta for richer UI
   const CATEGORY_OPTIONS = useMemo(() => ([
-    { key: 'Announcement', icon: 'megaphone', color: '#1976D2', description: 'General updates and notices' },
-    { key: 'Event', icon: 'calendar-outline', color: '#D32F2F', description: 'Schedules and activities' },
-    { key: 'News', icon: 'newspaper-outline', color: '#5E35B1', description: 'Campus news' },
+    { key: 'Announcement', icon: 'megaphone', color: '#EAB308', description: 'General updates and notices' }, // Yellow - bright, attention-grabbing
+    { key: 'Event', icon: 'calendar-outline', color: '#10B981', description: 'Schedules and activities' }, // Green - friendly, inviting
+    { key: 'News', icon: 'newspaper-outline', color: '#EF4444', description: 'Campus news' }, // Red - stands out, signals new/important
   ]), []);
   const currentCategory = CATEGORY_OPTIONS.find(o => o.key === category) || CATEGORY_OPTIONS[0];
 
@@ -389,17 +389,11 @@ const PostUpdate: React.FC = () => {
 
   const openCategoryMenu = useCallback(() => {
     setIsCategoryOpen(true);
-    setTimeout(() => {
-      Animated.timing(categorySheetY, { toValue: 0, duration: 220, useNativeDriver: true }).start();
-    }, 0);
-  }, [categorySheetY]);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
   const closeCategoryMenu = useCallback(() => {
-    Animated.timing(categorySheetY, { toValue: 300, duration: 200, useNativeDriver: true }).start(() => {
-      InteractionManager.runAfterInteractions(() => {
-        setIsCategoryOpen(false);
-      });
-    });
-  }, [categorySheetY]);
+    setIsCategoryOpen(false);
+  }, []);
   const selectCategory = useCallback((value: string) => {
     setCategory(value);
     closeCategoryMenu();
@@ -964,40 +958,73 @@ const PostUpdate: React.FC = () => {
         </BlurView>
 
 
-        {/* Category Menu (enhanced) */}
-        <BottomSheet
+        {/* Category Menu (floating modal like filter dropdown) */}
+        <Modal
           visible={isCategoryOpen}
-          onClose={closeCategoryMenu}
-          sheetY={categorySheetY}
-          backgroundColor={theme.colors.card}
-          maxHeight="70%"
+          transparent={true}
+          animationType="fade"
+          onRequestClose={closeCategoryMenu}
         >
-          <View style={styles.modalHeaderRow}>
-            <Text style={[styles.categoryMenuTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>Select Category</Text>
-            <TouchableOpacity onPress={closeCategoryMenu} style={styles.modalCloseBtn}>
-              <Ionicons name="close" size={20} color={theme.colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-          <ScrollView style={{ maxHeight: 320 }}>
-            {CATEGORY_OPTIONS.map(opt => {
-              const active = category === opt.key;
-              return (
-                <TouchableOpacity key={opt.key} onPress={() => selectCategory(opt.key)} style={[styles.categoryRow, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, active && { backgroundColor: opt.color + '0F', borderColor: opt.color }]}> 
-                  <View style={[styles.categoryIconWrap, { backgroundColor: opt.color + '22' }]}>
-                    <Ionicons name={opt.icon as any} size={18} color={opt.color} />
-                  </View>
-                  <View style={styles.categoryTextWrap}>
-                    <Text style={[styles.categoryRowTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }, active && { color: theme.colors.text }]}>{opt.key}</Text>
-                    <Text style={[styles.categoryRowSub, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>{opt.description}</Text>
-                  </View>
-                  {active && (
-                    <Ionicons name="checkmark-circle" size={20} color={opt.color} />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </BottomSheet>
+          <TouchableOpacity
+            style={styles.dropdownOverlay}
+            activeOpacity={1}
+            onPress={closeCategoryMenu}
+          >
+            <View style={styles.categoryDropdownContentWrapper}>
+              <BlurView
+                intensity={Platform.OS === 'ios' ? 80 : 60}
+                tint={isDarkMode ? 'dark' : 'light'}
+                style={[styles.categoryDropdownContent, {
+                  backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                  borderColor: 'rgba(255, 255, 255, 0.2)',
+                }]}
+              >
+                <View style={[styles.modalHeaderRow, { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12 }]}>
+                  <Text style={[styles.categoryMenuTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>Select Category</Text>
+                  <TouchableOpacity onPress={closeCategoryMenu} style={styles.modalCloseBtn}>
+                    <Ionicons name="close" size={20} color={theme.colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
+                <ScrollView style={{ maxHeight: 320, paddingHorizontal: 16, paddingBottom: 16 }} showsVerticalScrollIndicator={false}>
+                  {CATEGORY_OPTIONS.map((opt, index) => {
+                    const active = category === opt.key;
+                    const isLast = index === CATEGORY_OPTIONS.length - 1;
+                    return (
+                      <TouchableOpacity 
+                        key={opt.key} 
+                        onPress={() => selectCategory(opt.key)} 
+                        style={[
+                          styles.categoryRow, 
+                          { 
+                            backgroundColor: theme.colors.surface, 
+                            borderColor: theme.colors.border 
+                          }, 
+                          active && { 
+                            backgroundColor: opt.color + '0F', 
+                            borderColor: opt.color 
+                          },
+                          isLast && { borderBottomWidth: 0 }
+                        ]}
+                        activeOpacity={0.7}
+                      > 
+                        <View style={[styles.categoryIconWrap, { backgroundColor: opt.color + '22' }]}>
+                          <Ionicons name={opt.icon as any} size={18} color={opt.color} />
+                        </View>
+                        <View style={styles.categoryTextWrap}>
+                          <Text style={[styles.categoryRowTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }, active && { color: theme.colors.text }]}>{opt.key}</Text>
+                          <Text style={[styles.categoryRowSub, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>{opt.description}</Text>
+                        </View>
+                        {active && (
+                          <Ionicons name="checkmark-circle" size={20} color={opt.color} />
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </BlurView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
         {/* Calendar Date Picker */}
         <BottomSheet
@@ -2089,6 +2116,26 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     textAlign: 'center',
   },
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    justifyContent: 'center',
+    alignItems: 'stretch',
+  },
+  categoryDropdownContentWrapper: {
+    paddingHorizontal: 20,
+  },
+  categoryDropdownContent: {
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
+    maxHeight: 400,
+  },
   categoryRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2096,7 +2143,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    marginBottom: 10,
+    marginBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
   },
   categoryIconWrap: {
     width: 28,

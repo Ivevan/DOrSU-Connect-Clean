@@ -3,10 +3,33 @@
  */
 
 // Normalize category to consistent casing (first letter uppercase, rest lowercase)
+// Also handles plural forms and common variations
 export const normalizeCategory = (category?: string): string => {
   if (!category) return 'Announcement';
   const trimmed = String(category).trim();
   if (trimmed.length === 0) return 'Announcement';
+  
+  // Convert to lowercase first to handle all cases
+  const lower = trimmed.toLowerCase();
+  
+  // Handle plural forms and common variations
+  if (lower === 'events' || lower === 'event') {
+    return 'Event';
+  }
+  if (lower === 'announcements' || lower === 'announcement') {
+    return 'Announcement';
+  }
+  if (lower === 'academics' || lower === 'academic') {
+    return 'Academic';
+  }
+  if (lower === 'institutionals' || lower === 'institutional') {
+    return 'Institutional';
+  }
+  if (lower === 'news' || lower === 'new') {
+    return 'News';
+  }
+  
+  // Default: capitalize first letter, lowercase rest
   return trimmed.charAt(0).toUpperCase() + trimmed.slice(1).toLowerCase();
 };
 

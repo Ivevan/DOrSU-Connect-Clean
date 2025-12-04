@@ -70,8 +70,14 @@ export const useCalendar = ({ posts, calendarEvents, selectedContentTypesSet }: 
     // Normalize categories BEFORE filtering to ensure consistent matching
     const postsForCalendar = posts.filter(post => {
       if (post.source === 'CSV Upload') return false;
-      const normalizedCategory = normalizeCategory(post.category);
+      if (!post.category && !post.type) return false; // Skip posts without category
+      
+      const normalizedCategory = normalizeCategory(post.category || post.type);
       const postType = normalizedCategory.toLowerCase();
+      
+      // Double-check: ensure the normalized type is valid
+      if (!postType || postType.length === 0) return false;
+      
       return selectedContentTypesSet.has(postType);
     });
 
@@ -107,8 +113,14 @@ export const useCalendar = ({ posts, calendarEvents, selectedContentTypesSet }: 
     // Process calendar events
     // Normalize categories BEFORE filtering to ensure consistent matching
     const calendarEventsForCalendar = calendarEvents.filter(event => {
-      const normalizedCategory = normalizeCategory(event.category);
+      if (!event.category && !event.type) return false; // Skip events without category
+      
+      const normalizedCategory = normalizeCategory(event.category || event.type);
       const eventType = normalizedCategory.toLowerCase();
+      
+      // Double-check: ensure the normalized type is valid
+      if (!eventType || eventType.length === 0) return false;
+      
       return selectedContentTypesSet.has(eventType);
     });
 

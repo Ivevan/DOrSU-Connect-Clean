@@ -44,7 +44,7 @@ const getEventTypeIndicators = (events: any[]): { indicators: string[]; totalUni
   const uniqueTypes = new Set<string>();
   events.forEach(e => {
     // Normalize: use type first, then category, with proper fallback
-    // The type field should already be set by useCalendar hook, but we check both for safety
+    // The type field should already be set by useCalendar hook (capitalized), but we check both for safety
     let eventType = e.type || e.category;
     
     // If still no type, check source-specific fields
@@ -59,15 +59,21 @@ const getEventTypeIndicators = (events: any[]): { indicators: string[]; totalUni
     }
     
     // Normalize to lowercase and trim whitespace
+    // Handle both capitalized (from useCalendar: "Announcement", "Event") and lowercase formats
     const normalizedType = String(eventType).toLowerCase().trim();
-    if (normalizedType) {
+    
+    // Ensure we have a valid type
+    if (normalizedType && normalizedType.length > 0) {
       uniqueTypes.add(normalizedType);
+    } else {
+      // Fallback to announcement if type is empty or invalid
+      uniqueTypes.add('announcement');
     }
   });
   
   const totalUniqueTypes = uniqueTypes.size;
   
-  // Convert to array of colors, sorted by priority, limit to 4 indicators
+  // Convert to array of colors, sorted by priority - show all unique types as stacked dots
   // Use stable sort to ensure consistent ordering regardless of when events are added
   const indicators = Array.from(uniqueTypes)
     .map(type => ({
@@ -83,8 +89,7 @@ const getEventTypeIndicators = (events: any[]): { indicators: string[]; totalUni
       // Secondary sort by type name for stability when priorities are equal
       return a.type.localeCompare(b.type);
     })
-    .slice(0, 4) // Limit to 4 indicators to avoid clutter
-    .map(item => item.color);
+    .map(item => item.color); // Show all indicators, no limit
   
   return { indicators, totalUniqueTypes };
 };
@@ -160,7 +165,6 @@ const CalendarDay = memo(({
   const { indicators: eventIndicators, totalUniqueTypes } = getEventTypeIndicators(eventsForDay);
   const isLastColumn = (index % 7) === 6;
   const isSelected = isSelectedDay && !isCurrentDay;
-  const hasMoreTypes = totalUniqueTypes > eventIndicators.length;
   
   return (
     <TouchableOpacity 
@@ -204,8 +208,8 @@ const CalendarDay = memo(({
           </Text>
         </View>
         
-        {/* Event Indicators - Show colored dots for all events */}
-        {hasEvents && eventIndicators.length > 0 && (
+        {/* Event Indicators - Show colored dots for all unique event types (stacked) */}
+        {eventIndicators.length > 0 && (
           <View style={styles.eventIndicatorsContainer}>
             {eventIndicators.map((color, idx) => (
               <View
@@ -223,11 +227,6 @@ const CalendarDay = memo(({
                 ]}
               />
             ))}
-            {hasMoreTypes && (
-              <Text style={styles.moreEventsText}>
-                +{totalUniqueTypes - eventIndicators.length}
-              </Text>
-            )}
           </View>
         )}
       </View>
@@ -333,6 +332,7 @@ const styles = StyleSheet.create({
     padding: 2,
     justifyContent: 'space-between',
     alignItems: 'center',
+    minHeight: 0, // Allow flexbox to shrink if needed
   },
   dayNumberContainer: {
     width: 24,
@@ -356,12 +356,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
-    marginTop: 3,
+    gap: 2,
+    marginTop: 2,
     flexWrap: 'wrap',
     maxWidth: '100%',
-    paddingHorizontal: 2,
-    paddingVertical: 2,
+    paddingHorizontal: 1,
+    paddingVertical: 1,
+    minHeight: 6,
+    flexShrink: 0, // Prevent container from shrinking
   },
   eventIndicatorDot: {
     width: 6,
@@ -369,13 +371,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     minWidth: 6,
     minHeight: 6,
-  },
-  moreEventsText: {
-    fontSize: 8,
-    fontWeight: '700',
-    color: 'rgba(0, 0, 0, 0.6)',
-    marginLeft: 2,
-    lineHeight: 10,
+    flexShrink: 0, // Prevent dots from shrinking
   },
 });
 

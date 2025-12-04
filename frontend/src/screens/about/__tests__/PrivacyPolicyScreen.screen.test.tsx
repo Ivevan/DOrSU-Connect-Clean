@@ -1,6 +1,6 @@
 import React from 'react';
 import { renderScreen, screen, waitFor } from '../../../__tests__/screen-test-utils';
-import PrivacyPolicyScreen from '../PrivacyPolicyScreen';
+import PrivacyPolicyScreen from '../../shared/PrivacyPolicyScreen';
 
 describe('PrivacyPolicyScreen', () => {
   beforeEach(() => {

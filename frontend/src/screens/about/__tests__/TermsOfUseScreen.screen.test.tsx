@@ -1,6 +1,6 @@
 import React from 'react';
 import { renderScreen, screen, waitFor } from '../../../__tests__/screen-test-utils';
-import TermsOfUseScreen from '../TermsOfUseScreen';
+import TermsOfUseScreen from '../../shared/TermsOfUseScreen';
 
 describe('TermsOfUseScreen', () => {
   beforeEach(() => {

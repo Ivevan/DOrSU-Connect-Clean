@@ -1,6 +1,6 @@
 import React from 'react';
 import { renderScreen, screen, waitFor } from '../../../__tests__/screen-test-utils';
-import HelpCenterScreen from '../HelpCenterScreen';
+import HelpCenterScreen from '../../shared/HelpCenterScreen';
 
 describe('HelpCenterScreen', () => {
   beforeEach(() => {

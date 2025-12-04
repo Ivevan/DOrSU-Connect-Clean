@@ -1,6 +1,6 @@
 import React from 'react';
 import { renderScreen, screen, waitFor } from '../../../__tests__/screen-test-utils';
-import LicensesScreen from '../LicensesScreen';
+import LicensesScreen from '../../shared/LicensesScreen';
 
 describe('LicensesScreen', () => {
   beforeEach(() => {

@@ -10,6 +10,7 @@ import { BlurView } from 'expo-blur';
 
 type RootStackParamList = {
   UserSettings: undefined;
+  AdminSettings: undefined;
   TermsOfUse: undefined;
 };
 

@@ -8,10 +8,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 
 import { UpdatesProvider } from '../contexts/UpdatesContext';
-import UserHelpCenterScreen from '../screens/about/HelpCenterScreen';
-import LicensesScreen from '../screens/about/LicensesScreen';
-import PrivacyPolicyScreen from '../screens/about/PrivacyPolicyScreen';
-import TermsOfUseScreen from '../screens/about/TermsOfUseScreen';
+import UserHelpCenterScreen from '../screens/shared/HelpCenterScreen';
+import LicensesScreen from '../screens/shared/LicensesScreen';
+import PrivacyPolicyScreen from '../screens/shared/PrivacyPolicyScreen';
+import TermsOfUseScreen from '../screens/shared/TermsOfUseScreen';
 import AdminAccountSettings from '../screens/admin/AdminAccountSettings';
 import AdminAIChat from '../screens/admin/AdminAIChat';
 import AdminCalendar from '../screens/admin/AdminCalendar';

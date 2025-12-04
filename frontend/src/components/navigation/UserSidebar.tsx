@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { BlurView } from 'expo-blur';
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Animated, Image, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Image, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import AIService, { ChatHistoryItem } from '../../services/AIService';
@@ -71,6 +72,10 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
   // User state
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
+  
+  // Delete confirmation modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [chatToDelete, setChatToDelete] = useState<string | null>(null);
 
   // Load user data
   useFocusEffect(
@@ -128,9 +133,18 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
     }).start();
   }, [isOpen, sidebarAnim]);
 
-  const handleDeleteChat = async (chatId: string) => {
+  const handleDeleteChatClick = (chatId: string) => {
+    setChatToDelete(chatId);
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteChat = async () => {
+    if (!chatToDelete) return;
+
     if (onDeleteChat) {
-      onDeleteChat(chatId);
+      onDeleteChat(chatToDelete);
+      setShowDeleteModal(false);
+      setChatToDelete(null);
       return;
     }
 
@@ -143,11 +157,24 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
           token = await user.getIdToken();
         }
       }
-      if (!token) return;
-      await AIService.deleteChatSession(chatId, token);
+      if (!token) {
+        setShowDeleteModal(false);
+        setChatToDelete(null);
+        return;
+      }
+      await AIService.deleteChatSession(chatToDelete, token);
+      setShowDeleteModal(false);
+      setChatToDelete(null);
     } catch (e) {
       console.error('Failed to delete chat:', e);
+      setShowDeleteModal(false);
+      setChatToDelete(null);
     }
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false);
+    setChatToDelete(null);
   };
 
   return (
@@ -375,7 +402,7 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
                             </Text>
                             <TouchableOpacity
                               style={styles.deleteHistoryBtn}
-                              onPress={() => handleDeleteChat(chat.id)}
+                              onPress={() => handleDeleteChatClick(chat.id)}
                               accessibilityLabel="Delete chat"
                             >
                               <Ionicons name="trash-outline" size={16} color="#EF4444" />
@@ -404,6 +431,64 @@ const UserSidebar: React.FC<UserSidebarProps> = ({
       {isOpen && (
         <TouchableOpacity style={styles.sidebarOverlay} onPress={onClose} activeOpacity={1} />
       )}
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={showDeleteModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleCancelDelete}
+      >
+        <TouchableOpacity
+          style={styles.deleteModalOverlay}
+          activeOpacity={1}
+          onPress={handleCancelDelete}
+        >
+          <View style={styles.deleteModalContentWrapper}>
+            <BlurView
+              intensity={Platform.OS === 'ios' ? 80 : 60}
+              tint={isDarkMode ? 'dark' : 'light'}
+              style={[styles.deleteModalContent, {
+                backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                borderColor: 'rgba(255, 255, 255, 0.2)',
+              }]}
+            >
+              <View style={[styles.deleteModalIconCircle, { backgroundColor: '#EF444420' }]}>
+                <Ionicons name="trash-outline" size={20} color="#EF4444" />
+              </View>
+              <Text style={[styles.deleteModalTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(16) }]}>
+                Delete Conversation?
+              </Text>
+              <Text style={[styles.deleteModalMessage, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(12) }]}>
+                This action cannot be undone.
+              </Text>
+              <View style={styles.deleteModalActions}>
+                <TouchableOpacity
+                  style={[styles.deleteModalButton, styles.deleteModalButtonCancel, {
+                    backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                    borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
+                  }]}
+                  onPress={handleCancelDelete}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.deleteModalButtonText, { color: isDarkMode ? '#D1D5DB' : '#4B5563', fontSize: t.fontSize.scaleSize(13) }]}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.deleteModalButton, styles.deleteModalButtonConfirm, { backgroundColor: '#EF4444' }]}
+                  onPress={handleDeleteChat}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.deleteModalButtonText, { color: '#FFFFFF', fontSize: t.fontSize.scaleSize(13) }]}>
+                    Delete
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </BlurView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </>
   );
 };
@@ -680,6 +765,70 @@ const styles = StyleSheet.create({
   filterButtonText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  deleteModalContentWrapper: {
+    width: '100%',
+    maxWidth: 280,
+  },
+  deleteModalContent: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  deleteModalIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  deleteModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+    textAlign: 'center',
+  },
+  deleteModalMessage: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginBottom: 18,
+    lineHeight: 16,
+  },
+  deleteModalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+  },
+  deleteModalButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteModalButtonCancel: {
+    borderWidth: 1,
+  },
+  deleteModalButtonConfirm: {
+    backgroundColor: '#EF4444',
+  },
+  deleteModalButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
 

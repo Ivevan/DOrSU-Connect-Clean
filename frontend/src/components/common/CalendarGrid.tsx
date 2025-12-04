@@ -3,7 +3,7 @@ import timezone from 'dayjs/plugin/timezone';
 import utc from 'dayjs/plugin/utc';
 import React, { memo, useCallback, useMemo } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { categoryToColors, formatDateKey } from '../../utils/calendarUtils';
+import { categoryToColors, formatDateKey, normalizeCategory } from '../../utils/calendarUtils';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -41,7 +41,11 @@ const getEventTypeIndicators = (events: any[]): { indicators: string[]; totalUni
   };
   
   // Get unique event types - normalize to ensure consistent type extraction
+  // Use normalizeCategory utility to handle all variations (plural forms, casing, etc.)
+  // Note: Deduplication of events should happen in useCalendar hook, not here
+  // This function only extracts unique TYPES from the events array
   const uniqueTypes = new Set<string>();
+  
   events.forEach(e => {
     // Normalize: use type first, then category, with proper fallback
     // The type field should already be set by useCalendar hook (capitalized), but we check both for safety
@@ -58,9 +62,9 @@ const getEventTypeIndicators = (events: any[]): { indicators: string[]; totalUni
       }
     }
     
-    // Normalize to lowercase and trim whitespace
-    // Handle both capitalized (from useCalendar: "Announcement", "Event") and lowercase formats
-    const normalizedType = String(eventType).toLowerCase().trim();
+    // Use normalizeCategory utility for consistent normalization (handles plural forms, casing, etc.)
+    const normalizedCategory = normalizeCategory(eventType);
+    const normalizedType = normalizedCategory.toLowerCase();
     
     // Ensure we have a valid type
     if (normalizedType && normalizedType.length > 0) {
@@ -138,6 +142,43 @@ const CalendarDay = memo(({
 }: CalendarDayProps) => {
   const hasEvents = eventsForDay && eventsForDay.length > 0;
   
+  // Extract unique types first using the SAME logic as getEventTypeIndicators
+  // This creates a stable key that won't change unless the actual event types change
+  const uniqueTypesKey = useMemo(() => {
+    if (!eventsForDay || eventsForDay.length === 0) return 'empty';
+    
+    const uniqueTypes = new Set<string>();
+    eventsForDay.forEach(e => {
+      // Use the exact same normalization logic as getEventTypeIndicators
+      let eventType = e.type || e.category;
+      if (!eventType) {
+        if (e.source === 'post') {
+          eventType = e.category || 'Announcement';
+        } else if (e.source === 'calendar') {
+          eventType = e.category || 'Announcement';
+        } else {
+          eventType = 'Announcement';
+        }
+      }
+      const normalizedCategory = normalizeCategory(eventType);
+      const normalizedType = normalizedCategory.toLowerCase();
+      if (normalizedType && normalizedType.length > 0) {
+        uniqueTypes.add(normalizedType);
+      } else {
+        uniqueTypes.add('announcement');
+      }
+    });
+    
+    // Return sorted unique types as a stable key
+    return Array.from(uniqueTypes).sort().join('|');
+  }, [eventsForDay]);
+  
+  // Memoize the indicators calculation based on unique types key
+  // This ensures the result is stable even if eventsForDay array reference changes
+  const { indicators: eventIndicators, totalUniqueTypes } = useMemo(() => {
+    return getEventTypeIndicators(eventsForDay);
+  }, [uniqueTypesKey]); // Only depend on uniqueTypesKey, which is stable
+  
   const handlePress = () => {
     onPress(date);
   };
@@ -161,8 +202,6 @@ const CalendarDay = memo(({
       ]}
     />
   );
-  
-  const { indicators: eventIndicators, totalUniqueTypes } = getEventTypeIndicators(eventsForDay);
   const isLastColumn = (index % 7) === 6;
   const isSelected = isSelectedDay && !isCurrentDay;
   
@@ -231,6 +270,62 @@ const CalendarDay = memo(({
         )}
       </View>
     </TouchableOpacity>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison to prevent re-renders when only isSelectedDay changes
+  // Only re-render if events actually changed or other important props changed
+  if (prevProps.isSelectedDay !== nextProps.isSelectedDay) {
+    // Allow re-render for selection changes (needed for border styling)
+    // But the indicators will remain stable due to memoization
+    return false;
+  }
+  
+  // Compare events by length first
+  if (prevProps.eventsForDay.length !== nextProps.eventsForDay.length) {
+    return false; // Re-render if length changed
+  }
+  
+  // Compare unique types (normalized) - this matches what getEventTypeIndicators uses
+  const getUniqueTypesKey = (events: any[]) => {
+    if (!events || events.length === 0) return 'empty';
+    const uniqueTypes = new Set<string>();
+    events.forEach(e => {
+      let eventType = e.type || e.category;
+      if (!eventType) {
+        if (e.source === 'post') {
+          eventType = e.category || 'Announcement';
+        } else if (e.source === 'calendar') {
+          eventType = e.category || 'Announcement';
+        } else {
+          eventType = 'Announcement';
+        }
+      }
+      const normalizedCategory = normalizeCategory(eventType);
+      const normalizedType = normalizedCategory.toLowerCase();
+      if (normalizedType && normalizedType.length > 0) {
+        uniqueTypes.add(normalizedType);
+      } else {
+        uniqueTypes.add('announcement');
+      }
+    });
+    return Array.from(uniqueTypes).sort().join('|');
+  };
+  
+  const prevTypesKey = getUniqueTypesKey(prevProps.eventsForDay);
+  const nextTypesKey = getUniqueTypesKey(nextProps.eventsForDay);
+  if (prevTypesKey !== nextTypesKey) {
+    return false; // Re-render if unique types changed
+  }
+  
+  // Compare other props
+  return (
+    prevProps.date.getTime() === nextProps.date.getTime() &&
+    prevProps.day === nextProps.day &&
+    prevProps.isCurrentDay === nextProps.isCurrentDay &&
+    prevProps.index === nextProps.index &&
+    prevProps.theme === nextProps.theme &&
+    prevProps.onPress === nextProps.onPress &&
+    prevProps.onLongPress === nextProps.onLongPress
   );
 });
 

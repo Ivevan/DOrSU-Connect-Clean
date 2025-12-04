@@ -52,13 +52,34 @@ export const useCalendar = ({ posts, calendarEvents, selectedContentTypesSet }: 
       if (!dateMap.has(dateKey)) {
         dateMap.set(dateKey, []);
       }
-      // Check for duplicates before adding (by id)
+      // Check for duplicates before adding (by id, _id, or source+title+dateKey combination)
       const existingEvents = dateMap.get(dateKey)!;
-      const isDuplicate = existingEvents.some(e => 
-        e.id === payload.id || 
-        (e._id && payload._id && e._id === payload._id) ||
-        (e.source === payload.source && e.title === payload.title && e.dateKey === payload.dateKey)
-      );
+      const payloadId = payload.id || payload._id;
+      const payloadKey = `${payload.source}-${payload.title}-${payload.dateKey}`;
+      
+      const isDuplicate = existingEvents.some(e => {
+        const existingId = e.id || e._id;
+        const existingKey = `${e.source}-${e.title}-${e.dateKey}`;
+        
+        // Match by ID if both have IDs
+        if (payloadId && existingId && payloadId === existingId) {
+          return true;
+        }
+        
+        // Match by source+title+dateKey combination (for events without IDs)
+        if (payloadKey === existingKey) {
+          return true;
+        }
+        
+        // Match by source, title, and dateKey separately (more lenient check)
+        if (payload.source === e.source && 
+            payload.title === e.title && 
+            payload.dateKey === e.dateKey) {
+          return true;
+        }
+        
+        return false;
+      });
       
       if (!isDuplicate) {
         dateMap.get(dateKey)!.push(payload);

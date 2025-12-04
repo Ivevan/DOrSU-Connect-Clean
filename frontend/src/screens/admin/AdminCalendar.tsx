@@ -99,22 +99,32 @@ const AdminCalendar = () => {
   const monthPickerScaleAnim = useRef(new Animated.Value(0)).current;
   const monthPickerOpacityAnim = useRef(new Animated.Value(0)).current;
 
-  // Load user data on mount
+  // Load user data immediately on mount for fast display
   useEffect(() => {
+    let cancelled = false;
     const loadUserData = async () => {
       try {
         const user = getCurrentUser();
-        if (user) {
+        if (user && !cancelled) {
           setCurrentUser(user);
         }
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        // Load photo first for immediate display
         const userPhoto = await AsyncStorage.getItem('userPhoto');
+        if (!cancelled) {
         setBackendUserPhoto(userPhoto);
+        }
       } catch (error) {
+        if (!cancelled) {
         console.error('Failed to load user data:', error);
+        }
       }
     };
+    // Load immediately on mount
     loadUserData();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Subscribe to auth changes
@@ -168,7 +178,7 @@ const AdminCalendar = () => {
   const [isUploadingCSV, setIsUploadingCSV] = useState<boolean>(false);
   const [isProcessingCSV, setIsProcessingCSV] = useState<boolean>(false);
   const [refreshing, setRefreshing] = useState(false);
-
+  
   // Use shared calendar hook
   const { eventsByDateMap, getMonthEventCount, getEventsForDate } = useCalendar({
     posts,
@@ -423,8 +433,8 @@ const AdminCalendar = () => {
         );
         const newEvents = events
           .filter(e => {
-            const id = (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`;
-            return !existingIds.has(id);
+          const id = (e as any)._id || (e as any).id || `${(e as any).isoDate}-${(e as any).title}`;
+          return !existingIds.has(id);
           })
           .map(e => {
             // Normalize category to ensure consistent casing
@@ -432,7 +442,7 @@ const AdminCalendar = () => {
               return { ...e, category: normalizeCategory(e.category) };
             }
             return e;
-          });
+        });
         return [...prevEvents, ...newEvents];
       });
     } catch (error) {

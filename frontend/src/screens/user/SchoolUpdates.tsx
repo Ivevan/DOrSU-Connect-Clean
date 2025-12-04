@@ -318,7 +318,45 @@ const SchoolUpdates = () => {
     return () => unsubscribe();
   }, []);
 
-  // Load backend user photo on screen focus
+  // Load backend user data immediately on mount for fast display
+  useEffect(() => {
+    let cancelled = false;
+    const loadBackendUserData = async () => {
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        // Load photo first for immediate display, then other data in parallel
+        const [userPhoto, storedUserName, firstName, lastName] = await Promise.all([
+          AsyncStorage.getItem('userPhoto'),
+          AsyncStorage.getItem('userName'),
+          AsyncStorage.getItem('userFirstName'),
+          AsyncStorage.getItem('userLastName'),
+        ]);
+        if (!cancelled) {
+          setBackendUserPhoto(userPhoto);
+          if (storedUserName) {
+            setBackendUserName(storedUserName);
+          }
+          if (firstName) {
+            setBackendUserFirstName(firstName);
+          }
+          if (lastName) {
+            setBackendUserLastName(lastName);
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load backend user data:', error);
+        }
+      }
+    };
+    // Load immediately on mount
+    loadBackendUserData();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Also refresh on focus to catch updates
   useFocusEffect(
     useCallback(() => {
       const loadBackendUserData = async () => {
@@ -339,7 +377,7 @@ const SchoolUpdates = () => {
             setBackendUserLastName(lastName);
           }
         } catch (error) {
-          console.error('Failed to load backend user data:', error);
+          // Silent fail on focus refresh
         }
       };
       loadBackendUserData();
@@ -1315,6 +1353,7 @@ const SchoolUpdates = () => {
               <Image 
                 source={{ uri: backendUserPhoto }} 
                 style={styles.welcomeProfileImage}
+                resizeMode="cover"
               />
             ) : (
               <View style={[styles.welcomeProfileIconCircle, { backgroundColor: '#FFF' }]}>
@@ -1743,9 +1782,17 @@ const SchoolUpdates = () => {
                     <View style={styles.updateTextContent}>
                       <View style={styles.updateTitleRow}>
                         <Text style={[styles.updateTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]} numberOfLines={2}>{update.title}</Text>
-                        <View style={[styles.updateCategoryBadge, { backgroundColor: accentColor + '20' }]}>
-                          <Text style={[styles.updateCategoryText, { color: accentColor, fontSize: theme.fontSize.scaleSize(10) }]}>{update.tag}</Text>
-                        </View>
+                        {update.tag && (
+                          <View style={[styles.updateCategoryBadge, { backgroundColor: accentColor + '20' }]}>
+                            <Text 
+                              style={[styles.updateCategoryText, { color: accentColor, fontSize: theme.fontSize.scaleSize(10) }]}
+                              numberOfLines={1}
+                              ellipsizeMode="tail"
+                            >
+                              {update.tag}
+                            </Text>
+                          </View>
+                        )}
                       </View>
                       <Text style={[styles.updateSubtitle, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>
                         {formatDate(update.isoDate || update.date) || update.date}
@@ -2453,6 +2500,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
     marginBottom: 4,
+    flexWrap: 'wrap',
   },
   updateTitle: {
     fontSize: 14,
@@ -2460,6 +2508,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     letterSpacing: -0.2,
     flex: 1,
+    minWidth: 0,
   },
   updateCategoryBadge: {
     paddingHorizontal: 8,
@@ -2467,6 +2516,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignSelf: 'flex-start',
     flexShrink: 0,
+    overflow: 'hidden',
   },
   updateCategoryText: {
     fontSize: 10,

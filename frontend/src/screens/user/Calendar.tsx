@@ -61,22 +61,97 @@ const CalendarScreen = () => {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
+  const [backendUserFirstName, setBackendUserFirstName] = useState<string | null>(null);
+  const [backendUserLastName, setBackendUserLastName] = useState<string | null>(null);
+  const [backendUserName, setBackendUserName] = useState<string | null>(null);
   
-  // Load backend user photo on screen focus
+  // Load backend user data immediately on mount for fast display
+  useEffect(() => {
+    let cancelled = false;
+    const loadBackendUserData = async () => {
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        // Load all user data in parallel for faster loading
+        const [userPhoto, firstName, lastName, userName] = await Promise.all([
+          AsyncStorage.getItem('userPhoto'),
+          AsyncStorage.getItem('userFirstName'),
+          AsyncStorage.getItem('userLastName'),
+          AsyncStorage.getItem('userName'),
+        ]);
+        if (!cancelled) {
+          setBackendUserPhoto(userPhoto);
+          setBackendUserFirstName(firstName);
+          setBackendUserLastName(lastName);
+          if (userName) {
+            setBackendUserName(userName);
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load backend user data:', error);
+        }
+      }
+    };
+    // Load immediately on mount
+    loadBackendUserData();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Also refresh on focus to catch updates
   useFocusEffect(
     useCallback(() => {
       const loadBackendUserData = async () => {
         try {
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-          const userPhoto = await AsyncStorage.getItem('userPhoto');
+          const [userPhoto, firstName, lastName, userName] = await Promise.all([
+            AsyncStorage.getItem('userPhoto'),
+            AsyncStorage.getItem('userFirstName'),
+            AsyncStorage.getItem('userLastName'),
+            AsyncStorage.getItem('userName'),
+          ]);
           setBackendUserPhoto(userPhoto);
+          setBackendUserFirstName(firstName);
+          setBackendUserLastName(lastName);
+          if (userName) {
+            setBackendUserName(userName);
+          }
         } catch (error) {
-          console.error('Failed to load backend user data:', error);
+          // Silent fail on focus refresh
         }
       };
       loadBackendUserData();
     }, [])
   );
+
+  // Get user photo (memoized) - matches AIChat.tsx pattern
+  const userPhoto = useMemo(() => {
+    // Priority: Backend photo
+    if (backendUserPhoto) return backendUserPhoto;
+    return null;
+  }, [backendUserPhoto]);
+
+  // Get user display name (memoized) - matches AIChat.tsx pattern
+  const userName = useMemo(() => {
+    // Priority: Backend username -> Default
+    if (backendUserName) return backendUserName;
+    return 'User';
+  }, [backendUserName]);
+
+  // Get user initials for fallback - matches AIChat.tsx pattern
+  const getUserInitials = () => {
+    // Use firstName and lastName directly if available
+    if (backendUserFirstName && backendUserLastName) {
+      return (backendUserFirstName[0] + backendUserLastName[0]).toUpperCase();
+    }
+    if (!userName) return '?';
+    const names = userName.split(' ');
+    if (names.length >= 2) {
+      return (names[0][0] + names[1][0]).toUpperCase();
+    }
+    return userName.substring(0, 2).toUpperCase();
+  };
   
   // Event Modal state (view-only)
   const [showEventDrawer, setShowEventDrawer] = useState(false);
@@ -615,16 +690,15 @@ const CalendarScreen = () => {
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             accessibilityRole="button"
           >
-            {backendUserPhoto ? (
-              <View pointerEvents="none">
-                <Image 
-                  source={{ uri: backendUserPhoto }} 
-                  style={styles.profileImage}
-                />
-              </View>
+            {userPhoto ? (
+              <Image 
+                source={{ uri: userPhoto }} 
+                style={styles.profileImage}
+                resizeMode="cover"
+              />
             ) : (
               <View style={[styles.profileIconCircle, { backgroundColor: t.colors.accent }]} pointerEvents="none">
-                <Text style={[styles.profileInitials, { fontSize: t.fontSize.scaleSize(13) }]}>U</Text>
+                <Text style={[styles.profileInitials, { fontSize: t.fontSize.scaleSize(13) }]}>{getUserInitials()}</Text>
               </View>
             )}
           </TouchableOpacity>

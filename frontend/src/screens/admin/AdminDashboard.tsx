@@ -508,7 +508,37 @@ const AdminDashboard = () => {
     return () => unsubscribe();
   }, []);
 
-  // Load backend user photo on screen focus (separate from data fetching)
+  // Load backend user data immediately on mount for fast display
+  useEffect(() => {
+    let cancelled = false;
+    const loadBackendUserData = async () => {
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        // Load photo first for immediate display, then other data in parallel
+        const [userPhoto, firstName, lastName] = await Promise.all([
+          AsyncStorage.getItem('userPhoto'),
+          AsyncStorage.getItem('userFirstName'),
+          AsyncStorage.getItem('userLastName'),
+        ]);
+        if (!cancelled) {
+          setBackendUserPhoto(userPhoto);
+          setBackendUserFirstName(firstName);
+          setBackendUserLastName(lastName);
+        }
+      } catch (error) {
+        if (!cancelled && __DEV__) {
+          console.error('Failed to load backend user data:', error);
+        }
+      }
+    };
+    // Load immediately on mount
+    loadBackendUserData();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Also refresh on focus to catch updates
   useFocusEffect(
     useCallback(() => {
       const loadBackendUserData = async () => {
@@ -521,10 +551,9 @@ const AdminDashboard = () => {
           setBackendUserFirstName(firstName);
           setBackendUserLastName(lastName);
         } catch (error) {
-          if (__DEV__) console.error('Failed to load backend user data:', error);
+          // Silent fail on focus refresh
         }
       };
-      
       loadBackendUserData();
     }, [])
   );
@@ -1035,6 +1064,7 @@ const AdminDashboard = () => {
               <Image 
                 source={{ uri: backendUserPhoto }} 
                 style={styles.welcomeProfileImage}
+                resizeMode="cover"
               />
             ) : (
               <View style={[styles.welcomeProfileIconCircle, { backgroundColor: '#FFF' }]}>
@@ -1421,7 +1451,13 @@ const AdminDashboard = () => {
                       <View style={styles.updateTitleRow}>
                         <Text style={[styles.updateTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]} numberOfLines={2}>{update.title}</Text>
                         <View style={[styles.updateCategoryBadge, { backgroundColor: accentColor + '20' }]}>
-                          <Text style={[styles.updateCategoryText, { color: accentColor, fontSize: theme.fontSize.scaleSize(10) }]}>{update.tag}</Text>
+                          <Text 
+                            style={[styles.updateCategoryText, { color: accentColor, fontSize: theme.fontSize.scaleSize(10) }]}
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                          >
+                            {update.tag}
+                          </Text>
                         </View>
                       </View>
                       <Text style={[styles.updateSubtitle, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>

@@ -40,6 +40,7 @@ function getNotifications(): any {
 }
 import BottomSheet from '../components/common/BottomSheet';
 import { useThemeValues } from '../contexts/ThemeContext';
+import { useUpdates } from '../contexts/UpdatesContext';
 import NotificationService from '../services/NotificationService';
 import AdminDataService, { Post } from '../services/AdminDataService';
 import CalendarService, { CalendarEvent } from '../services/CalendarService';
@@ -86,6 +87,7 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
   onClose,
 }) => {
   const { theme } = useThemeValues();
+  const { posts, setPosts, calendarEvents, setCalendarEvents } = useUpdates();
   const sheetY = useRef(new Animated.Value(600)).current;
 
   // Helper function to convert hex to rgba
@@ -165,94 +167,32 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
     );
   }, [notificationItems, saveReadNotifications]);
 
-  const loadNotifications = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      console.log('📬 NotificationModal: Starting to load notifications...');
-      
-      // Load read status first - read directly from AsyncStorage to avoid dependency issues
-      let currentReadIds: Set<string>;
-      try {
-        const readIdsJson = await AsyncStorage.getItem('readNotificationIds');
-        if (readIdsJson) {
-          const readIds = JSON.parse(readIdsJson);
-          currentReadIds = new Set(readIds);
-          setReadNotificationIds(currentReadIds);
-        } else {
-          currentReadIds = new Set<string>();
-        }
-      } catch (error) {
-        console.error('Error loading read notifications:', error);
-        currentReadIds = new Set<string>();
-      }
-      
-      // Fetch current data - mirror AdminDashboard/SchoolUpdates approach
-      // Fetch ALL posts (no date filter) and calendar events with date range (current month ± 2 months)
-      let posts: Post[] = [];
-      let events: CalendarEvent[] = [];
-      
-      try {
-        console.log('📬 NotificationModal: Fetching posts and events (mirroring AdminDashboard/SchoolUpdates)...');
-        
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const currentMonth = now.getMonth();
-        
-        // Fetch calendar events: current month ± 2 months (same as AdminDashboard/SchoolUpdates)
-        const startDate = new Date(currentYear, currentMonth - 2, 1);
-        const endDate = new Date(currentYear, currentMonth + 3, 0, 23, 59, 59); // Last day of month + 2
-        
-        const [postsResult, eventsResult] = await Promise.allSettled([
-          AdminDataService.getPosts(), // Fetch ALL posts (no date filter)
-          CalendarService.getEvents({
-            startDate: startDate.toISOString(),
-            endDate: endDate.toISOString(),
-            limit: 1000, // Same limit as AdminDashboard
-          }),
-        ]);
-        
-        // Handle posts result
-        if (postsResult.status === 'fulfilled') {
-          posts = postsResult.value || [];
-          console.log(`✅ NotificationModal: Loaded ${posts.length} posts (all posts)`);
-        } else {
-          console.error('❌ NotificationModal: Failed to fetch posts:', postsResult.reason);
-          posts = [];
-        }
-        
-        // Handle events result
-        if (eventsResult.status === 'fulfilled') {
-          events = Array.isArray(eventsResult.value) ? eventsResult.value : [];
-          console.log(`✅ NotificationModal: Loaded ${events.length} calendar events (${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()})`);
-        } else {
-          console.error('❌ NotificationModal: Failed to fetch events:', eventsResult.reason);
-          events = [];
-        }
-        
-        console.log(`📊 NotificationModal: Total loaded - ${posts.length} posts, ${events.length} events`);
-      } catch (error) {
-        console.error('❌ NotificationModal: Error loading notifications:', error);
-        // Continue with empty arrays
-        posts = [];
-        events = [];
-      }
+  // Process notifications from existing context data (no fetch)
+  const processNotifications = useCallback(async (postsData: any[], eventsData: CalendarEvent[], currentReadIds: Set<string>) => {
+    console.log('📬 NotificationModal: Processing notifications from context data...');
+    
+    // Use provided data (from context or fetched)
+    const postsToProcess = postsData || [];
+    const eventsToProcess = eventsData || [];
+    
+    console.log(`📊 NotificationModal: Processing ${postsToProcess.length} posts, ${eventsToProcess.length} events from context`);
 
-      const items: NotificationItem[] = [];
-      const now = new Date();
-      const todayKey = getPHDateKey(now);
-      const nowTime = Date.now();
-      
-      // Mirror AdminDashboard/SchoolUpdates approach:
-      // 1. Convert all posts to notification items (for "All Updates" and "Added Post")
-      // 2. Convert all calendar events to notification items (for "All Updates" and "Upcoming Updates")
-      // 3. Use same date filtering logic as displayedUpdates
-      
-      // Process posts - include ALL posts for "All Updates", categorize for filters
-      // Mirror AdminDashboard: ALL posts are shown, categorized by date
-      let newPostCount = 0;
-      let upcomingPostCount = 0;
-      
-      posts.forEach((post: Post, index: number) => {
+    const items: NotificationItem[] = [];
+    const now = new Date();
+    const todayKey = getPHDateKey(now);
+    const nowTime = Date.now();
+    
+    // Mirror AdminDashboard/SchoolUpdates approach:
+    // 1. Convert all posts to notification items (for "All Updates" and "Added Post")
+    // 2. Convert all calendar events to notification items (for "All Updates" and "Upcoming Updates")
+    // 3. Use same date filtering logic as displayedUpdates
+    
+    // Process posts - include ALL posts for "All Updates", categorize for filters
+    // Mirror AdminDashboard: ALL posts are shown, categorized by date
+    let newPostCount = 0;
+    let upcomingPostCount = 0;
+    
+    postsToProcess.forEach((post: any, index: number) => {
         if (!post.id) {
           console.warn(`⚠️ NotificationModal: Post missing ID at index ${index}`);
           return;
@@ -321,24 +261,24 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
         }
       });
       
-      console.log(`📬 NotificationModal: Processed ${posts.length} posts - ${newPostCount} new_post items, ${upcomingPostCount} upcoming_post items`);
-      if (posts.length > 0) {
-        console.log(`📬 Sample posts:`, posts.slice(0, 3).map(p => ({
-          id: p.id,
-          title: p.title,
-          date: p.date,
-          isoDate: p.isoDate,
-          hasDate: !!p.date,
-          hasIsoDate: !!p.isoDate,
-        })));
-      }
+    console.log(`📬 NotificationModal: Processed ${postsToProcess.length} posts - ${newPostCount} new_post items, ${upcomingPostCount} upcoming_post items`);
+    if (postsToProcess.length > 0) {
+      console.log(`📬 Sample posts:`, postsToProcess.slice(0, 3).map(p => ({
+        id: p.id,
+        title: p.title,
+        date: p.date,
+        isoDate: p.isoDate,
+        hasDate: !!p.date,
+        hasIsoDate: !!p.isoDate,
+      })));
+    }
 
-      // Process calendar events - include ALL events for "All Updates", categorize for filters
-      // Mirror AdminDashboard: ALL calendar events are shown, categorized by date
-      let todaysEventCount = 0;
-      let upcomingEventCount = 0;
-      
-      events.forEach((event: CalendarEvent, index: number) => {
+    // Process calendar events - include ALL events for "All Updates", categorize for filters
+    // Mirror AdminDashboard: ALL calendar events are shown, categorized by date
+    let todaysEventCount = 0;
+    let upcomingEventCount = 0;
+    
+    eventsToProcess.forEach((event: CalendarEvent, index: number) => {
         // Skip events without any identifier or date
         if (!event._id && !event.isoDate && !event.date) {
           console.warn(`⚠️ NotificationModal: Event missing ID and date at index ${index}`);
@@ -417,47 +357,162 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
         }
       });
       
-      console.log(`📬 NotificationModal: Processed ${events.length} events - ${todaysEventCount} today's, ${upcomingEventCount} upcoming`);
+    console.log(`📬 NotificationModal: Processed ${eventsToProcess.length} events - ${todaysEventCount} today's, ${upcomingEventCount} upcoming`);
 
-      // Mark items as read based on stored read IDs
-      const itemsWithReadStatus = items.map(item => ({
-        ...item,
-        read: currentReadIds.has(item.id),
-      }));
+    // Mark items as read based on stored read IDs
+    const itemsWithReadStatus = items.map(item => ({
+      ...item,
+      read: currentReadIds.has(item.id),
+    }));
 
-      // Sort by timestamp in DESCENDING order (latest created/uploaded first)
-      itemsWithReadStatus.sort((a, b) => {
-        // Primary sort: DESCENDING by timestamp (latest/newest first)
-        // b.timestamp - a.timestamp = descending (newest to oldest)
-        const timeDiff = b.timestamp - a.timestamp;
-        if (timeDiff !== 0) return timeDiff;
-        
-        // Secondary sort: by type (new_post first, then todays_event, then upcoming_event)
-        const typeOrder = { 'new_post': 0, 'todays_event': 1, 'upcoming_event': 2 };
-        return (typeOrder[a.type] || 3) - (typeOrder[b.type] || 3);
-      });
-
-      // Log summary of what was loaded
-      const summary = {
-        newPosts: itemsWithReadStatus.filter(i => i.type === 'new_post').length,
-        todaysEvents: itemsWithReadStatus.filter(i => i.type === 'todays_event').length,
-        upcomingPosts: itemsWithReadStatus.filter(i => i.type === 'upcoming_event' && (i.data?.postId || i.data?.post)).length,
-        upcomingEvents: itemsWithReadStatus.filter(i => i.type === 'upcoming_event' && (i.data?.eventId || i.data?.event)).length,
-        total: itemsWithReadStatus.length,
-        sampleNewPosts: itemsWithReadStatus.filter(i => i.type === 'new_post').slice(0, 3).map(i => ({ id: i.id, title: i.message })),
-        sampleUpcomingPosts: itemsWithReadStatus.filter(i => i.type === 'upcoming_event' && (i.data?.postId || i.data?.post)).slice(0, 3).map(i => ({ id: i.id, title: i.message })),
-        sampleUpcomingEvents: itemsWithReadStatus.filter(i => i.type === 'upcoming_event' && (i.data?.eventId || i.data?.event)).slice(0, 3).map(i => ({ id: i.id, title: i.message })),
-      };
-      console.log(`✅ NotificationModal: Loaded ${itemsWithReadStatus.length} notification items:`, JSON.stringify(summary, null, 2));
+    // Sort by timestamp in DESCENDING order (latest created/uploaded first)
+    itemsWithReadStatus.sort((a, b) => {
+      // Primary sort: DESCENDING by timestamp (latest/newest first)
+      // b.timestamp - a.timestamp = descending (newest to oldest)
+      const timeDiff = b.timestamp - a.timestamp;
+      if (timeDiff !== 0) return timeDiff;
       
-      setNotificationItems(itemsWithReadStatus);
+      // Secondary sort: by type (new_post first, then todays_event, then upcoming_event)
+      const typeOrder = { 'new_post': 0, 'todays_event': 1, 'upcoming_event': 2 };
+      return (typeOrder[a.type] || 3) - (typeOrder[b.type] || 3);
+    });
+
+    // Log summary of what was loaded
+    const summary = {
+      newPosts: itemsWithReadStatus.filter(i => i.type === 'new_post').length,
+      todaysEvents: itemsWithReadStatus.filter(i => i.type === 'todays_event').length,
+      upcomingPosts: itemsWithReadStatus.filter(i => i.type === 'upcoming_event' && (i.data?.postId || i.data?.post)).length,
+      upcomingEvents: itemsWithReadStatus.filter(i => i.type === 'upcoming_event' && (i.data?.eventId || i.data?.event)).length,
+      total: itemsWithReadStatus.length,
+      sampleNewPosts: itemsWithReadStatus.filter(i => i.type === 'new_post').slice(0, 3).map(i => ({ id: i.id, title: i.message })),
+      sampleUpcomingPosts: itemsWithReadStatus.filter(i => i.type === 'upcoming_event' && (i.data?.postId || i.data?.post)).slice(0, 3).map(i => ({ id: i.id, title: i.message })),
+      sampleUpcomingEvents: itemsWithReadStatus.filter(i => i.type === 'upcoming_event' && (i.data?.eventId || i.data?.event)).slice(0, 3).map(i => ({ id: i.id, title: i.message })),
+    };
+    console.log(`✅ NotificationModal: Processed ${itemsWithReadStatus.length} notification items:`, JSON.stringify(summary, null, 2));
+    
+    setNotificationItems(itemsWithReadStatus);
+  }, []);
+
+  // Load notifications from context data (no fetch)
+  const loadNotifications = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      console.log('📬 NotificationModal: Loading notifications from context data...');
+      
+      // Load read status asynchronously
+      let currentReadIds: Set<string>;
+      try {
+        const readIdsJson = await AsyncStorage.getItem('readNotificationIds');
+        if (readIdsJson) {
+          const readIds = JSON.parse(readIdsJson);
+          currentReadIds = new Set(readIds);
+          setReadNotificationIds(currentReadIds);
+        } else {
+          currentReadIds = new Set<string>();
+        }
+      } catch (error) {
+        console.error('Error loading read notifications:', error);
+        currentReadIds = new Set<string>();
+      }
+      
+      // Use data from context (already loaded by AdminDashboard/SchoolUpdates)
+      await processNotifications(posts, calendarEvents, currentReadIds);
     } catch (error) {
       console.error('❌ NotificationModal: Error loading notifications:', error);
       setNotificationItems([]);
     } finally {
       setIsLoading(false);
     }
-  }, []); // Removed readNotificationIds dependency - we read directly from AsyncStorage
+  }, [posts, calendarEvents, processNotifications]);
+
+  // Fetch fresh data and update context (only when explicitly requested)
+  const refreshNotifications = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      console.log('📬 NotificationModal: Refreshing notifications from server...');
+      
+      // Load read status first
+      let currentReadIds: Set<string>;
+      try {
+        const readIdsJson = await AsyncStorage.getItem('readNotificationIds');
+        if (readIdsJson) {
+          const readIds = JSON.parse(readIdsJson);
+          currentReadIds = new Set(readIds);
+          setReadNotificationIds(currentReadIds);
+        } else {
+          currentReadIds = new Set<string>();
+        }
+      } catch (error) {
+        console.error('Error loading read notifications:', error);
+        currentReadIds = new Set<string>();
+      }
+      
+      // Fetch fresh data from server
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      
+      // Fetch calendar events: current month ± 2 months (same as AdminDashboard/SchoolUpdates)
+      const startDate = new Date(currentYear, currentMonth - 2, 1);
+      const endDate = new Date(currentYear, currentMonth + 3, 0, 23, 59, 59); // Last day of month + 2
+      
+      const [postsResult, eventsResult] = await Promise.allSettled([
+        AdminDataService.getPosts(), // Fetch ALL posts (no date filter)
+        CalendarService.getEvents({
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+          limit: 1000, // Same limit as AdminDashboard
+        }),
+      ]);
+      
+      // Handle posts result
+      let fetchedPosts: Post[] = [];
+      if (postsResult.status === 'fulfilled') {
+        fetchedPosts = postsResult.value || [];
+        console.log(`✅ NotificationModal: Fetched ${fetchedPosts.length} posts`);
+        // Update context so other screens stay in sync
+        setPosts(fetchedPosts as any[]);
+      } else {
+        console.error('❌ NotificationModal: Failed to fetch posts:', postsResult.reason);
+        // Use existing context data as fallback
+        fetchedPosts = posts as any[];
+      }
+      
+      // Handle events result
+      let fetchedEvents: CalendarEvent[] = [];
+      if (eventsResult.status === 'fulfilled') {
+        fetchedEvents = Array.isArray(eventsResult.value) ? eventsResult.value : [];
+        console.log(`✅ NotificationModal: Fetched ${fetchedEvents.length} calendar events`);
+        // Update context so other screens stay in sync
+        setCalendarEvents(fetchedEvents);
+      } else {
+        console.error('❌ NotificationModal: Failed to fetch events:', eventsResult.reason);
+        // Use existing context data as fallback
+        fetchedEvents = calendarEvents;
+      }
+      
+      // Process the fetched data
+      await processNotifications(fetchedPosts, fetchedEvents, currentReadIds);
+    } catch (error) {
+      console.error('❌ NotificationModal: Error refreshing notifications:', error);
+      // Fallback to processing existing context data
+      let fallbackReadIds: Set<string>;
+      try {
+        const readIdsJson = await AsyncStorage.getItem('readNotificationIds');
+        if (readIdsJson) {
+          const readIds = JSON.parse(readIdsJson);
+          fallbackReadIds = new Set(readIds);
+        } else {
+          fallbackReadIds = new Set<string>();
+        }
+      } catch {
+        fallbackReadIds = new Set<string>();
+      }
+      await processNotifications(posts, calendarEvents, fallbackReadIds);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [posts, calendarEvents, setPosts, setCalendarEvents, processNotifications]);
 
   // Memoize checkPermissions to avoid recreating on every render
   const checkPermissions = useCallback(async () => {
@@ -490,27 +545,34 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
     });
   }, [sheetY, onClose]);
 
+  // Process notifications when context data changes (sync with existing knowledge base)
+  useEffect(() => {
+    if (visible && (posts.length > 0 || calendarEvents.length > 0)) {
+      // Only process if we have data in context (don't fetch)
+      console.log('📬 NotificationModal: Context data available, processing notifications...');
+      loadNotifications();
+    } else if (visible && posts.length === 0 && calendarEvents.length === 0) {
+      // If no data in context, show empty state (don't fetch automatically)
+      console.log('📬 NotificationModal: No context data available, showing empty state');
+      setNotificationItems([]);
+      setIsLoading(false);
+    }
+  }, [visible, posts, calendarEvents, loadNotifications]);
+
   // Animate sheet when visible changes
   useEffect(() => {
     if (visible) {
-      console.log('📬 NotificationModal: Modal opened, loading notifications...');
+      console.log('📬 NotificationModal: Modal opened');
       Animated.spring(sheetY, {
         toValue: 0,
         useNativeDriver: true,
         tension: 65,
         friction: 11,
       }).start();
-      // Load notifications immediately when modal opens (force refresh to get latest posts)
-      // Use a small delay to ensure any pending post creation has completed
-      const loadTimer = setTimeout(() => {
-        loadNotifications().catch((error) => {
-          console.error('❌ NotificationModal: Error in loadNotifications:', error);
-        });
-      }, 100);
+      // Check permissions (don't load data - that's handled by context effect above)
       checkPermissions().catch((error) => {
         console.error('❌ NotificationModal: Error in checkPermissions:', error);
       });
-      return () => clearTimeout(loadTimer);
     } else {
       Animated.timing(sheetY, {
         toValue: 600,
@@ -519,13 +581,14 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
       }).start();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]); // Only depend on visible - loadNotifications and checkPermissions are stable
+  }, [visible]); // Only depend on visible - checkPermissions is stable
 
   const handleRefresh = async () => {
     try {
       setIsRefreshing(true);
-      console.log('📬 NotificationModal: Refreshing notifications...');
-      await loadNotifications();
+      console.log('📬 NotificationModal: Refreshing notifications from server...');
+      // Fetch fresh data and update context
+      await refreshNotifications();
       await NotificationService.checkAllNotifications();
       console.log('✅ NotificationModal: Refresh completed');
     } catch (error) {
@@ -552,7 +615,8 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
     setHasPermission(permission);
     if (permission) {
       await NotificationService.checkAllNotifications();
-      await loadNotifications();
+      // Refresh to get latest data after permission granted
+      await refreshNotifications();
     }
   };
 
@@ -927,7 +991,7 @@ const NotificationModal: React.FC<NotificationModalProps> = ({
           <TouchableOpacity
             style={[styles.checkButton, { backgroundColor: theme.colors.accent }]}
             onPress={handleRefresh}
-            disabled={isRefreshing}
+            disabled={isRefreshing || isLoading}
           >
             <Ionicons name="refresh" size={20} color="#FFF" />
             <Text style={styles.checkButtonText}>Check for Updates</Text>

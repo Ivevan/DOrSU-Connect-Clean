@@ -5,7 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, AppState, BackHandler, Dimensions, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, AppState, BackHandler, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../config/api.config';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
@@ -21,8 +21,6 @@ type RootStackParamList = {
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'CreateAccount'>;
-
-const { width } = Dimensions.get('window');
 
 const TEMP_EMAIL_DOMAINS = [
   'tempmail.com', 'guerrillamail.com', '10minutemail.com', 'throwaway.email',
@@ -695,64 +693,6 @@ const CreateAccount = () => {
   const KeyboardWrapper = Platform.OS === 'ios' ? KeyboardAvoidingView : View;
   const keyboardProps = Platform.OS === 'ios' ? { behavior: 'padding' as const, keyboardVerticalOffset: 0 } : {};
 
-  // Resend verification email
-  const handleResendVerification = async () => {
-    if (!firebaseUser) return;
-    
-    setIsSendingVerification(true);
-    setErrors(prev => ({ ...prev, general: '' }));
-    
-    // Start loading animation
-    Animated.loop(
-      Animated.timing(loadingRotation, {
-        toValue: 1,
-        duration: 1000,
-        useNativeDriver: true,
-      })
-    ).start();
-    
-    try {
-      await sendEmailVerification(firebaseUser);
-      setEmailVerificationMessage('Verification email resent! Please check your inbox.');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (error: any) {
-      setErrors(prev => ({
-        ...prev,
-        general: error?.message || 'Failed to resend verification email. Please try again.',
-      }));
-    } finally {
-      setIsSendingVerification(false);
-      loadingRotation.stopAnimation();
-    }
-  };
-
-  // Manually check verification status (for cross-device verification)
-  const handleCheckVerificationStatus = async () => {
-    if (!firebaseUser) return;
-    
-    setIsSendingVerification(true);
-    setErrors(prev => ({ ...prev, general: '' }));
-    
-    try {
-      const isVerified = await checkEmailVerificationStatus({ showErrors: true });
-      
-      if (isVerified) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setEmailVerificationMessage('✅ Email verified! Please enter your name to continue.');
-      } else {
-        setEmailVerificationMessage('Email not yet verified. Please check your inbox and click the verification link.');
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      }
-    } catch (error: any) {
-      setErrors(prev => ({
-        ...prev,
-        general: error?.message || 'Failed to check verification status. Please try again.',
-      }));
-    } finally {
-      setIsSendingVerification(false);
-    }
-  };
-
   // Render form content
   const renderFormContent = () => {
     return (
@@ -1306,12 +1246,6 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     marginBottom: 8,
   },
-  subtitleText: {
-    fontSize: 13,
-    color: '#6B7280',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
   // Form Section
   formSection: {
     width: '100%',
@@ -1420,9 +1354,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
   },
-  linkTextBold: {
-    fontWeight: '700',
-  },
   verificationInfoBox: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1467,30 +1398,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flex: 1,
     lineHeight: 16,
-  },
-  verificationActions: {
-    marginTop: 8,
-    marginBottom: 8,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  resendButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: 'rgba(37, 99, 235, 0.1)',
-  },
-  checkButton: {
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-  },
-  resendButtonText: {
-    color: '#2563EB',
-    fontSize: 12,
-    fontWeight: '600',
   },
   mobileContainer: {
     flex: 1,

@@ -94,7 +94,7 @@ const GetStarted = () => {
       
       // Exchange token for backend JWT in parallel with storage operations
       // Use Promise.allSettled to ensure we don't block even if exchange fails
-      const [storedIsAdmin, tokenExchangeResult] = await Promise.allSettled([
+      const [storedIsAdmin] = await Promise.allSettled([
         AsyncStorage.getItem('isAdmin'),
         // Token exchange with timeout (max 3 seconds)
         Promise.race([
@@ -459,19 +459,6 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontWeight: '500',
     marginTop: 2,
-  },
-  welcomeText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2937',
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  subtitleText: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 24,
-    textAlign: 'center',
   },
   // Buttons Section
   buttonsSection: {

@@ -9,9 +9,10 @@ import { Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, Tou
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../config/theme';
 import { useThemeValues } from '../../contexts/ThemeContext';
-import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
+import { getCurrentUser, onAuthStateChange, User, deleteAccount } from '../../services/authService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRoute } from '@react-navigation/native';
+import { useAuth } from '../../contexts/AuthContext';
 import ChangePasswordModal from '../../modals/ChangePasswordModal';
 
 type RootStackParamList = {
@@ -25,6 +26,7 @@ const AdminAccountSettings = () => {
   const { isDarkMode, theme: t } = useThemeValues();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute();
+  const { getUserToken } = useAuth();
 
   // Animated floating background orb
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -136,25 +138,85 @@ const AdminAccountSettings = () => {
 
     try {
       setDeleteStatus('idle');
-      // Clear user data from AsyncStorage
-      await AsyncStorage.removeItem('userName');
-      await AsyncStorage.removeItem('userEmail');
-      await AsyncStorage.removeItem('userPhoto');
-      await AsyncStorage.removeItem('userToken');
-      await AsyncStorage.removeItem('userId');
-      await AsyncStorage.removeItem('authProvider');
       
-      // Delete Firebase user account if available
+      // Step 1: Delete from backend MongoDB (this deletes all user data from database)
+      const token = await getUserToken();
+      if (token) {
+        try {
+          const deleted = await deleteAccount(token);
+          if (!deleted) {
+            throw new Error('Backend deletion failed');
+          }
+        } catch (backendError: any) {
+          console.error('Backend account deletion error:', backendError);
+          // Continue with Firebase deletion even if backend fails
+          // (user might not have backend account if they only have Firebase account)
+        }
+      }
+      
+      // Step 2: Delete Firebase user account if available
       if (currentUser) {
-        await currentUser.delete?.();
+        try {
+          if (Platform.OS === 'web') {
+            const { getFirebaseAuth } = require('../../config/firebase');
+            const auth = getFirebaseAuth();
+            const { deleteUser } = require('firebase/auth');
+            await deleteUser(currentUser);
+          } else {
+            // React Native Firebase
+            await currentUser.delete();
+          }
+        } catch (firebaseError: any) {
+          console.error('Firebase account deletion error:', firebaseError);
+          // If Firebase deletion fails due to recent login requirement, try to re-authenticate
+          if (firebaseError.code === 'auth/requires-recent-login') {
+            setDeleteStatus('error');
+            setDeleteErrorMessage('Please sign out and sign in again, then try deleting your account.');
+            return;
+          }
+          // Continue with cleanup even if Firebase deletion fails
+        }
+      }
+      
+      // Step 3: Clear all local data
+      await AsyncStorage.multiRemove([
+        'userToken', 
+        'userEmail', 
+        'userName', 
+        'userId', 
+        'userPhoto', 
+        'authProvider',
+        'isAdmin',
+        'adminToken',
+        'adminEmail',
+        'adminCurrentConversation',
+        'adminConversationLastSaveTime',
+        'currentConversation',
+        'conversationLastSaveTime'
+      ]);
+      
+      // Step 4: Sign out from Firebase if user is still signed in
+      try {
+        if (Platform.OS === 'web') {
+          const { getFirebaseAuth } = require('../../config/firebase');
+          const auth = getFirebaseAuth();
+          const { signOut } = require('firebase/auth');
+          await signOut(auth);
+        } else {
+          const auth = require('@react-native-firebase/auth').default();
+          await auth.signOut();
+        }
+      } catch (signOutError) {
+        console.error('Firebase sign out error:', signOutError);
+        // Continue anyway - data is already deleted
       }
       
       setDeleteStatus('success');
       // User will be redirected to auth flow automatically
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to delete account:', error);
       setDeleteStatus('error');
-      setDeleteErrorMessage('Failed to delete account. Please try again.');
+      setDeleteErrorMessage(error.message || 'Failed to delete account. Please try again.');
     }
   };
 

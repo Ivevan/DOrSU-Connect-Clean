@@ -500,4 +500,68 @@ export const deleteAccount = async (token: string): Promise<boolean> => {
   }
 };
 
+/**
+ * Send password reset email (Firebase)
+ */
+export const sendPasswordResetEmail = async (email: string): Promise<void> => {
+  try {
+    if (Platform.OS === 'web') {
+      if (!webFirebaseAuth) {
+        throw new Error('Firebase Auth is not initialized for web');
+      }
+      const { sendPasswordResetEmail: sendResetEmail } = require('firebase/auth');
+      await sendResetEmail(webFirebaseAuth, email);
+    } else {
+      // Native - React Native Firebase
+      await auth().sendPasswordResetEmail(email);
+    }
+  } catch (error: any) {
+    console.error('Send password reset email error:', error);
+    
+    // Handle Firebase Auth errors
+    if (error.code === 'auth/user-not-found') {
+      throw new Error('No account found with this email address.');
+    } else if (error.code === 'auth/invalid-email') {
+      throw new Error('Invalid email address format.');
+    } else if (error.code === 'auth/too-many-requests') {
+      throw new Error('Too many password reset requests. Please try again later.');
+    } else if (error.code === 'auth/network-request-failed') {
+      throw new Error('Network error. Please check your internet connection.');
+    }
+    
+    throw new Error(error.message || 'Failed to send password reset email');
+  }
+};
+
+/**
+ * Confirm password reset with action code and new password (Firebase)
+ */
+export const confirmPasswordReset = async (actionCode: string, newPassword: string): Promise<void> => {
+  try {
+    if (Platform.OS === 'web') {
+      if (!webFirebaseAuth) {
+        throw new Error('Firebase Auth is not initialized for web');
+      }
+      const { confirmPasswordReset } = require('firebase/auth');
+      await confirmPasswordReset(webFirebaseAuth, actionCode, newPassword);
+    } else {
+      // Native - React Native Firebase
+      await auth().confirmPasswordReset(actionCode, newPassword);
+    }
+  } catch (error: any) {
+    console.error('Confirm password reset error:', error);
+    
+    // Handle Firebase Auth errors
+    if (error.code === 'auth/invalid-action-code' || error.code === 'auth/expired-action-code') {
+      throw new Error('Invalid or expired reset code. Please request a new password reset email.');
+    } else if (error.code === 'auth/weak-password') {
+      throw new Error('Password is too weak. Please use a stronger password.');
+    } else if (error.code === 'auth/network-request-failed') {
+      throw new Error('Network error. Please check your internet connection.');
+    }
+    
+    throw new Error(error.message || 'Failed to reset password');
+  }
+};
+
 

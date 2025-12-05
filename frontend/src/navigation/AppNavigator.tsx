@@ -22,7 +22,9 @@ import CalendarHelpScreen from '../screens/admin/CalendarHelpScreen';
 import ManagePosts from '../screens/admin/ManagePosts';
 import PostUpdate from '../screens/admin/PostUpdate';
 import CreateAccount from '../screens/auth/CreateAccount';
+import ForgotPassword from '../screens/auth/ForgotPassword';
 import GetStarted from '../screens/auth/GetStarted';
+import ResetPassword from '../screens/auth/ResetPassword';
 import SignIn from '../screens/auth/SignIn';
 import SplashScreen from '../screens/auth/SplashScreen';
 import About from '../screens/shared/About';
@@ -97,13 +99,43 @@ const AppNavigator = () => {
           console.log('🔗 Parsed custom scheme - oobCode:', oobCode ? oobCode.substring(0, 20) + '...' : 'none', 'mode:', mode || 'none');
         }
         
+        // Check if this is a password reset link
+        const isPasswordResetLink = url.includes('resetPassword') || 
+                                     url.includes('action=resetPassword') || 
+                                     url.includes('action=ResetPassword') ||
+                                     mode === 'resetPassword' ||
+                                     mode === 'ResetPassword';
+        
+        if (isPasswordResetLink) {
+          console.log('✅ Password reset link detected');
+          
+          if (oobCode) {
+            console.log('🔐 Reset code found:', oobCode.substring(0, 20) + '...');
+            
+            // Store the reset code for ResetPassword screen to use
+            await AsyncStorage.setItem('pendingResetCode', oobCode);
+            
+            // Navigate to ResetPassword screen
+            if (navigationRef.isReady()) {
+              navigationRef.navigate('ResetPassword' as never);
+            }
+          } else {
+            console.log('⚠️ Password reset link detected but no oobCode found');
+            // Still navigate to ResetPassword to show error
+            if (navigationRef.isReady()) {
+              navigationRef.navigate('ResetPassword' as never);
+            }
+          }
+          return;
+        }
+        
         // Check if this is an email verification link
         const isVerificationLink = url.includes('verify-email') || 
                                    url.includes('action=verifyEmail') || 
                                    url.includes('action=VerifyEmail') ||
                                    mode === 'verifyEmail' ||
                                    mode === 'VerifyEmail' ||
-                                   !!oobCode;
+                                   (!!oobCode && !isPasswordResetLink);
         
         if (isVerificationLink) {
           console.log('✅ Email verification link detected');
@@ -192,17 +224,20 @@ const AppNavigator = () => {
       }
     };
 
-    // On web, check the current window location for verification parameters
+    // On web, check the current window location for verification/reset parameters
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       const checkCurrentUrl = async () => {
         const currentUrl = window.location.href;
         const urlParams = new URLSearchParams(window.location.search);
         const oobCode = urlParams.get('oobCode') || urlParams.get('actionCode');
+        const mode = urlParams.get('mode');
         const hasVerifyEmail = currentUrl.includes('verify-email') || currentUrl.includes('/verify-email');
+        const hasResetPassword = currentUrl.includes('resetPassword') || currentUrl.includes('reset-password') || mode === 'resetPassword';
         
-        if (hasVerifyEmail || oobCode) {
-          console.log('🌐 Web: Checking current URL for verification parameters:', currentUrl);
+        if (hasVerifyEmail || hasResetPassword || oobCode) {
+          console.log('🌐 Web: Checking current URL for action parameters:', currentUrl);
           console.log('🌐 Web: oobCode found:', oobCode ? oobCode.substring(0, 20) + '...' : 'none');
+          console.log('🌐 Web: mode found:', mode || 'none');
           await handleDeepLink(currentUrl);
           // Clean up URL to remove parameters after processing (but wait a bit to ensure processing is done)
           setTimeout(() => {
@@ -355,6 +390,14 @@ const AppNavigator = () => {
         <Stack.Screen 
           name="CreateAccount" 
           component={CreateAccount}
+        />
+        <Stack.Screen 
+          name="ForgotPassword" 
+          component={ForgotPassword}
+        />
+        <Stack.Screen 
+          name="ResetPassword" 
+          component={ResetPassword}
         />
         <Stack.Screen 
           name="SchoolUpdates" 

@@ -1,5 +1,4 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
@@ -7,10 +6,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, BackHandler, Dimensions, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { API_BASE_URL } from '../../config/api.config';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { signInWithEmailAndPassword } from '../../services/authService';
+import { sendPasswordResetEmail } from '../../services/authService';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -21,37 +19,35 @@ type RootStackParamList = {
   AIChat: undefined;
 };
 
-type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'SignIn'>;
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ForgotPassword'>;
 
 const { width } = Dimensions.get('window');
 
-const SignIn = () => {
+const ForgotPassword = () => {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
   const { isDarkMode } = useTheme();
   const { isConnected, isInternetReachable } = useNetworkStatus();
   const isOnline = isConnected && isInternetReachable;
 
-  // Simplified animation values
-  const signInButtonScale = useRef(new Animated.Value(1)).current;
+  // Animation values
+  const sendButtonScale = useRef(new Animated.Value(1)).current;
   const loadingRotation = useRef(new Animated.Value(0)).current;
   
-  // Form state management
+  // Form state
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [errors, setErrors] = useState({ email: '', password: '', general: '' });
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [errors, setErrors] = useState({ email: '', general: '' });
   
-  // Input focus states
+  // Input focus state
   const emailFocus = useRef(new Animated.Value(0)).current;
-  const passwordFocus = useRef(new Animated.Value(0)).current;
 
-  // Handle back button/gesture to navigate to GetStarted
+  // Handle back button/gesture to navigate to SignIn
   useFocusEffect(
     useCallback(() => {
       const onBackPress = () => {
-        navigation.navigate('GetStarted');
+        navigation.navigate('SignIn');
         return true; // Prevent default behavior
       };
 
@@ -67,8 +63,8 @@ const SignIn = () => {
     const unsubscribe = navigation.addListener('beforeRemove', (e) => {
       // Prevent default behavior of leaving the screen
       e.preventDefault();
-      // Navigate to GetStarted instead
-      navigation.navigate('GetStarted');
+      // Navigate to SignIn instead
+      navigation.navigate('SignIn');
     });
 
     return unsubscribe;
@@ -92,21 +88,38 @@ const SignIn = () => {
     ]).start(callback);
   };
 
-  // Function to handle sign in button press
-  const handleSignIn = async () => {
+  // Function to handle send reset email button press
+  const handleSendResetEmail = async () => {
     // Check network status first
     if (!isOnline) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setErrors({ 
         email: '', 
-        password: '', 
         general: 'No internet connection. Please check your network and try again.' 
       });
       return;
     }
 
     // Clear previous errors
-    setErrors({ email: '', password: '', general: '' });
+    setErrors({ email: '', general: '' });
+    
+    // Validate email
+    let hasErrors = false;
+    const newErrors = { email: '', general: '' };
+    
+    if (!email.trim()) {
+      newErrors.email = 'Email is required';
+      hasErrors = true;
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+      newErrors.email = 'Invalid email address format';
+      hasErrors = true;
+    }
+    
+    if (hasErrors) {
+      setErrors(newErrors);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
     
     setIsLoading(true);
     
@@ -120,155 +133,14 @@ const SignIn = () => {
     ).start();
     
     try {
-      // Check for static admin credentials FIRST (before validation)
-      const normalizedEmail = email.toLowerCase().trim();
-      const normalizedPassword = password.trim();
-
-      // Allow admin password to be updated via settings by reading from AsyncStorage.
-      // Fallback to default '12345678' when no custom password has been set.
-      const storedAdminPassword = await AsyncStorage.getItem('adminPassword');
-      const expectedAdminPassword = (storedAdminPassword || '12345678').trim();
-
-      const isAdminLogin =
-        (normalizedEmail === 'admin' || normalizedEmail === 'admin@dorsu.edu.ph') &&
-        normalizedPassword === expectedAdminPassword;
-      
-      console.log('🔐 Admin login check:', {
-        normalizedEmail,
-        normalizedPassword,
-        expectedAdminPassword,
-        isAdminLogin,
-        emailMatch: normalizedEmail === 'admin' || normalizedEmail === 'admin@dorsu.edu.ph',
-        passwordMatch: normalizedPassword === expectedAdminPassword
-      });
-      
-      // Even admin login requires internet connection
-      if (isAdminLogin && !isOnline) {
-        setIsLoading(false);
-        loadingRotation.stopAnimation();
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        setErrors({ 
-          email: '', 
-          password: '', 
-          general: 'No internet connection. Please check your network and try again.' 
-        });
-        return;
-      }
-      
-      if (isAdminLogin) {
-        // Generate admin token (simple token for admin)
-        const adminToken = `admin_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-        
-        // Store admin data locally
-        await AsyncStorage.setItem('userToken', adminToken);
-        await AsyncStorage.setItem('userEmail', 'admin@dorsu.edu.ph');
-        await AsyncStorage.setItem('userName', 'admin');
-        await AsyncStorage.setItem('userId', 'admin');
-        await AsyncStorage.setItem('isAdmin', 'true');
-        
-        setIsLoading(false);
-        loadingRotation.stopAnimation();
-        
-        // Success - navigate to admin AI chat
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        navigation.navigate('AdminAIChat');
-        return;
-      }
-      
-      // For regular users, perform validation
-      let hasErrors = false;
-      const newErrors = { email: '', password: '', general: '' };
-      
-      if (!email.trim()) {
-        newErrors.email = 'Try again with a valid email';
-        hasErrors = true;
-      } else if (!/\S+@\S+\.\S+/.test(email)) {
-        newErrors.email = 'Try again with a valid email';
-        hasErrors = true;
-      } else {
-        // Block temporary/disposable email services
-        const tempEmailDomains = [
-          'tempmail.com', 'guerrillamail.com', '10minutemail.com', 'throwaway.email',
-          'mailinator.com', 'maildrop.cc', 'temp-mail.org', 'yopmail.com',
-          'fakeinbox.com', 'trashmail.com', 'getnada.com', 'mailnesia.com',
-          'dispostable.com', 'throwawaymail.com', 'tempinbox.com', 'emailondeck.com',
-          'sharklasers.com', 'guerrillamail.info', 'grr.la', 'guerrillamail.biz',
-          'guerrillamail.de', 'spam4.me', 'mailtemp.com', 'tempsky.com'
-        ];
-        
-        const emailDomain = email.toLowerCase().split('@')[1];
-        if (tempEmailDomains.includes(emailDomain)) {
-          newErrors.email = 'Temporary emails not allowed';
-          hasErrors = true;
-        }
-      }
-      
-      if (!password.trim()) {
-        newErrors.password = 'Try again with a valid password';
-        hasErrors = true;
-      } else if (password.length < 8) {
-        newErrors.password = 'Password must be at least 8 characters';
-        hasErrors = true;
-      }
-      
-      if (hasErrors) {
-        setIsLoading(false);
-        loadingRotation.stopAnimation();
-        setErrors(newErrors);
-        return;
-      }
-      
-      // Step 1: Sign in with Firebase Authentication
-      const firebaseUser = await signInWithEmailAndPassword(email.trim().toLowerCase(), password);
-      
-      // Step 2: Get Firebase ID token and sync with backend
-      const idToken = await firebaseUser.getIdToken();
-      
-      // Step 3: Sync user to backend MongoDB and get backend JWT token
-      const response = await fetch(`${API_BASE_URL}/api/auth/firebase-login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          idToken,
-        }),
-      });
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        // If backend sync fails, sign out from Firebase
-        try {
-          if (Platform.OS === 'web') {
-            const { getFirebaseAuth } = require('../../config/firebase');
-            const auth = getFirebaseAuth();
-            const { signOut } = require('firebase/auth');
-            await signOut(auth);
-          } else {
-            const auth = require('@react-native-firebase/auth').default();
-            await auth.signOut();
-          }
-        } catch (signOutError) {
-          console.error('Failed to sign out from Firebase after backend error:', signOutError);
-        }
-        throw new Error(data.error || 'Failed to sync with server');
-      }
-      
-      // Step 4: Store user data locally
-      await AsyncStorage.setItem('userToken', data.token || idToken);
-      await AsyncStorage.setItem('userEmail', firebaseUser.email || email);
-      await AsyncStorage.setItem('userName', data.user?.username || firebaseUser.displayName || email.split('@')[0]);
-      await AsyncStorage.setItem('userId', data.user?.id || firebaseUser.uid);
-      await AsyncStorage.setItem('isAdmin', 'false'); // Explicitly set as non-admin
-      await AsyncStorage.setItem('authProvider', 'email');
+      await sendPasswordResetEmail(email.trim().toLowerCase());
       
       setIsLoading(false);
       loadingRotation.stopAnimation();
+      setIsSuccess(true);
       
-      // Success - navigate to AI Chat for regular users
+      // Success feedback
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      navigation.navigate('AIChat');
     } catch (error: any) {
       setIsLoading(false);
       loadingRotation.stopAnimation();
@@ -276,42 +148,23 @@ const SignIn = () => {
       // Handle errors
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       
-      let errorMessage = 'Invalid email or password. Please try again.';
+      let errorMessage = error.message || 'Failed to send password reset email. Please try again.';
       let emailError = '';
-      let passwordError = '';
       
-      // Check Firebase error codes for specific error messages
-      if (error.code === 'auth/user-not-found' || error.message.includes('user-not-found')) {
-        emailError = 'This email address is not registered. Please create an account first.';
+      if (error.message.includes('No account found')) {
+        emailError = 'No account found with this email address.';
         errorMessage = '';
-      } else if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential' || error.message.includes('wrong-password') || error.message.includes('invalid-credential')) {
-        passwordError = 'Incorrect password. Please try again.';
-        errorMessage = '';
-      } else if (error.code === 'auth/invalid-email' || error.message.includes('invalid-email')) {
+      } else if (error.message.includes('Invalid email')) {
         emailError = 'Invalid email address format.';
         errorMessage = '';
-      } else if (error.code === 'auth/user-disabled' || error.message.includes('user-disabled')) {
-        errorMessage = 'This account has been disabled. Please contact support.';
-      } else if (error.code === 'auth/too-many-requests' || error.message.includes('too-many-requests')) {
-        errorMessage = 'Too many failed login attempts. Please try again later.';
-      } else if (error.code === 'auth/network-request-failed' || error.message.includes('network')) {
-        errorMessage = 'Network error. Please check your internet connection and try again.';
-      } else if (error.message.includes('deactivated')) {
-        errorMessage = 'This account has been deactivated';
-      } else if (error.message.includes('Invalid email or password')) {
-        // Generic backend error - try to be more specific
-        errorMessage = 'Invalid email or password. Please check your credentials and try again.';
-      } else if (error.message) {
-        errorMessage = error.message;
       }
       
       setErrors({
         email: emailError,
-        password: passwordError,
         general: errorMessage,
       });
       
-      console.error('Sign in error:', error);
+      console.error('Send password reset email error:', error);
     }
   };
 
@@ -320,6 +173,46 @@ const SignIn = () => {
 
   // Render form content
   const renderFormContent = () => {
+    if (isSuccess) {
+      return (
+        <>
+          {/* Success Message */}
+          <View style={styles.logoSection}>
+            <Image 
+              source={require('../../../../assets/DOrSU.png')} 
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
+            <View style={styles.logoTextContainer}>
+              <Text style={styles.logoTitle}>DOrSU CONNECT</Text>
+              <Text style={styles.logoSubtitle}>AI-Powered Academic Assistant</Text>
+            </View>
+          </View>
+
+          <View style={styles.successContainer}>
+            <MaterialIcons name="check-circle" size={64} color="#10B981" />
+            <Text style={styles.successTitle}>Check Your Email</Text>
+            <Text style={styles.successMessage}>
+              We've sent a password reset link to{'\n'}
+              <Text style={styles.successEmail}>{email}</Text>
+            </Text>
+            <Text style={styles.successInstructions}>
+              Please check your email and click the link to reset your password. The link will expire in 1 hour.
+            </Text>
+          </View>
+
+          {/* Back to Sign In Button */}
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => navigation.navigate('SignIn')}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.backButtonText}>Back to Sign In</Text>
+          </TouchableOpacity>
+        </>
+      );
+    }
+
     return (
       <>
         {/* Logo and Title Section */}
@@ -335,8 +228,11 @@ const SignIn = () => {
           </View>
         </View>
 
-        {/* Welcome Text */}
-        <Text style={styles.welcomeText}>Please sign in to continue</Text>
+        {/* Title Text */}
+        <Text style={styles.welcomeText}>Reset Your Password</Text>
+        <Text style={styles.subtitleText}>
+          Enter your email address and we'll send you a link to reset your password.
+        </Text>
 
         {/* Form Section */}
         <View style={styles.formSection}>
@@ -389,79 +285,12 @@ const SignIn = () => {
                   }).start();
                 }}
                 accessibilityLabel="Registered E-mail Address"
+                editable={!isLoading}
               />
             </Animated.View>
             <View style={styles.errorContainer}>
               {errors.email ? (
                 <Text style={styles.errorText}>{errors.email}</Text>
-              ) : null}
-            </View>
-          </View>
-
-          {/* Password Input */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Password</Text>
-            <Animated.View style={[
-              styles.inputWrapper,
-              {
-                borderColor: passwordFocus.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [errors.password ? '#EF4444' : '#E5E7EB', errors.password ? '#EF4444' : '#2563EB'],
-                }),
-                borderWidth: passwordFocus.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [1, 2],
-                }),
-              }
-            ]}>
-              <MaterialIcons 
-                name="lock" 
-                size={20} 
-                color={errors.password ? '#EF4444' : '#9CA3AF'} 
-                style={styles.inputIcon} 
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Enter your password"
-                placeholderTextColor="#9CA3AF"
-                secureTextEntry={!showPassword}
-                value={password}
-                onChangeText={(text) => {
-                  setPassword(text);
-                  if (errors.password) setErrors(prev => ({ ...prev, password: '' }));
-                }}
-                onFocus={() => {
-                  Animated.timing(passwordFocus, {
-                    toValue: 1,
-                    duration: 200,
-                    useNativeDriver: false,
-                  }).start();
-                }}
-                onBlur={() => {
-                  Animated.timing(passwordFocus, {
-                    toValue: 0,
-                    duration: 200,
-                    useNativeDriver: false,
-                  }).start();
-                }}
-                accessibilityLabel="Password"
-              />
-              <TouchableOpacity
-                onPress={() => setShowPassword(!showPassword)}
-                style={styles.passwordToggle}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                accessibilityLabel={showPassword ? "Hide password" : "Show password"}
-              >
-                <MaterialIcons 
-                  name={showPassword ? "visibility-off" : "visibility"} 
-                  size={20} 
-                  color="#9CA3AF" 
-                />
-              </TouchableOpacity>
-            </Animated.View>
-            <View style={styles.errorContainer}>
-              {errors.password ? (
-                <Text style={styles.errorText}>{errors.password}</Text>
               ) : null}
             </View>
           </View>
@@ -479,14 +308,14 @@ const SignIn = () => {
             ) : null}
           </View>
 
-          {/* Login Button */}
-          <Animated.View style={{ transform: [{ scale: signInButtonScale }] }}>
+          {/* Send Reset Email Button */}
+          <Animated.View style={{ transform: [{ scale: sendButtonScale }] }}>
             <TouchableOpacity 
-              style={[styles.loginButton, (isLoading || !isOnline) && styles.loginButtonDisabled]}
-              onPress={() => handleButtonPress(signInButtonScale, handleSignIn)}
+              style={[styles.sendButton, (isLoading || !isOnline) && styles.sendButtonDisabled]}
+              onPress={() => handleButtonPress(sendButtonScale, handleSendResetEmail)}
               disabled={isLoading || !isOnline}
               accessibilityRole="button"
-              accessibilityLabel={isLoading ? "Signing in..." : !isOnline ? "Sign in (No internet connection)" : "Sign in"}
+              accessibilityLabel={isLoading ? "Sending reset email..." : !isOnline ? "Send reset email (No internet connection)" : "Send reset email"}
               activeOpacity={0.8}
             >
               {isLoading ? (
@@ -504,30 +333,22 @@ const SignIn = () => {
                   ]}>
                     <MaterialIcons name="refresh" size={20} color="#FFFFFF" />
                   </Animated.View>
-                  <Text style={styles.loginButtonText}>Signing In</Text>
+                  <Text style={styles.sendButtonText}>Sending...</Text>
                 </>
               ) : (
-                <Text style={styles.loginButtonText}>LOGIN</Text>
+                <Text style={styles.sendButtonText}>SEND RESET LINK</Text>
               )}
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Links Section */}
+          {/* Back to Sign In Link */}
           <View style={styles.linksSection}>
             <TouchableOpacity 
-              onPress={() => navigation.navigate('ForgotPassword')}
+              onPress={() => navigation.navigate('SignIn')}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               activeOpacity={0.7}
             >
-              <Text style={styles.linkText}>Forgot Password?</Text>
-            </TouchableOpacity>
-            <View style={styles.linksDivider} />
-            <TouchableOpacity 
-              onPress={() => navigation.navigate('CreateAccount')}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.linkText}>Create New Account</Text>
+              <Text style={styles.linkText}>Back to Sign In</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -630,7 +451,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#1F2937',
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  subtitleText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 24,
+    lineHeight: 20,
   },
   // Form Section
   formSection: {
@@ -662,10 +489,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 15,
     color: '#1F2937',
-  },
-  passwordToggle: {
-    padding: 4,
-    marginLeft: 6,
   },
   errorContainer: {
     minHeight: 16,
@@ -701,8 +524,8 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     flex: 1,
   },
-  // Login Button
-  loginButton: {
+  // Send Button
+  sendButton: {
     backgroundColor: '#2563EB',
     borderRadius: 8,
     paddingVertical: 12,
@@ -717,11 +540,11 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  loginButtonDisabled: {
+  sendButtonDisabled: {
     opacity: 0.6,
     backgroundColor: '#9CA3AF',
   },
-  loginButtonText: {
+  sendButtonText: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
@@ -735,16 +558,60 @@ const styles = StyleSheet.create({
     marginTop: 16,
     alignItems: 'center',
   },
-  linksDivider: {
-    height: 1,
-    width: 30,
-    backgroundColor: '#E5E7EB',
-    marginVertical: 8,
-  },
   linkText: {
     color: '#2563EB',
     fontSize: 14,
     fontWeight: '500',
+  },
+  // Success Section
+  successContainer: {
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  successTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginTop: 16,
+    marginBottom: 12,
+  },
+  successMessage: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 8,
+    lineHeight: 24,
+  },
+  successEmail: {
+    fontWeight: '600',
+    color: '#2563EB',
+  },
+  successInstructions: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    textAlign: 'center',
+    marginTop: 16,
+    lineHeight: 20,
+    paddingHorizontal: 16,
+  },
+  backButton: {
+    backgroundColor: '#2563EB',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+    marginTop: 24,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  backButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   mobileContainer: {
     flex: 1,
@@ -774,4 +641,5 @@ const styles = StyleSheet.create({
   },
 });
 
-export default SignIn;
+export default ForgotPassword;
+

@@ -46,6 +46,7 @@ export class AuthService {
         updatedAt: new Date(),
         isActive: true,
         emailVerified: true,
+        role: 'user', // Default role for new users
       };
 
       // Save to database
@@ -62,6 +63,7 @@ export class AuthService {
           id: savedUser._id || savedUser.id,
           username: savedUser.username,
           email: savedUser.email,
+          role: savedUser.role || 'user',
           createdAt: savedUser.createdAt,
         },
         token,
@@ -249,7 +251,27 @@ export function authMiddleware(authService, mongoService = null) {
     const verification = authService.verifyToken(token);
     if (verification.valid) {
       Logger.info(`authMiddleware: Backend JWT token valid for userId: ${verification.userId}`);
-      return { authenticated: true, userId: verification.userId, email: verification.email };
+      
+      // Fetch user from database to get role
+      let userRole = null;
+      let isAdminFromRole = false;
+      if (mongoService) {
+        try {
+          const user = await mongoService.findUserById(verification.userId);
+          userRole = user?.role || null;
+          isAdminFromRole = userRole === 'admin';
+        } catch (error) {
+          Logger.warn('Failed to fetch user role:', error);
+        }
+      }
+      
+      return { 
+        authenticated: true, 
+        userId: verification.userId, 
+        email: verification.email,
+        role: userRole,
+        isAdmin: isAdminFromRole
+      };
     } else {
       Logger.info(`authMiddleware: Backend JWT invalid (${verification.error}), trying Firebase ID token...`);
     }
@@ -368,6 +390,8 @@ export function authMiddleware(authService, mongoService = null) {
 
       // Ensure user exists if we have access to mongoService
       let userId = null;
+      let userRole = null;
+      let isAdminFromRole = false;
       if (mongoService) {
         let user = await mongoService.findUser(email);
         if (!user) {
@@ -379,13 +403,22 @@ export function authMiddleware(authService, mongoService = null) {
             updatedAt: new Date(),
             isActive: true,
             provider: 'google',
-            googleSub: info.sub
+            googleSub: info.sub,
+            role: 'user' // Default role for new users
           });
         }
         userId = user._id || user.id;
+        userRole = user.role || null;
+        isAdminFromRole = userRole === 'admin';
       }
 
-      return { authenticated: true, userId, email };
+      return { 
+        authenticated: true, 
+        userId, 
+        email,
+        role: userRole,
+        isAdmin: isAdminFromRole
+      };
     } catch (error) {
       Logger.error('Firebase token validation error in middleware:', error.message || String(error));
       return { authenticated: false, error: 'Invalid token', details: error.message || String(error) };

@@ -23,6 +23,7 @@ type RootStackParamList = {
   AdminSettings: undefined;
   PostUpdate: undefined;
   ManagePosts: undefined;
+  ManageAccounts: undefined;
 };
 
 interface AdminSidebarProps {
@@ -340,6 +341,27 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
               fontSize: t.fontSize.scaleSize(16)
             }]}>
               Manage Posts
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.sidebarMenuItem}
+            onPress={() => {
+              onClose();
+              navigation.navigate('ManageAccounts');
+            }}
+          >
+            <Ionicons 
+              name={currentScreen === 'ManageAccounts' ? 'people' : 'people-outline'} 
+              size={24} 
+              color={currentScreen === 'ManageAccounts' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+            />
+            <Text style={[styles.sidebarMenuText, { 
+              color: currentScreen === 'ManageAccounts' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              fontWeight: currentScreen === 'ManageAccounts' ? '600' : '500',
+              fontSize: t.fontSize.scaleSize(16)
+            }]}>
+              Manage Accounts
             </Text>
           </TouchableOpacity>
 

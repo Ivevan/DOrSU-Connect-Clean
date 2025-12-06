@@ -320,6 +320,7 @@ const server = http.createServer(async (req, res) => {
             isActive: true,
             emailVerified: tokenInfo.email_verified || false,
             provider: 'firebase',
+            role: 'user', // Default role for new users
             firebaseUid: tokenInfo.sub,
           });
         }
@@ -335,6 +336,7 @@ const server = http.createServer(async (req, res) => {
             id: user._id || user.id,
             username: user.username,
             email: user.email,
+            role: user.role || 'user',
             createdAt: user.createdAt,
           },
           token,
@@ -569,7 +571,8 @@ const server = http.createServer(async (req, res) => {
             updatedAt: new Date(),
             isActive: true,
             provider: 'google',
-            googleSub: tokenInfo.sub
+            googleSub: tokenInfo.sub,
+            role: 'user' // Default role for new users
           });
           Logger.success(`✅ Google user created in MongoDB: ${email} (ID: ${user._id || user.id})`);
         } else {
@@ -588,7 +591,8 @@ const server = http.createServer(async (req, res) => {
           user: {
             id: user._id || user.id,
             username: user.username,
-            email: user.email
+            email: user.email,
+            role: user.role || 'user'
           },
           token
         });
@@ -746,11 +750,30 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Get all users (admin endpoint)
+  // Get all users (admin endpoint) - SECURED
   if (method === 'GET' && url === '/api/users') {
-    if (!authService) {
-      sendJson(res, 503, { error: 'Authentication service not available' });
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
       return;
+    }
+
+    // Require authentication
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: 'Unauthorized' });
+      return;
+    }
+
+    // Only admins can view all users
+    let isAdmin = auth.isAdmin;
+    if (!isAdmin) {
+      // Check if user has admin role in database
+      const user = await mongoService.findUserById(auth.userId);
+      if (!user || user.role !== 'admin') {
+        sendJson(res, 403, { error: 'Forbidden: Admin access required' });
+        return;
+      }
+      isAdmin = true;
     }
 
     try {
@@ -761,6 +784,65 @@ const server = http.createServer(async (req, res) => {
       Logger.error('Get users error:', error.message);
       sendJson(res, 500, { error: error.message });
     }
+    return;
+  }
+
+  // Update user role (admin only) - SECURED
+  if (method === 'PUT' && url.startsWith('/api/users/') && url.endsWith('/role')) {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: 'Unauthorized' });
+      return;
+    }
+
+    // Check admin access - both token-based and database role
+    let isAdmin = auth.isAdmin;
+    if (!isAdmin) {
+      const user = await mongoService.findUserById(auth.userId);
+      isAdmin = user && user.role === 'admin';
+    }
+
+    if (!isAdmin) {
+      sendJson(res, 403, { error: 'Forbidden: Admin access required' });
+      return;
+    }
+
+    const userId = url.split('/api/users/')[1].replace('/role', '');
+    
+    // Prevent self-demotion (optional security measure)
+    if (userId === auth.userId) {
+      sendJson(res, 400, { error: 'Cannot change your own role' });
+      return;
+    }
+    
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { role } = JSON.parse(body || '{}');
+        if (!role) {
+          sendJson(res, 400, { error: 'Role is required' });
+          return;
+        }
+        
+        const validRoles = ['user', 'moderator', 'admin'];
+        if (!validRoles.includes(role)) {
+          sendJson(res, 400, { error: `Invalid role. Must be one of: ${validRoles.join(', ')}` });
+          return;
+        }
+        
+        const result = await mongoService.updateUserRole(userId, role);
+        sendJson(res, 200, { success: true, message: 'User role updated successfully' });
+      } catch (error) {
+        Logger.error('Update user role error:', error.message);
+        sendJson(res, 400, { error: error.message || 'Failed to update user role' });
+      }
+    });
     return;
   }
 

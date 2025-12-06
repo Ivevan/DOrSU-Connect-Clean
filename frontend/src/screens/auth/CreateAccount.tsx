@@ -284,12 +284,15 @@ const CreateAccount = () => {
       }
       
       // Store user data locally
+      const userRole = data.user?.role || 'user';
       await AsyncStorage.setItem('userToken', data.token || idToken);
       await AsyncStorage.setItem('userEmail', firebaseUser.email || email);
       await AsyncStorage.setItem('userName', displayName);
       await AsyncStorage.setItem('userFirstName', finalFirstName);
       await AsyncStorage.setItem('userLastName', finalLastName);
       await AsyncStorage.setItem('userId', data.user?.id || firebaseUser.uid);
+      await AsyncStorage.setItem('userRole', userRole);
+      await AsyncStorage.setItem('isAdmin', userRole === 'admin' ? 'true' : 'false');
       await AsyncStorage.setItem('authProvider', 'email');
       
       setIsLoading(false);
@@ -328,13 +331,26 @@ const CreateAccount = () => {
     useCallback(() => {
       const handleDeepLinkVerification = async () => {
         try {
+          // Only process verification if we have a Firebase user (account creation started)
+          if (!firebaseUser) {
+            // Clear any stale verification data if no user exists (fresh start)
+            await AsyncStorage.removeItem('pendingVerificationCode');
+            await AsyncStorage.removeItem('emailVerifiedViaDeepLink');
+            await AsyncStorage.removeItem('verificationError');
+            return;
+          }
+
           const pendingVerificationCode = await AsyncStorage.getItem('pendingVerificationCode');
           const emailVerifiedViaDeepLink = await AsyncStorage.getItem('emailVerifiedViaDeepLink');
           const verificationError = await AsyncStorage.getItem('verificationError');
           
-          // Show error if verification failed
-          if (verificationError) {
+          // Only show verification error if we're actually in a verification flow (pending status)
+          // Don't show stale errors from previous attempts
+          if (verificationError && emailVerificationStatus === 'pending') {
             setErrors(prev => ({ ...prev, general: verificationError }));
+            await AsyncStorage.removeItem('verificationError');
+          } else if (verificationError && emailVerificationStatus !== 'pending') {
+            // Clear stale error if we're not in pending state
             await AsyncStorage.removeItem('verificationError');
           }
           
@@ -346,7 +362,8 @@ const CreateAccount = () => {
               await AsyncStorage.removeItem('emailVerifiedViaDeepLink');
               await AsyncStorage.removeItem('pendingVerificationCode');
             }
-          } else if (pendingVerificationCode && firebaseUser) {
+          } else if (pendingVerificationCode && firebaseUser && emailVerificationStatus === 'pending') {
+            // Only process pending verification code if we're in pending state
             // Check if email is already verified before trying to apply code
             const currentUser = getCurrentUser();
             if (currentUser?.emailVerified) {
@@ -374,20 +391,29 @@ const CreateAccount = () => {
                     await AsyncStorage.removeItem('pendingVerificationCode');
                     await checkEmailVerificationStatus();
                   } else {
-                    // Email not verified, show error
-                    setErrors(prev => ({
-                      ...prev,
-                      general: 'Verification code is invalid or expired. Please request a new verification email.',
-                    }));
+                    // Email not verified, show error only if we're still in pending state
+                    if (emailVerificationStatus === 'pending') {
+                      setErrors(prev => ({
+                        ...prev,
+                        general: 'Verification code is invalid or expired. Please request a new verification email.',
+                      }));
+                    }
                   }
                 } else {
-                  setErrors(prev => ({
-                    ...prev,
-                    general: applyError.message || 'Failed to verify email. Please try again.',
-                  }));
+                  // Only show error if we're in pending state
+                  if (emailVerificationStatus === 'pending') {
+                    setErrors(prev => ({
+                      ...prev,
+                      general: applyError.message || 'Failed to verify email. Please try again.',
+                    }));
+                  }
                 }
               }
             }
+          } else if (pendingVerificationCode && emailVerificationStatus !== 'pending') {
+            // Clear stale verification code if we're not in pending state
+            await AsyncStorage.removeItem('pendingVerificationCode');
+            await AsyncStorage.removeItem('emailVerifiedViaDeepLink');
           } else if (emailVerificationStatus === 'pending' && firebaseUser) {
             // User might have verified on web/desktop - check status immediately when screen is focused
             const isVerified = await checkEmailVerificationStatus({ showErrors: false });
@@ -567,6 +593,11 @@ const CreateAccount = () => {
 
     // Clear previous errors
     setErrors({ email: '', password: '', confirmPassword: '', firstName: '', lastName: '', general: '' });
+    
+    // Clear any stale verification data from previous attempts
+    await AsyncStorage.removeItem('pendingVerificationCode');
+    await AsyncStorage.removeItem('emailVerifiedViaDeepLink');
+    await AsyncStorage.removeItem('verificationError');
     
     // Validation
     let hasErrors = false;

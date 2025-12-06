@@ -110,6 +110,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 const userName = data?.user?.username || currentUser.displayName || currentUser.email;
                 await AsyncStorage.setItem('userName', userName);
                 
+                // Store user role
+                const userRole = data.user?.role || 'user';
+                await AsyncStorage.setItem('userRole', userRole);
+                await AsyncStorage.setItem('isAdmin', userRole === 'admin' ? 'true' : 'false');
+                
                 // Update state
                 setUserToken(data.token);
                 setUserEmail(currentUser.email);
@@ -300,6 +305,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         'userEmail', 
         'userName', 
         'userId',
+        'userRole',
         'isAdmin',
         'adminToken',
         'adminEmail',

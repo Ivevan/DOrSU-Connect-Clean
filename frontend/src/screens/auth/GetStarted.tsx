@@ -1,11 +1,11 @@
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, BackHandler, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../config/api.config';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
@@ -37,6 +37,38 @@ const GetStarted = () => {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Prevent back navigation to authenticated screens after logout
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = async () => {
+        // Check if user is logged out (no auth data)
+        try {
+          const userToken = await AsyncStorage.getItem('userToken');
+          const userEmail = await AsyncStorage.getItem('userEmail');
+          
+          // If no auth data, exit app on Android or prevent back on iOS
+          if (!userToken || !userEmail) {
+            if (Platform.OS === 'android') {
+              BackHandler.exitApp();
+              return true;
+            }
+            // On iOS, prevent back navigation
+            return true;
+          }
+        } catch (error) {
+          console.error('Error checking auth status:', error);
+        }
+        // Allow default back behavior if logged in (shouldn't happen on GetStarted)
+        return false;
+      };
+
+      if (Platform.OS === 'android') {
+        const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+        return () => subscription.remove();
+      }
+    }, [])
+  );
 
   // Handle logo press
   const handleLogoPress = () => {
@@ -113,9 +145,12 @@ const GetStarted = () => {
               const data = await resp.json();
               if (resp.ok && data?.token && data?.user?.id) {
                 // Batch save backend token data
+                const userRole = data.user?.role || 'user';
                 const backendUpdates: Array<[string, string]> = [
                   ['userToken', data.token],
                   ['userId', String(data.user.id)],
+                  ['userRole', userRole],
+                  ['isAdmin', userRole === 'admin' ? 'true' : 'false'],
                 ];
                 if (data.user.email) {
                   backendUpdates.push(['userEmail', data.user.email]);

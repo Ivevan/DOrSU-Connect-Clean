@@ -838,9 +838,13 @@ class MongoDBService {
   async createUser(user) {
     try {
       const collection = this.getCollection(mongoConfig.collections.users || 'users');
-      const result = await collection.insertOne(user);
+      const userWithRole = {
+        ...user,
+        role: user.role || 'user', // Default to 'user' if not specified
+      };
+      const result = await collection.insertOne(userWithRole);
       Logger.success(`✅ User created: ${user.email}`);
-      return { ...user, _id: result.insertedId };
+      return { ...userWithRole, _id: result.insertedId };
     } catch (error) {
       Logger.error('Failed to create user:', error);
       throw error;
@@ -931,6 +935,41 @@ class MongoDBService {
       return { success: true };
     } catch (error) {
       Logger.error('Failed to update user:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update user role
+   */
+  async updateUserRole(userId, role) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.users || 'users');
+      const { ObjectId } = await import('mongodb');
+      
+      const validRoles = ['user', 'moderator', 'admin'];
+      if (!validRoles.includes(role)) {
+        throw new Error(`Invalid role. Must be one of: ${validRoles.join(', ')}`);
+      }
+      
+      const result = await collection.updateOne(
+        { _id: new ObjectId(userId) },
+        {
+          $set: {
+            role: role,
+            updatedAt: new Date()
+          }
+        }
+      );
+      
+      if (result.matchedCount === 0) {
+        throw new Error('User not found');
+      }
+      
+      Logger.success(`✅ User role updated: ${userId} -> ${role}`);
+      return { success: true };
+    } catch (error) {
+      Logger.error('Failed to update user role:', error);
       throw error;
     }
   }

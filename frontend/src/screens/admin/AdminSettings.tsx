@@ -125,12 +125,19 @@ const AdminSettings = () => {
       await authLogout();
       
       closeLogout();
-      navigation.navigate('GetStarted');
+      // Reset navigation stack to prevent back navigation to authenticated screens
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'GetStarted' }],
+      });
     } catch (error) {
       console.error('Logout error:', error);
-      // Still navigate to GetStarted even if there's an error
+      // Still reset navigation even if there's an error
       closeLogout();
-      navigation.navigate('GetStarted');
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'GetStarted' }],
+      });
     }
   }, [closeLogout, navigation, authLogout]);
 

@@ -4,7 +4,11 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'user' | 'admin';
+  role: 'user' | 'moderator' | 'admin';
+  username?: string;
+  createdAt?: string;
+  lastLogin?: string;
+  isActive?: boolean;
 }
 
 export interface Post {

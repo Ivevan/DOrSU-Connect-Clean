@@ -13,6 +13,7 @@ import LicensesScreen from '../screens/shared/LicensesScreen';
 import PrivacyPolicyScreen from '../screens/shared/PrivacyPolicyScreen';
 import TermsOfUseScreen from '../screens/shared/TermsOfUseScreen';
 import AdminAccountSettings from '../screens/admin/AdminAccountSettings';
+import ActivityLog from '../screens/admin/ActivityLog';
 import ManageAccounts from '../screens/admin/ManageAccounts';
 import AdminAIChat from '../screens/admin/AdminAIChat';
 import AdminCalendar from '../screens/admin/AdminCalendar';
@@ -527,6 +528,14 @@ const AppNavigator = () => {
         <Stack.Screen 
           name="ManageAccounts" 
           component={ManageAccounts}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
+        />
+        <Stack.Screen 
+          name="ActivityLog" 
+          component={ActivityLog}
           options={{
             headerShown: false,
             animationDuration: 0,

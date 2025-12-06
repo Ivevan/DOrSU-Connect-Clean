@@ -24,6 +24,7 @@ type RootStackParamList = {
   PostUpdate: undefined;
   ManagePosts: undefined;
   ManageAccounts: undefined;
+  ActivityLog: undefined;
 };
 
 interface AdminSidebarProps {
@@ -362,6 +363,27 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
               fontSize: t.fontSize.scaleSize(16)
             }]}>
               Manage Accounts
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.sidebarMenuItem}
+            onPress={() => {
+              onClose();
+              navigation.navigate('ActivityLog');
+            }}
+          >
+            <Ionicons 
+              name={currentScreen === 'ActivityLog' ? 'document-text' : 'document-text-outline'} 
+              size={24} 
+              color={currentScreen === 'ActivityLog' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+            />
+            <Text style={[styles.sidebarMenuText, { 
+              color: currentScreen === 'ActivityLog' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              fontWeight: currentScreen === 'ActivityLog' ? '600' : '500',
+              fontSize: t.fontSize.scaleSize(16)
+            }]}>
+              Activity Log
             </Text>
           </TouchableOpacity>
 

@@ -18,7 +18,8 @@ export const mongoConfig = {
       conversations: 'conversations',
       feedback: 'user_feedback',
       users: 'users',
-      emailVerifications: 'email_verifications'
+      emailVerifications: 'email_verifications',
+      activityLogs: 'activity_logs'
     },
     
     // Connection options

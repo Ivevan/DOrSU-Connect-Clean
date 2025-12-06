@@ -87,6 +87,7 @@ class MongoDBService {
       const cacheCollection = this.db.collection(mongoConfig.collections.cache);
       const analyticsCollection = this.db.collection(mongoConfig.collections.analytics);
       const usersCollection = this.db.collection(mongoConfig.collections.users || 'users');
+      const activityLogsCollection = this.db.collection(mongoConfig.collections.activityLogs);
       
       // Indexes for knowledge chunks
       await chunksCollection.createIndex({ id: 1 }, { unique: true });
@@ -135,6 +136,12 @@ class MongoDBService {
       await usersCollection.createIndex({ email: 1 }, { unique: true });
       await usersCollection.createIndex({ createdAt: -1 });
       await usersCollection.createIndex({ isActive: 1 });
+      
+      // Indexes for activity logs
+      await activityLogsCollection.createIndex({ userId: 1, 'metadata.timestamp': -1 });
+      await activityLogsCollection.createIndex({ action: 1, 'metadata.timestamp': -1 });
+      await activityLogsCollection.createIndex({ 'metadata.timestamp': -1 });
+      await activityLogsCollection.createIndex({ userEmail: 1 });
       
       Logger.success('✅ MongoDB indexes initialized');
       
@@ -858,6 +865,14 @@ class MongoDBService {
     try {
       const collection = this.getCollection(mongoConfig.collections.users || 'users');
       const user = await collection.findOne({ email: email.toLowerCase() });
+      // Ensure user has a role field (migration for existing users)
+      if (user && !user.role) {
+        await collection.updateOne(
+          { _id: user._id },
+          { $set: { role: 'user', updatedAt: new Date() } }
+        );
+        user.role = 'user';
+      }
       return user;
     } catch (error) {
       Logger.error('Failed to find user:', error);
@@ -873,6 +888,14 @@ class MongoDBService {
       const collection = this.getCollection(mongoConfig.collections.users || 'users');
       const { ObjectId } = await import('mongodb');
       const user = await collection.findOne({ _id: new ObjectId(userId) });
+      // Ensure user has a role field (migration for existing users)
+      if (user && !user.role) {
+        await collection.updateOne(
+          { _id: user._id },
+          { $set: { role: 'user', updatedAt: new Date() } }
+        );
+        user.role = 'user';
+      }
       return user;
     } catch (error) {
       Logger.error('Failed to find user by ID:', error);
@@ -947,13 +970,33 @@ class MongoDBService {
       const collection = this.getCollection(mongoConfig.collections.users || 'users');
       const { ObjectId } = await import('mongodb');
       
+      // Validate userId format
+      if (!userId || typeof userId !== 'string') {
+        throw new Error('Invalid user ID format');
+      }
+      
+      // Validate ObjectId format
+      if (!ObjectId.isValid(userId)) {
+        Logger.error(`Invalid ObjectId format: ${userId}`);
+        throw new Error(`Invalid user ID format: ${userId}`);
+      }
+      
       const validRoles = ['user', 'moderator', 'admin'];
       if (!validRoles.includes(role)) {
         throw new Error(`Invalid role. Must be one of: ${validRoles.join(', ')}`);
       }
       
+      const objectId = new ObjectId(userId);
+      
+      // First check if user exists
+      const user = await collection.findOne({ _id: objectId });
+      if (!user) {
+        Logger.warn(`User not found with ID: ${userId}`);
+        throw new Error(`User not found with ID: ${userId}`);
+      }
+      
       const result = await collection.updateOne(
-        { _id: new ObjectId(userId) },
+        { _id: objectId },
         {
           $set: {
             role: role,
@@ -963,7 +1006,7 @@ class MongoDBService {
       );
       
       if (result.matchedCount === 0) {
-        throw new Error('User not found');
+        throw new Error(`User not found with ID: ${userId}`);
       }
       
       Logger.success(`✅ User role updated: ${userId} -> ${role}`);
@@ -1006,10 +1049,86 @@ class MongoDBService {
         .limit(limit)
         .skip(skip)
         .toArray();
-      return users;
+      
+      // Ensure all users have a role field (migration for existing users)
+      const usersWithoutRole = users.filter(u => !u.role);
+      if (usersWithoutRole.length > 0) {
+        const { ObjectId } = await import('mongodb');
+        const bulkOps = usersWithoutRole.map(user => ({
+          updateOne: {
+            filter: { _id: user._id },
+            update: { $set: { role: 'user', updatedAt: new Date() } }
+          }
+        }));
+        await collection.bulkWrite(bulkOps);
+        // Update the returned users array
+        users.forEach(user => {
+          if (!user.role) {
+            user.role = 'user';
+          }
+        });
+      }
+      
+      // Convert _id ObjectId to string for JSON serialization
+      const formattedUsers = users.map(user => ({
+        ...user,
+        _id: user._id ? user._id.toString() : user._id,
+        id: user._id ? user._id.toString() : (user.id || null)
+      }));
+      
+      return formattedUsers;
     } catch (error) {
       Logger.error('Failed to get all users:', error);
       return [];
+    }
+  }
+
+  /**
+   * Migrate all existing users to have a default role
+   * This is a one-time migration that can be called manually or on server start
+   */
+  async migrateUserRoles() {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.users || 'users');
+      
+      // Find all users without a role field
+      const usersWithoutRole = await collection.find({ 
+        $or: [
+          { role: { $exists: false } },
+          { role: null },
+          { role: '' }
+        ]
+      }).toArray();
+      
+      if (usersWithoutRole.length === 0) {
+        Logger.info('✅ All users already have roles assigned');
+        return { migrated: 0, message: 'No users need migration' };
+      }
+      
+      // Update all users without role to have 'user' role
+      const { ObjectId } = await import('mongodb');
+      const bulkOps = usersWithoutRole.map(user => ({
+        updateOne: {
+          filter: { _id: user._id },
+          update: { 
+            $set: { 
+              role: 'user', 
+              updatedAt: new Date() 
+            } 
+          }
+        }
+      }));
+      
+      const result = await collection.bulkWrite(bulkOps);
+      
+      Logger.success(`✅ Migrated ${result.modifiedCount} users to have default 'user' role`);
+      return { 
+        migrated: result.modifiedCount, 
+        message: `Successfully migrated ${result.modifiedCount} users` 
+      };
+    } catch (error) {
+      Logger.error('Failed to migrate user roles:', error);
+      throw error;
     }
   }
 
@@ -1407,6 +1526,167 @@ class MongoDBService {
       return result;
     } catch (error) {
       Logger.error('Failed to delete all chat history:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Log user activity
+   * @param {string} userId - User ID who performed the action
+   * @param {string} action - Action type (e.g., 'user.login', 'admin.role_change')
+   * @param {object} details - Action-specific details
+   * @param {object} metadata - Additional metadata (ipAddress, userAgent, timestamp)
+   */
+  async logActivity(userId, action, details = {}, metadata = {}) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.activityLogs);
+      
+      // Fetch user info for caching
+      let userEmail = null;
+      let userName = null;
+      if (userId && userId !== 'admin') {
+        try {
+          const user = await this.findUserById(userId);
+          if (user) {
+            userEmail = user.email || null;
+            userName = user.username || user.name || null;
+          }
+        } catch (error) {
+          Logger.warn('Failed to fetch user info for activity log:', error);
+        }
+      } else if (userId === 'admin') {
+        userEmail = 'admin@dorsu.edu.ph';
+        userName = 'Admin';
+      }
+
+      const activityLog = {
+        userId: userId || 'unknown',
+        userEmail: userEmail,
+        userName: userName,
+        action: action,
+        details: details,
+        metadata: {
+          ipAddress: metadata.ipAddress || null,
+          userAgent: metadata.userAgent || null,
+          timestamp: metadata.timestamp || new Date()
+        },
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      const result = await collection.insertOne(activityLog);
+      Logger.debug(`📝 Activity logged: ${action} by ${userId}`);
+      return { ...activityLog, _id: result.insertedId };
+    } catch (error) {
+      Logger.error('Failed to log activity:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get activity logs with filtering and pagination
+   * @param {object} filters - Filter options (userId, action, startDate, endDate)
+   * @param {number} limit - Maximum number of results
+   * @param {number} skip - Number of results to skip
+   * @returns {Promise<Array>} Array of activity logs
+   */
+  async getActivityLogs(filters = {}, limit = 100, skip = 0) {
+    try {
+      if (!this.isConnected || !this.db) {
+        Logger.warn('MongoDB not connected, returning empty activity logs');
+        return [];
+      }
+      
+      const collection = this.getCollection(mongoConfig.collections.activityLogs);
+      
+      // Build query
+      const query = {};
+      
+      if (filters.userId) {
+        query.userId = filters.userId;
+      }
+      
+      if (filters.action) {
+        query.action = filters.action;
+      }
+      
+      if (filters.startDate || filters.endDate) {
+        query['metadata.timestamp'] = {};
+        if (filters.startDate) {
+          query['metadata.timestamp'].$gte = new Date(filters.startDate);
+        }
+        if (filters.endDate) {
+          query['metadata.timestamp'].$lte = new Date(filters.endDate);
+        }
+      }
+
+      if (filters.userEmail) {
+        query.userEmail = { $regex: filters.userEmail, $options: 'i' };
+      }
+
+      // Execute query
+      const logs = await collection
+        .find(query)
+        .sort({ 'metadata.timestamp': -1 })
+        .limit(limit)
+        .skip(skip)
+        .toArray();
+
+      // Convert _id to string for JSON serialization
+      const formattedLogs = logs.map(log => ({
+        ...log,
+        _id: log._id ? log._id.toString() : log._id
+      }));
+
+      return formattedLogs;
+    } catch (error) {
+      Logger.error('Failed to get activity logs:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get activity log count (for pagination)
+   * @param {object} filters - Filter options
+   * @returns {Promise<number>} Total count
+   */
+  async getActivityLogCount(filters = {}) {
+    try {
+      if (!this.isConnected || !this.db) {
+        Logger.warn('MongoDB not connected, returning 0 activity log count');
+        return 0;
+      }
+      
+      const collection = this.getCollection(mongoConfig.collections.activityLogs);
+      
+      const query = {};
+      
+      if (filters.userId) {
+        query.userId = filters.userId;
+      }
+      
+      if (filters.action) {
+        query.action = filters.action;
+      }
+      
+      if (filters.startDate || filters.endDate) {
+        query['metadata.timestamp'] = {};
+        if (filters.startDate) {
+          query['metadata.timestamp'].$gte = new Date(filters.startDate);
+        }
+        if (filters.endDate) {
+          query['metadata.timestamp'].$lte = new Date(filters.endDate);
+        }
+      }
+
+      if (filters.userEmail) {
+        query.userEmail = { $regex: filters.userEmail, $options: 'i' };
+      }
+
+      const count = await collection.countDocuments(query);
+      return count;
+    } catch (error) {
+      Logger.error('Failed to get activity log count:', error);
       throw error;
     }
   }

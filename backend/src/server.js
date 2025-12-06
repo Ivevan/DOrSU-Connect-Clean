@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ActivityLogService } from './services/activity-log.js';
 import { AuthService, authMiddleware } from './services/auth.js';
 import { buildClarificationMessage, isConversationResetRequest } from './services/chat-guardrails.js';
 import { getChatHistoryService } from './services/chat-history.js';
@@ -56,6 +57,7 @@ let newsScraperService = null;
 let authService = null;
 let chatHistoryService = null;
 let scheduleService = null;
+let activityLogService = null;
 
 // ===== FALLBACK CONTEXT =====
 const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
@@ -68,6 +70,16 @@ async function initializeServices() {
     mongoService = getMongoDBService();
     await mongoService.connect();
     Logger.success('MongoDB initialized');
+    
+    // Migrate existing users to have default roles
+    try {
+      const migrationResult = await mongoService.migrateUserRoles();
+      if (migrationResult.migrated > 0) {
+        Logger.success(`✅ User role migration: ${migrationResult.message}`);
+      }
+    } catch (error) {
+      Logger.warn('User role migration failed (non-critical):', error.message);
+    }
     
     // Initialize GridFS service for image storage
     const gridFSService = getGridFSService();
@@ -85,6 +97,10 @@ async function initializeServices() {
     // Initialize schedule service (unified calendar and posts)
     scheduleService = getScheduleService(mongoService, authService);
     Logger.success('Schedule service initialized');
+    
+    // Initialize activity log service
+    activityLogService = new ActivityLogService(mongoService);
+    Logger.success('Activity log service initialized');
     
     // Initialize data refresh service
     dataRefreshService = getDataRefreshService();
@@ -186,6 +202,11 @@ const server = http.createServer(async (req, res) => {
       url.startsWith('/api/calendar/') || url.startsWith('/api/admin/calendar/')) {
     Logger.info(`🔍 Schedule Request: ${method} ${rawUrl} -> Parsed: ${url}`);
     Logger.info(`🔍 Schedule service available: ${scheduleService ? 'YES' : 'NO'}`);
+  }
+  // Debug logging for activity logs endpoint
+  if (url === '/api/activity-logs' || rawUrl.includes('activity-logs')) {
+    Logger.info(`📋 Activity Log Request: ${method} ${rawUrl} -> Parsed: ${url}`);
+    Logger.info(`📋 Services available: authService=${!!authService}, mongoService=${!!mongoService}, activityLogService=${!!activityLogService}`);
   }
 
   // ===== CORS HEADERS =====
@@ -330,6 +351,28 @@ const server = http.createServer(async (req, res) => {
 
         Logger.success(`✅ Firebase user synced to MongoDB: ${normalizedEmail}`);
 
+        // Log registration activity (if new user) or login (if existing)
+        if (activityLogService) {
+          const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.socket.remoteAddress;
+          const userAgent = req.headers['user-agent'] || 'unknown';
+          const wasNewUser = !user.lastLogin; // Check if this was a new registration
+          
+          await activityLogService.logActivity(
+            user._id?.toString() || user.id,
+            wasNewUser ? 'user.register' : 'user.login',
+            {
+              email: normalizedEmail,
+              username: displayName,
+              method: 'firebase'
+            },
+            {
+              ipAddress: Array.isArray(ipAddress) ? ipAddress[0] : ipAddress,
+              userAgent: userAgent,
+              timestamp: new Date()
+            }
+          );
+        }
+
         sendJson(res, 201, {
           success: true,
           user: {
@@ -368,6 +411,27 @@ const server = http.createServer(async (req, res) => {
         }
 
         const result = await authService.register(username, email, password);
+        
+        // Log registration activity
+        if (activityLogService && result.success && result.user) {
+          const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.socket.remoteAddress;
+          const userAgent = req.headers['user-agent'] || 'unknown';
+          await activityLogService.logActivity(
+            result.user.id,
+            'user.register',
+            {
+              email: email,
+              username: username,
+              method: 'email'
+            },
+            {
+              ipAddress: Array.isArray(ipAddress) ? ipAddress[0] : ipAddress,
+              userAgent: userAgent,
+              timestamp: new Date()
+            }
+          );
+        }
+        
         sendJson(res, 201, result);
       } catch (error) {
         Logger.error('Register error:', error.message);
@@ -396,6 +460,26 @@ const server = http.createServer(async (req, res) => {
         }
 
         const result = await authService.login(email, password);
+        
+        // Log login activity
+        if (activityLogService && result.success && result.user) {
+          const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.socket.remoteAddress;
+          const userAgent = req.headers['user-agent'] || 'unknown';
+          await activityLogService.logActivity(
+            result.user.id,
+            'user.login',
+            {
+              email: email,
+              method: 'email'
+            },
+            {
+              ipAddress: Array.isArray(ipAddress) ? ipAddress[0] : ipAddress,
+              userAgent: userAgent,
+              timestamp: new Date()
+            }
+          );
+        }
+        
         sendJson(res, 200, result);
       } catch (error) {
         Logger.error('Login error:', error.message);
@@ -585,6 +669,28 @@ const server = http.createServer(async (req, res) => {
         // This ensures Google users use the same authentication mechanism as regular users
         const token = authService.generateToken(user);
         Logger.info(`Backend JWT generated for Google user: ${email}`);
+
+        // Log login activity (or registration if new user)
+        if (activityLogService) {
+          const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.socket.remoteAddress;
+          const userAgent = req.headers['user-agent'] || 'unknown';
+          const wasNewUser = !user.lastLogin; // If lastLogin doesn't exist, it's a new user
+          
+          await activityLogService.logActivity(
+            user._id?.toString() || user.id,
+            wasNewUser ? 'user.register' : 'user.login',
+            {
+              email: email,
+              username: name,
+              method: 'google'
+            },
+            {
+              ipAddress: Array.isArray(ipAddress) ? ipAddress[0] : ipAddress,
+              userAgent: userAgent,
+              timestamp: new Date()
+            }
+          );
+        }
 
         sendJson(res, 200, {
           success: true,
@@ -787,6 +893,42 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Migrate user roles (admin endpoint) - SECURED
+  if (method === 'POST' && url === '/api/users/migrate-roles') {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    // Require authentication
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: 'Unauthorized' });
+      return;
+    }
+
+    // Only admins can run migration
+    let isAdmin = auth.isAdmin;
+    if (!isAdmin) {
+      // Check if user has admin role in database
+      const user = await mongoService.findUserById(auth.userId);
+      if (!user || user.role !== 'admin') {
+        sendJson(res, 403, { error: 'Forbidden: Admin access required' });
+        return;
+      }
+      isAdmin = true;
+    }
+
+    try {
+      const result = await mongoService.migrateUserRoles();
+      sendJson(res, 200, { success: true, ...result });
+    } catch (error) {
+      Logger.error('Migrate roles error:', error.message);
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+
   // Update user role (admin only) - SECURED
   if (method === 'PUT' && url.startsWith('/api/users/') && url.endsWith('/role')) {
     if (!authService || !mongoService) {
@@ -812,7 +954,22 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const userId = url.split('/api/users/')[1].replace('/role', '');
+    // Extract userId from URL: /api/users/{userId}/role
+    const urlParts = url.split('/api/users/')[1];
+    if (!urlParts) {
+      sendJson(res, 400, { error: 'Invalid URL format' });
+      return;
+    }
+    
+    const userId = urlParts.replace('/role', '').trim();
+    
+    // Validate userId
+    if (!userId || userId.length === 0) {
+      sendJson(res, 400, { error: 'User ID is required' });
+      return;
+    }
+    
+    Logger.info(`Update role request for userId: ${userId}`);
     
     // Prevent self-demotion (optional security measure)
     if (userId === auth.userId) {
@@ -836,10 +993,39 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         
+        Logger.info(`Attempting to update role for userId: ${userId} to role: ${role}`);
+        
+        // Get current user role before update
+        const targetUser = await mongoService.findUserById(userId);
+        const oldRole = targetUser?.role || 'user';
+        
         const result = await mongoService.updateUserRole(userId, role);
+        
+        // Log activity
+        if (activityLogService) {
+          const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.socket.remoteAddress;
+          const userAgent = req.headers['user-agent'] || 'unknown';
+          await activityLogService.logActivity(
+            auth.userId,
+            'admin.role_change',
+            {
+              targetUserId: userId,
+              targetUserEmail: targetUser?.email || null,
+              oldRole: oldRole,
+              newRole: role
+            },
+            {
+              ipAddress: Array.isArray(ipAddress) ? ipAddress[0] : ipAddress,
+              userAgent: userAgent,
+              timestamp: new Date()
+            }
+          );
+        }
+        
         sendJson(res, 200, { success: true, message: 'User role updated successfully' });
       } catch (error) {
         Logger.error('Update user role error:', error.message);
+        Logger.error('Error details:', error);
         sendJson(res, 400, { error: error.message || 'Failed to update user role' });
       }
     });
@@ -860,9 +1046,33 @@ const server = http.createServer(async (req, res) => {
     }
 
     try {
+      // Get user info before deletion for logging
+      const userToDelete = await mongoService.findUserById(auth.userId);
+      const deletedUserEmail = userToDelete?.email || null;
+      
       const result = await mongoService.deleteUser(auth.userId);
       if (result.success) {
         Logger.success(`✅ Account deleted successfully: ${auth.userId}`);
+        
+        // Log activity
+        if (activityLogService) {
+          const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.socket.remoteAddress;
+          const userAgent = req.headers['user-agent'] || 'unknown';
+          await activityLogService.logActivity(
+            auth.userId,
+            'user.account_delete',
+            {
+              deletedUserId: auth.userId,
+              deletedUserEmail: deletedUserEmail
+            },
+            {
+              ipAddress: Array.isArray(ipAddress) ? ipAddress[0] : ipAddress,
+              userAgent: userAgent,
+              timestamp: new Date()
+            }
+          );
+        }
+        
         sendJson(res, 200, { success: true, message: 'Account deleted successfully' });
       } else {
         sendJson(res, 404, { error: result.message || 'User not found' });
@@ -870,6 +1080,157 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       Logger.error('Delete account error:', error.message);
       sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+
+  // Get activity logs (admin only) - Check both with and without trailing slash
+  if (method === 'GET' && (url === '/api/activity-logs' || url === '/api/activity-logs/')) {
+    Logger.info(`📋 Activity logs endpoint hit: ${method} ${url} (raw: ${rawUrl})`);
+    
+    if (!authService || !mongoService || !activityLogService) {
+      Logger.error('Activity logs: Services not available', { 
+        authService: !!authService, 
+        mongoService: !!mongoService, 
+        activityLogService: !!activityLogService 
+      });
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      Logger.warn('Activity logs: Unauthorized request');
+      sendJson(res, 401, { error: 'Unauthorized' });
+      return;
+    }
+
+    // Check admin access
+    let isAdmin = auth.isAdmin;
+    if (!isAdmin) {
+      const user = await mongoService.findUserById(auth.userId);
+      isAdmin = user && user.role === 'admin';
+    }
+
+    if (!isAdmin) {
+      Logger.warn(`Activity logs: Forbidden access attempt by user ${auth.userId}`);
+      sendJson(res, 403, { error: 'Forbidden: Admin access required' });
+      return;
+    }
+
+    try {
+      const userId = urlObj.searchParams.get('userId') || null;
+      const action = urlObj.searchParams.get('action') || null;
+      const startDate = urlObj.searchParams.get('startDate') || null;
+      const endDate = urlObj.searchParams.get('endDate') || null;
+      const userEmail = urlObj.searchParams.get('userEmail') || null;
+      const limit = parseInt(urlObj.searchParams.get('limit') || '100', 10);
+      const skip = parseInt(urlObj.searchParams.get('skip') || '0', 10);
+
+      Logger.info(`📋 Activity logs: Fetching with filters`, { userId, action, limit, skip });
+
+      const filters = {};
+      if (userId) filters.userId = userId;
+      if (action) filters.action = action;
+      if (startDate) filters.startDate = startDate;
+      if (endDate) filters.endDate = endDate;
+      if (userEmail) filters.userEmail = userEmail;
+
+      const result = await activityLogService.getActivityLogs(filters, limit, skip);
+      Logger.success(`📋 Activity logs: Retrieved ${result.logs.length} logs (total: ${result.total})`);
+      sendJson(res, 200, result);
+    } catch (error) {
+      Logger.error('Get activity logs error:', error.message);
+      Logger.error('Error stack:', error.stack);
+      sendJson(res, 500, { error: error.message || 'Failed to get activity logs' });
+    }
+    return;
+  }
+
+  // Get activity logs by user (admin only)
+  if (method === 'GET' && url.startsWith('/api/activity-logs/user/')) {
+    if (!authService || !mongoService || !activityLogService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: 'Unauthorized' });
+      return;
+    }
+
+    // Check admin access
+    let isAdmin = auth.isAdmin;
+    if (!isAdmin) {
+      const user = await mongoService.findUserById(auth.userId);
+      isAdmin = user && user.role === 'admin';
+    }
+
+    if (!isAdmin) {
+      sendJson(res, 403, { error: 'Forbidden: Admin access required' });
+      return;
+    }
+
+    try {
+      const userId = url.split('/api/activity-logs/user/')[1];
+      if (!userId) {
+        sendJson(res, 400, { error: 'User ID is required' });
+        return;
+      }
+
+      const limit = parseInt(urlObj.searchParams.get('limit') || '100', 10);
+      const skip = parseInt(urlObj.searchParams.get('skip') || '0', 10);
+
+      const result = await activityLogService.getActivityLogsByUser(userId, limit, skip);
+      sendJson(res, 200, result);
+    } catch (error) {
+      Logger.error('Get activity logs by user error:', error.message);
+      sendJson(res, 500, { error: error.message || 'Failed to get activity logs' });
+    }
+    return;
+  }
+
+  // Get activity logs by action (admin only)
+  if (method === 'GET' && url.startsWith('/api/activity-logs/action/')) {
+    if (!authService || !mongoService || !activityLogService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: 'Unauthorized' });
+      return;
+    }
+
+    // Check admin access
+    let isAdmin = auth.isAdmin;
+    if (!isAdmin) {
+      const user = await mongoService.findUserById(auth.userId);
+      isAdmin = user && user.role === 'admin';
+    }
+
+    if (!isAdmin) {
+      sendJson(res, 403, { error: 'Forbidden: Admin access required' });
+      return;
+    }
+
+    try {
+      const action = url.split('/api/activity-logs/action/')[1];
+      if (!action) {
+        sendJson(res, 400, { error: 'Action is required' });
+        return;
+      }
+
+      const limit = parseInt(urlObj.searchParams.get('limit') || '100', 10);
+      const skip = parseInt(urlObj.searchParams.get('skip') || '0', 10);
+
+      const result = await activityLogService.getActivityLogsByAction(action, limit, skip);
+      sendJson(res, 200, result);
+    } catch (error) {
+      Logger.error('Get activity logs by action error:', error.message);
+      sendJson(res, 500, { error: error.message || 'Failed to get activity logs' });
     }
     return;
   }

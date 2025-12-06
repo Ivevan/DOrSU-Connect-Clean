@@ -1727,12 +1727,18 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   headerRight: {
-    width: 40,
+    width: 44,
     alignItems: 'flex-end',
+    zIndex: 11,
   },
   profileButton: {
-    width: 32,
-    height: 32,
+    width: 44,
+    height: 44,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 12,
   },
   profileImage: {
     width: 32,

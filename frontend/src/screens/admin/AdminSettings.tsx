@@ -114,6 +114,9 @@ const AdminSettings = () => {
 
   const confirmLogout = useCallback(async () => {
     try {
+      // Close modal immediately (synchronously) to prevent state updates during navigation
+      setIsLogoutOpen(false);
+      
       // Clear conversation data from AsyncStorage
       await AsyncStorage.multiRemove(['adminCurrentConversation', 'adminConversationLastSaveTime']);
       
@@ -124,22 +127,26 @@ const AdminSettings = () => {
       // - Signing out from Firebase
       await authLogout();
       
-      closeLogout();
-      // Reset navigation stack to prevent back navigation to authenticated screens
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'GetStarted' }],
-      });
+      // Use setTimeout to ensure state updates complete before navigation
+      setTimeout(() => {
+        // Reset navigation stack to prevent back navigation to authenticated screens
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'GetStarted' }],
+        });
+      }, 0);
     } catch (error) {
       console.error('Logout error:', error);
       // Still reset navigation even if there's an error
-      closeLogout();
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'GetStarted' }],
-      });
+      setIsLogoutOpen(false);
+      setTimeout(() => {
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'GetStarted' }],
+        });
+      }, 0);
     }
-  }, [closeLogout, navigation, authLogout]);
+  }, [navigation, authLogout]);
 
   // Load admin profile data on mount and screen focus
   useFocusEffect(

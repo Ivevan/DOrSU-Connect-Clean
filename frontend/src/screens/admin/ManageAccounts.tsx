@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,12 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  Image,
+  Animated,
+  StatusBar,
+  Modal,
+  Dimensions,
+  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +25,7 @@ import ManageAccountsService, { BackendUser } from '../../services/ManageAccount
 import { BlurView } from 'expo-blur';
 import { Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 
 type RootStackParamList = {
   ManageAccounts: undefined;
@@ -35,6 +42,32 @@ const ManageAccounts = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+  const [openRoleDropdownUserId, setOpenRoleDropdownUserId] = useState<string | null>(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Animated floating orb
+  const floatAnim1 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animate = () => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(floatAnim1, {
+            toValue: 1,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(floatAnim1, {
+            toValue: 0,
+            duration: 8000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    };
+    animate();
+  }, []);
 
   // Check admin authorization
   useEffect(() => {
@@ -55,7 +88,7 @@ const ManageAccounts = () => {
         }
         
         setIsAuthorized(true);
-        loadUsers();
+        loadUsers(false);
       } catch (error) {
         console.error('Admin check failed:', error);
         setIsAuthorized(false);
@@ -66,306 +99,990 @@ const ManageAccounts = () => {
     checkAdminAccess();
   }, [navigation]);
 
-  const loadUsers = useCallback(async () => {
+  const loadUsers = useCallback(async (isRefresh = false) => {
     try {
-      setLoading(true);
+      // Only set loading to true if it's not the initial load (to avoid double loading state)
+      if (!isInitialLoad || isRefresh) {
+        setLoading(true);
+      }
+      // Only set refreshing if it's an actual refresh (pull-to-refresh)
+      if (isRefresh) {
+        setRefreshing(true);
+      }
       const fetchedUsers = await ManageAccountsService.getAllUsers();
       setUsers(fetchedUsers);
+      // Clear failed images cache on refresh to retry loading images
+      if (isRefresh) {
+        setFailedImages(new Set());
+      }
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to load users');
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setIsInitialLoad(false);
     }
-  }, []);
+  }, [isInitialLoad]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    loadUsers();
+    loadUsers(true);
   }, [loadUsers]);
 
-  const handleRoleChange = async (userId: string, currentRole: string) => {
-    const roles: Array<'user' | 'moderator' | 'admin'> = ['user', 'moderator', 'admin'];
-    const currentIndex = roles.indexOf(currentRole as any);
-    const nextRole = roles[(currentIndex + 1) % roles.length];
-
-    Alert.alert(
-      'Change User Role',
-      `Change role from "${currentRole}" to "${nextRole}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            try {
-              setUpdatingUserId(userId);
-              await ManageAccountsService.updateUserRole(userId, nextRole);
-              await loadUsers();
-              Alert.alert('Success', 'User role updated successfully');
-            } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to update role');
-            } finally {
-              setUpdatingUserId(null);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const getRoleColor = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return '#EF4444'; // Red
-      case 'moderator':
-        return '#F59E0B'; // Amber
-      default:
-        return '#6B7280'; // Gray
+  const handleRoleChange = async (userId: string, newRole: 'user' | 'moderator' | 'admin') => {
+    try {
+      setUpdatingUserId(userId);
+      setOpenRoleDropdownUserId(null); // Close dropdown
+      await ManageAccountsService.updateUserRole(userId, newRole);
+      await loadUsers(true); // Refresh after role change
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to update role');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setUpdatingUserId(null);
     }
   };
 
-  if (isAuthorized === null || loading) {
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case 'admin':
+        return 'Admin';
+      case 'moderator':
+        return 'Moderator';
+      default:
+        return 'User';
+    }
+  };
+
+  const roleOptions: Array<{ key: 'user' | 'moderator' | 'admin'; label: string }> = [
+    { key: 'user', label: 'User' },
+    { key: 'moderator', label: 'Moderator' },
+    { key: 'admin', label: 'Admin' },
+  ];
+
+  const getUserInitials = (user: BackendUser) => {
+    // Priority: username -> email -> default
+    if (user.username && user.username.trim()) {
+      const parts = user.username.trim().split(' ').filter(p => p.length > 0);
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      }
+      if (parts[0] && parts[0].length >= 2) {
+        return parts[0].substring(0, 2).toUpperCase();
+      }
+      if (parts[0] && parts[0].length === 1) {
+        return (parts[0][0] + parts[0][0]).toUpperCase();
+      }
+    }
+    if (user.email && user.email.trim()) {
+      const emailPrefix = user.email.trim().split('@')[0];
+      if (emailPrefix.length >= 2) {
+        return emailPrefix.substring(0, 2).toUpperCase();
+      }
+      if (emailPrefix.length === 1) {
+        return (emailPrefix[0] + emailPrefix[0]).toUpperCase();
+      }
+    }
+    return 'U';
+  };
+
+  // Filter users based on search query
+  const filteredUsers = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return users;
+    }
+    
+    const query = searchQuery.trim().toLowerCase();
+    return users.filter(user => {
+      const emailMatch = user.email?.toLowerCase().includes(query) || false;
+      const usernameMatch = user.username?.toLowerCase().includes(query) || false;
+      return emailMatch || usernameMatch;
+    });
+  }, [users, searchQuery]);
+
+  // Group filtered users by role
+  const groupedUsers = useMemo(() => ({
+    admin: filteredUsers.filter(u => (u.role || 'user') === 'admin'),
+    moderator: filteredUsers.filter(u => (u.role || 'user') === 'moderator'),
+    user: filteredUsers.filter(u => (u.role || 'user') === 'user'),
+  }), [filteredUsers]);
+
+  const getSectionColor = (role: string): string => {
+    switch (role) {
+      case 'admin':
+        return '#EF4444';
+      case 'moderator':
+        return '#F59E0B';
+      default:
+        return '#6B7280';
+    }
+  };
+
+  // State to track button positions for dropdown placement
+  const buttonRefs = useRef<Record<string, View | null>>({});
+  const [buttonLayouts, setButtonLayouts] = useState<Record<string, { x: number; y: number; width: number; height: number }>>({});
+  
+  // State to track failed image loads (fallback to initials)
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+
+  // Render table row component to avoid duplication
+  const renderUserRow = (user: BackendUser, role: string, index: number) => (
+    <BlurView
+      key={user._id}
+      intensity={Platform.OS === 'ios' ? 50 : 40}
+      tint={isDarkMode ? 'dark' : 'light'}
+      style={[
+        styles.tableRowContainer,
+        {
+          backgroundColor: isDarkMode
+            ? 'rgba(42, 42, 42, 0.4)'
+            : 'rgba(255, 255, 255, 0.25)',
+          borderColor: 'rgba(255, 255, 255, 0.15)',
+          borderTopWidth: index === 0 ? 1 : 0,
+        },
+      ]}
+    >
+      <View style={styles.tableRow}>
+        <View style={styles.profileCell}>
+          <View style={[styles.profileAvatar, { backgroundColor: getSectionColor(role) + '20' }]}>
+            {user.profilePicture && user.profilePicture.trim() && !failedImages.has(user._id) ? (
+              <Image
+                source={{ uri: user.profilePicture }}
+                style={styles.profileAvatarImage}
+                resizeMode="cover"
+                onError={() => {
+                  // Mark this image as failed, will show initials instead
+                  setFailedImages(prev => new Set(prev).add(user._id));
+                }}
+                onLoad={() => {
+                  // If image loads successfully, remove from failed set
+                  setFailedImages(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(user._id);
+                    return newSet;
+                  });
+                }}
+              />
+            ) : (
+              <Text style={[styles.tableProfileInitials, { color: getSectionColor(role) }]}>
+                {getUserInitials(user)}
+              </Text>
+            )}
+          </View>
+        </View>
+        <View style={styles.emailCell}>
+          <Text
+            style={[styles.tableCellText, { color: theme.colors.text, fontWeight: '600', textAlign: 'center' }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            {user.email}
+          </Text>
+          {user.username && (
+            <Text
+              style={[styles.tableCellSubtext, { color: theme.colors.textMuted, textAlign: 'center' }]}
+              numberOfLines={1}
+            >
+              @{user.username}
+            </Text>
+          )}
+        </View>
+        <View style={styles.actionsCell}>
+          <View 
+            ref={(ref) => { buttonRefs.current[user._id] = ref; }}
+            style={styles.roleDropdownContainer}
+            onLayout={() => {
+              const buttonRef = buttonRefs.current[user._id];
+              if (buttonRef) {
+                buttonRef.measureInWindow((windowX, windowY, windowWidth, windowHeight) => {
+                  setButtonLayouts(prev => ({
+                    ...prev,
+                    [user._id]: { x: windowX, y: windowY, width: windowWidth, height: windowHeight }
+                  }));
+                });
+              }
+            }}
+          >
+            <TouchableOpacity
+              style={[
+                styles.roleDropdownButton,
+                {
+                  backgroundColor: getSectionColor(user.role || 'user'),
+                  borderColor: getSectionColor(user.role || 'user'),
+                  opacity: updatingUserId === user._id ? 0.5 : 1,
+                },
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setOpenRoleDropdownUserId(openRoleDropdownUserId === user._id ? null : user._id);
+              }}
+              disabled={updatingUserId === user._id}
+              activeOpacity={0.7}
+            >
+              {updatingUserId === user._id ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Text 
+                    style={[styles.roleDropdownButtonText, { 
+                      color: '#FFF', 
+                      fontSize: theme.fontSize.scaleSize(9),
+                      flexShrink: 1,
+                      fontWeight: '700',
+                    }]}
+                    numberOfLines={1}
+                  >
+                    {getRoleLabel(user.role || 'user')}
+                  </Text>
+                  <Ionicons 
+                    name={openRoleDropdownUserId === user._id ? 'chevron-up' : 'chevron-down'} 
+                    size={12} 
+                    color="#FFF" 
+                    style={{ flexShrink: 0, opacity: 0.9 }}
+                  />
+                </>
+              )}
+            </TouchableOpacity>
+
+            {/* Role Dropdown Modal */}
+            <Modal
+              visible={openRoleDropdownUserId === user._id}
+              transparent={true}
+              animationType="fade"
+              onRequestClose={() => setOpenRoleDropdownUserId(null)}
+            >
+              <TouchableOpacity
+                style={styles.roleDropdownOverlay}
+                activeOpacity={1}
+                onPress={() => setOpenRoleDropdownUserId(null)}
+              >
+                <View 
+                  style={[
+                    styles.roleDropdownContentWrapper,
+                    buttonLayouts[user._id] && {
+                      position: 'absolute',
+                      top: buttonLayouts[user._id].y + buttonLayouts[user._id].height + 4,
+                      right: Math.max(16, Dimensions.get('window').width - buttonLayouts[user._id].x - buttonLayouts[user._id].width),
+                    }
+                  ]}
+                >
+                  <BlurView
+                    intensity={Platform.OS === 'ios' ? 80 : 60}
+                    tint={isDarkMode ? 'dark' : 'light'}
+                    style={[styles.roleDropdownContent, {
+                      backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                      borderColor: 'rgba(255, 255, 255, 0.2)',
+                    }]}
+                  >
+                    {roleOptions.map((option, index) => {
+                      const isSelected = (user.role || 'user') === option.key;
+                      const isLast = index === roleOptions.length - 1;
+                      return (
+                        <TouchableOpacity
+                          key={option.key}
+                          style={[
+                            styles.roleDropdownItem,
+                            isLast && { borderBottomWidth: 0 },
+                            isSelected && {
+                              backgroundColor: getSectionColor(option.key) + '20',
+                            }
+                          ]}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            handleRoleChange(user._id, option.key);
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <View style={styles.roleDropdownItemLeft}>
+                            <View style={[styles.roleDropdownColorDot, { backgroundColor: getSectionColor(option.key) }]} />
+                            <Text style={[
+                              styles.roleDropdownItemText,
+                              { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(12) },
+                              isSelected && { color: getSectionColor(option.key), fontWeight: '700' }
+                            ]}>
+                              {option.label}
+                            </Text>
+                          </View>
+                          {isSelected && (
+                            <Ionicons name="checkmark" size={18} color={getSectionColor(option.key)} />
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </BlurView>
+                </View>
+              </TouchableOpacity>
+            </Modal>
+          </View>
+        </View>
+      </View>
+    </BlurView>
+  );
+
+  // Render table header component to avoid duplication
+  const renderTableHeader = () => (
+    <BlurView
+      intensity={Platform.OS === 'ios' ? 50 : 40}
+      tint={isDarkMode ? 'dark' : 'light'}
+      style={[
+        styles.tableHeader,
+        {
+          backgroundColor: isDarkMode
+            ? 'rgba(42, 42, 42, 0.6)'
+            : 'rgba(255, 255, 255, 0.4)',
+          borderColor: 'rgba(255, 255, 255, 0.2)',
+        },
+      ]}
+    >
+      <View style={[styles.tableHeaderRow, styles.tableRow]}>
+        <View style={styles.profileHeaderCell}>
+          <Text style={[styles.tableHeaderText, { color: theme.colors.text }]}>
+            Profile
+          </Text>
+        </View>
+        <View style={styles.emailHeaderCell}>
+          <Text style={[styles.tableHeaderText, { color: theme.colors.text }]}>
+            Email
+          </Text>
+        </View>
+        <View style={styles.actionsHeaderCell}>
+          <Text style={[styles.tableHeaderText, { color: theme.colors.text }]}>
+            Actions
+          </Text>
+        </View>
+      </View>
+    </BlurView>
+  );
+
+  // Render section component to avoid duplication
+  const renderSection = (role: 'admin' | 'moderator' | 'user', users: BackendUser[]) => {
+    if (users.length === 0) return null;
+
     return (
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <ActivityIndicator size="large" color={theme.colors.accent} />
+      <View style={styles.sectionContainer}>
+        <View style={styles.sectionHeader}>
+          <View style={[styles.sectionIndicator, { backgroundColor: getSectionColor(role) }]} />
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+            {role.toUpperCase()} ({users.length})
+          </Text>
+        </View>
+        <View style={styles.tableContainer}>
+          {renderTableHeader()}
+          {users.map((user, index) => renderUserRow(user, role, index))}
+        </View>
       </View>
     );
-  }
+  };
 
   if (isAuthorized === false) {
     return null; // Will navigate away
   }
 
+  const safeInsets = {
+    top: insets.top,
+    bottom: insets.bottom,
+    left: insets.left,
+    right: insets.right,
+  };
+
+  // Show loading state only if authorization is still pending
+  const isPendingAuthorization = isAuthorized === null;
+
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header with gradient */}
+    <View style={styles.container} collapsable={false}>
+      <StatusBar
+        backgroundColor="transparent"
+        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        translucent={true}
+      />
+
+      {/* Background Gradient Layer */}
       <LinearGradient
-        colors={
-          theme.colors.accent === '#2563EB'
-            ? ['#93C5FD', '#60A5FA', '#2563EB']
-            : theme.colors.accent === '#FF9500'
-            ? ['#FFCC80', '#FFA726', '#FF9500']
-            : [
-                theme.colors.accentLight || '#93C5FD',
-                theme.colors.accent || '#2563EB',
-                theme.colors.accentDark || '#1E3A8A',
-              ]
-        }
-        start={{ x: 1, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={[styles.header, { paddingTop: insets.top + 12 }]}
-      >
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-          >
-            <Ionicons name="arrow-back" size={24} color="#FFF" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Manage Accounts</Text>
-          <View style={styles.headerSpacer} />
-        </View>
-      </LinearGradient>
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[
-          styles.contentContainer,
-          { paddingBottom: insets.bottom + 20 },
+        colors={[
+          isDarkMode ? '#0B1220' : '#FBF8F3',
+          isDarkMode ? '#111827' : '#F8F5F0',
+          isDarkMode ? '#1F2937' : '#F5F2ED',
         ]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={theme.colors.accent}
-            colors={[theme.colors.accent]}
-          />
-        }
-      >
-        <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
-          {users.length} {users.length === 1 ? 'user' : 'users'} total
-        </Text>
+        style={styles.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        pointerEvents="none"
+      />
 
-        {users.length === 0 && !loading && (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="people-outline" size={48} color={theme.colors.textMuted} />
-            <Text style={[styles.emptyText, { color: theme.colors.textMuted }]}>
-              No users found
-            </Text>
+      {/* Blur overlay on entire background */}
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 5 : 3}
+        tint="default"
+        style={styles.backgroundGradient}
+        pointerEvents="none"
+      />
+
+      {/* Animated Floating Background Orb (Copilot-style) */}
+      <View style={styles.floatingBgContainer} pointerEvents="none" collapsable={false}>
+        <Animated.View
+          style={[
+            styles.floatingOrbWrapper,
+            {
+              top: '35%',
+              left: '50%',
+              marginLeft: -250,
+              transform: [
+                {
+                  translateX: floatAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-30, 30],
+                  }),
+                },
+                {
+                  translateY: floatAnim1.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-20, 20],
+                  }),
+                },
+                {
+                  scale: floatAnim1.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [1, 1.05, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.floatingOrb1}>
+            <LinearGradient
+              colors={[theme.colors.orbColors.orange1, theme.colors.orbColors.orange2, theme.colors.orbColors.orange3]}
+              style={StyleSheet.absoluteFillObject}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            />
+            <BlurView
+              intensity={Platform.OS === 'ios' ? 60 : 45}
+              tint="default"
+              style={StyleSheet.absoluteFillObject}
+            />
           </View>
-        )}
+        </Animated.View>
+      </View>
 
-        {users.map((user) => (
-          <BlurView
-            key={user._id}
-            intensity={Platform.OS === 'ios' ? 50 : 40}
-            tint={isDarkMode ? 'dark' : 'light'}
-            style={[
-              styles.userCard,
-              {
-                backgroundColor: isDarkMode
-                  ? 'rgba(42, 42, 42, 0.5)'
-                  : 'rgba(255, 255, 255, 0.3)',
-                borderColor: 'rgba(255, 255, 255, 0.2)',
-              },
-            ]}
+      {/* Header - Matching AdminCalendar style */}
+      <View style={[styles.header, { 
+        marginTop: safeInsets.top,
+        marginLeft: safeInsets.left,
+        marginRight: safeInsets.right,
+      }]}>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity 
+            onPress={() => navigation.goBack()} 
+            style={styles.menuButton}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
           >
-            <View style={styles.userInfo}>
-              <View style={styles.userHeader}>
-                <Text style={[styles.userEmail, { color: theme.colors.text }]}>
-                  {user.email}
-                </Text>
-                <View
-                  style={[
-                    styles.roleBadge,
-                    { backgroundColor: getRoleColor(user.role || 'user') + '20' },
-                  ]}
+            <Ionicons name="arrow-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+          </TouchableOpacity>
+        </View>
+        <Text 
+          style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]}
+          pointerEvents="none"
+        >
+          Manage Accounts
+        </Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity 
+            style={styles.profileButton} 
+            onPress={() => navigation.navigate('AdminSettings')} 
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityLabel="Admin profile - Go to settings"
+            accessibilityRole="button"
+          >
+            <View style={[styles.profileIconCircle, { backgroundColor: theme.colors.accent }]} pointerEvents="none">
+              <Text style={[styles.profileInitials, { fontSize: theme.fontSize.scaleSize(13) }]}>AD</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Main Content */}
+      <View style={styles.contentWrapper}>
+
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingTop: 16,
+            paddingBottom: safeInsets.bottom + 20,
+          }}
+          showsVerticalScrollIndicator={true}
+          bounces={true}
+          refreshControl={
+            !isInitialLoad && !isPendingAuthorization ? (
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={theme.colors.accent}
+                colors={[theme.colors.accent]}
+              />
+            ) : undefined
+          }
+        >
+          {/* Show loading indicator only during initial authorization/load */}
+          {(isPendingAuthorization || (loading && isInitialLoad)) ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={theme.colors.accent} />
+            </View>
+          ) : (
+            <>
+              {/* Search Bar */}
+              <View style={styles.searchSection}>
+                <BlurView
+                  intensity={Platform.OS === 'ios' ? 50 : 40}
+                  tint={isDarkMode ? 'dark' : 'light'}
+                  style={[styles.searchBarContainer, {
+                    backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.3)',
+                    borderColor: 'rgba(255, 255, 255, 0.2)',
+                  }]}
                 >
-                  <Text
-                    style={[
-                      styles.roleText,
-                      { color: getRoleColor(user.role || 'user') },
-                    ]}
-                  >
-                    {(user.role || 'user').toUpperCase()}
+                  <Ionicons name="search-outline" size={20} color={theme.colors.textMuted} style={styles.searchIcon} />
+                  <TextInput
+                    style={[styles.searchInput, {
+                      color: theme.colors.text,
+                      fontSize: theme.fontSize.scaleSize(14),
+                    }]}
+                    placeholder="Search users..."
+                    placeholderTextColor={theme.colors.textMuted}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    returnKeyType="search"
+                    clearButtonMode="while-editing"
+                  />
+                  {searchQuery.length > 0 && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSearchQuery('');
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                      style={styles.searchClearButton}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="close-circle" size={20} color={theme.colors.textMuted} />
+                    </TouchableOpacity>
+                  )}
+                </BlurView>
+              </View>
+
+              {/* Search Results Count - Show when searching */}
+              {searchQuery.trim().length > 0 && (
+                <View style={styles.searchResultsHeader}>
+                  <Text style={[styles.searchResultsCount, { 
+                    color: theme.colors.textMuted, 
+                    fontSize: theme.fontSize.scaleSize(12) 
+                  }]}>
+                    {filteredUsers.length} {filteredUsers.length === 1 ? 'result' : 'results'} found for "{searchQuery}"
                   </Text>
                 </View>
-              </View>
-              {user.username && (
-                <Text style={[styles.userName, { color: theme.colors.textMuted }]}>
-                  @{user.username}
-                </Text>
               )}
-              {user.lastLogin && (
-                <Text style={[styles.userMeta, { color: theme.colors.textMuted }]}>
-                  Last login: {new Date(user.lastLogin).toLocaleDateString()}
-                </Text>
+
+              {filteredUsers.length === 0 && !loading && (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="people-outline" size={48} color={theme.colors.textMuted} />
+                  <Text style={[styles.emptyText, { color: theme.colors.textMuted }]}>
+                    {searchQuery.trim().length > 0 
+                      ? `No users found matching "${searchQuery}"`
+                      : 'No users found'}
+                  </Text>
+                </View>
               )}
-            </View>
-            <TouchableOpacity
-              style={[
-                styles.changeRoleButton,
-                {
-                  backgroundColor: theme.colors.accent,
-                  opacity: updatingUserId === user._id ? 0.5 : 1,
-                },
-              ]}
-              onPress={() => handleRoleChange(user._id, user.role || 'user')}
-              disabled={updatingUserId === user._id}
-            >
-              {updatingUserId === user._id ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
-                <Ionicons name="swap-horizontal" size={20} color="#FFF" />
+
+              {/* Render sections */}
+              {renderSection('admin', groupedUsers.admin)}
+              {renderSection('moderator', groupedUsers.moderator)}
+              {renderSection('user', groupedUsers.user)}
+
+              {/* Footer with total count */}
+              {filteredUsers.length > 0 && (
+                <View style={styles.tableFooter}>
+                  <Text style={[styles.footerText, { color: theme.colors.textMuted }]}>
+                    {filteredUsers.length} {filteredUsers.length === 1 ? 'user' : 'users'} {searchQuery.trim().length > 0 ? 'found' : 'total'}
+                  </Text>
+                </View>
               )}
-            </TouchableOpacity>
-          </BlurView>
-        ))}
-      </ScrollView>
+            </>
+          )}
+        </ScrollView>
+      </View>
     </View>
   );
 };
 
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+  },
+  backgroundGradient: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+  },
+  floatingBgContainer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+    overflow: 'hidden',
+  },
+  floatingOrbWrapper: {
+    position: 'absolute',
+    width: 500,
+    height: 500,
+    borderRadius: 250,
+    overflow: 'hidden',
+  },
+  floatingOrb1: {
+    width: 500,
+    height: 500,
+    borderRadius: 250,
+    overflow: 'hidden',
   },
   header: {
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    zIndex: 10,
-  },
-  headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: 'transparent',
+    zIndex: 10,
+    position: 'relative',
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  headerLeft: {
+    width: 44,
+    zIndex: 11,
+  },
+  menuButton: {
+    width: 44,
+    height: 44,
+    minWidth: 44,
+    minHeight: 44,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 12,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '800',
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: -0.3,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    zIndex: 1,
+    pointerEvents: 'none',
+  },
+  headerRight: {
+    width: 44,
+    alignItems: 'flex-end',
+    zIndex: 11,
+  },
+  profileButton: {
+    width: 44,
+    height: 44,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 12,
+  },
+  profileIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+    pointerEvents: 'none',
+  },
+  profileInitials: {
+    fontSize: 13,
+    fontWeight: '700',
     color: '#FFF',
+    letterSpacing: -0.3,
+  },
+  contentWrapper: {
     flex: 1,
+    zIndex: 2,
+    backgroundColor: 'transparent',
+  },
+  content: {
+    flex: 1,
+  },
+  tableContainer: {
+    width: '100%',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  tableHeader: {
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    width: '100%',
+  },
+  tableHeaderRow: {
+    borderBottomWidth: 0,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 44,
+    width: '100%',
+  },
+  tableHeaderText: {
+    fontSize: 8,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+    paddingHorizontal: 1,
     textAlign: 'center',
   },
-  headerSpacer: {
+  tableRowContainer: {
+    borderWidth: 1,
+    borderTopWidth: 0,
+    paddingVertical: 0,
+    paddingHorizontal: 6,
+    width: '100%',
+  },
+  // Fixed width cells for phone layout - optimized to fit screen
+  profileHeaderCell: {
     width: 40,
+    paddingVertical: 10,
+    paddingHorizontal: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  scrollView: {
+  profileCell: {
+    width: 40,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 56,
+  },
+  emailHeaderCell: {
     flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 0,
   },
-  contentContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
+  emailCell: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 56,
+    minWidth: 0,
   },
-  subtitle: {
-    fontSize: 14,
-    marginBottom: 24,
+  actionsHeaderCell: {
+    width: 70,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionsCell: {
+    width: 70,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 56,
+  },
+  tableCellSubtext: {
+    fontSize: 10,
+    fontWeight: '400',
+    marginTop: 2,
+  },
+  tableCellText: {
+    fontSize: 13,
     fontWeight: '500',
   },
-  userCard: {
+  roleDropdownContainer: {
+    position: 'relative',
+    width: '100%',
+    alignItems: 'center',
+  },
+  roleDropdownButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 5,
+    minHeight: 28,
+    width: '100%',
+    maxWidth: 65,
+    overflow: 'hidden',
+    gap: 3,
+  },
+  roleDropdownButtonText: {
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  roleDropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  },
+  roleDropdownContentWrapper: {
+    alignItems: 'flex-end',
+    paddingRight: 20,
+    paddingTop: 20,
+  },
+  roleDropdownContent: {
     borderRadius: 16,
     borderWidth: 1,
-    marginBottom: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
+    minWidth: 150,
   },
-  userInfo: {
-    flex: 1,
-  },
-  userHeader: {
+  roleDropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
-    gap: 12,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
   },
-  userEmail: {
-    fontSize: 16,
-    fontWeight: '600',
+  roleDropdownItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
+    gap: 10,
   },
-  roleBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
+  roleDropdownColorDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    flexShrink: 0,
   },
-  roleText: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
+  roleDropdownItemText: {
+    flex: 1,
+    fontWeight: '500',
   },
-  userName: {
-    fontSize: 14,
-    marginBottom: 2,
+  tableFooter: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
   },
-  userMeta: {
+  footerText: {
     fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
   },
-  changeRoleButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  profileAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 12,
+  },
+  profileAvatarImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  tableProfileInitials: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   emptyContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 60,
+    paddingHorizontal: 20,
   },
   emptyText: {
     fontSize: 16,
     fontWeight: '600',
     marginTop: 16,
+  },
+  sectionContainer: {
+    marginBottom: 24,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 10,
+  },
+  sectionIndicator: {
+    width: 4,
+    height: 20,
+    borderRadius: 2,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 400,
+    paddingVertical: 60,
+  },
+  searchSection: {
+    marginBottom: 16,
+  },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    minHeight: 52,
+    width: '100%',
+    overflow: 'hidden',
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    padding: 0,
+    fontSize: 14,
+  },
+  searchClearButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  searchResultsHeader: {
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  searchResultsCount: {
+    fontSize: 12,
+    fontWeight: '500',
+    fontStyle: 'italic',
+    opacity: 0.8,
   },
 });
 

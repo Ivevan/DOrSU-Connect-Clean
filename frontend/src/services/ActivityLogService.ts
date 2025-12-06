@@ -1,21 +1,40 @@
 /**
- * Manage Accounts Service
- * Handles user account management operations (admin only)
+ * Activity Log Service
+ * Handles fetching activity logs from the backend (admin only)
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiConfig from '../config/api.config';
 import { getCurrentUser } from './authService';
 
-export interface BackendUser {
+export interface ActivityLog {
   _id: string;
-  email: string;
-  username: string;
-  role?: 'user' | 'moderator' | 'admin';
-  createdAt?: string;
-  lastLogin?: string;
-  isActive?: boolean;
-  profilePicture?: string;
+  userId: string;
+  userEmail?: string;
+  userName?: string;
+  action: string;
+  details: Record<string, any>;
+  metadata: {
+    ipAddress?: string;
+    userAgent?: string;
+    timestamp: Date | string;
+  };
+  createdAt: Date | string;
+}
+
+export interface ActivityLogFilters {
+  userId?: string;
+  action?: string;
+  startDate?: string;
+  endDate?: string;
+  userEmail?: string;
+  limit?: number;
+  skip?: number;
+}
+
+export interface ActivityLogResponse {
+  logs: ActivityLog[];
+  total: number;
 }
 
 interface FirebaseLoginResponse {
@@ -28,7 +47,7 @@ interface FirebaseLoginResponse {
   };
 }
 
-class ManageAccountsService {
+class ActivityLogService {
   /**
    * Get authentication token (with admin token support and Firebase token exchange if needed)
    */
@@ -50,14 +69,14 @@ class ManageAccountsService {
       // If no backend token, try to exchange Firebase ID token
       const currentUser = getCurrentUser();
       if (!currentUser || typeof currentUser.getIdToken !== 'function') {
-        console.warn('⚠️ ManageAccountsService.getToken: No Firebase user found');
+        console.warn('⚠️ ActivityLogService.getToken: No Firebase user found');
         return null;
       }
 
       // Force refresh Firebase token
       const firebaseToken = await currentUser.getIdToken(true);
       if (!firebaseToken) {
-        console.warn('⚠️ ManageAccountsService.getToken: Failed to get Firebase token');
+        console.warn('⚠️ ActivityLogService.getToken: Failed to get Firebase token');
         return null;
       }
 
@@ -82,7 +101,7 @@ class ManageAccountsService {
           }
         }
       } catch (exchangeError) {
-        console.warn('⚠️ ManageAccountsService.getToken: Token exchange failed:', exchangeError);
+        console.warn('⚠️ ActivityLogService.getToken: Token exchange failed:', exchangeError);
       }
 
       // Fallback to Firebase token
@@ -94,16 +113,29 @@ class ManageAccountsService {
   }
 
   /**
-   * Get all users (admin only)
+   * Get activity logs with optional filters
    */
-  async getAllUsers(): Promise<BackendUser[]> {
+  async getActivityLogs(filters: ActivityLogFilters = {}): Promise<ActivityLogResponse> {
     try {
       const token = await this.getToken();
       if (!token) {
         throw new Error('No authentication token');
       }
 
-      const response = await fetch(`${apiConfig.baseUrl}/api/users`, {
+      // Build query string
+      const params = new URLSearchParams();
+      if (filters.userId) params.append('userId', filters.userId);
+      if (filters.action) params.append('action', filters.action);
+      if (filters.startDate) params.append('startDate', filters.startDate);
+      if (filters.endDate) params.append('endDate', filters.endDate);
+      if (filters.userEmail) params.append('userEmail', filters.userEmail);
+      if (filters.limit) params.append('limit', String(filters.limit));
+      if (filters.skip) params.append('skip', String(filters.skip));
+
+      const queryString = params.toString();
+      const url = `${apiConfig.baseUrl}/api/activity-logs${queryString ? `?${queryString}` : ''}`;
+
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -118,53 +150,34 @@ class ManageAccountsService {
         } else if (response.status === 403) {
           throw new Error('Forbidden: Admin access required');
         }
-        throw new Error(errorData.error || `Failed to fetch users: ${response.statusText}`);
+        throw new Error(errorData.error || `Failed to fetch activity logs: ${response.statusText}`);
       }
 
       const data = await response.json();
-      return data.users || [];
+      return {
+        logs: data.logs || [],
+        total: data.total || 0,
+      };
     } catch (error: any) {
-      console.error('Failed to get users:', error);
+      console.error('Failed to get activity logs:', error);
       throw error;
     }
   }
 
   /**
-   * Update user role (admin only)
+   * Get activity logs for a specific user
    */
-  async updateUserRole(userId: string, role: 'user' | 'moderator' | 'admin'): Promise<boolean> {
-    try {
-      const token = await this.getToken();
-      if (!token) {
-        throw new Error('No authentication token');
-      }
+  async getActivityLogsByUser(userId: string, limit = 100, skip = 0): Promise<ActivityLogResponse> {
+    return this.getActivityLogs({ userId, limit, skip });
+  }
 
-      const response = await fetch(`${apiConfig.baseUrl}/api/users/${userId}/role`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ role }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        if (response.status === 401) {
-          throw new Error('Unauthorized: Please log in again');
-        } else if (response.status === 403) {
-          throw new Error('Forbidden: Admin access required');
-        }
-        throw new Error(errorData.error || `Failed to update role: ${response.statusText}`);
-      }
-
-      return true;
-    } catch (error: any) {
-      console.error('Failed to update user role:', error);
-      throw error;
-    }
+  /**
+   * Get activity logs by action type
+   */
+  async getActivityLogsByAction(action: string, limit = 100, skip = 0): Promise<ActivityLogResponse> {
+    return this.getActivityLogs({ action, limit, skip });
   }
 }
 
-export default new ManageAccountsService();
+export default new ActivityLogService();
 

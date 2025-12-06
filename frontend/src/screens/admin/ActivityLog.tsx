@@ -8,7 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
-  Animated,
+  Animated, 
   StatusBar,
   Modal,
   TextInput,
@@ -42,6 +42,225 @@ const ACTION_TYPES = [
   { key: 'admin.user_delete', label: 'User Deletion' },
 ];
 
+// Mock data for design preview
+const generateMockLogs = (): ActivityLog[] => {
+  const now = new Date();
+  const mockLogs: ActivityLog[] = [
+    {
+      _id: 'mock1',
+      userId: 'user1',
+      userEmail: 'admin@dorsu.edu.ph',
+      userName: 'Admin User',
+      action: 'admin.role_change',
+      details: {
+        targetUserId: 'user123',
+        targetUserEmail: 'student@dorsu.edu.ph',
+        oldRole: 'user',
+        newRole: 'moderator'
+      },
+      metadata: {
+        ipAddress: '192.168.1.100',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        timestamp: new Date(now.getTime() - 5 * 60000) // 5 minutes ago
+      },
+      createdAt: new Date(now.getTime() - 5 * 60000)
+    },
+    {
+      _id: 'mock2',
+      userId: 'user2',
+      userEmail: 'john.doe@dorsu.edu.ph',
+      userName: 'John Doe',
+      action: 'user.login',
+      details: {
+        email: 'john.doe@dorsu.edu.ph',
+        method: 'email'
+      },
+      metadata: {
+        ipAddress: '192.168.1.101',
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0)',
+        timestamp: new Date(now.getTime() - 15 * 60000) // 15 minutes ago
+      },
+      createdAt: new Date(now.getTime() - 15 * 60000)
+    },
+    {
+      _id: 'mock3',
+      userId: 'user3',
+      userEmail: 'jane.smith@dorsu.edu.ph',
+      userName: 'Jane Smith',
+      action: 'user.register',
+      details: {
+        email: 'jane.smith@dorsu.edu.ph',
+        username: 'Jane Smith',
+        method: 'google'
+      },
+      metadata: {
+        ipAddress: '192.168.1.102',
+        userAgent: 'Mozilla/5.0 (Android 11; Mobile)',
+        timestamp: new Date(now.getTime() - 30 * 60000) // 30 minutes ago
+      },
+      createdAt: new Date(now.getTime() - 30 * 60000)
+    },
+    {
+      _id: 'mock4',
+      userId: 'user1',
+      userEmail: 'admin@dorsu.edu.ph',
+      userName: 'Admin User',
+      action: 'admin.role_change',
+      details: {
+        targetUserId: 'user456',
+        targetUserEmail: 'faculty@dorsu.edu.ph',
+        oldRole: 'moderator',
+        newRole: 'admin'
+      },
+      metadata: {
+        ipAddress: '192.168.1.100',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        timestamp: new Date(now.getTime() - 60 * 60000) // 1 hour ago
+      },
+      createdAt: new Date(now.getTime() - 60 * 60000)
+    },
+    {
+      _id: 'mock5',
+      userId: 'user4',
+      userEmail: 'student1@dorsu.edu.ph',
+      userName: 'Student One',
+      action: 'user.login',
+      details: {
+        email: 'student1@dorsu.edu.ph',
+        method: 'email'
+      },
+      metadata: {
+        ipAddress: '192.168.1.103',
+        userAgent: 'Mozilla/5.0 (iPad; CPU OS 14_0)',
+        timestamp: new Date(now.getTime() - 2 * 3600 * 1000) // 2 hours ago
+      },
+      createdAt: new Date(now.getTime() - 2 * 3600 * 1000)
+    },
+    {
+      _id: 'mock6',
+      userId: 'user5',
+      userEmail: 'student2@dorsu.edu.ph',
+      userName: 'Student Two',
+      action: 'user.logout',
+      details: {
+        email: 'student2@dorsu.edu.ph'
+      },
+      metadata: {
+        ipAddress: '192.168.1.104',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        timestamp: new Date(now.getTime() - 3 * 3600 * 1000) // 3 hours ago
+      },
+      createdAt: new Date(now.getTime() - 3 * 3600 * 1000)
+    },
+    {
+      _id: 'mock7',
+      userId: 'user1',
+      userEmail: 'admin@dorsu.edu.ph',
+      userName: 'Admin User',
+      action: 'admin.user_delete',
+      details: {
+        deletedUserId: 'user789',
+        deletedUserEmail: 'olduser@dorsu.edu.ph'
+      },
+      metadata: {
+        ipAddress: '192.168.1.100',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        timestamp: new Date(now.getTime() - 5 * 3600 * 1000) // 5 hours ago
+      },
+      createdAt: new Date(now.getTime() - 5 * 3600 * 1000)
+    },
+    {
+      _id: 'mock8',
+      userId: 'user6',
+      userEmail: 'newstudent@dorsu.edu.ph',
+      userName: 'New Student',
+      action: 'user.register',
+      details: {
+        email: 'newstudent@dorsu.edu.ph',
+        username: 'New Student',
+        method: 'firebase'
+      },
+      metadata: {
+        ipAddress: '192.168.1.105',
+        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0)',
+        timestamp: new Date(now.getTime() - 6 * 3600 * 1000) // 6 hours ago
+      },
+      createdAt: new Date(now.getTime() - 6 * 3600 * 1000)
+    },
+    {
+      _id: 'mock9',
+      userId: 'user7',
+      userEmail: 'moderator@dorsu.edu.ph',
+      userName: 'Moderator User',
+      action: 'user.login',
+      details: {
+        email: 'moderator@dorsu.edu.ph',
+        method: 'google'
+      },
+      metadata: {
+        ipAddress: '192.168.1.106',
+        userAgent: 'Mozilla/5.0 (Android 12; Mobile)',
+        timestamp: new Date(now.getTime() - 8 * 3600 * 1000) // 8 hours ago
+      },
+      createdAt: new Date(now.getTime() - 8 * 3600 * 1000)
+    },
+    {
+      _id: 'mock10',
+      userId: 'user8',
+      userEmail: 'faculty1@dorsu.edu.ph',
+      userName: 'Faculty Member',
+      action: 'user.account_delete',
+      details: {
+        deletedUserId: 'user8',
+        deletedUserEmail: 'faculty1@dorsu.edu.ph'
+      },
+      metadata: {
+        ipAddress: '192.168.1.107',
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+        timestamp: new Date(now.getTime() - 12 * 3600 * 1000) // 12 hours ago
+      },
+      createdAt: new Date(now.getTime() - 12 * 3600 * 1000)
+    },
+    {
+      _id: 'mock11',
+      userId: 'user9',
+      userEmail: 'example@dorsu.edu.ph',
+      userName: 'Example User',
+      action: 'user.login',
+      details: {
+        email: 'example@dorsu.edu.ph',
+        method: 'email'
+      },
+      metadata: {
+        ipAddress: '192.168.1.108',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        timestamp: new Date(now.getTime() - 2 * 24 * 3600 * 1000) // 2 days ago - will show date + time
+      },
+      createdAt: new Date(now.getTime() - 2 * 24 * 3600 * 1000)
+    },
+    {
+      _id: 'mock12',
+      userId: 'user1',
+      userEmail: 'admin@dorsu.edu.ph',
+      userName: 'Admin User',
+      action: 'admin.role_change',
+      details: {
+        targetUserId: 'user999',
+        targetUserEmail: 'student@dorsu.edu.ph',
+        oldRole: 'user',
+        newRole: 'moderator'
+      },
+      metadata: {
+        ipAddress: '192.168.1.100',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        timestamp: new Date(now.getTime() - 5 * 24 * 3600 * 1000) // 5 days ago - will show date + time
+      },
+      createdAt: new Date(now.getTime() - 5 * 24 * 3600 * 1000)
+    }
+  ];
+  return mockLogs;
+};
+
 const ActivityLogScreen = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
@@ -55,6 +274,8 @@ const ActivityLogScreen = () => {
   const [selectedAction, setSelectedAction] = useState<string>('');
   const [openActionFilter, setOpenActionFilter] = useState(false);
   const [total, setTotal] = useState(0);
+  const [useMockData, setUseMockData] = useState(true); // Default to true for design preview
+  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
 
   // Animated floating orb
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -83,6 +304,13 @@ const ActivityLogScreen = () => {
   useEffect(() => {
     const checkAdminAccess = async () => {
       try {
+        // For design preview, skip authorization check and use mock data
+        if (useMockData) {
+          setIsAuthorized(true);
+          loadLogs(false);
+          return;
+        }
+        
         const isAdmin = await AsyncStorage.getItem('isAdmin');
         const userRole = await AsyncStorage.getItem('userRole');
         
@@ -106,7 +334,7 @@ const ActivityLogScreen = () => {
     };
     
     checkAdminAccess();
-  }, [navigation]);
+  }, [navigation, useMockData]);
 
   const loadLogs = useCallback(async (isRefresh = false) => {
     try {
@@ -115,6 +343,32 @@ const ActivityLogScreen = () => {
       }
       if (isRefresh) {
         setRefreshing(true);
+      }
+
+      // Use mock data if enabled (for design preview)
+      if (useMockData) {
+        const mockLogs = generateMockLogs();
+        // Apply filters to mock data
+        let filteredLogs = mockLogs;
+        
+        if (selectedAction) {
+          filteredLogs = filteredLogs.filter(log => log.action === selectedAction);
+        }
+        
+        if (searchQuery.trim()) {
+          const query = searchQuery.trim().toLowerCase();
+          filteredLogs = filteredLogs.filter(log => 
+            log.userEmail?.toLowerCase().includes(query) ||
+            log.userName?.toLowerCase().includes(query)
+          );
+        }
+        
+        setLogs(filteredLogs);
+        setTotal(filteredLogs.length);
+        setLoading(false);
+        setRefreshing(false);
+        setIsInitialLoad(false);
+        return;
       }
 
       const filters: ActivityLogFilters = {
@@ -134,13 +388,33 @@ const ActivityLogScreen = () => {
       setLogs(result.logs);
       setTotal(result.total);
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to load activity logs');
+      // On error, use mock data for design preview
+      console.warn('Failed to load activity logs, using mock data:', error.message);
+      const mockLogs = generateMockLogs();
+      let filteredLogs = mockLogs;
+      
+      if (selectedAction) {
+        filteredLogs = filteredLogs.filter(log => log.action === selectedAction);
+      }
+      
+      if (searchQuery.trim()) {
+        const query = searchQuery.trim().toLowerCase();
+        filteredLogs = filteredLogs.filter(log => 
+          log.userEmail?.toLowerCase().includes(query) ||
+          log.userName?.toLowerCase().includes(query)
+        );
+      }
+      
+      setLogs(filteredLogs);
+      setTotal(filteredLogs.length);
+      // Don't show alert when using mock data
+      // Alert.alert('Error', error.message || 'Failed to load activity logs');
     } finally {
       setLoading(false);
       setRefreshing(false);
       setIsInitialLoad(false);
     }
-  }, [isInitialLoad, selectedAction, searchQuery]);
+  }, [isInitialLoad, selectedAction, searchQuery, useMockData]);
 
   useEffect(() => {
     if (isAuthorized === true && !isInitialLoad) {
@@ -168,26 +442,124 @@ const ActivityLogScreen = () => {
     return '#6B7280'; // Gray
   };
 
-  const formatTimestamp = (timestamp: Date | string) => {
+  const getActionIcon = (action: string): string => {
+    if (action === 'user.login') return 'log-in';
+    if (action === 'user.logout') return 'log-out';
+    if (action === 'user.register') return 'person-add';
+    if (action === 'user.account_delete') return 'trash';
+    if (action === 'admin.role_change') return 'swap-horizontal';
+    if (action === 'admin.user_delete') return 'person-remove';
+    return 'document-text';
+  };
+
+  const getUserInitials = (log: ActivityLog) => {
+    if (log.userName) {
+      const parts = log.userName.trim().split(' ').filter(p => p.length > 0);
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      }
+      if (parts[0] && parts[0].length >= 2) {
+        return parts[0].substring(0, 2).toUpperCase();
+      }
+    }
+    if (log.userEmail) {
+      const emailPrefix = log.userEmail.trim().split('@')[0];
+      if (emailPrefix.length >= 2) {
+        return emailPrefix.substring(0, 2).toUpperCase();
+      }
+    }
+    return 'U';
+  };
+
+  const getActionDescription = (log: ActivityLog): string => {
+    const { action, details } = log;
+    
+    if (action === 'admin.role_change') {
+      const adminName = log.userName || log.userEmail || 'Admin';
+      const targetEmail = details.targetUserEmail || details.targetUserId || 'user';
+      const oldRole = details.oldRole || 'user';
+      const newRole = details.newRole || 'user';
+      return `${adminName} changed ${targetEmail} from ${oldRole} to ${newRole}`;
+    }
+    
+    if (action === 'user.login') {
+      const userName = log.userName || log.userEmail || 'User';
+      const method = details.method || 'email';
+      return `${userName} logged in via ${method === 'email' ? 'Email' : method === 'google' ? 'Google' : 'Firebase'}`;
+    }
+    
+    if (action === 'user.register') {
+      const method = details.method || 'email';
+      return `Registered new account via ${method === 'email' ? 'Email' : method === 'google' ? 'Google' : 'Firebase'}`;
+    }
+    
+    if (action === 'admin.user_delete' || action === 'user.account_delete') {
+      const deletedEmail = details.deletedUserEmail || details.deletedUserId || 'account';
+      return `Deleted account: ${deletedEmail}`;
+    }
+    
+    if (action === 'user.logout') {
+      const userName = log.userName || log.userEmail || 'User';
+      return `${userName} logged out`;
+    }
+    
+    // Fallback to action label
+    return getActionLabel(action);
+  };
+
+
+  const toggleExpand = (logId: string) => {
+    setExpandedLogs(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(logId)) {
+        newSet.delete(logId);
+      } else {
+        newSet.add(logId);
+      }
+      return newSet;
+    });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const formatTimestamp = (timestamp: Date | string): { date: string; time?: string; isRelative: boolean } => {
     try {
       const date = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
-      if (isNaN(date.getTime())) return 'Invalid date';
+      if (isNaN(date.getTime())) return { date: 'Invalid date', isRelative: false };
       
       const now = new Date();
       const diffMs = now.getTime() - date.getTime();
       const diffMins = Math.floor(diffMs / 60000);
       
+      // If less than 60 minutes, show relative time
       if (diffMins < 60) {
-        return timeAgo(date);
+        return { date: timeAgo(date), isRelative: true };
       }
       
-      return formatDate(date) + ' ' + date.toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
-        minute: '2-digit',
-        hour12: true 
-      });
+      // If less than 24 hours, show time only
+      const diffHours = Math.floor(diffMins / 60);
+      if (diffHours < 24) {
+        return { 
+          date: date.toLocaleTimeString('en-US', { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            hour12: true 
+          }),
+          isRelative: true
+        };
+      }
+      
+      // Otherwise show date and time separately
+      return {
+        date: formatDate(date),
+        time: date.toLocaleTimeString('en-US', { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          hour12: true 
+        }),
+        isRelative: false
+      };
     } catch {
-      return 'Invalid date';
+      return { date: 'Invalid date', isRelative: false };
     }
   };
 
@@ -465,6 +837,27 @@ const ActivityLogScreen = () => {
                 )}
               </View>
 
+              {/* Mock Data Indicator */}
+              {useMockData && (
+                <View style={styles.mockDataIndicator}>
+                  <Ionicons name="information-circle" size={16} color={theme.colors.accent} />
+                  <Text style={[styles.mockDataText, { color: theme.colors.accent, fontSize: theme.fontSize.scaleSize(12) }]}>
+                    Showing mock data for design preview
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setUseMockData(false);
+                      loadLogs(true);
+                    }}
+                    style={styles.mockDataButton}
+                  >
+                    <Text style={[styles.mockDataButtonText, { color: theme.colors.accent, fontSize: theme.fontSize.scaleSize(11) }]}>
+                      Load Real Data
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
               {/* Results Count */}
               {filteredLogs.length > 0 && (
                 <View style={styles.resultsHeader}>
@@ -474,7 +867,7 @@ const ActivityLogScreen = () => {
                 </View>
               )}
 
-              {/* Activity Logs List */}
+              {/* Activity Logs Table */}
               {filteredLogs.length === 0 && !loading && (
                 <View style={styles.emptyContainer}>
                   <Ionicons name="document-text-outline" size={48} color={theme.colors.textMuted} />
@@ -486,47 +879,220 @@ const ActivityLogScreen = () => {
                 </View>
               )}
 
-              {filteredLogs.map((log) => (
-                <BlurView
-                  key={log._id}
-                  intensity={Platform.OS === 'ios' ? 50 : 40}
-                  tint={isDarkMode ? 'dark' : 'light'}
-                  style={[styles.logCard, {
-                    backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.4)' : 'rgba(255, 255, 255, 0.25)',
-                    borderColor: 'rgba(255, 255, 255, 0.15)',
-                  }]}
-                >
-                  <View style={styles.logHeader}>
-                    <View style={[styles.actionBadge, { backgroundColor: getActionColor(log.action) + '20' }]}>
-                      <Text style={[styles.actionBadgeText, { color: getActionColor(log.action), fontSize: theme.fontSize.scaleSize(10) }]}>
-                        {getActionLabel(log.action)}
-                      </Text>
-                    </View>
-                    <Text style={[styles.logTimestamp, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>
-                      {formatTimestamp(log.metadata.timestamp)}
-                    </Text>
-                  </View>
-                  
-                  <View style={styles.logContent}>
-                    <View style={styles.logUserInfo}>
-                      <Ionicons name="person-circle-outline" size={20} color={theme.colors.textMuted} />
-                      <Text style={[styles.logUserText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) }]}>
-                        {log.userName || log.userEmail || 'Unknown User'}
-                      </Text>
-                    </View>
-                    
-                    {log.details && Object.keys(log.details).length > 0 && (
-                      <View style={styles.logDetails}>
-                        {Object.entries(log.details).map(([key, value]) => (
-                          <Text key={key} style={[styles.logDetailText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>
-                            {key}: {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                          </Text>
-                        ))}
+              {filteredLogs.length > 0 && (
+                <View style={styles.tableContainer}>
+                  {/* Table Header */}
+                  <BlurView
+                    intensity={Platform.OS === 'ios' ? 50 : 40}
+                    tint={isDarkMode ? 'dark' : 'light'}
+                    style={[
+                      styles.tableHeader,
+                      {
+                        backgroundColor: isDarkMode
+                          ? 'rgba(42, 42, 42, 0.6)'
+                          : 'rgba(255, 255, 255, 0.4)',
+                        borderColor: 'rgba(255, 255, 255, 0.2)',
+                      },
+                    ]}
+                  >
+                    <View style={styles.tableHeaderRow}>
+                      <View style={styles.iconHeaderCell}>
+                        <Ionicons name="flash-outline" size={14} color={theme.colors.textMuted} style={{ marginBottom: 2 }} />
+                        <Text style={[styles.tableHeaderText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(11) }]}>
+                          Type
+                        </Text>
                       </View>
-                    )}
-                  </View>
-                </BlurView>
-              ))}
+                      <View style={styles.userHeaderCell}>
+                        <Ionicons name="person-outline" size={14} color={theme.colors.textMuted} style={{ marginBottom: 2 }} />
+                        <Text style={[styles.tableHeaderText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(11) }]}>
+                          User
+                        </Text>
+                      </View>
+                      <View style={styles.actionHeaderCell}>
+                        <Ionicons name="document-text-outline" size={14} color={theme.colors.textMuted} style={{ marginBottom: 2 }} />
+                        <Text style={[styles.tableHeaderText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(11) }]}>
+                          Activity
+                        </Text>
+                      </View>
+                      <View style={styles.timeHeaderCell}>
+                        <Ionicons name="time-outline" size={14} color={theme.colors.textMuted} style={{ marginBottom: 2 }} />
+                        <Text style={[styles.tableHeaderText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(11) }]}>
+                          Timestamp
+                        </Text>
+                      </View>
+                    </View>
+                  </BlurView>
+
+                  {/* Table Rows */}
+                  {filteredLogs.map((log, index) => {
+                    const isExpanded = expandedLogs.has(log._id);
+                    const actionColor = getActionColor(log.action);
+                    const actionIcon = getActionIcon(log.action);
+                    
+                    return (
+                      <View key={log._id}>
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          onPress={() => toggleExpand(log._id)}
+                        >
+                          <BlurView
+                            intensity={Platform.OS === 'ios' ? 50 : 40}
+                            tint={isDarkMode ? 'dark' : 'light'}
+                            style={[
+                              styles.tableRowContainer,
+                              {
+                                backgroundColor: isDarkMode
+                                  ? 'rgba(42, 42, 42, 0.4)'
+                                  : 'rgba(255, 255, 255, 0.25)',
+                                borderColor: 'rgba(255, 255, 255, 0.15)',
+                                borderTopWidth: index === 0 ? 1 : 0,
+                                borderLeftWidth: 4,
+                                borderLeftColor: actionColor + '60',
+                              },
+                            ]}
+                          >
+                            <View style={styles.tableRow}>
+                              {/* Icon Cell */}
+                              <View style={styles.iconCell}>
+                                <View style={[styles.actionIconCircle, { backgroundColor: actionColor + '20' }]}>
+                                  <Ionicons name={actionIcon as any} size={18} color={actionColor} />
+                                </View>
+                              </View>
+
+                              {/* User Cell */}
+                              <View style={styles.userCell}>
+                                <View style={styles.userCellContent}>
+                                  <View style={[styles.userAvatar, { backgroundColor: actionColor + '15' }]}>
+                                    <Text style={[styles.userAvatarText, { color: actionColor, fontSize: theme.fontSize.scaleSize(10) }]}>
+                                      {getUserInitials(log)}
+                                    </Text>
+                                  </View>
+                                </View>
+                              </View>
+
+                              {/* Action Cell */}
+                              <View style={styles.actionCell}>
+                                <View style={[styles.actionBadge, { backgroundColor: actionColor + '20' }]}>
+                                  <Text style={[styles.actionBadgeText, { color: actionColor, fontSize: theme.fontSize.scaleSize(11) }]}>
+                                    {getActionLabel(log.action)}
+                                  </Text>
+                                </View>
+                              </View>
+
+                              {/* Time Cell */}
+                              <View style={styles.timeCell}>
+                                {(() => {
+                                  const timestamp = formatTimestamp(log.metadata.timestamp);
+                                  return (
+                                    <View style={styles.timeCellContent}>
+                                      <Text 
+                                        style={[
+                                          styles.timeCellDate, 
+                                          { 
+                                            color: theme.colors.text, 
+                                            textAlign: 'center', 
+                                            fontSize: theme.fontSize.scaleSize(11),
+                                            fontWeight: timestamp.isRelative ? '500' : '600'
+                                          }
+                                        ]}
+                                      >
+                                        {timestamp.date}
+                                      </Text>
+                                      {timestamp.time && (
+                                        <Text 
+                                          style={[
+                                            styles.timeCellTime, 
+                                            { 
+                                              color: theme.colors.textMuted, 
+                                              textAlign: 'center', 
+                                              fontSize: theme.fontSize.scaleSize(9),
+                                              opacity: 0.7
+                                            }
+                                          ]}
+                                        >
+                                          {timestamp.time}
+                                        </Text>
+                                      )}
+                                      <Ionicons 
+                                        name={isExpanded ? 'chevron-up' : 'chevron-down'} 
+                                        size={14} 
+                                        color={theme.colors.textMuted}
+                                        style={{ marginTop: 4, opacity: 0.6 }}
+                                      />
+                                    </View>
+                                  );
+                                })()}
+                              </View>
+                            </View>
+                          </BlurView>
+                        </TouchableOpacity>
+
+                        {/* Expandable Details Row */}
+                        {isExpanded && (
+                          <BlurView
+                            intensity={Platform.OS === 'ios' ? 50 : 40}
+                            tint={isDarkMode ? 'dark' : 'light'}
+                            style={[
+                              styles.tableRowContainer,
+                              {
+                                backgroundColor: isDarkMode
+                                  ? 'rgba(42, 42, 42, 0.3)'
+                                  : 'rgba(255, 255, 255, 0.15)',
+                                borderColor: 'rgba(255, 255, 255, 0.1)',
+                                borderTopWidth: 0,
+                                borderLeftWidth: 4,
+                                borderLeftColor: actionColor + '40',
+                              },
+                            ]}
+                          >
+                            <View style={styles.expandedDetailsRow}>
+                              <View style={styles.expandedDetailsContent}>
+                                {/* Action Description with Arrow */}
+                                <View style={styles.expandedDescription}>
+                                  <View style={styles.expandedDescriptionHeader}>
+                                    <Ionicons name="arrow-forward" size={14} color={actionColor} />
+                                    <Text style={[styles.expandedDescriptionLabel, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11), fontWeight: '600' }]}>
+                                      Description:
+                                    </Text>
+                                  </View>
+                                  <Text style={[styles.expandedDescriptionText, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13), fontWeight: '500' }]}>
+                                    {getActionDescription(log)}
+                                  </Text>
+                                </View>
+
+                                {/* Full Details with Arrow */}
+                                {log.details && Object.keys(log.details).length > 0 && (
+                                  <View style={styles.logFullDetails}>
+                                    <View style={styles.expandedDetailsHeader}>
+                                      <Ionicons name="arrow-forward" size={14} color={actionColor} />
+                                      <Text style={[styles.logFullDetailsTitle, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11), fontWeight: '600' }]}>
+                                        Full Details:
+                                      </Text>
+                                    </View>
+                                    {Object.entries(log.details).map(([key, value]) => (
+                                      <View key={key} style={styles.logDetailItem}>
+                                        <View style={styles.logDetailItemLeft}>
+                                          <Ionicons name="chevron-forward" size={12} color={theme.colors.textMuted} style={{ opacity: 0.5 }} />
+                                          <Text style={[styles.logDetailKey, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }]}>
+                                            {key}:
+                                          </Text>
+                                        </View>
+                                        <Text style={[styles.logDetailValue, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(11) }]}>
+                                          {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
+                                        </Text>
+                                      </View>
+                                    ))}
+                                  </View>
+                                )}
+                              </View>
+                            </View>
+                          </BlurView>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
             </>
           )}
         </ScrollView>
@@ -716,47 +1282,239 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     opacity: 0.8,
   },
-  logCard: {
+  tableContainer: {
+    width: '100%',
     borderRadius: 12,
-    borderWidth: 1,
-    padding: 16,
+    overflow: 'hidden',
     marginBottom: 12,
   },
-  logHeader: {
+  tableHeader: {
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 6,
+    width: '100%',
+  },
+  tableHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    minHeight: 44,
+    width: '100%',
+  },
+  tableHeaderText: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    paddingHorizontal: 1,
+    textAlign: 'center',
+  },
+  tableRowContainer: {
+    borderWidth: 1,
+    borderTopWidth: 0,
+    paddingVertical: 0,
+    paddingHorizontal: 6,
+    width: '100%',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 56,
+    width: '100%',
+  },
+  // Table Cells
+  iconHeaderCell: {
+    width: 50,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 4,
+  },
+  iconCell: {
+    width: 50,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 56,
+  },
+  userHeaderCell: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 0,
+    gap: 4,
+  },
+  userCell: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 56,
+    minWidth: 0,
+  },
+  userCellContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  userCellText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  actionHeaderCell: {
+    flex: 2,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 0,
+    gap: 4,
+  },
+  actionCell: {
+    flex: 2,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 56,
+    minWidth: 0,
+    gap: 6,
+  },
+  timeHeaderCell: {
+    width: 80,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 4,
+  },
+  timeCell: {
+    width: 80,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 56,
+  },
+  timeCellContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  timeCellDate: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  timeCellTime: {
+    fontSize: 9,
+    fontWeight: '400',
+  },
+  tableCellText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  tableCellSubtext: {
+    fontSize: 10,
+    fontWeight: '400',
+    marginTop: 2,
+  },
+  actionIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userAvatarText: {
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  actionBadgeContainer: {
+    marginTop: 4,
   },
   actionBadge: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 8,
+    borderRadius: 6,
+    alignSelf: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   actionBadgeText: {
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
+    textAlign: 'center',
   },
-  logTimestamp: {
-    fontWeight: '500',
+  expandedDetailsRow: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
   },
-  logContent: {
+  expandedDetailsContent: {
+    width: '100%',
+    gap: 16,
+  },
+  expandedDescription: {
     gap: 8,
   },
-  logUserInfo: {
+  expandedDescriptionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+  },
+  expandedDescriptionLabel: {
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  expandedDescriptionText: {
+    lineHeight: 18,
+    marginLeft: 20,
+  },
+  expandedDetailsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  logFullDetails: {
     gap: 8,
   },
-  logUserText: {
+  logFullDetailsTitle: {
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  logDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 6,
+    marginLeft: 20,
+  },
+  logDetailItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    minWidth: 120,
+  },
+  logDetailKey: {
     fontWeight: '600',
   },
-  logDetails: {
-    marginTop: 4,
-    gap: 4,
-  },
-  logDetailText: {
+  logDetailValue: {
+    flex: 1,
     fontWeight: '400',
   },
   emptyContainer: {
@@ -778,7 +1536,34 @@ const styles = StyleSheet.create({
     minHeight: 400,
     paddingVertical: 60,
   },
+  mockDataIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.3)',
+    gap: 8,
+  },
+  mockDataText: {
+    flex: 1,
+    fontWeight: '500',
+  },
+  mockDataButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+  },
+  mockDataButtonText: {
+    fontWeight: '600',
+  },
 });
 
 export default ActivityLogScreen;
+
 

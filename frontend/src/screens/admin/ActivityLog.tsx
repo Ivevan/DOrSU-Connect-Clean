@@ -40,6 +40,9 @@ const ACTION_TYPES = [
   { key: 'user.account_delete', label: 'Account Deletion' },
   { key: 'admin.role_change', label: 'Role Change' },
   { key: 'admin.user_delete', label: 'User Deletion' },
+  { key: 'admin.post_create', label: 'Post Created' },
+  { key: 'admin.post_update', label: 'Post Updated' },
+  { key: 'admin.post_delete', label: 'Post Deleted' },
 ];
 
 // Mock data for design preview
@@ -256,6 +259,98 @@ const generateMockLogs = (): ActivityLog[] => {
         timestamp: new Date(now.getTime() - 5 * 24 * 3600 * 1000) // 5 days ago - will show date + time
       },
       createdAt: new Date(now.getTime() - 5 * 24 * 3600 * 1000)
+    },
+    {
+      _id: 'mock13',
+      userId: 'user1',
+      userEmail: 'admin@dorsu.edu.ph',
+      userName: 'Admin User',
+      action: 'admin.post_create',
+      details: {
+        postId: 'post123',
+        postTitle: 'Semester Opening Ceremony 2024',
+        category: 'Event'
+      },
+      metadata: {
+        ipAddress: '192.168.1.100',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        timestamp: new Date(now.getTime() - 10 * 60000) // 10 minutes ago
+      },
+      createdAt: new Date(now.getTime() - 10 * 60000)
+    },
+    {
+      _id: 'mock14',
+      userId: 'user1',
+      userEmail: 'admin@dorsu.edu.ph',
+      userName: 'Admin User',
+      action: 'admin.post_create',
+      details: {
+        postId: 'post124',
+        postTitle: 'Important Announcement: New Library Hours',
+        category: 'News'
+      },
+      metadata: {
+        ipAddress: '192.168.1.100',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        timestamp: new Date(now.getTime() - 45 * 60000) // 45 minutes ago
+      },
+      createdAt: new Date(now.getTime() - 45 * 60000)
+    },
+    {
+      _id: 'mock15',
+      userId: 'user1',
+      userEmail: 'admin@dorsu.edu.ph',
+      userName: 'Admin User',
+      action: 'admin.post_update',
+      details: {
+        postId: 'post123',
+        postTitle: 'Semester Opening Ceremony 2024',
+        category: 'Event',
+        updatedFields: ['title', 'description', 'date']
+      },
+      metadata: {
+        ipAddress: '192.168.1.100',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        timestamp: new Date(now.getTime() - 90 * 60000) // 1.5 hours ago
+      },
+      createdAt: new Date(now.getTime() - 90 * 60000)
+    },
+    {
+      _id: 'mock16',
+      userId: 'user1',
+      userEmail: 'admin@dorsu.edu.ph',
+      userName: 'Admin User',
+      action: 'admin.post_delete',
+      details: {
+        postId: 'post120',
+        postTitle: 'Old Event Notice',
+        category: 'General'
+      },
+      metadata: {
+        ipAddress: '192.168.1.100',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        timestamp: new Date(now.getTime() - 4 * 3600 * 1000) // 4 hours ago
+      },
+      createdAt: new Date(now.getTime() - 4 * 3600 * 1000)
+    },
+    {
+      _id: 'mock17',
+      userId: 'user1',
+      userEmail: 'admin@dorsu.edu.ph',
+      userName: 'Admin User',
+      action: 'admin.post_update',
+      details: {
+        postId: 'post125',
+        postTitle: 'Student Orientation Program',
+        category: 'Academic',
+        updatedFields: ['description']
+      },
+      metadata: {
+        ipAddress: '192.168.1.100',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        timestamp: new Date(now.getTime() - 1 * 24 * 3600 * 1000) // 1 day ago - will show date + time
+      },
+      createdAt: new Date(now.getTime() - 1 * 24 * 3600 * 1000)
     }
   ];
   return mockLogs;
@@ -449,6 +544,9 @@ const ActivityLogScreen = () => {
     if (action === 'user.account_delete') return 'trash';
     if (action === 'admin.role_change') return 'swap-horizontal';
     if (action === 'admin.user_delete') return 'person-remove';
+    if (action === 'admin.post_create') return 'add-circle';
+    if (action === 'admin.post_update') return 'create';
+    if (action === 'admin.post_delete') return 'trash';
     return 'document-text';
   };
 
@@ -501,6 +599,26 @@ const ActivityLogScreen = () => {
     if (action === 'user.logout') {
       const userName = log.userName || log.userEmail || 'User';
       return `${userName} logged out`;
+    }
+    
+    if (action === 'admin.post_create') {
+      const userName = log.userName || log.userEmail || 'Admin';
+      const postTitle = details.postTitle || 'Untitled Post';
+      const category = details.category || 'post';
+      return `${userName} created ${category}: "${postTitle}"`;
+    }
+    
+    if (action === 'admin.post_update') {
+      const userName = log.userName || log.userEmail || 'Admin';
+      const postTitle = details.postTitle || 'Untitled Post';
+      const updatedFields = details.updatedFields || [];
+      return `${userName} updated post: "${postTitle}" (${updatedFields.length} field${updatedFields.length !== 1 ? 's' : ''} changed)`;
+    }
+    
+    if (action === 'admin.post_delete') {
+      const userName = log.userName || log.userEmail || 'Admin';
+      const postTitle = details.postTitle || 'Untitled Post';
+      return `${userName} deleted post: "${postTitle}"`;
     }
     
     // Fallback to action label

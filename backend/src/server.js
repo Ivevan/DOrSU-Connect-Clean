@@ -94,10 +94,6 @@ async function initializeServices() {
     chatHistoryService = getChatHistoryService(mongoService, authService);
     Logger.success('Chat history service initialized');
     
-    // Initialize schedule service (unified calendar and posts)
-    scheduleService = getScheduleService(mongoService, authService);
-    Logger.success('Schedule service initialized');
-    
     // Initialize activity log service
     activityLogService = new ActivityLogService(mongoService);
     Logger.success('Activity log service initialized');
@@ -1432,7 +1428,7 @@ const server = http.createServer(async (req, res) => {
       url.startsWith('/api/admin/schedule/')) {
     // Initialize schedule service if not already initialized (for early requests)
     if (!scheduleService && mongoService && authService) {
-      scheduleService = getScheduleService(mongoService, authService);
+      scheduleService = getScheduleService(mongoService, authService, activityLogService);
       if (scheduleService) {
         Logger.info('📅 Schedule service initialized on-demand');
       }

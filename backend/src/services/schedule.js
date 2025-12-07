@@ -24,9 +24,10 @@ function formatDateInTimezone(date, options = {}) {
 }
 
 export class ScheduleService {
-  constructor(mongoService, authService) {
+  constructor(mongoService, authService, activityLogService = null) {
     this.mongoService = mongoService;
     this.authService = authService;
+    this.activityLogService = activityLogService;
     this.port = Number.parseInt(process.env.PORT || '3000', 10);
   }
 
@@ -798,6 +799,28 @@ export class ScheduleService {
 
       Logger.success(`✅ Event/Announcement created: ${title} (ID: ${result.insertedId})`);
 
+      // Log activity
+      if (this.activityLogService) {
+        try {
+          await this.activityLogService.logActivity(
+            auth.userId,
+            'admin.post_create',
+            {
+              postId: result.insertedId.toString(),
+              postTitle: title,
+              category: category,
+            },
+            {
+              timestamp: new Date(),
+              ipAddress: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+              userAgent: req.headers['user-agent'],
+            }
+          );
+        } catch (logError) {
+          Logger.warn('Failed to log post creation activity:', logError);
+        }
+      }
+
       this.sendJson(res, 200, {
         success: true,
         message: 'Event/Announcement created successfully',
@@ -1079,6 +1102,28 @@ export class ScheduleService {
 
       Logger.success(`✅ Post deleted: ${postId}`);
 
+      // Log activity
+      if (this.activityLogService) {
+        try {
+          await this.activityLogService.logActivity(
+            auth.userId,
+            'admin.post_delete',
+            {
+              postId: postId,
+              postTitle: postToDelete?.title || 'Unknown',
+              category: postToDelete?.category || 'General',
+            },
+            {
+              timestamp: new Date(),
+              ipAddress: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+              userAgent: req.headers['user-agent'],
+            }
+          );
+        } catch (logError) {
+          Logger.warn('Failed to log post deletion activity:', logError);
+        }
+      }
+
       this.sendJson(res, 200, {
         success: true,
         message: 'Post deleted successfully',
@@ -1274,6 +1319,29 @@ export class ScheduleService {
       const updatedPost = await scheduleCollection.findOne({ _id: postObjectId });
 
       Logger.success(`✅ Post updated: ${postId}`);
+
+      // Log activity
+      if (this.activityLogService) {
+        try {
+          await this.activityLogService.logActivity(
+            auth.userId,
+            'admin.post_update',
+            {
+              postId: postId,
+              postTitle: updatedPost?.title || existingPost?.title || 'Unknown',
+              category: updatedPost?.category || existingPost?.category || 'General',
+              updatedFields: Object.keys(updateData),
+            },
+            {
+              timestamp: new Date(),
+              ipAddress: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+              userAgent: req.headers['user-agent'],
+            }
+          );
+        } catch (logError) {
+          Logger.warn('Failed to log post update activity:', logError);
+        }
+      }
 
       this.sendJson(res, 200, {
         success: true,
@@ -2212,9 +2280,9 @@ export class ScheduleService {
  */
 let scheduleServiceInstance = null;
 
-export function getScheduleService(mongoService, authService) {
+export function getScheduleService(mongoService, authService, activityLogService = null) {
   if (!scheduleServiceInstance && mongoService && authService) {
-    scheduleServiceInstance = new ScheduleService(mongoService, authService);
+    scheduleServiceInstance = new ScheduleService(mongoService, authService, activityLogService);
     Logger.info('✅ ScheduleService instance created');
   } else if (!mongoService || !authService) {
     Logger.warn('⚠️ ScheduleService: mongoService or authService not provided');

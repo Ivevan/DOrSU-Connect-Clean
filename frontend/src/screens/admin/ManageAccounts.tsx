@@ -47,6 +47,7 @@ const ManageAccounts = () => {
   const [openRoleDropdownUserId, setOpenRoleDropdownUserId] = useState<string | null>(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
 
   // Animated floating orb
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -70,23 +71,6 @@ const ManageAccounts = () => {
     };
     animate();
   }, []);
-
-  // Check admin authorization (admin only)
-  useEffect(() => {
-    if (authLoading) return;
-    const hasAccess = isAdmin; // moderators not allowed here
-    if (!hasAccess) {
-      setIsAuthorized(false);
-      Alert.alert(
-        'Access Denied',
-        'You do not have permission to access this page. Admin access required.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
-      return;
-    }
-    setIsAuthorized(true);
-    loadUsers(false);
-  }, [authLoading, isAdmin, navigation, loadUsers]);
 
   const loadUsers = useCallback(async (isRefresh = false) => {
     try {
@@ -113,6 +97,23 @@ const ManageAccounts = () => {
     }
   }, [isInitialLoad]);
 
+  // Check admin authorization (admin only)
+  useEffect(() => {
+    if (authLoading) return;
+    const hasAccess = isAdmin; // moderators not allowed here
+    if (!hasAccess) {
+      setIsAuthorized(false);
+      Alert.alert(
+        'Access Denied',
+        'You do not have permission to access this page. Admin access required.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+      return;
+    }
+    setIsAuthorized(true);
+    loadUsers(false);
+  }, [authLoading, isAdmin, navigation, loadUsers]);
+
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadUsers(true);
@@ -122,27 +123,101 @@ const ManageAccounts = () => {
     try {
       setUpdatingUserId(userId);
       setOpenRoleDropdownUserId(null); // Close dropdown
-      await ManageAccountsService.updateUserRole(userId, newRole);
-      await loadUsers(true); // Refresh after role change
       
-      // If the updated user is the current user, refresh their role from backend
-      const currentUserId = await AsyncStorage.getItem('userId');
-      if (currentUserId === userId) {
-        console.log('Current user role changed, refreshing from backend...');
-        await refreshUser();
-        // Show a message that they may need to restart the app or refresh
-        Alert.alert(
-          'Role Updated',
-          'Your role has been updated. Please restart the app or navigate away and back to see the changes take effect.',
-          [{ text: 'OK' }]
-        );
+      // Get user info
+      const user = users.find(u => u._id === userId);
+      const capabilities = getRoleCapabilities(newRole);
+      const capabilitiesText = capabilities.join(', ');
+      
+      // For moderator role, skip confirmation and update immediately
+      if (newRole === 'moderator') {
+        try {
+          await ManageAccountsService.updateUserRole(userId, newRole);
+          await loadUsers(true); // Refresh after role change
+          
+          // If the updated user is the current user, refresh their role from backend
+          const currentUserId = await AsyncStorage.getItem('userId');
+          if (currentUserId === userId) {
+            console.log('Current user role changed to moderator, refreshing from backend...');
+            await refreshUser();
+            // Show notification for current user
+            Alert.alert(
+              'Moderator Access Granted',
+              'You have been assigned as a moderator! You now have access to Post Management, Manage Posts, and Admin Dashboard.',
+              [{ text: 'OK' }]
+            );
+          } else {
+            // Show notification for other users
+            Alert.alert(
+              'Moderator Assigned',
+              `${user?.email || 'User'} has been assigned as a moderator!`,
+              [{ text: 'OK' }]
+            );
+          }
+          
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (error: any) {
+          Alert.alert('Error', error.message || 'Failed to update role');
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        } finally {
+          setUpdatingUserId(null);
+        }
+        return;
       }
       
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // For admin and user roles, show confirmation with capabilities
+      Alert.alert(
+        'Confirm Role Change',
+        `Assign "${getRoleLabel(newRole)}" role to ${user?.email || 'this user'}?\n\nThis will grant the following capabilities:\n${capabilities.map(cap => `• ${cap}`).join('\n')}\n\nContinue?`,
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => {
+              setUpdatingUserId(null);
+            }
+          },
+          {
+            text: 'Confirm',
+            onPress: async () => {
+              try {
+                await ManageAccountsService.updateUserRole(userId, newRole);
+                await loadUsers(true); // Refresh after role change
+                
+                // If the updated user is the current user, refresh their role from backend
+                const currentUserId = await AsyncStorage.getItem('userId');
+                if (currentUserId === userId) {
+                  console.log('Current user role changed, refreshing from backend...');
+                  await refreshUser();
+                  // Show a message that they may need to restart the app or refresh
+                  Alert.alert(
+                    'Role Updated',
+                    `Your role has been updated to "${getRoleLabel(newRole)}". You now have access to: ${capabilitiesText}\n\nPlease restart the app or navigate away and back to see the changes take effect.`,
+                    [{ text: 'OK' }]
+                  );
+                } else {
+                  // Show success message with capabilities
+                  Alert.alert(
+                    'Role Updated Successfully',
+                    `${user?.email || 'User'} has been assigned the "${getRoleLabel(newRole)}" role.\n\nGranted capabilities:\n${capabilities.map(cap => `• ${cap}`).join('\n')}`,
+                    [{ text: 'OK' }]
+                  );
+                }
+                
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              } catch (error: any) {
+                Alert.alert('Error', error.message || 'Failed to update role');
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              } finally {
+                setUpdatingUserId(null);
+              }
+            }
+          }
+        ]
+      );
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to update role');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    } finally {
       setUpdatingUserId(null);
     }
   };
@@ -158,10 +233,23 @@ const ManageAccounts = () => {
     }
   };
 
-  const roleOptions: Array<{ key: 'user' | 'moderator' | 'admin'; label: string }> = [
-    { key: 'user', label: 'User' },
-    { key: 'moderator', label: 'Moderator' },
-    { key: 'admin', label: 'Admin' },
+  // Role capabilities definition
+  const getRoleCapabilities = (role: 'user' | 'moderator' | 'admin'): string[] => {
+    switch (role) {
+      case 'admin':
+        return ['All Access'];
+      case 'moderator':
+        return ['Post Management', 'Manage Posts', 'Admin Dashboard'];
+      case 'user':
+      default:
+        return ['Basic Access'];
+    }
+  };
+
+  const roleOptions: Array<{ key: 'user' | 'moderator' | 'admin'; label: string; capabilities: string[] }> = [
+    { key: 'user', label: 'User', capabilities: getRoleCapabilities('user') },
+    { key: 'moderator', label: 'Moderator', capabilities: getRoleCapabilities('moderator') },
+    { key: 'admin', label: 'Admin', capabilities: getRoleCapabilities('admin') },
   ];
 
   const getUserInitials = (user: BackendUser) => {
@@ -225,9 +313,6 @@ const ManageAccounts = () => {
   // State to track button positions for dropdown placement
   const buttonRefs = useRef<Record<string, View | null>>({});
   const [buttonLayouts, setButtonLayouts] = useState<Record<string, { x: number; y: number; width: number; height: number }>>({});
-  
-  // State to track failed image loads (fallback to initials)
-  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
 
   // Render table row component to avoid duplication
   const renderUserRow = (user: BackendUser, role: string, index: number) => (
@@ -392,19 +477,29 @@ const ManageAccounts = () => {
                           }}
                           activeOpacity={0.7}
                         >
-                          <View style={styles.roleDropdownItemLeft}>
-                            <View style={[styles.roleDropdownColorDot, { backgroundColor: getSectionColor(option.key) }]} />
-                            <Text style={[
-                              styles.roleDropdownItemText,
-                              { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(12) },
-                              isSelected && { color: getSectionColor(option.key), fontWeight: '700' }
-                            ]}>
-                              {option.label}
-                            </Text>
+                          <View style={styles.roleDropdownItemContent}>
+                            <View style={styles.roleDropdownItemLeft}>
+                              <View style={[styles.roleDropdownColorDot, { backgroundColor: getSectionColor(option.key) }]} />
+                              <View style={styles.roleDropdownItemTextContainer}>
+                                <Text style={[
+                                  styles.roleDropdownItemText,
+                                  { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(12) },
+                                  isSelected && { color: getSectionColor(option.key), fontWeight: '700' }
+                                ]}>
+                                  {option.label}
+                                </Text>
+                                <Text style={[
+                                  styles.roleDropdownItemCapabilities,
+                                  { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(10) }
+                                ]}>
+                                  {option.capabilities.join(' • ')}
+                                </Text>
+                              </View>
+                            </View>
+                            {isSelected && (
+                              <Ionicons name="checkmark" size={18} color={getSectionColor(option.key)} />
+                            )}
                           </View>
-                          {isSelected && (
-                            <Ionicons name="checkmark" size={18} color={getSectionColor(option.key)} />
-                          )}
                         </TouchableOpacity>
                       );
                     })}
@@ -959,16 +1054,19 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 12,
     elevation: 8,
-    minWidth: 150,
+    minWidth: 220,
+    maxWidth: 280,
   },
   roleDropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  roleDropdownItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   roleDropdownItemLeft: {
     flexDirection: 'row',
@@ -982,9 +1080,17 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     flexShrink: 0,
   },
-  roleDropdownItemText: {
+  roleDropdownItemTextContainer: {
     flex: 1,
+    gap: 2,
+  },
+  roleDropdownItemText: {
     fontWeight: '500',
+  },
+  roleDropdownItemCapabilities: {
+    fontWeight: '400',
+    opacity: 0.7,
+    marginTop: 2,
   },
   tableFooter: {
     paddingVertical: 10,

@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet from '../../components/common/BottomSheet';
 import { theme as themeConfig } from '../../config/theme';
@@ -46,6 +46,9 @@ const AdminSettings = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { isDarkMode, theme } = useThemeValues();
+  const { isLoading: authLoading, userRole, isAdmin } = useAuth();
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+  const isPendingAuthorization = isAuthorized === null;
   const scrollRef = useRef<ScrollView>(null);
   
   // Animated floating background orb
@@ -177,6 +180,38 @@ const AdminSettings = () => {
     }, [])
   );
 
+  // Authorization check (admins only - moderators should use UserSettings)
+  useEffect(() => {
+    if (authLoading) return;
+    
+    // Only admins can access AdminSettings
+    if (!isAdmin) {
+      setIsAuthorized(false);
+      
+      // If user is moderator, redirect to UserSettings
+      if (userRole === 'moderator') {
+        Alert.alert(
+          'Access Redirected',
+          'Moderators can only access the regular settings. You have been redirected to user settings.',
+          [{ 
+            text: 'OK', 
+            onPress: () => navigation.replace('UserSettings' as any) 
+          }]
+        );
+      } else {
+        // Regular users or unauthorized
+        Alert.alert(
+          'Access Denied',
+          'You do not have permission to access this page.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      }
+      return;
+    }
+    
+    setIsAuthorized(true);
+  }, [authLoading, isAdmin, userRole, navigation]);
+
   // Handle profile picture upload
   const handleProfilePictureUpload = useCallback(async () => {
     try {
@@ -271,6 +306,19 @@ const AdminSettings = () => {
     }
   }, [closeKnowledgeBaseModal]);
 
+  // Show loading state while checking authorization
+  if (isPendingAuthorization || authLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={theme.colors.accent} />
+      </View>
+    );
+  }
+
+  // Don't render if not authorized (will be redirected)
+  if (!isAuthorized) {
+    return null;
+  }
 
   return (
     <View style={[styles.container, {

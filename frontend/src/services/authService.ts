@@ -54,9 +54,19 @@ export const signInWithGoogleAndroid = async (): Promise<User> => {
     // Check if your device supports Google Play (only once)
     await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
+    // Force account selection by signing out first
+    // This ensures the account picker always shows, allowing users to choose which account to use
+    try {
+      await GoogleSignin.signOut();
+    } catch (signOutError) {
+      // Ignore sign-out errors (user might not be signed in)
+      console.log('No previous Google sign-in to clear');
+    }
+
     // Get the user's ID token from Google Sign-In
     // This uses native sign-in - should not open web view
     // If native sign-in fails, it will throw an error instead of falling back to web view
+    // After signing out, this will always show the account picker
     const signInResult = await GoogleSignin.signIn();
     
     if (!signInResult || !signInResult.idToken) {

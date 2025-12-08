@@ -1,4 +1,5 @@
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
@@ -6,9 +7,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, AppStateStatus } from 'react-native';
-import { ActivityIndicator, Animated, BackHandler, Image, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Animated, AppState, AppStateStatus, BackHandler, Image, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
@@ -1131,11 +1130,6 @@ const AIChat = () => {
           <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(17) }]}>
             {messages.length > 0 ? 'Conversation' : 'New Conversation'}
           </Text>
-          <View style={[styles.userTypeLabel, { backgroundColor: selectedUserType === 'student' ? t.colors.accent : (colorTheme === 'dorsu' ? '#FBBF24' : '#6B7280') }]}>
-            <Text style={[styles.userTypeLabelText, { fontSize: t.fontSize.scaleSize(9) }]}>
-              {selectedUserType === 'faculty' ? 'Faculty' : 'Student'}
-            </Text>
-          </View>
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity 
@@ -1712,19 +1706,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     letterSpacing: -0.3,
-  },
-  userTypeLabel: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    marginTop: 1,
-  },
-  userTypeLabelText: {
-    color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
   },
   headerRight: {
     width: 44,

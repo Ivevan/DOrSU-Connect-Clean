@@ -5,11 +5,12 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Image, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Image, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // import AddPostDrawer from '../../components/dashboard/AddPostDrawer'; // Replaced with PostUpdate screen navigation
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import AdminSidebar from '../../components/navigation/AdminSidebar';
+import { useAuth } from '../../contexts/AuthContext';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import { useUpdates } from '../../contexts/UpdatesContext';
 import NotificationModal from '../../modals/NotificationModal';
@@ -20,7 +21,6 @@ import NotificationService from '../../services/NotificationService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
 import { formatDate } from '../../utils/dateUtils';
-import { useAuth } from '../../contexts/AuthContext';
 
 // Session-scoped flags to avoid re-loading on every mount (especially on web)
 // Initial data will load once per app session; further loads are manual (pull-to-refresh)
@@ -131,7 +131,7 @@ const timeFilterOptions = [
 const AdminDashboard = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
-  const { isLoading: authLoading, userRole, isAdmin } = useAuth();
+  const { isLoading: authLoading, userRole, isAdmin, refreshUser } = useAuth();
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const isPendingAuthorization = isAuthorized === null;
   const resolvedLegendItems = useMemo<LegendItem[]>(() => legendItemsData, []);
@@ -192,6 +192,17 @@ const AdminDashboard = () => {
     return currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Admin';
   }, [currentUser, backendUserFirstName, backendUserLastName]);
   
+  // Refresh user role on focus to ensure latest role is loaded
+  useFocusEffect(
+    useCallback(() => {
+      if (!authLoading) {
+        refreshUser().catch(() => {
+          // Silent fail - role will be checked in authorization useEffect
+        });
+      }
+    }, [authLoading, refreshUser])
+  );
+
   // Authorization check (admins and moderators) via AuthContext
   useEffect(() => {
     if (authLoading) return;
@@ -1580,7 +1591,14 @@ const AdminDashboard = () => {
           activeTab="dashboard"
           onChatPress={() => navigation.navigate('AdminAIChat')}
           onDashboardPress={() => navigation.navigate('AdminDashboard')}
-          onCalendarPress={() => navigation.navigate('AdminCalendar')}
+          onCalendarPress={() => {
+            // Moderators use regular Calendar, admins use AdminCalendar
+            if (userRole === 'moderator') {
+              navigation.navigate('Calendar' as any);
+            } else {
+              navigation.navigate('AdminCalendar');
+            }
+          }}
         />
       </View>
 

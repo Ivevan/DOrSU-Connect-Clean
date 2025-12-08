@@ -46,317 +46,6 @@ const ACTION_TYPES = [
   { key: 'admin.post_delete', label: 'Post Deleted' },
 ];
 
-// Mock data for design preview
-const generateMockLogs = (): ActivityLog[] => {
-  const now = new Date();
-  const mockLogs: ActivityLog[] = [
-    {
-      _id: 'mock1',
-      userId: 'user1',
-      userEmail: 'admin@dorsu.edu.ph',
-      userName: 'Admin User',
-      action: 'admin.role_change',
-      details: {
-        targetUserId: 'user123',
-        targetUserEmail: 'student@dorsu.edu.ph',
-        oldRole: 'user',
-        newRole: 'moderator'
-      },
-      metadata: {
-        ipAddress: '192.168.1.100',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        timestamp: new Date(now.getTime() - 5 * 60000) // 5 minutes ago
-      },
-      createdAt: new Date(now.getTime() - 5 * 60000)
-    },
-    {
-      _id: 'mock2',
-      userId: 'user2',
-      userEmail: 'john.doe@dorsu.edu.ph',
-      userName: 'John Doe',
-      action: 'user.login',
-      details: {
-        email: 'john.doe@dorsu.edu.ph',
-        method: 'email'
-      },
-      metadata: {
-        ipAddress: '192.168.1.101',
-        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0)',
-        timestamp: new Date(now.getTime() - 15 * 60000) // 15 minutes ago
-      },
-      createdAt: new Date(now.getTime() - 15 * 60000)
-    },
-    {
-      _id: 'mock3',
-      userId: 'user3',
-      userEmail: 'jane.smith@dorsu.edu.ph',
-      userName: 'Jane Smith',
-      action: 'user.register',
-      details: {
-        email: 'jane.smith@dorsu.edu.ph',
-        username: 'Jane Smith',
-        method: 'google'
-      },
-      metadata: {
-        ipAddress: '192.168.1.102',
-        userAgent: 'Mozilla/5.0 (Android 11; Mobile)',
-        timestamp: new Date(now.getTime() - 30 * 60000) // 30 minutes ago
-      },
-      createdAt: new Date(now.getTime() - 30 * 60000)
-    },
-    {
-      _id: 'mock4',
-      userId: 'user1',
-      userEmail: 'admin@dorsu.edu.ph',
-      userName: 'Admin User',
-      action: 'admin.role_change',
-      details: {
-        targetUserId: 'user456',
-        targetUserEmail: 'faculty@dorsu.edu.ph',
-        oldRole: 'moderator',
-        newRole: 'admin'
-      },
-      metadata: {
-        ipAddress: '192.168.1.100',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        timestamp: new Date(now.getTime() - 60 * 60000) // 1 hour ago
-      },
-      createdAt: new Date(now.getTime() - 60 * 60000)
-    },
-    {
-      _id: 'mock5',
-      userId: 'user4',
-      userEmail: 'student1@dorsu.edu.ph',
-      userName: 'Student One',
-      action: 'user.login',
-      details: {
-        email: 'student1@dorsu.edu.ph',
-        method: 'email'
-      },
-      metadata: {
-        ipAddress: '192.168.1.103',
-        userAgent: 'Mozilla/5.0 (iPad; CPU OS 14_0)',
-        timestamp: new Date(now.getTime() - 2 * 3600 * 1000) // 2 hours ago
-      },
-      createdAt: new Date(now.getTime() - 2 * 3600 * 1000)
-    },
-    {
-      _id: 'mock6',
-      userId: 'user5',
-      userEmail: 'student2@dorsu.edu.ph',
-      userName: 'Student Two',
-      action: 'user.logout',
-      details: {
-        email: 'student2@dorsu.edu.ph'
-      },
-      metadata: {
-        ipAddress: '192.168.1.104',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        timestamp: new Date(now.getTime() - 3 * 3600 * 1000) // 3 hours ago
-      },
-      createdAt: new Date(now.getTime() - 3 * 3600 * 1000)
-    },
-    {
-      _id: 'mock7',
-      userId: 'user1',
-      userEmail: 'admin@dorsu.edu.ph',
-      userName: 'Admin User',
-      action: 'admin.user_delete',
-      details: {
-        deletedUserId: 'user789',
-        deletedUserEmail: 'olduser@dorsu.edu.ph'
-      },
-      metadata: {
-        ipAddress: '192.168.1.100',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        timestamp: new Date(now.getTime() - 5 * 3600 * 1000) // 5 hours ago
-      },
-      createdAt: new Date(now.getTime() - 5 * 3600 * 1000)
-    },
-    {
-      _id: 'mock8',
-      userId: 'user6',
-      userEmail: 'newstudent@dorsu.edu.ph',
-      userName: 'New Student',
-      action: 'user.register',
-      details: {
-        email: 'newstudent@dorsu.edu.ph',
-        username: 'New Student',
-        method: 'firebase'
-      },
-      metadata: {
-        ipAddress: '192.168.1.105',
-        userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0)',
-        timestamp: new Date(now.getTime() - 6 * 3600 * 1000) // 6 hours ago
-      },
-      createdAt: new Date(now.getTime() - 6 * 3600 * 1000)
-    },
-    {
-      _id: 'mock9',
-      userId: 'user7',
-      userEmail: 'moderator@dorsu.edu.ph',
-      userName: 'Moderator User',
-      action: 'user.login',
-      details: {
-        email: 'moderator@dorsu.edu.ph',
-        method: 'google'
-      },
-      metadata: {
-        ipAddress: '192.168.1.106',
-        userAgent: 'Mozilla/5.0 (Android 12; Mobile)',
-        timestamp: new Date(now.getTime() - 8 * 3600 * 1000) // 8 hours ago
-      },
-      createdAt: new Date(now.getTime() - 8 * 3600 * 1000)
-    },
-    {
-      _id: 'mock10',
-      userId: 'user8',
-      userEmail: 'faculty1@dorsu.edu.ph',
-      userName: 'Faculty Member',
-      action: 'user.account_delete',
-      details: {
-        deletedUserId: 'user8',
-        deletedUserEmail: 'faculty1@dorsu.edu.ph'
-      },
-      metadata: {
-        ipAddress: '192.168.1.107',
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-        timestamp: new Date(now.getTime() - 12 * 3600 * 1000) // 12 hours ago
-      },
-      createdAt: new Date(now.getTime() - 12 * 3600 * 1000)
-    },
-    {
-      _id: 'mock11',
-      userId: 'user9',
-      userEmail: 'example@dorsu.edu.ph',
-      userName: 'Example User',
-      action: 'user.login',
-      details: {
-        email: 'example@dorsu.edu.ph',
-        method: 'email'
-      },
-      metadata: {
-        ipAddress: '192.168.1.108',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        timestamp: new Date(now.getTime() - 2 * 24 * 3600 * 1000) // 2 days ago - will show date + time
-      },
-      createdAt: new Date(now.getTime() - 2 * 24 * 3600 * 1000)
-    },
-    {
-      _id: 'mock12',
-      userId: 'user1',
-      userEmail: 'admin@dorsu.edu.ph',
-      userName: 'Admin User',
-      action: 'admin.role_change',
-      details: {
-        targetUserId: 'user999',
-        targetUserEmail: 'student@dorsu.edu.ph',
-        oldRole: 'user',
-        newRole: 'moderator'
-      },
-      metadata: {
-        ipAddress: '192.168.1.100',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        timestamp: new Date(now.getTime() - 5 * 24 * 3600 * 1000) // 5 days ago - will show date + time
-      },
-      createdAt: new Date(now.getTime() - 5 * 24 * 3600 * 1000)
-    },
-    {
-      _id: 'mock13',
-      userId: 'user1',
-      userEmail: 'admin@dorsu.edu.ph',
-      userName: 'Admin User',
-      action: 'admin.post_create',
-      details: {
-        postId: 'post123',
-        postTitle: 'Semester Opening Ceremony 2024',
-        category: 'Event'
-      },
-      metadata: {
-        ipAddress: '192.168.1.100',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        timestamp: new Date(now.getTime() - 10 * 60000) // 10 minutes ago
-      },
-      createdAt: new Date(now.getTime() - 10 * 60000)
-    },
-    {
-      _id: 'mock14',
-      userId: 'user1',
-      userEmail: 'admin@dorsu.edu.ph',
-      userName: 'Admin User',
-      action: 'admin.post_create',
-      details: {
-        postId: 'post124',
-        postTitle: 'Important Announcement: New Library Hours',
-        category: 'News'
-      },
-      metadata: {
-        ipAddress: '192.168.1.100',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        timestamp: new Date(now.getTime() - 45 * 60000) // 45 minutes ago
-      },
-      createdAt: new Date(now.getTime() - 45 * 60000)
-    },
-    {
-      _id: 'mock15',
-      userId: 'user1',
-      userEmail: 'admin@dorsu.edu.ph',
-      userName: 'Admin User',
-      action: 'admin.post_update',
-      details: {
-        postId: 'post123',
-        postTitle: 'Semester Opening Ceremony 2024',
-        category: 'Event',
-        updatedFields: ['title', 'description', 'date']
-      },
-      metadata: {
-        ipAddress: '192.168.1.100',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        timestamp: new Date(now.getTime() - 90 * 60000) // 1.5 hours ago
-      },
-      createdAt: new Date(now.getTime() - 90 * 60000)
-    },
-    {
-      _id: 'mock16',
-      userId: 'user1',
-      userEmail: 'admin@dorsu.edu.ph',
-      userName: 'Admin User',
-      action: 'admin.post_delete',
-      details: {
-        postId: 'post120',
-        postTitle: 'Old Event Notice',
-        category: 'General'
-      },
-      metadata: {
-        ipAddress: '192.168.1.100',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        timestamp: new Date(now.getTime() - 4 * 3600 * 1000) // 4 hours ago
-      },
-      createdAt: new Date(now.getTime() - 4 * 3600 * 1000)
-    },
-    {
-      _id: 'mock17',
-      userId: 'user1',
-      userEmail: 'admin@dorsu.edu.ph',
-      userName: 'Admin User',
-      action: 'admin.post_update',
-      details: {
-        postId: 'post125',
-        postTitle: 'Student Orientation Program',
-        category: 'Academic',
-        updatedFields: ['description']
-      },
-      metadata: {
-        ipAddress: '192.168.1.100',
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        timestamp: new Date(now.getTime() - 1 * 24 * 3600 * 1000) // 1 day ago - will show date + time
-      },
-      createdAt: new Date(now.getTime() - 1 * 24 * 3600 * 1000)
-    }
-  ];
-  return mockLogs;
-};
-
 const ActivityLogScreen = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
@@ -371,7 +60,6 @@ const ActivityLogScreen = () => {
   const [selectedAction, setSelectedAction] = useState<string>('');
   const [openActionFilter, setOpenActionFilter] = useState(false);
   const [total, setTotal] = useState(0);
-  const [useMockData, setUseMockData] = useState(true); // Default to true for design preview
   const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
 
   // Animated floating orb
@@ -399,13 +87,6 @@ const ActivityLogScreen = () => {
 
   // Check admin authorization (admin only) via AuthContext
   useEffect(() => {
-    // For design preview, skip authorization check and use mock data
-    if (useMockData) {
-      setIsAuthorized(true);
-      loadLogs(false);
-      return;
-    }
-
     if (authLoading) return;
     const hasAccess = isAdmin; // only admins (not moderators)
     if (!hasAccess) {
@@ -420,7 +101,7 @@ const ActivityLogScreen = () => {
     setIsAuthorized(true);
     loadLogs(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigation, useMockData, authLoading, isAdmin]);
+  }, [navigation, authLoading, isAdmin]);
 
   const loadLogs = useCallback(async (isRefresh = false) => {
     try {
@@ -429,32 +110,6 @@ const ActivityLogScreen = () => {
       }
       if (isRefresh) {
         setRefreshing(true);
-      }
-
-      // Use mock data if enabled (for design preview)
-      if (useMockData) {
-        const mockLogs = generateMockLogs();
-        // Apply filters to mock data
-        let filteredLogs = mockLogs;
-        
-        if (selectedAction) {
-          filteredLogs = filteredLogs.filter(log => log.action === selectedAction);
-        }
-        
-        if (searchQuery.trim()) {
-          const query = searchQuery.trim().toLowerCase();
-          filteredLogs = filteredLogs.filter(log => 
-            log.userEmail?.toLowerCase().includes(query) ||
-            log.userName?.toLowerCase().includes(query)
-          );
-        }
-        
-        setLogs(filteredLogs);
-        setTotal(filteredLogs.length);
-        setLoading(false);
-        setRefreshing(false);
-        setIsInitialLoad(false);
-        return;
       }
 
       const filters: ActivityLogFilters = {
@@ -474,33 +129,16 @@ const ActivityLogScreen = () => {
       setLogs(result.logs);
       setTotal(result.total);
     } catch (error: any) {
-      // On error, use mock data for design preview
-      console.warn('Failed to load activity logs, using mock data:', error.message);
-      const mockLogs = generateMockLogs();
-      let filteredLogs = mockLogs;
-      
-      if (selectedAction) {
-        filteredLogs = filteredLogs.filter(log => log.action === selectedAction);
-      }
-      
-      if (searchQuery.trim()) {
-        const query = searchQuery.trim().toLowerCase();
-        filteredLogs = filteredLogs.filter(log => 
-          log.userEmail?.toLowerCase().includes(query) ||
-          log.userName?.toLowerCase().includes(query)
-        );
-      }
-      
-      setLogs(filteredLogs);
-      setTotal(filteredLogs.length);
-      // Don't show alert when using mock data
-      // Alert.alert('Error', error.message || 'Failed to load activity logs');
+      console.error('Failed to load activity logs:', error);
+      Alert.alert('Error', error.message || 'Failed to load activity logs');
+      setLogs([]);
+      setTotal(0);
     } finally {
       setLoading(false);
       setRefreshing(false);
       setIsInitialLoad(false);
     }
-  }, [isInitialLoad, selectedAction, searchQuery, useMockData]);
+  }, [isInitialLoad, selectedAction, searchQuery]);
 
   useEffect(() => {
     if (isAuthorized === true && !isInitialLoad) {
@@ -945,27 +583,6 @@ const ActivityLogScreen = () => {
                   </BlurView>
                 )}
               </View>
-
-              {/* Mock Data Indicator */}
-              {useMockData && (
-                <View style={styles.mockDataIndicator}>
-                  <Ionicons name="information-circle" size={16} color={theme.colors.accent} />
-                  <Text style={[styles.mockDataText, { color: theme.colors.accent, fontSize: theme.fontSize.scaleSize(12) }]}>
-                    Showing mock data for design preview
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setUseMockData(false);
-                      loadLogs(true);
-                    }}
-                    style={styles.mockDataButton}
-                  >
-                    <Text style={[styles.mockDataButtonText, { color: theme.colors.accent, fontSize: theme.fontSize.scaleSize(11) }]}>
-                      Load Real Data
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
 
               {/* Results Count */}
               {filteredLogs.length > 0 && (
@@ -1644,32 +1261,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minHeight: 400,
     paddingVertical: 60,
-  },
-  mockDataIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 12,
-    borderRadius: 12,
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.3)',
-    gap: 8,
-  },
-  mockDataText: {
-    flex: 1,
-    fontWeight: '500',
-  },
-  mockDataButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-  },
-  mockDataButtonText: {
-    fontWeight: '600',
   },
 });
 

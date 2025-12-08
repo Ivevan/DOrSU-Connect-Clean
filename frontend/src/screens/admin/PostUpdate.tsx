@@ -49,7 +49,7 @@ const PostUpdate: React.FC = () => {
   const editingPostId: string | undefined = route?.params?.postId;
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
-  const { isLoading: authLoading, userRole, isAdmin } = useAuth();
+  const { isLoading: authLoading, userRole, isAdmin, refreshUser } = useAuth();
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const isPendingAuthorization = isAuthorized === null;
   
@@ -156,7 +156,7 @@ const PostUpdate: React.FC = () => {
       setIsAuthorized(false);
       Alert.alert(
         'Access Denied',
-        'You do not have permission to access this page.',
+        'You do not have permission to access this page. If you were recently assigned as a moderator, please log out and log back in.',
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
       return;
@@ -164,9 +164,17 @@ const PostUpdate: React.FC = () => {
     setIsAuthorized(true);
   }, [authLoading, isAdmin, userRole, navigation]);
   
-  // Animate screen entrance from bottom when screen comes into focus
+  // Refresh user role and animate screen entrance when screen comes into focus
   useFocusEffect(
     useCallback(() => {
+      // Refresh user role to ensure latest role is loaded
+      if (!authLoading) {
+        refreshUser().catch(() => {
+          // Silent fail - role will be checked in authorization useEffect
+        });
+      }
+      
+      // Reset animation values
       // Reset animation values
       screenSlideY.setValue(1000);
       screenOpacity.setValue(0);

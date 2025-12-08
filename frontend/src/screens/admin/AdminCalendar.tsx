@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CalendarGrid from '../../components/common/CalendarGrid';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
 import AdminSidebar from '../../components/navigation/AdminSidebar';
+import { useAuth } from '../../contexts/AuthContext';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import { useUpdates } from '../../contexts/UpdatesContext';
 import { useCalendar } from '../../hooks/useCalendar';
@@ -52,6 +53,9 @@ const AdminCalendar = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { isDarkMode, theme: t } = useThemeValues();
+  const { isLoading: authLoading, userRole, isAdmin } = useAuth();
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+  const isPendingAuthorization = isAuthorized === null;
   const scrollRef = useRef<ScrollView>(null);
   const initialNow = new Date();
   const [currentMonth, setCurrentMonth] = useState(new Date(Date.UTC(initialNow.getFullYear(), initialNow.getMonth(), 1)));
@@ -150,6 +154,38 @@ const AdminCalendar = () => {
       };
     }, [])
   );
+
+  // Authorization check (admins only - moderators should use regular Calendar)
+  useEffect(() => {
+    if (authLoading) return;
+    
+    // Only admins can access AdminCalendar
+    if (!isAdmin) {
+      setIsAuthorized(false);
+      
+      // If user is moderator, redirect to regular Calendar
+      if (userRole === 'moderator') {
+        Alert.alert(
+          'Access Redirected',
+          'Moderators can only access the regular calendar. You have been redirected to the user calendar.',
+          [{ 
+            text: 'OK', 
+            onPress: () => navigation.replace('Calendar' as any) 
+          }]
+        );
+      } else {
+        // Regular users or unauthorized
+        Alert.alert(
+          'Access Denied',
+          'You do not have permission to access this page.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+      }
+      return;
+    }
+    
+    setIsAuthorized(true);
+  }, [authLoading, isAdmin, userRole, navigation]);
 
   // Animate floating background orb (Copilot-style)
   useEffect(() => {
@@ -809,6 +845,20 @@ const AdminCalendar = () => {
 
   const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
+  // Show loading state while checking authorization
+  if (isPendingAuthorization || authLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={t.colors.accent} />
+      </View>
+    );
+  }
+
+  // Don't render if not authorized (will be redirected)
+  if (!isAuthorized) {
+    return null;
+  }
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
     <View style={[styles.container, {
@@ -917,7 +967,14 @@ const AdminCalendar = () => {
         <View style={styles.headerRight}>
           <TouchableOpacity 
             style={styles.profileButton} 
-            onPress={() => navigation.navigate('AdminSettings')} 
+            onPress={() => {
+              // Moderators use UserSettings, admins use AdminSettings
+              if (userRole === 'moderator') {
+                navigation.navigate('UserSettings' as any);
+              } else {
+                navigation.navigate('AdminSettings');
+              }
+            }} 
             activeOpacity={0.7}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             accessibilityLabel="Admin profile - Go to settings"
@@ -1251,7 +1308,14 @@ const AdminCalendar = () => {
           activeTab="calendar"
           onChatPress={() => navigation.navigate('AdminAIChat')}
           onDashboardPress={() => navigation.navigate('AdminDashboard')}
-          onCalendarPress={() => navigation.navigate('AdminCalendar')}
+          onCalendarPress={() => {
+            // Moderators use regular Calendar, admins use AdminCalendar
+            if (userRole === 'moderator') {
+              navigation.navigate('Calendar' as any);
+            } else {
+              navigation.navigate('AdminCalendar');
+            }
+          }}
         />
       </View>
 

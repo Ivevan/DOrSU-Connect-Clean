@@ -210,7 +210,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
               <Ionicons name="shield-checkmark" size={28} color="#FFFFFF" />
             </View>
             <Text style={[styles.sidebarTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(20) }]}>
-              Admin Panel
+              {userRole === 'moderator' ? 'Moderator Panel' : 'Admin Panel'}
             </Text>
           </View>
           <View style={styles.sidebarHeaderButtons}>
@@ -287,26 +287,29 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.sidebarMenuItem}
-            onPress={() => {
-              onClose();
-              navigation.navigate('AdminCalendar');
-            }}
-          >
-            <Ionicons 
-              name={currentScreen === 'AdminCalendar' ? 'calendar' : 'calendar-outline'} 
-              size={24} 
-              color={currentScreen === 'AdminCalendar' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
-            />
-            <Text style={[styles.sidebarMenuText, { 
-              color: currentScreen === 'AdminCalendar' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: currentScreen === 'AdminCalendar' ? '600' : '500',
-              fontSize: t.fontSize.scaleSize(16)
-            }]}>
-              Calendar
-            </Text>
-          </TouchableOpacity>
+          {/* Calendar - Admin only (moderators use regular Calendar) */}
+          {userRole === 'admin' && (
+            <TouchableOpacity
+              style={styles.sidebarMenuItem}
+              onPress={() => {
+                onClose();
+                navigation.navigate('AdminCalendar');
+              }}
+            >
+              <Ionicons 
+                name={currentScreen === 'AdminCalendar' ? 'calendar' : 'calendar-outline'} 
+                size={24} 
+                color={currentScreen === 'AdminCalendar' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              />
+              <Text style={[styles.sidebarMenuText, { 
+                color: currentScreen === 'AdminCalendar' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+                fontWeight: currentScreen === 'AdminCalendar' ? '600' : '500',
+                fontSize: t.fontSize.scaleSize(16)
+              }]}>
+                Calendar
+              </Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={styles.sidebarMenuItem}
@@ -402,17 +405,22 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             style={styles.sidebarMenuItem}
             onPress={() => {
               onClose();
-              navigation.navigate('AdminSettings');
+              // Moderators use UserSettings, admins use AdminSettings
+              if (userRole === 'moderator') {
+                navigation.navigate('UserSettings');
+              } else {
+                navigation.navigate('AdminSettings');
+              }
             }}
           >
             <Ionicons 
-              name={currentScreen === 'AdminSettings' ? 'person-circle' : 'person-circle-outline'} 
+              name={(currentScreen === 'AdminSettings' || currentScreen === 'UserSettings') ? 'person-circle' : 'person-circle-outline'} 
               size={24} 
-              color={currentScreen === 'AdminSettings' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              color={(currentScreen === 'AdminSettings' || currentScreen === 'UserSettings') ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
             />
             <Text style={[styles.sidebarMenuText, { 
-              color: currentScreen === 'AdminSettings' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: currentScreen === 'AdminSettings' ? '600' : '500',
+              color: (currentScreen === 'AdminSettings' || currentScreen === 'UserSettings') ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+              fontWeight: (currentScreen === 'AdminSettings' || currentScreen === 'UserSettings') ? '600' : '500',
               fontSize: t.fontSize.scaleSize(16)
             }]}>
               Profile Settings

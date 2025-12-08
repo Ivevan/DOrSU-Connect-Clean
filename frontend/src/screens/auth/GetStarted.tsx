@@ -4,7 +4,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Animated, BackHandler, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { API_BASE_URL } from '../../config/api.config';
@@ -37,29 +37,40 @@ const GetStarted = () => {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [hasAuthData, setHasAuthData] = useState<boolean | null>(null);
+
+  // Check auth status when screen focuses
+  useFocusEffect(
+    useCallback(() => {
+      const checkAuthStatus = async () => {
+        try {
+          const userToken = await AsyncStorage.getItem('userToken');
+          const userEmail = await AsyncStorage.getItem('userEmail');
+          setHasAuthData(!!(userToken && userEmail));
+        } catch (error) {
+          console.error('Error checking auth status:', error);
+          setHasAuthData(false);
+        }
+      };
+      checkAuthStatus();
+    }, [])
+  );
 
   // Prevent back navigation to authenticated screens after logout
   useFocusEffect(
     useCallback(() => {
-      const onBackPress = async () => {
-        // Check if user is logged out (no auth data)
-        try {
-          const userToken = await AsyncStorage.getItem('userToken');
-          const userEmail = await AsyncStorage.getItem('userEmail');
-          
-          // If no auth data, exit app on Android or prevent back on iOS
-          if (!userToken || !userEmail) {
-            if (Platform.OS === 'android') {
-              BackHandler.exitApp();
-              return true;
-            }
-            // On iOS, prevent back navigation
+      const onBackPress = () => {
+        // If no auth data, exit app on Android or prevent back on iOS
+        if (hasAuthData === false) {
+          if (Platform.OS === 'android') {
+            BackHandler.exitApp();
             return true;
           }
-        } catch (error) {
-          console.error('Error checking auth status:', error);
+          // On iOS, prevent back navigation
+          return true;
         }
         // Allow default back behavior if logged in (shouldn't happen on GetStarted)
+        // Also allow if we haven't checked yet (hasAuthData === null)
         return false;
       };
 
@@ -67,7 +78,7 @@ const GetStarted = () => {
         const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
         return () => subscription.remove();
       }
-    }, [])
+    }, [hasAuthData])
   );
 
   // Handle logo press

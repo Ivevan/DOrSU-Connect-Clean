@@ -674,7 +674,16 @@ export class ScheduleService {
       return true;
     }
 
-    Logger.info('✅ Authentication successful for create-post');
+    // Check if user is admin or moderator
+    const isAdmin = auth.isAdmin === true;
+    const isModerator = auth.role === 'moderator';
+    if (!isAdmin && !isModerator) {
+      Logger.warn(`❌ Forbidden: User ${auth.userId} (role: ${auth.role || 'user'}) attempted to create post`);
+      this.sendJson(res, 403, { error: 'Forbidden: Admin or Moderator access required' });
+      return true;
+    }
+
+    Logger.info(`✅ Authorization successful for create-post - User: ${auth.userId}, Role: ${auth.role || 'admin'}`);
 
     try {
       const contentType = req.headers['content-type'] || '';

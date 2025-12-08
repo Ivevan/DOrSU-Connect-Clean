@@ -5,27 +5,27 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-  Animated,
-  InteractionManager,
-  Modal,
-  Platform,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  Alert,
-  ActivityIndicator,
+    ActivityIndicator,
+    Alert,
+    Animated,
+    InteractionManager,
+    Modal,
+    Platform,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '../../contexts/AuthContext';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import ConfirmationModal from '../../modals/ConfirmationModal';
 import InfoModal from '../../modals/InfoModal';
 import OptionsModal from '../../modals/OptionsModal';
 import AdminDataService from '../../services/AdminDataService';
-import { useAuth } from '../../contexts/AuthContext';
 
 type RootStackParamList = {
   AdminDashboard: undefined;
@@ -53,7 +53,7 @@ const ManagePosts: React.FC = () => {
   const navigation = useNavigation<ManagePostsNavigationProp>();
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
-  const { isLoading: authLoading, userRole, isAdmin } = useAuth();
+  const { isLoading: authLoading, userRole, isAdmin, refreshUser } = useAuth();
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const isPendingAuthorization = isAuthorized === null;
   
@@ -166,6 +166,17 @@ const ManagePosts: React.FC = () => {
   const isFetching = useRef<boolean>(false);
   const FETCH_COOLDOWN = 1000; // 1 second cooldown
 
+  // Refresh user role on focus to ensure latest role is loaded
+  useFocusEffect(
+    useCallback(() => {
+      if (!authLoading) {
+        refreshUser().catch(() => {
+          // Silent fail - role will be checked in authorization useEffect
+        });
+      }
+    }, [authLoading, refreshUser])
+  );
+
   // Authorization check (admins and moderators) via AuthContext
   useEffect(() => {
     if (authLoading) return;
@@ -174,7 +185,7 @@ const ManagePosts: React.FC = () => {
       setIsAuthorized(false);
       Alert.alert(
         'Access Denied',
-        'You do not have permission to access this page.',
+        'You do not have permission to access this page. If you were recently assigned as a moderator, please log out and log back in.',
         [{ text: 'OK', onPress: () => navigation.goBack() }]
       );
       return;

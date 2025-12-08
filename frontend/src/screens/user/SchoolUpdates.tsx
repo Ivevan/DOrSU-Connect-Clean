@@ -19,6 +19,7 @@ import { getCurrentUser, onAuthStateChange, User } from '../../services/authServ
 import { categoryToColors } from '../../utils/calendarUtils';
 import { formatDate } from '../../utils/dateUtils';
 import NotificationModal from '../../modals/NotificationModal';
+import { useAuth } from '../../contexts/AuthContext';
 
 // Session-scoped flags to avoid re-loading on every mount (especially on web)
 // Initial data will load once per app session; further loads are manual (pull-to-refresh)
@@ -49,6 +50,7 @@ type RootStackParamList = {
   AIChat: undefined;
   UserSettings: undefined;
   Calendar: undefined;
+  AdminDashboard: undefined;
 };
 
 
@@ -186,6 +188,17 @@ const timeFilterOptions = [
 const SchoolUpdates = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { isLoading: authLoading, userRole, isAdmin } = useAuth();
+  
+  // Redirect moderators and admins to AdminDashboard (they should use admin interface)
+  useEffect(() => {
+    if (authLoading) return;
+    if (isAdmin || userRole === 'moderator') {
+      // Redirect to AdminDashboard instead
+      navigation.replace('AdminDashboard' as any);
+    }
+  }, [authLoading, isAdmin, userRole, navigation]);
   const resolvedLegendItems = useMemo<LegendItem[]>(() => legendItemsData, []);
   const legendRows = useMemo<(LegendItem | null)[][]>(() => {
     const firstRow: (LegendItem | null)[] = resolvedLegendItems.slice(0, 3);
@@ -236,7 +249,7 @@ const SchoolUpdates = () => {
       ? [`${lightColor}14`, `${mainColor}08`, `${darkColor}03`]
       : [`${lightColor}1A`, `${mainColor}0D`, `${darkColor}05`] as [string, string, string];
   };
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  
   const [searchQuery, setSearchQuery] = useState('');
   const { posts: updates, setPosts: setUpdates, calendarEvents, setCalendarEvents } = useUpdates();
   // Initialize loading state based on whether shared data already exists

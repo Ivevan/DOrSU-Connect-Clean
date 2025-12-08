@@ -1,4 +1,5 @@
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
@@ -6,9 +7,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AppState, AppStateStatus } from 'react-native';
-import { ActivityIndicator, Animated, BackHandler, Image, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Animated, AppState, AppStateStatus, BackHandler, Image, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
@@ -43,7 +42,7 @@ const AdminAIChat = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { isDarkMode, theme, colorTheme } = useTheme();
-  const { getUserToken } = useAuth();
+  const { getUserToken, userRole } = useAuth();
   const { isConnected, isInternetReachable } = useNetworkStatus();
   const isOnline = isConnected && isInternetReachable;
   const { width } = useWindowDimensions();
@@ -986,16 +985,18 @@ const AdminAIChat = () => {
           <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]}>
             {messages.length > 0 ? 'Conversation' : 'New Conversation'}
           </Text>
-          <View style={[styles.userTypeLabel, { backgroundColor: selectedUserType === 'student' ? theme.colors.accent : (colorTheme === 'dorsu' ? '#FBBF24' : '#6B7280') }]}>
-            <Text style={[styles.userTypeLabelText, { fontSize: theme.fontSize.scaleSize(9) }]}>
-              {selectedUserType === 'faculty' ? 'Faculty' : 'Student'}
-            </Text>
-          </View>
         </View>
         <View style={styles.headerRight}>
           <TouchableOpacity 
             style={styles.profileButton} 
-            onPress={() => navigation.navigate('AdminSettings')} 
+            onPress={() => {
+              // Moderators use UserSettings, admins use AdminSettings
+              if (userRole === 'moderator') {
+                navigation.navigate('UserSettings' as any);
+              } else {
+                navigation.navigate('AdminSettings');
+              }
+            }} 
             accessibilityLabel="Admin profile - Go to settings"
           >
               <View style={[styles.profileIconCircle, { backgroundColor: theme.colors.accent }]}>
@@ -1363,7 +1364,14 @@ const AdminAIChat = () => {
         activeTab="chat"
         onChatPress={() => navigation.navigate('AdminAIChat')}
         onDashboardPress={() => navigation.navigate('AdminDashboard')}
-        onCalendarPress={() => navigation.navigate('AdminCalendar')}
+        onCalendarPress={() => {
+          // Moderators use regular Calendar, admins use AdminCalendar
+          if (userRole === 'moderator') {
+            navigation.navigate('Calendar' as any);
+          } else {
+            navigation.navigate('AdminCalendar');
+          }
+        }}
       />
 
       {/* Action Menu Modal */}
@@ -1534,19 +1542,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     letterSpacing: -0.3,
-  },
-  userTypeLabel: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    marginTop: 1,
-  },
-  userTypeLabelText: {
-    color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
   },
   headerRight: {
     width: 40,

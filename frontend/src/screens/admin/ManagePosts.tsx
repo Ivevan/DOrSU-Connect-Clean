@@ -5,19 +5,19 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    InteractionManager,
-    Modal,
-    Platform,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  InteractionManager,
+  Modal,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
@@ -47,6 +47,8 @@ type Post = {
   isApproved?: boolean;
   approvedAt?: string;
   approvedBy?: string | null;
+  creatorRole?: 'admin' | 'moderator'; // Creator role for filtering
+  source?: string; // Source field (Admin/Moderator)
 };
 
 const ManagePosts: React.FC = () => {
@@ -72,6 +74,10 @@ const ManagePosts: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   
+  // Creator role filter (only for admins)
+  const [selectedCreatorRole, setSelectedCreatorRole] = useState<'all' | 'admin' | 'moderator'>('all');
+  const [isCreatorRoleOpen, setIsCreatorRoleOpen] = useState(false);
+  
   // Date picker state
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDateObj, setSelectedDateObj] = useState<Date | null>(null);
@@ -86,7 +92,7 @@ const ManagePosts: React.FC = () => {
   const [isSortOpen, setIsSortOpen] = useState(false);
 
   // Track if filters are active
-  const hasActiveFilters = searchQuery.trim() !== '' || selectedCategory !== 'All Categories' || filterDate !== '' || selectedSort !== 'Newest';
+  const hasActiveFilters = searchQuery.trim() !== '' || selectedCategory !== 'All Categories' || filterDate !== '' || selectedSort !== 'Newest' || (isAdmin && selectedCreatorRole !== 'all');
 
   // Category and Date picker state
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
@@ -439,6 +445,13 @@ const ManagePosts: React.FC = () => {
     closeCategoryMenu();
   };
 
+  const openCreatorRoleMenu = () => setIsCreatorRoleOpen(true);
+  const closeCreatorRoleMenu = () => setIsCreatorRoleOpen(false);
+  const selectCreatorRole = (value: 'all' | 'admin' | 'moderator') => {
+    setSelectedCreatorRole(value);
+    closeCreatorRoleMenu();
+  };
+
   const openSortMenu = () => setIsSortOpen(true);
   const closeSortMenu = () => setIsSortOpen(false);
   const selectSort = (value: string) => {
@@ -478,12 +491,17 @@ const ManagePosts: React.FC = () => {
     setFilterDate('');
     setSelectedDateObj(null);
     setSelectedSort('Newest');
+    setSelectedCreatorRole('all');
   };
 
   const filteredPosts = posts.filter(post => {
     const matchesSearch = post.title.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'All Categories' || post.category === selectedCategory;
-    return matchesSearch && matchesCategory;
+    // Filter by creator role (only if admin and filter is set)
+    const matchesCreatorRole = !isAdmin || selectedCreatorRole === 'all' || 
+      (selectedCreatorRole === 'admin' && (post.creatorRole === 'admin' || (!post.creatorRole && post.source !== 'Moderator'))) ||
+      (selectedCreatorRole === 'moderator' && (post.creatorRole === 'moderator' || post.source === 'Moderator'));
+    return matchesSearch && matchesCategory && matchesCreatorRole;
   });
 
   const sortedPosts = useMemo(() => {
@@ -816,6 +834,47 @@ const ManagePosts: React.FC = () => {
                 </View>
               )}
             </TouchableOpacity>
+
+            {/* Creator Role Filter - Only for Admins */}
+            {isAdmin && (
+              <TouchableOpacity 
+                style={[
+                  styles.categoryContainer, 
+                  {
+                    borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)',
+                  },
+                  selectedCreatorRole !== 'all' && { borderColor: '#10B981', backgroundColor: isDarkMode ? theme.colors.surfaceAlt : '#F0FDF4', borderWidth: 2 }
+                ]} 
+                onPress={() => setIsCreatorRoleOpen(true)}
+              >
+                <View style={styles.categoryFilterLeft}>
+                  <View style={[styles.categoryFilterIconWrap, { backgroundColor: selectedCreatorRole === 'moderator' ? '#10B98122' : selectedCreatorRole === 'admin' ? '#3B82F622' : '#6B728022' }]}>
+                    <Ionicons 
+                      name={selectedCreatorRole === 'moderator' ? 'shield-outline' : selectedCreatorRole === 'admin' ? 'person-circle-outline' : 'people-outline'} 
+                      size={16} 
+                      color={selectedCreatorRole === 'moderator' ? '#10B981' : selectedCreatorRole === 'admin' ? '#3B82F6' : '#6B7280'} 
+                    />
+                  </View>
+                  <Text style={[
+                    styles.categoryText, 
+                    { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) },
+                    selectedCreatorRole !== 'all' && { color: selectedCreatorRole === 'moderator' ? '#10B981' : '#3B82F6', fontWeight: '700' }
+                  ]}>
+                    {selectedCreatorRole === 'all' ? 'All Posts' : selectedCreatorRole === 'moderator' ? 'Moderator' : 'Admin'}
+                  </Text>
+                </View>
+                <Ionicons 
+                  name="chevron-down" 
+                  size={18} 
+                  color={selectedCreatorRole !== 'all' ? (selectedCreatorRole === 'moderator' ? '#10B981' : '#3B82F6') : theme.colors.textMuted} 
+                />
+                {selectedCreatorRole !== 'all' && (
+                  <View style={[styles.activeFilterBadge, { backgroundColor: selectedCreatorRole === 'moderator' ? '#10B981' : '#3B82F6' }]}>
+                    <Ionicons name="checkmark" size={10} color="#fff" />
+                  </View>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Sort Row */}
@@ -959,6 +1018,13 @@ const ManagePosts: React.FC = () => {
                         <Ionicons name={categoryOption.icon as any} size={10} color="#fff" />
                         <Text style={[styles.categoryTagText, { fontSize: theme.fontSize.scaleSize(11) }]}>{post.category}</Text>
                       </View>
+                      {/* Creator Role Badge - Show for moderator posts */}
+                      {(post.creatorRole === 'moderator' || post.source === 'Moderator') && (
+                        <View style={[styles.categoryTag, { backgroundColor: '#10B981' }]}>
+                          <Ionicons name="shield" size={10} color="#fff" />
+                          <Text style={[styles.categoryTagText, { fontSize: theme.fontSize.scaleSize(11) }]}>Moderator</Text>
+                        </View>
+                      )}
                     </View>
                   </View>
                   
@@ -1119,6 +1185,45 @@ const ManagePosts: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Creator Role Menu Modal - Only for Admins */}
+      {isAdmin && (
+        <Modal visible={isCreatorRoleOpen} transparent animationType="fade" onRequestClose={closeCreatorRoleMenu}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.categoryMenuCard}>
+              <View style={styles.modalHeaderRow}>
+                <Text style={[styles.categoryMenuTitle, { fontSize: theme.fontSize.scaleSize(14) }]}>Filter by Creator</Text>
+                <TouchableOpacity onPress={closeCreatorRoleMenu} style={styles.modalCloseBtn}>
+                  <Ionicons name="close" size={20} color="#555" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={{ maxHeight: 320 }}>
+                {[
+                  { key: 'all', label: 'All Posts', icon: 'people-outline', color: '#6B7280', description: 'Show all posts from admins and moderators' },
+                  { key: 'admin', label: 'Admin Posts', icon: 'person-circle-outline', color: '#3B82F6', description: 'Show only posts created by admins' },
+                  { key: 'moderator', label: 'Moderator Posts', icon: 'shield-outline', color: '#10B981', description: 'Show only posts created by moderators' },
+                ].map(opt => {
+                  const active = selectedCreatorRole === opt.key;
+                  return (
+                    <TouchableOpacity key={opt.key} onPress={() => selectCreatorRole(opt.key as 'all' | 'admin' | 'moderator')} style={[styles.categoryRow, active && { backgroundColor: opt.color + '0F', borderColor: opt.color }]}> 
+                      <View style={[styles.categoryIconWrap, { backgroundColor: opt.color + '22' }]}>
+                        <Ionicons name={opt.icon as any} size={18} color={opt.color} />
+                      </View>
+                      <View style={styles.categoryTextWrap}>
+                        <Text style={[styles.categoryRowTitle, { fontSize: theme.fontSize.scaleSize(13) }, active && { color: '#111' }]}>{opt.label}</Text>
+                        <Text style={[styles.categoryRowSub, { fontSize: theme.fontSize.scaleSize(11) }]}>{opt.description}</Text>
+                      </View>
+                      {active && (
+                        <Ionicons name="checkmark-circle" size={20} color={opt.color} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* Sort Menu Modal */}
       <Modal visible={isSortOpen} transparent animationType="fade" onRequestClose={closeSortMenu}>

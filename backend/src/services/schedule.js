@@ -635,6 +635,7 @@ export class ScheduleService {
         createdAt: post.createdAt || new Date(),
         updatedAt: post.updatedAt || new Date(),
         createdBy: post.createdBy || 'admin',
+        creatorRole: post.creatorRole || (post.source === 'Moderator' ? 'moderator' : 'admin'), // Include creator role for filtering
         isPinned: post.isPinned || false,
         isUrgent: post.isUrgent || false,
       }));
@@ -774,6 +775,7 @@ export class ScheduleService {
       const isoDateValue = new Date(date);
       // CRITICAL: Ensure dates are stored as Date objects, not strings
       // MongoDB will serialize Date objects correctly
+      const creatorRole = isAdmin ? 'admin' : (isModerator ? 'moderator' : 'admin'); // Default to admin if role is unclear
       const event = {
         title,
         description,
@@ -784,10 +786,11 @@ export class ScheduleService {
         imageFileId: imageFileId, // GridFS file ID
         image: imageFileId ? `${baseUrl}/api/images/${imageFileId}` : null, // Full URL for image retrieval
         images: imageFileId ? [`${baseUrl}/api/images/${imageFileId}`] : [],
-        source: 'Admin',
+        source: creatorRole === 'moderator' ? 'Moderator' : 'Admin', // Store source based on role
         createdAt: new Date(),
         updatedAt: new Date(),
         createdBy: auth.userId || 'admin',
+        creatorRole: creatorRole, // Store creator role for filtering
       };
       
       Logger.info(`🕐 Event object before insert - has time: ${!!event.time}, time value: "${event.time}"`);

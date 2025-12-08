@@ -642,6 +642,10 @@ const AdminDataService = {
             };
             return updated;
           }
+
+  /**
+   * Approve a post (used by moderators/admins)
+   */
           return p;
         });
         return updated;
@@ -826,6 +830,19 @@ const AdminDataService = {
       console.error('Failed to update post:', error);
       throw error;
     }
+  },
+
+  /**
+   * Approve a post (used by moderators/admins)
+   */
+  async approvePost(id: string | number, approvedBy?: string): Promise<Post | null> {
+    const payload = {
+      status: 'approved',
+      isApproved: true,
+      approvedAt: new Date().toISOString(),
+      approvedBy: approvedBy || null,
+    };
+    return this.updatePost(id, payload as any);
   },
 
   async deletePost(id: string | number): Promise<boolean> {

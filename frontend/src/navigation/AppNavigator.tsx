@@ -3,7 +3,7 @@ import { NavigationContainer, useNavigationContainerRef } from '@react-navigatio
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as Linking from 'expo-linking';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, View } from 'react-native';
+import { ActivityIndicator, Platform, View, AppState } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -65,7 +65,7 @@ const AppNavigator = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [initialRoute, setInitialRoute] = useState<string>('SplashScreen');
   const navigationRef = useNavigationContainerRef();
-  const { resetInactivityTimer } = useAuth();
+  const { resetInactivityTimer, refreshUser, isAuthenticated, isLoading: authLoading, isAdmin, userRole } = useAuth();
   
   // Handle deep links for email verification
   useEffect(() => {
@@ -293,64 +293,52 @@ const AppNavigator = () => {
     };
   }, [navigationRef]);
 
-  // Check authentication status on app load
+  // Check authentication status on app load using AuthContext
   useEffect(() => {
-    const checkAuthStatus = async () => {
+    const init = async () => {
       try {
-        // Always start with SplashScreen for fresh installs
-        // Only route to authenticated screens if we have a valid, verified session
-        
-        // Check for Firebase auth first (most reliable)
-        let hasFirebaseAuth = false;
-        try {
-          const { getCurrentUser } = require('../services/authService');
-          const currentUser = getCurrentUser();
-          if (currentUser?.email) {
-            hasFirebaseAuth = true;
-          }
-        } catch {
-          // No Firebase auth
-        }
-        
-        // Check for backend auth token
-        const userToken = await AsyncStorage.getItem('userToken');
-        const userEmail = await AsyncStorage.getItem('userEmail');
-        const authProvider = await AsyncStorage.getItem('authProvider');
-        const userRole = await AsyncStorage.getItem('userRole');
-        const isAdmin = await AsyncStorage.getItem('isAdmin');
-        
-        // Only route to authenticated screens if we have BOTH:
-        // 1. A valid token (or Firebase auth)
-        // 2. A user email
-        // This prevents routing on stale/incomplete data
-        const hasValidSession = (userToken && userToken.length > 20 && userEmail) || (hasFirebaseAuth && userEmail);
-        
-        if (hasValidSession) {
-          // Determine route based on role
-          if (isAdmin === 'true' || userRole === 'admin') {
-            setInitialRoute('AdminAIChat');
-          } else {
-            setInitialRoute('AIChat');
-          }
-        } else {
-          // No valid session - start with SplashScreen
-          setInitialRoute('SplashScreen');
-        }
-      } catch (error) {
-        console.error('Auth check error:', error);
-        // On any error, default to SplashScreen
-        setInitialRoute('SplashScreen');
+        // Refresh user (role/token) once on startup
+        await refreshUser?.();
+      } catch (e) {
+        console.warn('Initial refreshUser failed:', e);
       } finally {
         setIsLoading(false);
       }
     };
-    
-    checkAuthStatus();
-  }, []);
+    init();
+  }, [refreshUser]);
+
+  // Derive initial route from auth context
+  useEffect(() => {
+    if (isLoading || authLoading) return;
+    if (!isAuthenticated) {
+      setInitialRoute('SplashScreen');
+      return;
+    }
+    if (isAdmin || userRole === 'moderator') {
+      setInitialRoute('AdminAIChat');
+    } else {
+      setInitialRoute('AIChat');
+    }
+  }, [isLoading, authLoading, isAuthenticated, isAdmin, userRole]);
+
+  // Refresh role on app foreground
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        try {
+          refreshUser?.();
+        } catch (e) {
+          console.warn('Failed to refresh user on foreground:', e);
+        }
+      }
+    });
+    return () => sub.remove();
+  }, [refreshUser]);
 
   
   // Show loading indicator while checking auth status
-  if (isLoading) {
+  if (isLoading || authLoading) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1F2937' }}>
         <ActivityIndicator size="large" color="#FFFFFF" />

@@ -26,7 +26,7 @@ const AccountSettings = () => {
   const { isDarkMode, theme: t } = useThemeValues();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute();
-  const { getUserToken } = useAuth();
+  const { getUserToken, userRole, isAdmin, isLoading: authLoading, refreshUser } = useAuth();
 
   // Animated floating background orb
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -54,12 +54,14 @@ const AccountSettings = () => {
         try {
           const userName = await AsyncStorage.getItem('userName');
           setBackendUserName(userName);
+          // Refresh user to ensure latest role is reflected
+          await refreshUser?.();
         } catch (error) {
           console.error('Failed to load backend user data:', error);
         }
       };
       loadBackendUserData();
-    }, [])
+    }, [refreshUser])
   );
 
   useFocusEffect(
@@ -397,6 +399,21 @@ const AccountSettings = () => {
             {!isEditingName && <Ionicons name="pencil" size={18} color={t.colors.textMuted} />}
           </TouchableOpacity>
 
+          {/* Role display */}
+          <View style={[styles.settingItemRole, { borderBottomColor: t.colors.border }]}>
+            <View style={styles.settingLeft}>
+              <View style={[styles.settingIcon, { backgroundColor: t.colors.surface }]}>
+                <Ionicons name="shield-checkmark-outline" size={20} color={t.colors.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settingTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(14) }]}>Role</Text>
+                <Text style={[styles.settingValue, { color: t.colors.textMuted, marginTop: 4, fontSize: t.fontSize.scaleSize(13) }]}>
+                  {authLoading ? 'Loading...' : (isAdmin ? 'Admin' : (userRole ? userRole.charAt(0).toUpperCase() + userRole.slice(1) : 'User'))}
+                </Text>
+              </View>
+            </View>
+          </View>
+
           <TouchableOpacity 
             style={styles.settingItemLast}
             onPress={() => setIsChangePasswordOpen(true)}
@@ -610,6 +627,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 12,
+  },
+  settingItemRole: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
   },
   settingLeft: {
     flexDirection: 'row',

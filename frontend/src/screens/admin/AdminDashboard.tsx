@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Image, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, Image, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // import AddPostDrawer from '../../components/dashboard/AddPostDrawer'; // Replaced with PostUpdate screen navigation
 import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
@@ -20,6 +20,7 @@ import NotificationService from '../../services/NotificationService';
 import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import { categoryToColors, formatDateKey, parseAnyDateToKey } from '../../utils/calendarUtils';
 import { formatDate } from '../../utils/dateUtils';
+import { useAuth } from '../../contexts/AuthContext';
 
 // Session-scoped flags to avoid re-loading on every mount (especially on web)
 // Initial data will load once per app session; further loads are manual (pull-to-refresh)
@@ -130,6 +131,9 @@ const timeFilterOptions = [
 const AdminDashboard = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
+  const { isLoading: authLoading, userRole, isAdmin } = useAuth();
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+  const isPendingAuthorization = isAuthorized === null;
   const resolvedLegendItems = useMemo<LegendItem[]>(() => legendItemsData, []);
   const legendRows = useMemo<(LegendItem | null)[][]>(() => {
     const firstRow: (LegendItem | null)[] = resolvedLegendItems.slice(0, 3);
@@ -187,6 +191,22 @@ const AdminDashboard = () => {
     } catch {}
     return currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Admin';
   }, [currentUser, backendUserFirstName, backendUserLastName]);
+  
+  // Authorization check (admins and moderators) via AuthContext
+  useEffect(() => {
+    if (authLoading) return;
+    const hasAccess = isAdmin || userRole === 'moderator';
+    if (!hasAccess) {
+      setIsAuthorized(false);
+      Alert.alert(
+        'Access Denied',
+        'You do not have permission to access this page.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+      return;
+    }
+    setIsAuthorized(true);
+  }, [authLoading, isAdmin, userRole, navigation]);
   
   // Dashboard data
   const [timeFilter, setTimeFilter] = useState<'all' | 'upcomingmonth' | 'lastmonth' | 'thismonth'>('thismonth');
@@ -966,6 +986,18 @@ const AdminDashboard = () => {
       setRefreshing(false);
     }
   }, [fetchDashboardData, refreshCalendarEvents]);
+
+  if (isAuthorized === false) {
+    return null;
+  }
+
+  if (isPendingAuthorization) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={theme.colors.accent} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container} collapsable={false}>

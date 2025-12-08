@@ -15,7 +15,9 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeValues } from '../../contexts/ThemeContext';
@@ -23,6 +25,7 @@ import ConfirmationModal from '../../modals/ConfirmationModal';
 import InfoModal from '../../modals/InfoModal';
 import OptionsModal from '../../modals/OptionsModal';
 import AdminDataService from '../../services/AdminDataService';
+import { useAuth } from '../../contexts/AuthContext';
 
 type RootStackParamList = {
   AdminDashboard: undefined;
@@ -40,12 +43,19 @@ type Post = {
   description?: string;
   isPinned: boolean;
   isUrgent: boolean;
+  status?: string;
+  isApproved?: boolean;
+  approvedAt?: string;
+  approvedBy?: string | null;
 };
 
 const ManagePosts: React.FC = () => {
   const navigation = useNavigation<ManagePostsNavigationProp>();
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
+  const { isLoading: authLoading, userRole, isAdmin } = useAuth();
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+  const isPendingAuthorization = isAuthorized === null;
   
   // Memoize safe area insets to prevent recalculation during navigation
   const safeInsets = useMemo(() => ({
@@ -156,8 +166,25 @@ const ManagePosts: React.FC = () => {
   const isFetching = useRef<boolean>(false);
   const FETCH_COOLDOWN = 1000; // 1 second cooldown
 
+  // Authorization check (admins and moderators) via AuthContext
+  useEffect(() => {
+    if (authLoading) return;
+    const hasAccess = isAdmin || userRole === 'moderator';
+    if (!hasAccess) {
+      setIsAuthorized(false);
+      Alert.alert(
+        'Access Denied',
+        'You do not have permission to access this page.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+      return;
+    }
+    setIsAuthorized(true);
+  }, [authLoading, isAdmin, userRole, navigation]);
+
   // Fetch posts function - reusable for both mount and focus
   const fetchPosts = useCallback(async (forceRefresh: boolean = false) => {
+    if (isAuthorized !== true) return;
     // Prevent duplicate simultaneous fetches
     if (isFetching.current && !forceRefresh) {
       return;
@@ -177,11 +204,15 @@ const ManagePosts: React.FC = () => {
       setPostsError(null);
       // Fetch posts from backend (always fresh data)
       const json = await AdminDataService.getPosts();
-      // Map the API response to include isPinned and isUrgent fields
+      // Map the API response to include isPinned, isUrgent, and approval fields
       const mappedPosts: Post[] = json.map((post: any) => ({
         ...post,
         isPinned: post.isPinned || false,
         isUrgent: post.isUrgent || false,
+        isApproved: post.isApproved ?? post.status === 'approved',
+        status: post.status || (post.isApproved ? 'approved' : 'draft'),
+        approvedAt: post.approvedAt,
+        approvedBy: post.approvedBy ?? null,
       }));
       setPosts(mappedPosts);
     } catch (e: any) {
@@ -190,7 +221,7 @@ const ManagePosts: React.FC = () => {
       setIsLoadingPosts(false);
       isFetching.current = false;
     }
-  }, []);
+  }, [isAuthorized]);
 
   // Load posts on mount
   useEffect(() => {
@@ -200,9 +231,10 @@ const ManagePosts: React.FC = () => {
   // Refresh posts when screen comes into focus (e.g., after editing)
   useFocusEffect(
     useCallback(() => {
+      if (isAuthorized !== true) return;
       // Force refresh when screen comes into focus to show updated posts
       fetchPosts(true);
-    }, [fetchPosts])
+    }, [fetchPosts, isAuthorized])
   );
 
   const handleNewPost = useCallback(() => {
@@ -351,6 +383,44 @@ const ManagePosts: React.FC = () => {
     }
   };
 
+  const handleApprovePost = async (postId: string) => {
+    try {
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const approvedBy = await AsyncStorage.getItem('userEmail');
+      const updated: any = await AdminDataService.approvePost(postId, approvedBy || undefined);
+      setPosts(prev => prev.map(p => {
+        if (p.id === postId) {
+          const next: Post = updated ? {
+            id: updated.id,
+            title: updated.title,
+            category: updated.category,
+            date: updated.date,
+            description: updated.description,
+            isPinned: updated.isPinned ?? false,
+            isUrgent: updated.isUrgent ?? false,
+            status: updated.status || 'approved',
+            isApproved: updated.isApproved ?? true,
+            approvedAt: updated.approvedAt || new Date().toISOString(),
+            approvedBy: updated.approvedBy ?? approvedBy ?? null,
+          } : {
+            ...p,
+            status: 'approved',
+            isApproved: true,
+            approvedAt: new Date().toISOString(),
+            approvedBy: approvedBy ?? null,
+          };
+          return next;
+        }
+        return p;
+      }));
+      if (activePostForOptions && activePostForOptions.id === postId) {
+        setActivePostForOptions(prev => prev ? { ...prev, status: 'approved', isApproved: true } : prev);
+      }
+    } catch (error: any) {
+      console.error('Failed to approve post:', error);
+    }
+  };
+
   const openCategoryMenu = () => setIsCategoryOpen(true);
   const closeCategoryMenu = () => setIsCategoryOpen(false);
   const selectCategory = (value: string) => {
@@ -478,6 +548,18 @@ const ManagePosts: React.FC = () => {
       // This will be updated by onLayout callback
     }
   }, []);
+
+  if (isAuthorized === false) {
+    return null;
+  }
+
+  if (isPendingAuthorization) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color="#2563EB" />
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, {
@@ -902,6 +984,12 @@ const ManagePosts: React.FC = () => {
             icon: 'create-outline',
             iconColor: '#059669'
           },
+          ...(activePostForOptions && activePostForOptions.status !== 'approved' && !activePostForOptions.isApproved ? [{
+            id: 'approve',
+            label: 'Approve Post',
+            icon: 'checkmark-done',
+            iconColor: '#2563EB'
+          }] : []),
           {
             id: 'delete',
             label: 'Delete Post',
@@ -916,6 +1004,10 @@ const ManagePosts: React.FC = () => {
               case 'edit':
                 closeMoreOptionsModal();
                 handleEditPost(activePostForOptions.id);
+                break;
+              case 'approve':
+                closeMoreOptionsModal();
+                handleApprovePost(activePostForOptions.id);
                 break;
               case 'delete':
                 openDeleteConfirm(activePostForOptions.id);

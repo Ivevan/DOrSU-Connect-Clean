@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import AIService, { ChatHistoryItem } from '../../services/AIService';
 import { getCurrentUser } from '../../services/authService';
+import { useAuth } from '../../contexts/AuthContext';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -57,6 +58,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
   const { isDarkMode, theme: t, colorTheme } = useThemeValues();
   const insets = useSafeAreaInsets();
   const sidebarAnim = useRef(new Animated.Value(-320)).current;
+  const { userRole, isAdmin, isLoading: authLoading, refreshUser } = useAuth();
 
   // Determine current active screen
   const currentScreen = route.name as keyof RootStackParamList;
@@ -80,7 +82,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
   // User state
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
-  
+
   // Delete confirmation modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [chatToDelete, setChatToDelete] = useState<string | null>(null);
@@ -95,12 +97,15 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const userPhoto = await AsyncStorage.getItem('userPhoto');
           setBackendUserPhoto(userPhoto);
+
+          // Refresh user (role/isAdmin) on focus
+          await refreshUser?.();
         } catch (error) {
           console.error('Failed to load user data:', error);
         }
       };
       loadUserData();
-    }, [])
+    }, [refreshUser])
   );
 
   const getUserInitials = () => {
@@ -345,47 +350,53 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.sidebarMenuItem}
-            onPress={() => {
-              onClose();
-              navigation.navigate('ManageAccounts');
-            }}
-          >
-            <Ionicons 
-              name={currentScreen === 'ManageAccounts' ? 'people' : 'people-outline'} 
-              size={24} 
-              color={currentScreen === 'ManageAccounts' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
-            />
-            <Text style={[styles.sidebarMenuText, { 
-              color: currentScreen === 'ManageAccounts' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: currentScreen === 'ManageAccounts' ? '600' : '500',
-              fontSize: t.fontSize.scaleSize(16)
-            }]}>
-              Manage Accounts
-            </Text>
-          </TouchableOpacity>
+          {/* Manage Accounts - Admin only */}
+          {userRole === 'admin' && (
+            <TouchableOpacity
+              style={styles.sidebarMenuItem}
+              onPress={() => {
+                onClose();
+                navigation.navigate('ManageAccounts');
+              }}
+            >
+              <Ionicons 
+                name={currentScreen === 'ManageAccounts' ? 'people' : 'people-outline'} 
+                size={24} 
+                color={currentScreen === 'ManageAccounts' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              />
+              <Text style={[styles.sidebarMenuText, { 
+                color: currentScreen === 'ManageAccounts' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+                fontWeight: currentScreen === 'ManageAccounts' ? '600' : '500',
+                fontSize: t.fontSize.scaleSize(16)
+              }]}>
+                Manage Accounts
+              </Text>
+            </TouchableOpacity>
+          )}
 
-          <TouchableOpacity
-            style={styles.sidebarMenuItem}
-            onPress={() => {
-              onClose();
-              navigation.navigate('ActivityLog');
-            }}
-          >
-            <Ionicons 
-              name={currentScreen === 'ActivityLog' ? 'document-text' : 'document-text-outline'} 
-              size={24} 
-              color={currentScreen === 'ActivityLog' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
-            />
-            <Text style={[styles.sidebarMenuText, { 
-              color: currentScreen === 'ActivityLog' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: currentScreen === 'ActivityLog' ? '600' : '500',
-              fontSize: t.fontSize.scaleSize(16)
-            }]}>
-              Activity Log
-            </Text>
-          </TouchableOpacity>
+          {/* Activity Log - Admin only */}
+          {userRole === 'admin' && (
+            <TouchableOpacity
+              style={styles.sidebarMenuItem}
+              onPress={() => {
+                onClose();
+                navigation.navigate('ActivityLog');
+              }}
+            >
+              <Ionicons 
+                name={currentScreen === 'ActivityLog' ? 'document-text' : 'document-text-outline'} 
+                size={24} 
+                color={currentScreen === 'ActivityLog' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
+              />
+              <Text style={[styles.sidebarMenuText, { 
+                color: currentScreen === 'ActivityLog' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
+                fontWeight: currentScreen === 'ActivityLog' ? '600' : '500',
+                fontSize: t.fontSize.scaleSize(16)
+              }]}>
+                Activity Log
+              </Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
             style={styles.sidebarMenuItem}

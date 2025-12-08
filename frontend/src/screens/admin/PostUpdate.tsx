@@ -16,6 +16,7 @@ import {
   Animated,
   InteractionManager,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -32,6 +33,7 @@ import { useThemeValues } from '../../contexts/ThemeContext';
 import PreviewModal from '../../modals/PreviewModal';
 import BottomSheet from '../../components/common/BottomSheet';
 import MonthPickerModal from '../../modals/MonthPickerModal';
+import { useAuth } from '../../contexts/AuthContext';
 
 type RootStackParamList = {
   AdminDashboard: undefined;
@@ -47,6 +49,9 @@ const PostUpdate: React.FC = () => {
   const editingPostId: string | undefined = route?.params?.postId;
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
+  const { isLoading: authLoading, userRole, isAdmin } = useAuth();
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+  const isPendingAuthorization = isAuthorized === null;
   
   // Memoize safe area insets to prevent recalculation during navigation
   const safeInsets = useMemo(() => ({
@@ -142,6 +147,22 @@ const PostUpdate: React.FC = () => {
   const [tmpMonth, setTmpMonth] = useState<number>(current.getMonth());
   const [tmpYear, setTmpYear] = useState<number>(current.getFullYear());
   const [tmpDay, setTmpDay] = useState<number>(current.getDate());
+
+  // Authorization check (admins and moderators) via AuthContext
+  useEffect(() => {
+    if (authLoading) return;
+    const hasAccess = isAdmin || userRole === 'moderator';
+    if (!hasAccess) {
+      setIsAuthorized(false);
+      Alert.alert(
+        'Access Denied',
+        'You do not have permission to access this page.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+      return;
+    }
+    setIsAuthorized(true);
+  }, [authLoading, isAdmin, userRole, navigation]);
   
   // Animate screen entrance from bottom when screen comes into focus
   useFocusEffect(
@@ -529,6 +550,7 @@ const PostUpdate: React.FC = () => {
 
   // Load existing post when editing
   React.useEffect(() => {
+    if (isAuthorized !== true) return;
     let isCancelled = false;
     const load = async () => {
       if (!editingPostId) {
@@ -581,7 +603,7 @@ const PostUpdate: React.FC = () => {
     };
     load();
     return () => { isCancelled = true; };
-  }, [editingPostId]);
+  }, [editingPostId, isAuthorized]);
 
   const confirmPublish = useCallback(() => {
     // Prevent double submission
@@ -766,6 +788,18 @@ const PostUpdate: React.FC = () => {
     // Reset animation state after a short delay
     setTimeout(() => setIsAnimating(false), 300);
   }, [isAnimating, pickedFile]);
+
+  if (isAuthorized === false) {
+    return null;
+  }
+
+  if (isPendingAuthorization) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color="#2563EB" />
+      </View>
+    );
+  }
 
   return (
     <Animated.View 

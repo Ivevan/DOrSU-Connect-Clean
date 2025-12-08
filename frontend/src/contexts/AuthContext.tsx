@@ -12,11 +12,14 @@ interface AuthContextType {
   userToken: string | null;
   userEmail: string | null;
   userName: string | null;
+  userRole: 'user' | 'moderator' | 'admin' | null;
+  isAdmin: boolean;
   firebaseUser: User | null;
   login: (token: string, email: string, userName: string, userId: string) => Promise<void>;
   logout: () => Promise<void>;
   checkAuthStatus: () => Promise<boolean>;
   getUserToken: () => Promise<string | null>;
+  refreshUser: () => Promise<void>;
   resetInactivityTimer: () => void; // Reset inactivity timer on user activity
 }
 
@@ -40,6 +43,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [userToken, setUserToken] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<'user' | 'moderator' | 'admin' | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   
   // Inactivity timer - auto logout after 30 seconds (30,000ms)
@@ -48,6 +53,55 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
+  // Refresh user info (role, isAdmin) from backend /api/auth/me
+  const refreshUser = useCallback(async () => {
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        setUserRole(null);
+        setIsAdmin(false);
+        return;
+      }
+
+      // Static admin token shortcut
+      if (token.startsWith('admin_')) {
+        await AsyncStorage.setItem('userRole', 'admin');
+        await AsyncStorage.setItem('isAdmin', 'true');
+        setUserRole('admin');
+        setIsAdmin(true);
+        return;
+      }
+
+      const resp = await fetch(`${API_BASE_URL}/api/auth/me`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!resp.ok) {
+        setUserRole(null);
+        setIsAdmin(false);
+        return;
+      }
+
+      const data = await resp.json();
+      if (data?.success && data?.user) {
+        const role = (data.user.role || 'user') as 'user' | 'moderator' | 'admin';
+        const adminFlag = role === 'admin';
+        await AsyncStorage.setItem('userRole', role);
+        await AsyncStorage.setItem('isAdmin', adminFlag ? 'true' : 'false');
+        setUserRole(role);
+        setIsAdmin(adminFlag);
+      }
+    } catch (error) {
+      console.error('refreshUser error:', error);
+      setUserRole(null);
+      setIsAdmin(false);
+    }
+  }, []);
+
   // Check authentication status
   const checkAuthStatus = async (): Promise<boolean> => {
     try {
@@ -55,12 +109,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const token = await AsyncStorage.getItem('userToken');
       const email = await AsyncStorage.getItem('userEmail');
       const name = await AsyncStorage.getItem('userName');
+      const role = await AsyncStorage.getItem('userRole') as 'user' | 'moderator' | 'admin' | null;
+      const isAdminFlag = (await AsyncStorage.getItem('isAdmin')) === 'true';
       
       if (token && email) {
         setUserToken(token);
         setUserEmail(email);
         setUserName(name);
+        setUserRole(role);
+        setIsAdmin(isAdminFlag);
         setIsAuthenticated(true);
+        // Also refresh from backend to ensure latest role
+        refreshUser().catch(() => {});
         return true;
       }
       
@@ -219,11 +279,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await AsyncStorage.setItem('userEmail', email);
       await AsyncStorage.setItem('userName', name);
       await AsyncStorage.setItem('userId', userId);
+      // Default to user until refreshed
+      await AsyncStorage.setItem('userRole', 'user');
+      await AsyncStorage.setItem('isAdmin', 'false');
       
       setUserToken(token);
       setUserEmail(email);
       setUserName(name);
+      setUserRole('user');
+      setIsAdmin(false);
       setIsAuthenticated(true);
+      // Refresh role from backend
+      refreshUser().catch(() => {});
       // Timer will be reset automatically when isAuthenticated changes in useEffect
     } catch (error) {
       console.error('Login error:', error);
@@ -342,6 +409,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUserEmail(null);
       setUserName(null);
       setFirebaseUser(null);
+      setUserRole(null);
+      setIsAdmin(false);
       setIsAuthenticated(false);
     } catch (error) {
       console.error('Logout error:', error);
@@ -409,11 +478,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     userToken,
     userEmail,
     userName,
+    userRole,
+    isAdmin,
     firebaseUser,
     login,
     logout,
     checkAuthStatus,
     getUserToken,
+    refreshUser,
     resetInactivityTimer, // Expose reset function
   };
 

@@ -207,6 +207,7 @@ export class AuthService {
         id: user._id || user.id,
         username: user.username,
         email: user.email,
+        role: user.role || 'user',
         createdAt: user.createdAt,
         isActive: user.isActive,
       };

@@ -26,6 +26,7 @@ import { BlurView } from 'expo-blur';
 import { Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import { useAuth } from '../../contexts/AuthContext';
 
 type RootStackParamList = {
   ManageAccounts: undefined;
@@ -37,6 +38,7 @@ const ManageAccounts = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { isLoading: authLoading, userRole, isAdmin, refreshUser } = useAuth();
   const [users, setUsers] = useState<BackendUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -69,35 +71,22 @@ const ManageAccounts = () => {
     animate();
   }, []);
 
-  // Check admin authorization
+  // Check admin authorization (admin only)
   useEffect(() => {
-    const checkAdminAccess = async () => {
-      try {
-        const isAdmin = await AsyncStorage.getItem('isAdmin');
-        const userRole = await AsyncStorage.getItem('userRole');
-        
-        // If not admin, redirect away
-        if (isAdmin !== 'true' && userRole !== 'admin') {
-          setIsAuthorized(false);
-          Alert.alert(
-            'Access Denied',
-            'You do not have permission to access this page.',
-            [{ text: 'OK', onPress: () => navigation.goBack() }]
-          );
-          return;
-        }
-        
-        setIsAuthorized(true);
-        loadUsers(false);
-      } catch (error) {
-        console.error('Admin check failed:', error);
-        setIsAuthorized(false);
-        navigation.goBack();
-      }
-    };
-    
-    checkAdminAccess();
-  }, [navigation]);
+    if (authLoading) return;
+    const hasAccess = isAdmin; // moderators not allowed here
+    if (!hasAccess) {
+      setIsAuthorized(false);
+      Alert.alert(
+        'Access Denied',
+        'You do not have permission to access this page. Admin access required.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+      return;
+    }
+    setIsAuthorized(true);
+    loadUsers(false);
+  }, [authLoading, isAdmin, navigation, loadUsers]);
 
   const loadUsers = useCallback(async (isRefresh = false) => {
     try {
@@ -135,6 +124,20 @@ const ManageAccounts = () => {
       setOpenRoleDropdownUserId(null); // Close dropdown
       await ManageAccountsService.updateUserRole(userId, newRole);
       await loadUsers(true); // Refresh after role change
+      
+      // If the updated user is the current user, refresh their role from backend
+      const currentUserId = await AsyncStorage.getItem('userId');
+      if (currentUserId === userId) {
+        console.log('Current user role changed, refreshing from backend...');
+        await refreshUser();
+        // Show a message that they may need to restart the app or refresh
+        Alert.alert(
+          'Role Updated',
+          'Your role has been updated. Please restart the app or navigate away and back to see the changes take effect.',
+          [{ text: 'OK' }]
+        );
+      }
+      
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to update role');
@@ -345,7 +348,7 @@ const ManageAccounts = () => {
               )}
             </TouchableOpacity>
 
-            {/* Role Dropdown Modal */}
+            {/* Role Dropdown Modal - centered */}
             <Modal
               visible={openRoleDropdownUserId === user._id}
               transparent={true}
@@ -357,23 +360,17 @@ const ManageAccounts = () => {
                 activeOpacity={1}
                 onPress={() => setOpenRoleDropdownUserId(null)}
               >
-                <View 
-                  style={[
-                    styles.roleDropdownContentWrapper,
-                    buttonLayouts[user._id] && {
-                      position: 'absolute',
-                      top: buttonLayouts[user._id].y + buttonLayouts[user._id].height + 4,
-                      right: Math.max(16, Dimensions.get('window').width - buttonLayouts[user._id].x - buttonLayouts[user._id].width),
-                    }
-                  ]}
-                >
+                <View style={styles.roleDropdownCenterWrapper}>
                   <BlurView
                     intensity={Platform.OS === 'ios' ? 80 : 60}
                     tint={isDarkMode ? 'dark' : 'light'}
-                    style={[styles.roleDropdownContent, {
-                      backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-                      borderColor: 'rgba(255, 255, 255, 0.2)',
-                    }]}
+                    style={[
+                      styles.roleDropdownContent,
+                      {
+                        backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                        borderColor: 'rgba(255, 255, 255, 0.2)',
+                      }
+                    ]}
                   >
                     {roleOptions.map((option, index) => {
                       const isSelected = (user.role || 'user') === option.key;
@@ -391,6 +388,7 @@ const ManageAccounts = () => {
                           onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                             handleRoleChange(user._id, option.key);
+                            setOpenRoleDropdownUserId(null);
                           }}
                           activeOpacity={0.7}
                         >
@@ -945,6 +943,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingRight: 20,
     paddingTop: 20,
+  },
+  roleDropdownCenterWrapper: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
   },
   roleDropdownContent: {
     borderRadius: 16,

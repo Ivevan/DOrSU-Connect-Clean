@@ -25,6 +25,7 @@ import { Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { formatDate, timeAgo } from '../../utils/dateUtils';
+import { useAuth } from '../../contexts/AuthContext';
 
 type RootStackParamList = {
   ActivityLog: undefined;
@@ -360,6 +361,7 @@ const ActivityLogScreen = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { isLoading: authLoading, userRole, isAdmin } = useAuth();
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -395,41 +397,30 @@ const ActivityLogScreen = () => {
     animate();
   }, []);
 
-  // Check admin authorization
+  // Check admin authorization (admin only) via AuthContext
   useEffect(() => {
-    const checkAdminAccess = async () => {
-      try {
-        // For design preview, skip authorization check and use mock data
-        if (useMockData) {
-          setIsAuthorized(true);
-          loadLogs(false);
-          return;
-        }
-        
-        const isAdmin = await AsyncStorage.getItem('isAdmin');
-        const userRole = await AsyncStorage.getItem('userRole');
-        
-        if (isAdmin !== 'true' && userRole !== 'admin') {
-          setIsAuthorized(false);
-          Alert.alert(
-            'Access Denied',
-            'You do not have permission to access this page.',
-            [{ text: 'OK', onPress: () => navigation.goBack() }]
-          );
-          return;
-        }
-        
-        setIsAuthorized(true);
-        loadLogs(false);
-      } catch (error) {
-        console.error('Admin check failed:', error);
-        setIsAuthorized(false);
-        navigation.goBack();
-      }
-    };
-    
-    checkAdminAccess();
-  }, [navigation, useMockData]);
+    // For design preview, skip authorization check and use mock data
+    if (useMockData) {
+      setIsAuthorized(true);
+      loadLogs(false);
+      return;
+    }
+
+    if (authLoading) return;
+    const hasAccess = isAdmin; // only admins (not moderators)
+    if (!hasAccess) {
+      setIsAuthorized(false);
+      Alert.alert(
+        'Access Denied',
+        'You do not have permission to access this page. Admin access required.',
+        [{ text: 'OK', onPress: () => navigation.goBack() }]
+      );
+      return;
+    }
+    setIsAuthorized(true);
+    loadLogs(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigation, useMockData, authLoading, isAdmin]);
 
   const loadLogs = useCallback(async (isRefresh = false) => {
     try {

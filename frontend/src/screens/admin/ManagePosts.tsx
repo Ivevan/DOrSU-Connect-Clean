@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -53,9 +53,11 @@ type Post = {
 
 const ManagePosts: React.FC = () => {
   const navigation = useNavigation<ManagePostsNavigationProp>();
+  const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
+  const isMountedRef = useRef(true);
   const { isDarkMode, theme } = useThemeValues();
-  const { isLoading: authLoading, userRole, isAdmin, refreshUser } = useAuth();
+  const { isLoading: authLoading, userRole, isAdmin, refreshUser, isAuthenticated } = useAuth();
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const isPendingAuthorization = isAuthorized === null;
   
@@ -183,21 +185,40 @@ const ManagePosts: React.FC = () => {
     }, [authLoading, refreshUser])
   );
 
+  // Track mount state to prevent alerts during unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   // Authorization check (admins and moderators) via AuthContext
   useEffect(() => {
     if (authLoading) return;
+    // Don't show alert if user is logging out (not authenticated), screen is not focused, or component is unmounting
+    if (!isAuthenticated || !isFocused || !isMountedRef.current) {
+      setIsAuthorized(false);
+      return;
+    }
     const hasAccess = isAdmin || userRole === 'moderator';
     if (!hasAccess) {
       setIsAuthorized(false);
-      Alert.alert(
-        'Access Denied',
-        'You do not have permission to access this page. If you were recently assigned as a moderator, please log out and log back in.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
-      return;
+      // Add a small delay and re-check before showing alert to prevent showing during logout
+      const timeoutId = setTimeout(() => {
+        // Triple-check we're still mounted, focused, and authenticated before showing alert
+        if (isMountedRef.current && isFocused && isAuthenticated) {
+          Alert.alert(
+            'Access Denied',
+            'You do not have permission to access this page. If you were recently assigned as a moderator, please log out and log back in.',
+            [{ text: 'OK', onPress: () => navigation.goBack() }]
+          );
+        }
+      }, 100);
+      return () => clearTimeout(timeoutId);
     }
     setIsAuthorized(true);
-  }, [authLoading, isAdmin, userRole, navigation]);
+  }, [authLoading, isAdmin, userRole, navigation, isAuthenticated, isFocused]);
 
   // Fetch posts function - reusable for both mount and focus
   const fetchPosts = useCallback(async (forceRefresh: boolean = false) => {
@@ -578,21 +599,23 @@ const ManagePosts: React.FC = () => {
     }
   }, []);
 
-  if (isAuthorized === false) {
-    return null;
+  if (authLoading || isPendingAuthorization) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }}>
+        <ActivityIndicator size="large" color={theme.colors.accent} />
+      </View>
+    );
   }
 
-  if (isPendingAuthorization) {
+  if (isAuthorized === false) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#2563EB" />
-      </View>
+      <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }} />
     );
   }
 
   return (
     <View style={[styles.container, {
-      backgroundColor: 'transparent',
+      backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3',
     }]} collapsable={false}>
       <StatusBar 
         backgroundColor="transparent"

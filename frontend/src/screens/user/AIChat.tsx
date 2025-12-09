@@ -10,8 +10,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, AppState, AppStateStatus, BackHandler, Image, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
-import UserSidebar from '../../components/navigation/UserSidebar';
+import BottomNavBar from '../../components/navigation/BottomNavBar';
+import Sidebar from '../../components/navigation/Sidebar';
 import { theme } from '../../config/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
@@ -1150,8 +1150,8 @@ const AIChat = () => {
           </TouchableOpacity>
         </View>
       </View>
-      {/* User Sidebar Component */}
-      <UserSidebar
+      {/* Sidebar Component */}
+      <Sidebar
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         chatHistory={chatHistory}
@@ -1198,6 +1198,7 @@ const AIChat = () => {
           }
         }}
         onDeleteAllChats={handleDeleteAllChats}
+        allowedRoles={['user', 'moderator', 'admin']}
       />
       {/* Info Modal */}
       <Modal visible={isInfoOpen} transparent animationType="fade" onRequestClose={() => setIsInfoOpen(false)}>
@@ -1531,7 +1532,7 @@ const AIChat = () => {
           </View>
         </View>
       </View>
-      <UserBottomNavBar />
+      <BottomNavBar tabType="user" autoDetect />
 
       {/* Action Menu Modal */}
       <Modal

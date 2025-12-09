@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -8,8 +8,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Animated, Image, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // import AddPostDrawer from '../../components/dashboard/AddPostDrawer'; // Replaced with PostUpdate screen navigation
-import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
-import AdminSidebar from '../../components/navigation/AdminSidebar';
+import BottomNavBar from '../../components/navigation/BottomNavBar';
+import Sidebar from '../../components/navigation/Sidebar';
 import { useAuth } from '../../contexts/AuthContext';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import { useUpdates } from '../../contexts/UpdatesContext';
@@ -131,7 +131,7 @@ const timeFilterOptions = [
 const AdminDashboard = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
-  const { isLoading: authLoading, userRole, isAdmin, refreshUser } = useAuth();
+  const { isLoading: authLoading, userRole, isAdmin, refreshUser, isAuthenticated } = useAuth();
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const isPendingAuthorization = isAuthorized === null;
   const resolvedLegendItems = useMemo<LegendItem[]>(() => legendItemsData, []);
@@ -162,7 +162,9 @@ const AdminDashboard = () => {
     ] as [string, string, string];
   };
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const isFocused = useIsFocused();
   const scrollRef = useRef<ScrollView>(null);
+  const isMountedRef = useRef(true);
   
   // Memoize safe area insets to prevent recalculation during navigation
   const safeInsets = useMemo(() => ({
@@ -203,21 +205,40 @@ const AdminDashboard = () => {
     }, [authLoading, refreshUser])
   );
 
+  // Track mount state to prevent alerts during unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   // Authorization check (admins and moderators) via AuthContext
   useEffect(() => {
     if (authLoading) return;
+    // Don't show alert if user is logging out (not authenticated), screen is not focused, or component is unmounting
+    if (!isAuthenticated || !isFocused || !isMountedRef.current) {
+      setIsAuthorized(false);
+      return;
+    }
     const hasAccess = isAdmin || userRole === 'moderator';
     if (!hasAccess) {
       setIsAuthorized(false);
-      Alert.alert(
-        'Access Denied',
-        'You do not have permission to access this page.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
-      return;
+      // Add a small delay and re-check before showing alert to prevent showing during logout
+      const timeoutId = setTimeout(() => {
+        // Triple-check we're still mounted, focused, and authenticated before showing alert
+        if (isMountedRef.current && isFocused && isAuthenticated) {
+          Alert.alert(
+            'Access Denied',
+            'You do not have permission to access this page.',
+            [{ text: 'OK', onPress: () => navigation.goBack() }]
+          );
+        }
+      }, 100);
+      return () => clearTimeout(timeoutId);
     }
     setIsAuthorized(true);
-  }, [authLoading, isAdmin, userRole, navigation]);
+  }, [authLoading, isAdmin, userRole, navigation, isAuthenticated, isFocused]);
   
   // Dashboard data
   const [timeFilter, setTimeFilter] = useState<'all' | 'upcomingmonth' | 'lastmonth' | 'thismonth'>('thismonth');
@@ -999,19 +1020,21 @@ const AdminDashboard = () => {
   }, [fetchDashboardData, refreshCalendarEvents]);
 
   if (isAuthorized === false) {
-    return null;
+    return (
+      <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }} />
+    );
   }
 
   if (isPendingAuthorization) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }}>
         <ActivityIndicator size="large" color={theme.colors.accent} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container} collapsable={false}>
+    <View style={[styles.container, { backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }]} collapsable={false}>
       <StatusBar
         backgroundColor="transparent"
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
@@ -1157,10 +1180,11 @@ const AdminDashboard = () => {
         </View>
       </LinearGradient>
       
-      {/* Admin Sidebar Component */}
-      <AdminSidebar
+      {/* Sidebar Component */}
+      <Sidebar
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
+        allowedRoles={['admin', 'moderator']}
       />
 
       {/* Main Content - Scrollable with Curved Top */}
@@ -1587,11 +1611,12 @@ const AdminDashboard = () => {
         bottom: 0,
         paddingBottom: safeInsets.bottom,
       }]} collapsable={false}>
-        <AdminBottomNavBar
+        <BottomNavBar
+          tabType="admin"
           activeTab="dashboard"
-          onChatPress={() => navigation.navigate('AdminAIChat')}
-          onDashboardPress={() => navigation.navigate('AdminDashboard')}
-          onCalendarPress={() => {
+          onFirstPress={() => navigation.navigate('AdminAIChat')}
+          onSecondPress={() => navigation.navigate('AdminDashboard')}
+          onThirdPress={() => {
             // Moderators use regular Calendar, admins use AdminCalendar
             if (userRole === 'moderator') {
               navigation.navigate('Calendar' as any);

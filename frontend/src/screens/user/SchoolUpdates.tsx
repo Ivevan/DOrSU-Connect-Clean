@@ -7,8 +7,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Dimensions, Image, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
-import UserSidebar from '../../components/navigation/UserSidebar';
+import BottomNavBar from '../../components/navigation/BottomNavBar';
+import Sidebar from '../../components/navigation/Sidebar';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import ViewEventModal from '../../modals/ViewEventModal';
 import AdminDataService from '../../services/AdminDataService';
@@ -1398,10 +1398,11 @@ const SchoolUpdates = () => {
         </View>
       </LinearGradient>
       
-      {/* User Sidebar Component */}
-      <UserSidebar
+      {/* Sidebar Component */}
+      <Sidebar
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
+        allowedRoles={['user', 'moderator', 'admin']}
       />
 
       {/* Main Content - Scrollable with Curved Top */}
@@ -1878,7 +1879,7 @@ const SchoolUpdates = () => {
         bottom: 0,
         paddingBottom: safeInsets.bottom,
       }]} collapsable={false}>
-        <UserBottomNavBar />
+        <BottomNavBar tabType="user" autoDetect />
       </View>
     </View>
   );

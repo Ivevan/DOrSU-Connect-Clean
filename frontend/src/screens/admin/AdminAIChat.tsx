@@ -10,8 +10,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, AppState, AppStateStatus, BackHandler, Image, Linking, Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Markdown from 'react-native-markdown-display';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
-import AdminSidebar from '../../components/navigation/AdminSidebar';
+import BottomNavBar from '../../components/navigation/BottomNavBar';
+import Sidebar from '../../components/navigation/Sidebar';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -1005,8 +1005,8 @@ const AdminAIChat = () => {
           </TouchableOpacity>
         </View>
       </View>
-      {/* Admin Sidebar Component */}
-      <AdminSidebar
+      {/* Sidebar Component */}
+      <Sidebar
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         chatHistory={chatHistory}
@@ -1038,6 +1038,7 @@ const AdminAIChat = () => {
           }
         }}
         onDeleteAllChats={handleDeleteAllChats}
+        allowedRoles={['admin', 'moderator']}
       />
       {/* Info Modal */}
       <InfoModal
@@ -1360,11 +1361,12 @@ const AdminAIChat = () => {
         </View>
       </View>
 
-      <AdminBottomNavBar
+      <BottomNavBar
+        tabType="admin"
         activeTab="chat"
-        onChatPress={() => navigation.navigate('AdminAIChat')}
-        onDashboardPress={() => navigation.navigate('AdminDashboard')}
-        onCalendarPress={() => {
+        onFirstPress={() => navigation.navigate('AdminAIChat')}
+        onSecondPress={() => navigation.navigate('AdminDashboard')}
+        onThirdPress={() => {
           // Moderators use regular Calendar, admins use AdminCalendar
           if (userRole === 'moderator') {
             navigation.navigate('Calendar' as any);

@@ -16,7 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeValues } from '../../contexts/ThemeContext';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ActivityLogService, { ActivityLog, ActivityLogFilters } from '../../services/ActivityLogService';
@@ -50,7 +50,8 @@ const ActivityLogScreen = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { isLoading: authLoading, userRole, isAdmin } = useAuth();
+  const isFocused = useIsFocused();
+  const { isLoading: authLoading, userRole, isAdmin, isAuthenticated } = useAuth();
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -64,6 +65,7 @@ const ActivityLogScreen = () => {
 
   // Animated floating orb
   const floatAnim1 = useRef(new Animated.Value(0)).current;
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     const animate = () => {
@@ -85,23 +87,42 @@ const ActivityLogScreen = () => {
     animate();
   }, []);
 
+  // Track mount state to prevent alerts during unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   // Check admin authorization (admin only) via AuthContext
   useEffect(() => {
     if (authLoading) return;
+    // Don't show alert if user is logging out (not authenticated), screen is not focused, or component is unmounting
+    if (!isAuthenticated || !isFocused || !isMountedRef.current) {
+      setIsAuthorized(false);
+      return;
+    }
     const hasAccess = isAdmin; // only admins (not moderators)
     if (!hasAccess) {
       setIsAuthorized(false);
-      Alert.alert(
-        'Access Denied',
-        'You do not have permission to access this page. Admin access required.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
-      return;
+      // Add a small delay and re-check before showing alert to prevent showing during logout
+      const timeoutId = setTimeout(() => {
+        // Triple-check we're still mounted, focused, and authenticated before showing alert
+        if (isMountedRef.current && isFocused && isAuthenticated) {
+          Alert.alert(
+            'Access Denied',
+            'You do not have permission to access this page. Admin access required.',
+            [{ text: 'OK', onPress: () => navigation.goBack() }]
+          );
+        }
+      }, 100);
+      return () => clearTimeout(timeoutId);
     }
     setIsAuthorized(true);
     loadLogs(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigation, authLoading, isAdmin]);
+  }, [navigation, authLoading, isAdmin, isAuthenticated, isFocused]);
 
   const loadLogs = useCallback(async (isRefresh = false) => {
     try {
@@ -325,8 +346,20 @@ const ActivityLogScreen = () => {
     });
   }, [logs, searchQuery]);
 
+  const isPendingAuthorization = isAuthorized === null;
+
+  if (authLoading || isPendingAuthorization) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }}>
+        <ActivityIndicator size="large" color={theme.colors.accent} />
+      </View>
+    );
+  }
+
   if (isAuthorized === false) {
-    return null;
+    return (
+      <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }} />
+    );
   }
 
   const safeInsets = {
@@ -336,10 +369,8 @@ const ActivityLogScreen = () => {
     right: insets.right,
   };
 
-  const isPendingAuthorization = isAuthorized === null;
-
   return (
-    <View style={styles.container} collapsable={false}>
+    <View style={[styles.container, { backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }]} collapsable={false}>
       <StatusBar
         backgroundColor="transparent"
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}

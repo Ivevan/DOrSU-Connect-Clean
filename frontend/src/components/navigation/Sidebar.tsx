@@ -10,6 +10,9 @@ import AIService, { ChatHistoryItem } from '../../services/AIService';
 import { getCurrentUser } from '../../services/authService';
 import { useAuth } from '../../contexts/AuthContext';
 
+type Role = 'admin' | 'moderator' | 'user' | null;
+
+// Union of routes needed for both admin and user flows
 type RootStackParamList = {
   GetStarted: undefined;
   SignIn: undefined;
@@ -28,7 +31,9 @@ type RootStackParamList = {
   ActivityLog: undefined;
 };
 
-interface AdminSidebarProps {
+type Navigation = NativeStackNavigationProp<RootStackParamList>;
+
+interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
   chatHistory?: ChatHistoryItem[];
@@ -39,9 +44,14 @@ interface AdminSidebarProps {
   onDeleteChat?: (chatId: string) => void;
   onDeleteAllChats?: () => Promise<void>;
   selectedUserType?: 'student' | 'faculty';
+
+  // Role handling
+  roleOverride?: Role;
+  allowedRoles?: Role[]; // render only for these roles
+  disableIfUnauthorized?: boolean; // default true
 }
 
-const AdminSidebar: React.FC<AdminSidebarProps> = ({
+const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   onClose,
   chatHistory = [],
@@ -52,34 +62,36 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
   onDeleteChat,
   onDeleteAllChats,
   selectedUserType = 'student',
+  roleOverride = null,
+  allowedRoles = ['user', 'moderator', 'admin'],
+  disableIfUnauthorized = true,
 }) => {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<Navigation>();
   const route = useRoute();
   const { isDarkMode, theme: t, colorTheme } = useThemeValues();
   const insets = useSafeAreaInsets();
   const sidebarAnim = useRef(new Animated.Value(-320)).current;
   const { userRole, isAdmin, isLoading: authLoading, refreshUser } = useAuth();
 
+  const effectiveRole: Role = roleOverride ?? (isAdmin ? 'admin' : userRole ?? 'user');
+  const isAuthorized = !allowedRoles || allowedRoles.includes(effectiveRole);
+
   // Determine current active screen
   const currentScreen = route.name as keyof RootStackParamList;
 
   // Sort chat history by timestamp (newest first)
   const sortedChatHistory = useMemo(() => {
-    // Sort by timestamp (newest first)
     return [...chatHistory].sort((a, b) => {
       const timeA = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp).getTime();
       const timeB = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp).getTime();
-      
-      // Handle invalid dates
       if (isNaN(timeA) && isNaN(timeB)) return 0;
-      if (isNaN(timeA)) return 1; // Invalid dates go to end
+      if (isNaN(timeA)) return 1;
       if (isNaN(timeB)) return -1;
-      
-      return timeB - timeA; // Descending order (newest first)
+      return timeB - timeA;
     });
   }, [chatHistory]);
 
-  // User state
+  // User state for avatar
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
 
@@ -87,7 +99,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [chatToDelete, setChatToDelete] = useState<string | null>(null);
 
-  // Load user data
+  // Load user data and refresh role when possible
   useFocusEffect(
     useCallback(() => {
       const loadUserData = async () => {
@@ -97,8 +109,6 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const userPhoto = await AsyncStorage.getItem('userPhoto');
           setBackendUserPhoto(userPhoto);
-
-          // Refresh user (role/isAdmin) on focus
           await refreshUser?.();
         } catch (error) {
           console.error('Failed to load user data:', error);
@@ -109,7 +119,7 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
   );
 
   const getUserInitials = () => {
-    if (!currentUser?.displayName) return 'AD';
+    if (!currentUser?.displayName) return effectiveRole === 'admin' ? 'AD' : '?';
     const names = currentUser.displayName.split(' ');
     if (names.length >= 2) {
       return (names[0][0] + names[1][0]).toUpperCase();
@@ -117,24 +127,15 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
     return currentUser.displayName.substring(0, 2).toUpperCase();
   };
 
-  // Format time helper
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
+  const formatTime = (date: Date) => date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  // Format date helper
   const formatDate = (date: Date) => {
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
-    
-    if (date.toDateString() === today.toDateString()) {
-      return 'Today';
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday';
-    } else {
-      return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    }
+    if (date.toDateString() === today.toDateString()) return 'Today';
+    if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
   // Animate sidebar when opening/closing
@@ -153,15 +154,12 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   const handleDeleteChat = async () => {
     if (!chatToDelete) return;
-
     if (onDeleteChat) {
       onDeleteChat(chatToDelete);
       setShowDeleteModal(false);
       setChatToDelete(null);
       return;
     }
-
-    // Fallback deletion logic
     try {
       let token = getUserToken ? await getUserToken() : null;
       if (!token) {
@@ -190,249 +188,323 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
     setChatToDelete(null);
   };
 
+  const titleText =
+    effectiveRole === 'admin'
+      ? 'Admin Panel'
+      : effectiveRole === 'moderator'
+      ? 'Moderator Panel'
+      : 'DOrSU AI';
+
+  const isCurrent = (screen: keyof RootStackParamList) => currentScreen === screen;
+
+  const menuItems = useMemo(() => {
+    if (effectiveRole === 'admin') {
+      return [
+        {
+          key: 'ai',
+          label: 'AI Assistant',
+          icon: isCurrent('AdminAIChat') ? 'home' : 'home-outline',
+          target: 'AdminAIChat' as keyof RootStackParamList,
+          onPress: () => {
+            onNewConversation?.();
+            onClose();
+            navigation.navigate('AdminAIChat');
+          },
+        },
+        {
+          key: 'dashboard',
+          label: 'Events',
+          icon: isCurrent('AdminDashboard') ? 'newspaper' : 'newspaper-outline',
+          target: 'AdminDashboard' as keyof RootStackParamList,
+          onPress: () => {
+            onClose();
+            navigation.navigate('AdminDashboard');
+          },
+        },
+        {
+          key: 'calendar',
+          label: 'Calendar',
+          icon: isCurrent('AdminCalendar') ? 'calendar' : 'calendar-outline',
+          target: 'AdminCalendar' as keyof RootStackParamList,
+          onPress: () => {
+            onClose();
+            navigation.navigate('AdminCalendar');
+          },
+        },
+        {
+          key: 'postUpdate',
+          label: 'Post Update',
+          icon: isCurrent('PostUpdate') ? 'create' : 'create-outline',
+          target: 'PostUpdate' as keyof RootStackParamList,
+          onPress: () => {
+            onClose();
+            navigation.navigate('PostUpdate');
+          },
+        },
+        {
+          key: 'managePosts',
+          label: 'Manage Posts',
+          icon: isCurrent('ManagePosts') ? 'list' : 'list-outline',
+          target: 'ManagePosts' as keyof RootStackParamList,
+          onPress: () => {
+            onClose();
+            navigation.navigate('ManagePosts');
+          },
+        },
+        {
+          key: 'manageAccounts',
+          label: 'Manage Accounts',
+          icon: isCurrent('ManageAccounts') ? 'people' : 'people-outline',
+          target: 'ManageAccounts' as keyof RootStackParamList,
+          onPress: () => {
+            onClose();
+            navigation.navigate('ManageAccounts');
+          },
+          roleGate: 'admin',
+        },
+        {
+          key: 'activityLog',
+          label: 'Activity Log',
+          icon: isCurrent('ActivityLog') ? 'document-text' : 'document-text-outline',
+          target: 'ActivityLog' as keyof RootStackParamList,
+          onPress: () => {
+            onClose();
+            navigation.navigate('ActivityLog');
+          },
+          roleGate: 'admin',
+        },
+        {
+          key: 'settings',
+          label: 'Profile Settings',
+          icon: isCurrent('AdminSettings') ? 'person-circle' : 'person-circle-outline',
+          target: 'AdminSettings' as keyof RootStackParamList,
+          onPress: () => {
+            onClose();
+            navigation.navigate('AdminSettings');
+          },
+        },
+      ];
+    }
+
+    if (effectiveRole === 'moderator') {
+      return [
+        {
+          key: 'ai',
+          label: 'AI Assistant',
+          icon: isCurrent('AdminAIChat') ? 'home' : 'home-outline',
+          target: 'AdminAIChat' as keyof RootStackParamList,
+          onPress: () => {
+            onNewConversation?.();
+            onClose();
+            navigation.navigate('AdminAIChat');
+          },
+        },
+        {
+          key: 'dashboard',
+          label: 'Events',
+          icon: isCurrent('AdminDashboard') ? 'newspaper' : 'newspaper-outline',
+          target: 'AdminDashboard' as keyof RootStackParamList,
+          onPress: () => {
+            onClose();
+            navigation.navigate('AdminDashboard');
+          },
+        },
+        {
+          key: 'calendarUser',
+          label: 'Calendar',
+          icon: isCurrent('Calendar') ? 'calendar' : 'calendar-outline',
+          target: 'Calendar' as keyof RootStackParamList,
+          onPress: () => {
+            onClose();
+            navigation.navigate('Calendar');
+          },
+        },
+        {
+          key: 'postUpdate',
+          label: 'Post Update',
+          icon: isCurrent('PostUpdate') ? 'create' : 'create-outline',
+          target: 'PostUpdate' as keyof RootStackParamList,
+          onPress: () => {
+            onClose();
+            navigation.navigate('PostUpdate');
+          },
+        },
+        {
+          key: 'managePosts',
+          label: 'Manage Posts',
+          icon: isCurrent('ManagePosts') ? 'list' : 'list-outline',
+          target: 'ManagePosts' as keyof RootStackParamList,
+          onPress: () => {
+            onClose();
+            navigation.navigate('ManagePosts');
+          },
+        },
+        {
+          key: 'settings',
+          label: 'Profile Settings',
+          icon: isCurrent('UserSettings') ? 'person-circle' : 'person-circle-outline',
+          target: 'UserSettings' as keyof RootStackParamList,
+          onPress: () => {
+            onClose();
+            navigation.navigate('UserSettings');
+          },
+        },
+      ];
+    }
+
+    // Default: user
+    return [
+      {
+        key: 'ai',
+        label: 'AI Assistant',
+        icon: isCurrent('AIChat') ? 'home' : 'home-outline',
+        target: 'AIChat' as keyof RootStackParamList,
+        onPress: () => {
+          onNewConversation?.();
+          onClose();
+          navigation.navigate('AIChat');
+        },
+      },
+      {
+        key: 'updates',
+        label: 'Events',
+        icon: isCurrent('SchoolUpdates') ? 'newspaper' : 'newspaper-outline',
+        target: 'SchoolUpdates' as keyof RootStackParamList,
+        onPress: () => {
+          onClose();
+          navigation.navigate('SchoolUpdates');
+        },
+      },
+      {
+        key: 'calendar',
+        label: 'Calendar',
+        icon: isCurrent('Calendar') ? 'calendar' : 'calendar-outline',
+        target: 'Calendar' as keyof RootStackParamList,
+        onPress: () => {
+          onClose();
+          navigation.navigate('Calendar');
+        },
+      },
+      {
+        key: 'settings',
+        label: 'Profile Settings',
+        icon: isCurrent('UserSettings') ? 'person-circle' : 'person-circle-outline',
+        target: 'UserSettings' as keyof RootStackParamList,
+        onPress: () => {
+          onClose();
+          navigation.navigate('UserSettings');
+        },
+      },
+    ];
+  }, [effectiveRole, currentScreen, navigation, onClose, onNewConversation]);
+
+  // Guard after hooks to avoid hook-order mismatches while skipping render
+  if (disableIfUnauthorized && !isAuthorized) {
+    return null;
+  }
+
   return (
     <>
-      {/* Sidebar */}
       <Animated.View
         style={[
           styles.sidebar,
           {
             transform: [{ translateX: sidebarAnim }],
-            backgroundColor: isDarkMode ? '#1F2937' : '#F5F2ED',
+            backgroundColor: isDarkMode ? '#1F2937' : effectiveRole === 'user' ? '#F9FAFB' : '#F5F2ED',
             paddingTop: insets.top,
           },
         ]}
       >
-        {/* Sidebar Header */}
         <View style={styles.sidebarHeader}>
           <View style={styles.sidebarLogoSection}>
             <View style={[styles.sidebarLogo, { backgroundColor: t.colors.accent }]}>
-              <Ionicons name="shield-checkmark" size={28} color="#FFFFFF" />
+              <Ionicons name={effectiveRole === 'user' ? 'school' : 'shield-checkmark'} size={28} color="#FFFFFF" />
             </View>
-            <Text style={[styles.sidebarTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(20) }]}>
-              {userRole === 'moderator' ? 'Moderator Panel' : 'Admin Panel'}
+            <Text
+              style={[
+                styles.sidebarTitle,
+                { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(20) },
+              ]}
+            >
+              {titleText}
             </Text>
           </View>
           <View style={styles.sidebarHeaderButtons}>
             <TouchableOpacity
               style={styles.sidebarIconButton}
               onPress={() => {
-                if (onNewConversation) {
-                  onNewConversation();
-                }
+                onNewConversation?.();
                 onClose();
               }}
               accessibilityLabel="New conversation"
             >
               <Ionicons name="create-outline" size={26} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={onClose}
-              style={styles.sidebarIconButton}
-              accessibilityLabel="Close sidebar"
-            >
+            <TouchableOpacity onPress={onClose} style={styles.sidebarIconButton} accessibilityLabel="Close sidebar">
               <View style={styles.customHamburger} pointerEvents="none">
-                <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
-                <View style={[styles.hamburgerLine, styles.hamburgerLineLong, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
-                <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+                <View
+                  style={[
+                    styles.hamburgerLine,
+                    styles.hamburgerLineShort,
+                    { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.hamburgerLine,
+                    styles.hamburgerLineLong,
+                    { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.hamburgerLine,
+                    styles.hamburgerLineShort,
+                    { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' },
+                  ]}
+                />
               </View>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Navigation Menu */}
         <View style={styles.sidebarMenu}>
-          <TouchableOpacity
-            style={styles.sidebarMenuItem}
-            onPress={() => {
-              if (onNewConversation) {
-                onNewConversation();
-              }
-              onClose();
-              navigation.navigate('AdminAIChat');
-            }}
-          >
-            <Ionicons 
-              name={currentScreen === 'AdminAIChat' ? 'home' : 'home-outline'} 
-              size={24} 
-              color={currentScreen === 'AdminAIChat' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
-            />
-            <Text style={[styles.sidebarMenuText, { 
-              color: currentScreen === 'AdminAIChat' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: currentScreen === 'AdminAIChat' ? '600' : '500',
-              fontSize: t.fontSize.scaleSize(16)
-            }]}>
-              AI Assistant
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.sidebarMenuItem}
-            onPress={() => {
-              onClose();
-              navigation.navigate('AdminDashboard');
-            }}
-          >
-            <Ionicons 
-              name={currentScreen === 'AdminDashboard' ? 'newspaper' : 'newspaper-outline'} 
-              size={24} 
-              color={currentScreen === 'AdminDashboard' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
-            />
-            <Text style={[styles.sidebarMenuText, { 
-              color: currentScreen === 'AdminDashboard' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: currentScreen === 'AdminDashboard' ? '600' : '500',
-              fontSize: t.fontSize.scaleSize(16)
-            }]}>
-              Events
-            </Text>
-          </TouchableOpacity>
-
-          {/* Calendar - Admin only (moderators use regular Calendar) */}
-          {userRole === 'admin' && (
-            <TouchableOpacity
-              style={styles.sidebarMenuItem}
-              onPress={() => {
-                onClose();
-                navigation.navigate('AdminCalendar');
-              }}
-            >
-              <Ionicons 
-                name={currentScreen === 'AdminCalendar' ? 'calendar' : 'calendar-outline'} 
-                size={24} 
-                color={currentScreen === 'AdminCalendar' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
-              />
-              <Text style={[styles.sidebarMenuText, { 
-                color: currentScreen === 'AdminCalendar' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-                fontWeight: currentScreen === 'AdminCalendar' ? '600' : '500',
-                fontSize: t.fontSize.scaleSize(16)
-              }]}>
-                Calendar
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity
-            style={styles.sidebarMenuItem}
-            onPress={() => {
-              onClose();
-              navigation.navigate('PostUpdate');
-            }}
-          >
-            <Ionicons 
-              name={currentScreen === 'PostUpdate' ? 'create' : 'create-outline'} 
-              size={24} 
-              color={currentScreen === 'PostUpdate' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
-            />
-            <Text style={[styles.sidebarMenuText, { 
-              color: currentScreen === 'PostUpdate' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: currentScreen === 'PostUpdate' ? '600' : '500',
-              fontSize: t.fontSize.scaleSize(16)
-            }]}>
-              Post Update
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.sidebarMenuItem}
-            onPress={() => {
-              onClose();
-              navigation.navigate('ManagePosts');
-            }}
-          >
-            <Ionicons 
-              name={currentScreen === 'ManagePosts' ? 'list' : 'list-outline'} 
-              size={24} 
-              color={currentScreen === 'ManagePosts' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
-            />
-            <Text style={[styles.sidebarMenuText, { 
-              color: currentScreen === 'ManagePosts' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: currentScreen === 'ManagePosts' ? '600' : '500',
-              fontSize: t.fontSize.scaleSize(16)
-            }]}>
-              Manage Posts
-            </Text>
-          </TouchableOpacity>
-
-          {/* Manage Accounts - Admin only */}
-          {userRole === 'admin' && (
-            <TouchableOpacity
-              style={styles.sidebarMenuItem}
-              onPress={() => {
-                onClose();
-                navigation.navigate('ManageAccounts');
-              }}
-            >
-              <Ionicons 
-                name={currentScreen === 'ManageAccounts' ? 'people' : 'people-outline'} 
-                size={24} 
-                color={currentScreen === 'ManageAccounts' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
-              />
-              <Text style={[styles.sidebarMenuText, { 
-                color: currentScreen === 'ManageAccounts' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-                fontWeight: currentScreen === 'ManageAccounts' ? '600' : '500',
-                fontSize: t.fontSize.scaleSize(16)
-              }]}>
-                Manage Accounts
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Activity Log - Admin only */}
-          {userRole === 'admin' && (
-            <TouchableOpacity
-              style={styles.sidebarMenuItem}
-              onPress={() => {
-                onClose();
-                navigation.navigate('ActivityLog');
-              }}
-            >
-              <Ionicons 
-                name={currentScreen === 'ActivityLog' ? 'document-text' : 'document-text-outline'} 
-                size={24} 
-                color={currentScreen === 'ActivityLog' ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
-              />
-              <Text style={[styles.sidebarMenuText, { 
-                color: currentScreen === 'ActivityLog' ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-                fontWeight: currentScreen === 'ActivityLog' ? '600' : '500',
-                fontSize: t.fontSize.scaleSize(16)
-              }]}>
-                Activity Log
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity
-            style={styles.sidebarMenuItem}
-            onPress={() => {
-              onClose();
-              // Moderators use UserSettings, admins use AdminSettings
-              if (userRole === 'moderator') {
-                navigation.navigate('UserSettings');
-              } else {
-                navigation.navigate('AdminSettings');
-              }
-            }}
-          >
-            <Ionicons 
-              name={(currentScreen === 'AdminSettings' || currentScreen === 'UserSettings') ? 'person-circle' : 'person-circle-outline'} 
-              size={24} 
-              color={(currentScreen === 'AdminSettings' || currentScreen === 'UserSettings') ? t.colors.accent : (isDarkMode ? '#9CA3AF' : '#6B7280')} 
-            />
-            <Text style={[styles.sidebarMenuText, { 
-              color: (currentScreen === 'AdminSettings' || currentScreen === 'UserSettings') ? t.colors.accent : (isDarkMode ? '#D1D5DB' : '#4B5563'),
-              fontWeight: (currentScreen === 'AdminSettings' || currentScreen === 'UserSettings') ? '600' : '500',
-              fontSize: t.fontSize.scaleSize(16)
-            }]}>
-              Profile Settings
-            </Text>
-          </TouchableOpacity>
+          {menuItems
+            .filter((item) => !item.roleGate || item.roleGate === effectiveRole)
+            .map((item) => (
+              <TouchableOpacity key={item.key} style={styles.sidebarMenuItem} onPress={item.onPress}>
+                <Ionicons
+                  name={item.icon as any}
+                  size={24}
+                  color={
+                    (isCurrent(item.target) ? t.colors.accent : isDarkMode ? '#9CA3AF' : '#6B7280') as string
+                  }
+                />
+                <Text
+                  style={[
+                    styles.sidebarMenuText,
+                    {
+                      color: isCurrent(item.target) ? t.colors.accent : isDarkMode ? '#D1D5DB' : '#4B5563',
+                      fontWeight: isCurrent(item.target) ? '600' : '500',
+                      fontSize: t.fontSize.scaleSize(16),
+                    },
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
         </View>
 
-        {/* Chat History Section - Only show on AdminAIChat screen */}
-        {currentScreen === 'AdminAIChat' && (
+        {(currentScreen === 'AIChat' || currentScreen === 'AdminAIChat') && (
           <View style={styles.sidebarHistorySection}>
             <View style={styles.sidebarSectionHeader}>
-              <Text style={[styles.sidebarSectionTitle, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(12) }]}>
+              <Text
+                style={[
+                  styles.sidebarSectionTitle,
+                  { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(12) },
+                ]}
+              >
                 Recent Chats
               </Text>
               {sortedChatHistory.length > 0 && onDeleteAllChats && (
@@ -447,7 +519,12 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.clearAllText, { color: isDarkMode ? '#EF4444' : '#DC2626', fontSize: t.fontSize.scaleSize(12) }]}>
+                  <Text
+                    style={[
+                      styles.clearAllText,
+                      { color: isDarkMode ? '#EF4444' : '#DC2626', fontSize: t.fontSize.scaleSize(12) },
+                    ]}
+                  >
                     Clear All
                   </Text>
                 </TouchableOpacity>
@@ -457,7 +534,12 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
               {sortedChatHistory.length === 0 ? (
                 <View style={styles.emptyHistoryContainer}>
                   <Ionicons name="chatbubbles-outline" size={40} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
-                  <Text style={[styles.emptyHistoryText, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(14) }]}>
+                  <Text
+                    style={[
+                      styles.emptyHistoryText,
+                      { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(14) },
+                    ]}
+                  >
                     No chat history yet
                   </Text>
                 </View>
@@ -470,39 +552,68 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
                         { backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)' },
                       ]}
                       onPress={() => {
-                        if (onChatSelect) {
-                          onChatSelect(chat.id);
-                        }
+                        onChatSelect?.(chat.id);
                         onClose();
                       }}
                       activeOpacity={0.7}
                     >
-                      {/* Color accent bar - similar to event cards */}
                       {chat.userType && (
-                        <View style={[
-                          styles.historyAccent,
-                          { backgroundColor: chat.userType === 'student' ? t.colors.accent : (colorTheme === 'dorsu' ? '#FBBF24' : '#6B7280') }
-                        ]} />
+                        <View
+                          style={[
+                            styles.historyAccent,
+                            {
+                              backgroundColor:
+                                chat.userType === 'student'
+                                  ? t.colors.accent
+                                  : colorTheme === 'dorsu'
+                                  ? '#FBBF24'
+                                  : '#6B7280',
+                            },
+                          ]}
+                        />
                       )}
                       <View style={styles.historyItemContent}>
                         <View style={styles.historyItemTextContainer}>
                           <View style={styles.historyTitleRow}>
-                            <Text style={[styles.historyTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(14) }]} numberOfLines={1}>
+                            <Text
+                              style={[
+                                styles.historyTitle,
+                                { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(14) },
+                              ]}
+                              numberOfLines={1}
+                            >
                               {chat.title}
                             </Text>
                             {chat.userType && (
-                              <View style={[
-                                styles.historyUserTypeBadge,
-                                { backgroundColor: chat.userType === 'student' ? t.colors.accent : (colorTheme === 'dorsu' ? '#FBBF24' : '#6B7280') }
-                              ]}>
-                                <Text style={[styles.historyUserTypeBadgeText, { fontSize: t.fontSize.scaleSize(9) }]}>
+                              <View
+                                style={[
+                                  styles.historyUserTypeBadge,
+                                  {
+                                    backgroundColor:
+                                      chat.userType === 'student'
+                                        ? t.colors.accent
+                                        : colorTheme === 'dorsu'
+                                        ? '#FBBF24'
+                                        : '#6B7280',
+                                  },
+                                ]}
+                              >
+                                <Text
+                                  style={[styles.historyUserTypeBadgeText, { fontSize: t.fontSize.scaleSize(9) }]}
+                                >
                                   {chat.userType === 'student' ? 'Student' : 'Faculty'}
                                 </Text>
                               </View>
                             )}
                           </View>
                           <View style={styles.historyActionsRow}>
-                            <Text style={[styles.historyPreview, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(13) }]} numberOfLines={1}>
+                            <Text
+                              style={[
+                                styles.historyPreview,
+                                { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(13) },
+                              ]}
+                              numberOfLines={1}
+                            >
                               {chat.preview}
                             </Text>
                             <TouchableOpacity
@@ -516,8 +627,16 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
                           {chat.timestamp && (
                             <View style={styles.historyDateRow}>
                               <Ionicons name="time-outline" size={10} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
-                              <Text style={[styles.historyDate, { color: isDarkMode ? '#6B7280' : '#9CA3AF', fontSize: t.fontSize.scaleSize(11) }]}>
-                                {formatDate(chat.timestamp instanceof Date ? chat.timestamp : new Date(chat.timestamp))} • {formatTime(chat.timestamp instanceof Date ? chat.timestamp : new Date(chat.timestamp))}
+                              <Text
+                                style={[
+                                  styles.historyDate,
+                                  { color: isDarkMode ? '#6B7280' : '#9CA3AF', fontSize: t.fontSize.scaleSize(11) },
+                                ]}
+                              >
+                                {formatDate(
+                                  chat.timestamp instanceof Date ? chat.timestamp : new Date(chat.timestamp)
+                                )}{' '}
+                                • {formatTime(chat.timestamp instanceof Date ? chat.timestamp : new Date(chat.timestamp))}
                               </Text>
                             </View>
                           )}
@@ -532,51 +651,60 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({
         )}
       </Animated.View>
 
-      {/* Overlay for sidebar */}
-      {isOpen && (
-        <TouchableOpacity style={styles.sidebarOverlay} onPress={onClose} activeOpacity={1} />
-      )}
+      {isOpen && <TouchableOpacity style={styles.sidebarOverlay} onPress={onClose} activeOpacity={1} />}
 
-      {/* Delete Confirmation Modal */}
-      <Modal
-        visible={showDeleteModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={handleCancelDelete}
-      >
-        <TouchableOpacity
-          style={styles.deleteModalOverlay}
-          activeOpacity={1}
-          onPress={handleCancelDelete}
-        >
+      <Modal visible={showDeleteModal} transparent animationType="fade" onRequestClose={handleCancelDelete}>
+        <TouchableOpacity style={styles.deleteModalOverlay} activeOpacity={1} onPress={handleCancelDelete}>
           <View style={styles.deleteModalContentWrapper}>
             <BlurView
               intensity={Platform.OS === 'ios' ? 80 : 60}
               tint={isDarkMode ? 'dark' : 'light'}
-              style={[styles.deleteModalContent, {
-                backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-                borderColor: 'rgba(255, 255, 255, 0.2)',
-              }]}
+              style={[
+                styles.deleteModalContent,
+                {
+                  backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+                  borderColor: 'rgba(255, 255, 255, 0.2)',
+                },
+              ]}
             >
               <View style={[styles.deleteModalIconCircle, { backgroundColor: '#EF444420' }]}>
                 <Ionicons name="trash-outline" size={20} color="#EF4444" />
               </View>
-              <Text style={[styles.deleteModalTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(16) }]}>
+              <Text
+                style={[
+                  styles.deleteModalTitle,
+                  { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: t.fontSize.scaleSize(16) },
+                ]}
+              >
                 Delete Conversation?
               </Text>
-              <Text style={[styles.deleteModalMessage, { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(12) }]}>
+              <Text
+                style={[
+                  styles.deleteModalMessage,
+                  { color: isDarkMode ? '#9CA3AF' : '#6B7280', fontSize: t.fontSize.scaleSize(12) },
+                ]}
+              >
                 This action cannot be undone.
               </Text>
               <View style={styles.deleteModalActions}>
                 <TouchableOpacity
-                  style={[styles.deleteModalButton, styles.deleteModalButtonCancel, {
-                    backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-                    borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
-                  }]}
+                  style={[
+                    styles.deleteModalButton,
+                    styles.deleteModalButtonCancel,
+                    {
+                      backgroundColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                      borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
+                    },
+                  ]}
                   onPress={handleCancelDelete}
                   activeOpacity={0.7}
                 >
-                  <Text style={[styles.deleteModalButtonText, { color: isDarkMode ? '#D1D5DB' : '#4B5563', fontSize: t.fontSize.scaleSize(13) }]}>
+                  <Text
+                    style={[
+                      styles.deleteModalButtonText,
+                      { color: isDarkMode ? '#D1D5DB' : '#4B5563', fontSize: t.fontSize.scaleSize(13) },
+                    ]}
+                  >
                     Cancel
                   </Text>
                 </TouchableOpacity>
@@ -630,54 +758,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  sidebarIconWrapper: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileButton: {
-    width: 48,
-    height: 48,
-  },
-  profileImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
-  profileIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'transparent', // Will be set dynamically via theme
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileInitials: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFF',
-    letterSpacing: -0.3,
-  },
-  userInfoSection: {
-    flex: 1,
-  },
-  userEmail: {
-    fontSize: 13,
-    fontWeight: '500',
-    marginTop: 2,
-  },
   sidebarLogo: {
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: 'transparent', // Will be set dynamically via theme
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  logoImage: {
-    width: 40,
-    height: 40,
   },
   sidebarTitle: {
     fontSize: 20,
@@ -851,25 +938,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     textAlign: 'center',
   },
-  filterButtonsContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 12,
-  },
-  filterButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    minWidth: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
   deleteModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -936,4 +1004,6 @@ const styles = StyleSheet.create({
   },
 });
 
-export default AdminSidebar;
+export default Sidebar;
+
+

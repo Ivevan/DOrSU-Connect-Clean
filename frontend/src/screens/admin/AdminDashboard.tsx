@@ -802,7 +802,23 @@ const AdminDashboard = () => {
       
       // Fetch recent updates (posts/announcements) - use cache if available
       const rawPosts = await AdminDataService.getPosts();
-        const postsData = rawPosts.map(post => {
+      
+      // Filter to only show approved posts (approved by PIO admin)
+      // Admin posts are automatically approved, moderator posts need approval
+      const approvedPosts = rawPosts.filter(post => {
+        // Check if post is approved
+        const isApproved = post.isApproved === true || post.status === 'approved';
+        
+        // Admin posts are automatically approved
+        const isAdminPost = post.creatorRole === 'admin' || 
+                           post.source === 'Admin' || 
+                           (!post.creatorRole && post.source !== 'Moderator' && post.source !== 'moderator');
+        
+        // Include if approved OR if it's an admin post (admin posts are auto-approved)
+        return isApproved || isAdminPost;
+      });
+      
+        const postsData = approvedPosts.map(post => {
           // Ensure images array is properly set
           let images = post.images;
           if (!images || !Array.isArray(images) || images.length === 0) {
@@ -896,8 +912,24 @@ const AdminDashboard = () => {
   useEffect(() => {
     if (posts.length > 0) {
       setIsLoadingDashboard(false);
+      
+      // Filter to only show approved posts (approved by PIO admin)
+      // Admin posts are automatically approved, moderator posts need approval
+      const approvedPosts = posts.filter((post: any) => {
+        // Check if post is approved
+        const isApproved = post.isApproved === true || post.status === 'approved';
+        
+        // Admin posts are automatically approved
+        const isAdminPost = post.creatorRole === 'admin' || 
+                           post.source === 'Admin' || 
+                           (!post.creatorRole && post.source !== 'Moderator' && post.source !== 'moderator');
+        
+        // Include if approved OR if it's an admin post (admin posts are auto-approved)
+        return isApproved || isAdminPost;
+      });
+      
       // Process existing posts into allUpdates format
-      const postsData = posts.map((post: any) => {
+      const postsData = approvedPosts.map((post: any) => {
         let images = post.images;
         if (!images || !Array.isArray(images) || images.length === 0) {
           if (post.image) {

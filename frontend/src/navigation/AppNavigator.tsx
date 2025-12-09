@@ -511,6 +511,9 @@ const AppNavigator = () => {
             contentStyle: {
               backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3',
             },
+            contentStyle: {
+              backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3',
+            },
           }}
         />
         <Stack.Screen 
@@ -577,16 +580,27 @@ const AppNavigator = () => {
           name="PostUpdate" 
           component={PostUpdate}
           options={{
-            presentation: 'modal' as const,
-            animation: 'slide_from_bottom' as const,
-            animationDuration: 300,
+            presentation: 'card' as const,
+            animation: 'fade' as const,
+            animationDuration: 0,
             freezeOnBlur: false,
             contentStyle: {
               backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3',
             },
           }}
         />
-        <Stack.Screen name="ManagePosts" component={ManagePosts} />
+        <Stack.Screen 
+          name="ManagePosts" 
+          component={ManagePosts}
+          options={{
+            headerShown: false,
+            animation: 'fade' as const,
+            animationDuration: 0,
+            contentStyle: {
+              backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3',
+            },
+          }}
+        />
         <Stack.Screen name="UserHelpCenter" component={UserHelpCenterScreen} />
         <Stack.Screen name="TermsOfUse" component={TermsOfUseScreen} />
         <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />

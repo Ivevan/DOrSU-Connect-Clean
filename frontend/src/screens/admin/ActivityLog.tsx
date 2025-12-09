@@ -31,6 +31,7 @@ type RootStackParamList = {
   ActivityLog: undefined;
   AdminDashboard: undefined;
   AdminSettings: undefined;
+  UserSettings: undefined;
 };
 
 const ACTION_TYPES = [
@@ -95,7 +96,7 @@ const ActivityLogScreen = () => {
     };
   }, []);
 
-  // Check admin authorization (admin only) via AuthContext
+  // Check authorization - admins can see all logs, users can see their own
   useEffect(() => {
     if (authLoading) return;
     // Don't show alert if user is logging out (not authenticated), screen is not focused, or component is unmounting
@@ -103,26 +104,11 @@ const ActivityLogScreen = () => {
       setIsAuthorized(false);
       return;
     }
-    const hasAccess = isAdmin; // only admins (not moderators)
-    if (!hasAccess) {
-      setIsAuthorized(false);
-      // Add a small delay and re-check before showing alert to prevent showing during logout
-      const timeoutId = setTimeout(() => {
-        // Triple-check we're still mounted, focused, and authenticated before showing alert
-        if (isMountedRef.current && isFocused && isAuthenticated) {
-          Alert.alert(
-            'Access Denied',
-            'You do not have permission to access this page. Admin access required.',
-            [{ text: 'OK', onPress: () => navigation.goBack() }]
-          );
-        }
-      }, 100);
-      return () => clearTimeout(timeoutId);
-    }
+    // Both admins and regular users can access (users will see only their own logs)
     setIsAuthorized(true);
     loadLogs(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigation, authLoading, isAdmin, isAuthenticated, isFocused]);
+  }, [navigation, authLoading, isAuthenticated, isFocused]);
 
   const loadLogs = useCallback(async (isRefresh = false) => {
     try {
@@ -138,12 +124,32 @@ const ActivityLogScreen = () => {
         skip: 0,
       };
 
-      if (selectedAction) {
-        filters.action = selectedAction;
-      }
-
-      if (searchQuery.trim()) {
-        filters.userEmail = searchQuery.trim();
+      // For non-admin users, only show login and logout actions
+      if (!isAdmin) {
+        const userEmail = await AsyncStorage.getItem('userEmail');
+        if (userEmail) {
+          filters.userEmail = userEmail;
+        }
+        // Only allow login and logout actions for non-admin users
+        if (selectedAction) {
+          // Only allow user.login or user.logout
+          if (selectedAction === 'user.login' || selectedAction === 'user.logout') {
+            filters.action = selectedAction;
+          }
+        } else {
+          // If no action selected, default to showing only login and logout
+          // We'll filter on the frontend since backend doesn't support multiple action filters
+        }
+        // Don't allow search for non-admin users (they only see their own logs)
+      } else {
+        // Admin can filter by any action
+        if (selectedAction) {
+          filters.action = selectedAction;
+        }
+        // Admin can search by email
+        if (searchQuery.trim()) {
+          filters.userEmail = searchQuery.trim();
+        }
       }
 
       const result = await ActivityLogService.getActivityLogs(filters);
@@ -159,7 +165,7 @@ const ActivityLogScreen = () => {
       setRefreshing(false);
       setIsInitialLoad(false);
     }
-  }, [isInitialLoad, selectedAction, searchQuery]);
+  }, [isInitialLoad, selectedAction, searchQuery, isAdmin]);
 
   useEffect(() => {
     if (isAuthorized === true && !isInitialLoad) {
@@ -331,20 +337,38 @@ const ActivityLogScreen = () => {
     }
   };
 
-  // Filter logs based on search query
+  // Filter logs based on search query and user permissions
   const filteredLogs = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return logs;
+    let filtered = logs;
+    
+    // For non-admin users, only show login and logout actions
+    if (!isAdmin) {
+      filtered = filtered.filter(log => 
+        log.action === 'user.login' || log.action === 'user.logout'
+      );
     }
     
-    const query = searchQuery.trim().toLowerCase();
-    return logs.filter(log => {
-      const emailMatch = log.userEmail?.toLowerCase().includes(query) || false;
-      const nameMatch = log.userName?.toLowerCase().includes(query) || false;
-      const actionMatch = getActionLabel(log.action).toLowerCase().includes(query) || false;
-      return emailMatch || nameMatch || actionMatch;
-    });
-  }, [logs, searchQuery]);
+    // Apply search query filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter(log => {
+        // For admin: search by email, name, or action
+        // For user: search by action only (they only see their own logs)
+        if (isAdmin) {
+          const emailMatch = log.userEmail?.toLowerCase().includes(query) || false;
+          const nameMatch = log.userName?.toLowerCase().includes(query) || false;
+          const actionMatch = getActionLabel(log.action).toLowerCase().includes(query) || false;
+          return emailMatch || nameMatch || actionMatch;
+        } else {
+          // User can only search by action
+          const actionMatch = getActionLabel(log.action).toLowerCase().includes(query) || false;
+          return actionMatch;
+        }
+      });
+    }
+    
+    return filtered;
+  }, [logs, searchQuery, isAdmin]);
 
   const isPendingAuthorization = isAuthorized === null;
 
@@ -471,18 +495,33 @@ const ActivityLogScreen = () => {
           Activity Log
         </Text>
         <View style={styles.headerRight}>
-          <TouchableOpacity 
-            style={styles.profileButton} 
-            onPress={() => navigation.navigate('AdminSettings')} 
-            activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            accessibilityLabel="Admin profile - Go to settings"
-            accessibilityRole="button"
-          >
-            <View style={[styles.profileIconCircle, { backgroundColor: theme.colors.accent }]} pointerEvents="none">
-              <Text style={[styles.profileInitials, { fontSize: theme.fontSize.scaleSize(13) }]}>AD</Text>
-            </View>
-          </TouchableOpacity>
+          {isAdmin ? (
+            <TouchableOpacity 
+              style={styles.profileButton} 
+              onPress={() => navigation.navigate('AdminSettings')} 
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityLabel="Admin profile - Go to settings"
+              accessibilityRole="button"
+            >
+              <View style={[styles.profileIconCircle, { backgroundColor: theme.colors.accent }]} pointerEvents="none">
+                <Text style={[styles.profileInitials, { fontSize: theme.fontSize.scaleSize(13) }]}>AD</Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              style={styles.profileButton} 
+              onPress={() => navigation.navigate('UserSettings')} 
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityLabel="Go to settings"
+              accessibilityRole="button"
+            >
+              <View style={[styles.profileIconCircle, { backgroundColor: theme.colors.accent }]} pointerEvents="none">
+                <Ionicons name="settings-outline" size={18} color="#FFF" />
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -531,12 +570,13 @@ const ActivityLogScreen = () => {
                       color: theme.colors.text,
                       fontSize: theme.fontSize.scaleSize(14),
                     }]}
-                    placeholder="Search by user email or name..."
+                    placeholder={isAdmin ? "Search by user email or name..." : "Search by action..."}
                     placeholderTextColor={theme.colors.textMuted}
                     value={searchQuery}
                     onChangeText={setSearchQuery}
                     returnKeyType="search"
                     clearButtonMode="while-editing"
+                    editable={true}
                   />
                   {searchQuery.length > 0 && (
                     <TouchableOpacity
@@ -553,7 +593,7 @@ const ActivityLogScreen = () => {
                 </BlurView>
               </View>
 
-              {/* Action Filter */}
+              {/* Action Filter - Show for both admin and user */}
               <View style={styles.filterSection}>
                 <TouchableOpacity
                   style={[styles.filterButton, {
@@ -583,7 +623,14 @@ const ActivityLogScreen = () => {
                       borderColor: 'rgba(255, 255, 255, 0.2)',
                     }]}
                   >
-                    {ACTION_TYPES.map((option) => (
+                    {ACTION_TYPES.filter(option => {
+                      // For non-admin users, only show login and logout actions
+                      if (!isAdmin) {
+                        return option.key === 'user.login' || option.key === 'user.logout' || option.key === '';
+                      }
+                      // Admin can see all actions
+                      return true;
+                    }).map((option) => (
                       <TouchableOpacity
                         key={option.key}
                         style={[

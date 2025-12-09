@@ -1080,7 +1080,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Get activity logs (admin only) - Check both with and without trailing slash
+  // Get activity logs (admin can see all, users can see their own) - Check both with and without trailing slash
   if (method === 'GET' && (url === '/api/activity-logs' || url === '/api/activity-logs/')) {
     Logger.info(`📋 Activity logs endpoint hit: ${method} ${url} (raw: ${rawUrl})`);
     
@@ -1108,12 +1108,6 @@ const server = http.createServer(async (req, res) => {
       isAdmin = user && user.role === 'admin';
     }
 
-    if (!isAdmin) {
-      Logger.warn(`Activity logs: Forbidden access attempt by user ${auth.userId}`);
-      sendJson(res, 403, { error: 'Forbidden: Admin access required' });
-      return;
-    }
-
     try {
       const userId = urlObj.searchParams.get('userId') || null;
       const action = urlObj.searchParams.get('action') || null;
@@ -1123,14 +1117,29 @@ const server = http.createServer(async (req, res) => {
       const limit = parseInt(urlObj.searchParams.get('limit') || '100', 10);
       const skip = parseInt(urlObj.searchParams.get('skip') || '0', 10);
 
-      Logger.info(`📋 Activity logs: Fetching with filters`, { userId, action, limit, skip });
+      Logger.info(`📋 Activity logs: Fetching with filters`, { userId, action, limit, skip, isAdmin });
 
       const filters = {};
-      if (userId) filters.userId = userId;
+      
+      // If user is not admin, restrict to their own logs only
+      if (!isAdmin) {
+        // Force filter by authenticated user's ID or email
+        filters.userId = auth.userId;
+        // Also filter by email if available
+        if (auth.email) {
+          filters.userEmail = auth.email;
+        }
+        Logger.info(`📋 Activity logs: Non-admin user, restricting to own logs (userId: ${auth.userId}, email: ${auth.email})`);
+      } else {
+        // Admin can filter by any userId or userEmail
+        if (userId) filters.userId = userId;
+        if (userEmail) filters.userEmail = userEmail;
+      }
+      
+      // Action filter applies to both admin and user
       if (action) filters.action = action;
       if (startDate) filters.startDate = startDate;
       if (endDate) filters.endDate = endDate;
-      if (userEmail) filters.userEmail = userEmail;
 
       const result = await activityLogService.getActivityLogs(filters, limit, skip);
       Logger.success(`📋 Activity logs: Retrieved ${result.logs.length} logs (total: ${result.total})`);

@@ -119,10 +119,6 @@ const PostUpdate: React.FC = () => {
   const bgFade1 = useRef(new Animated.Value(0)).current;
   const bgFade2 = useRef(new Animated.Value(0)).current;
 
-  // Screen entrance animation - starts from bottom
-  const screenSlideY = useRef(new Animated.Value(1000)).current;
-  const screenOpacity = useRef(new Animated.Value(0)).current;
-
   // Bottom sheet animation refs (category menu now uses floating modal, no animation needed)
   const datePickerSheetY = useRef(new Animated.Value(300)).current;
   const cancelAlertSheetY = useRef(new Animated.Value(300)).current;
@@ -185,7 +181,7 @@ const PostUpdate: React.FC = () => {
     setIsAuthorized(true);
   }, [authLoading, isAdmin, userRole, navigation, isAuthenticated, isFocused]);
   
-  // Refresh user role and animate screen entrance when screen comes into focus
+  // Refresh user role when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       // Refresh user role to ensure latest role is loaded
@@ -194,33 +190,7 @@ const PostUpdate: React.FC = () => {
           // Silent fail - role will be checked in authorization useEffect
         });
       }
-      
-      // Reset animation values
-      // Reset animation values
-      screenSlideY.setValue(1000);
-      screenOpacity.setValue(0);
-      
-      // Animate screen entrance
-      Animated.parallel([
-        Animated.spring(screenSlideY, {
-          toValue: 0,
-          useNativeDriver: true,
-          tension: 65,
-          friction: 11,
-        }),
-        Animated.timing(screenOpacity, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
-
-      return () => {
-        // Cleanup: reset animation when screen loses focus
-        screenSlideY.setValue(1000);
-        screenOpacity.setValue(0);
-      };
-    }, [screenSlideY, screenOpacity])
+    }, [authLoading, refreshUser])
   );
 
   // Animate floating background orbs on mount
@@ -818,9 +788,12 @@ const PostUpdate: React.FC = () => {
     setTimeout(() => setIsAnimating(false), 300);
   }, [isAnimating, pickedFile]);
 
+  // Get background color immediately to prevent white flash
+  const backgroundColor = isDarkMode ? '#0B1220' : '#FBF8F3';
+
   if (authLoading || isPendingAuthorization) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor }}>
         <ActivityIndicator size="large" color={theme.colors.accent} />
       </View>
     );
@@ -828,18 +801,16 @@ const PostUpdate: React.FC = () => {
 
   if (isAuthorized === false) {
     return (
-      <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }} />
+      <View style={{ flex: 1, backgroundColor }} />
     );
   }
 
   return (
-    <Animated.View 
+    <View 
       style={[
         styles.container, 
         {
-          backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3',
-          transform: [{ translateY: screenSlideY }],
-          opacity: screenOpacity,
+          backgroundColor,
         }
       ]} 
       collapsable={false}
@@ -851,10 +822,16 @@ const PostUpdate: React.FC = () => {
         hidden={false}
       />
       
+      {/* Status Bar Background Overlay */}
+      <View style={[styles.statusBarOverlay, {
+        height: safeInsets.top,
+        backgroundColor,
+      }]} />
+      
       {/* Warm Gradient Background */}
       <LinearGradient
         colors={[
-          isDarkMode ? '#0B1220' : '#FBF8F3',
+          backgroundColor,
           isDarkMode ? '#111827' : '#F8F5F0',
           isDarkMode ? '#1F2937' : '#F5F2ED'
         ]}
@@ -1474,7 +1451,7 @@ const PostUpdate: React.FC = () => {
           </View>
         </View>
       </BlurView>
-    </Animated.View>
+    </View>
   );
 };
 
@@ -1555,6 +1532,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 1000,
+  },
+  statusBarOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 998,
   },
   scrollView: {
     flex: 1,

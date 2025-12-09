@@ -638,6 +638,11 @@ export class ScheduleService {
         creatorRole: post.creatorRole || (post.source === 'Moderator' ? 'moderator' : 'admin'), // Include creator role for filtering
         isPinned: post.isPinned || false,
         isUrgent: post.isUrgent || false,
+        // Approval fields
+        isApproved: post.isApproved !== undefined ? post.isApproved : (post.status === 'approved'),
+        status: post.status || (post.isApproved ? 'approved' : 'draft'),
+        approvedAt: post.approvedAt || null,
+        approvedBy: post.approvedBy || null,
       }));
 
       this.sendJson(res, 200, {

@@ -478,9 +478,24 @@ const SchoolUpdates = () => {
       // Fetch recent updates (posts/announcements) - use cache if available
       const posts = await AdminDataService.getPosts();
       
+      // Filter to only show approved posts (approved by PIO admin)
+      // Admin posts are automatically approved, moderator posts need approval
+      const approvedPosts = posts.filter(post => {
+        // Check if post is approved
+        const isApproved = post.isApproved === true || post.status === 'approved';
+        
+        // Admin posts are automatically approved
+        const isAdminPost = post.creatorRole === 'admin' || 
+                           post.source === 'Admin' || 
+                           (!post.creatorRole && post.source !== 'Moderator' && post.source !== 'moderator');
+        
+        // Include if approved OR if it's an admin post (admin posts are auto-approved)
+        return isApproved || isAdminPost;
+      });
+      
       // Debug logging removed for performance in development (large payloads can cause noticeable lag)
       
-      const postsData = posts.map(post => {
+      const postsData = approvedPosts.map(post => {
         // Ensure images array is properly set
         let images = post.images;
         if (!images || !Array.isArray(images) || images.length === 0) {

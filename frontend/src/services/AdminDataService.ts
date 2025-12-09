@@ -835,8 +835,9 @@ const AdminDataService = {
   /**
    * Approve a post (used by moderators/admins)
    */
-  async approvePost(id: string | number, approvedBy?: string): Promise<Post | null> {
+  async approvePost(id: string | number, approvedBy?: string, postData?: Partial<Post>): Promise<Post | null> {
     const payload = {
+      ...(postData || {}), // Include post data (title, description, etc.) to satisfy backend validation
       status: 'approved',
       isApproved: true,
       approvedAt: new Date().toISOString(),

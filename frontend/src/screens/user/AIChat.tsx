@@ -22,6 +22,7 @@ import { getCurrentUser, onAuthStateChange, User } from '../../services/authServ
 import { formatAIResponse, getMarkdownStyles } from '../../utils/markdownFormatter';
 
 type RootStackParamList = {
+  // User routes
   GetStarted: undefined;
   SignIn: undefined;
   CreateAccount: undefined;
@@ -29,14 +30,25 @@ type RootStackParamList = {
   AIChat: undefined;
   UserSettings: undefined;
   Calendar: undefined;
+  // Admin routes (used when mode="admin")
+  AdminDashboard: undefined;
+  AdminAIChat: undefined;
+  AdminCalendar: undefined;
+  AdminSettings: undefined;
+  PostUpdate?: { postId?: string };
+  ManagePosts?: undefined;
 };
 
 // No default suggestions - FAQs will be empty until populated from backend
 
-const AIChat = () => {
+interface AIChatProps {
+  mode?: 'user' | 'admin';
+}
+
+const AIChat: React.FC<AIChatProps> = ({ mode = 'user' }) => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme: t, colorTheme } = useTheme();
-  const { getUserToken, userEmail: authUserEmail, checkAuthStatus } = useAuth();
+  const { getUserToken, userEmail: authUserEmail, checkAuthStatus, userRole } = useAuth();
   const { isConnected, isInternetReachable } = useNetworkStatus();
   const isOnline = isConnected && isInternetReachable;
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -1134,8 +1146,19 @@ const AIChat = () => {
         <View style={styles.headerRight}>
           <TouchableOpacity 
             style={styles.profileButton} 
-            onPress={() => navigation.navigate('UserSettings')} 
-            accessibilityLabel="User profile - Go to settings"
+            onPress={() => {
+              if (mode === 'admin') {
+                // Moderators use UserSettings, admins use AdminSettings
+                if (userRole === 'moderator') {
+                  navigation.navigate('UserSettings' as any);
+                } else {
+                  navigation.navigate('AdminSettings' as any);
+                }
+              } else {
+                navigation.navigate('UserSettings');
+              }
+            }} 
+            accessibilityLabel={mode === 'admin' ? 'Admin profile - Go to settings' : 'User profile - Go to settings'}
           >
             {userPhoto ? (
               <Image 
@@ -1198,7 +1221,7 @@ const AIChat = () => {
           }
         }}
         onDeleteAllChats={handleDeleteAllChats}
-        allowedRoles={['user', 'moderator', 'admin']}
+        allowedRoles={mode === 'admin' ? ['admin', 'moderator'] : ['user', 'moderator', 'admin']}
       />
       {/* Info Modal */}
       <Modal visible={isInfoOpen} transparent animationType="fade" onRequestClose={() => setIsInfoOpen(false)}>
@@ -1532,7 +1555,24 @@ const AIChat = () => {
           </View>
         </View>
       </View>
-      <BottomNavBar tabType="user" autoDetect />
+      {mode === 'admin' ? (
+        <BottomNavBar
+          tabType="admin"
+          activeTab="chat"
+          onFirstPress={() => navigation.navigate('AdminAIChat')}
+          onSecondPress={() => navigation.navigate('AdminDashboard')}
+          onThirdPress={() => {
+            // Moderators use regular Calendar, admins use AdminCalendar
+            if (userRole === 'moderator') {
+              navigation.navigate('Calendar' as any);
+            } else {
+              navigation.navigate('AdminCalendar');
+            }
+          }}
+        />
+      ) : (
+        <BottomNavBar tabType="user" autoDetect />
+      )}
 
       {/* Action Menu Modal */}
       <Modal

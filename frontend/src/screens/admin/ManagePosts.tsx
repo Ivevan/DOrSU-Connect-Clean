@@ -11,6 +11,7 @@ import {
   InteractionManager,
   Modal,
   Platform,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -80,13 +81,8 @@ const ManagePosts: React.FC = () => {
   const [selectedCreatorRole, setSelectedCreatorRole] = useState<'all' | 'admin' | 'moderator'>('all');
   const [isCreatorRoleOpen, setIsCreatorRoleOpen] = useState(false);
   
-  // Date picker state
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [selectedDateObj, setSelectedDateObj] = useState<Date | null>(null);
-  const [filterDate, setFilterDate] = useState('');
-
   // Loading and refresh state
-  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
 
   // Sorting state
@@ -94,9 +90,9 @@ const ManagePosts: React.FC = () => {
   const [isSortOpen, setIsSortOpen] = useState(false);
 
   // Track if filters are active
-  const hasActiveFilters = searchQuery.trim() !== '' || selectedCategory !== 'All Categories' || filterDate !== '' || selectedSort !== 'Newest' || (isAdmin && selectedCreatorRole !== 'all');
+  const hasActiveFilters = searchQuery.trim() !== '' || selectedCategory !== 'All Categories' || selectedSort !== 'Newest' || (isAdmin && selectedCreatorRole !== 'all');
 
-  // Category and Date picker state
+  // Category picker state
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   
   // Modal: More Options
@@ -105,7 +101,6 @@ const ManagePosts: React.FC = () => {
   // Action modals
   const [isPinConfirmOpen, setIsPinConfirmOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-  const [isRefreshSuccessOpen, setIsRefreshSuccessOpen] = useState(false);
   const [actionPost, setActionPost] = useState<Post | null>(null);
   
   // Animation values for confirmation modals
@@ -117,20 +112,14 @@ const ManagePosts: React.FC = () => {
   const bgFade2 = useRef(new Animated.Value(0)).current;
   
   // Inline, dependency-free date data
-  const months = useMemo(() => [
-    'January','February','March','April','May','June','July','August','September','October','November','December'
-  ], []);
-
-  // Category meta for richer UI
+  // Category meta aligned with AdminDashboard legend
   const CATEGORY_OPTIONS = useMemo(() => ([
     { key: 'All Categories', icon: 'apps', color: '#6B7280', description: 'Show all categories' },
-    { key: 'Announcement', icon: 'megaphone', color: '#1976D2', description: 'General updates and notices' },
-    { key: 'Academic', icon: 'school', color: '#2E7D32', description: 'Classes, exams, academics' },
-    { key: 'Event', icon: 'calendar-outline', color: '#D32F2F', description: 'Schedules and activities' },
-    { key: 'News', icon: 'newspaper-outline', color: '#5E35B1', description: 'Campus news' },
-    { key: 'Update', icon: 'refresh', color: '#00897B', description: 'System or app updates' },
-    { key: 'Alert', icon: 'alert-circle', color: '#E65100', description: 'Urgent alerts' },
-    { key: 'General', icon: 'information-circle', color: '#455A64', description: 'Miscellaneous' },
+    { key: 'Academic', icon: 'school', color: '#2563EB', description: 'Classes, exams, academics' },
+    { key: 'Institutional', icon: 'business', color: '#4B5563', description: 'Institutional / campus-wide' },
+    { key: 'Announcement', icon: 'megaphone', color: '#EAB308', description: 'General updates and notices' },
+    { key: 'Event', icon: 'calendar-outline', color: '#10B981', description: 'Schedules and activities' },
+    { key: 'News', icon: 'newspaper-outline', color: '#EF4444', description: 'Campus news' },
   ]), []);
 
   // Sort options
@@ -143,26 +132,6 @@ const ManagePosts: React.FC = () => {
 
   const currentCategory = CATEGORY_OPTIONS.find(o => o.key === selectedCategory) || CATEGORY_OPTIONS[0];
   const currentSort = SORT_OPTIONS.find(o => o.key === selectedSort) || SORT_OPTIONS[0];
-
-  const current = selectedDateObj ?? new Date();
-  const [tmpMonth, setTmpMonth] = useState<number>(current.getMonth());
-  const [tmpYear, setTmpYear] = useState<number>(current.getFullYear());
-  const [tmpDay, setTmpDay] = useState<number>(current.getDate());
-
-  const getDaysInMonth = (year: number, monthIdx: number) => {
-    return new Date(year, monthIdx + 1, 0).getDate();
-  };
-
-  const daysInTmpMonth = getDaysInMonth(tmpYear, tmpMonth);
-  const dayOptions = Array.from({ length: daysInTmpMonth }, (_, i) => i + 1);
-  const yearOptions = Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 2 + i); // [y-2..y+3]
-
-  const formatDate = (date: Date) => {
-    const dd = String(date.getDate()).padStart(2, '0');
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    const yyyy = date.getFullYear();
-    return `${dd}/${mm}/${yyyy}`;
-  };
 
   // Posts data (to be filled from real API)
   const [posts, setPosts] = useState<Post[]>([]);
@@ -287,26 +256,15 @@ const ManagePosts: React.FC = () => {
     setTimeout(() => setIsAnimating(false), 300);
   }, [isAnimating, navigation]);
 
-  const simulateLoading = () => {
-    // Prevent rapid tapping during animation
-    if (isAnimating) {
-      return;
+  const handleRefresh = useCallback(async () => {
+    if (isAuthorized !== true || isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await fetchPosts(true);
+    } finally {
+      setIsRefreshing(false);
     }
-    
-    setIsAnimating(true);
-    setIsLoading(true);
-    // Simulate API call delay with progress
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += 10;
-      if (progress >= 100) {
-        clearInterval(interval);
-        setIsLoading(false);
-        setIsRefreshSuccessOpen(true);
-        setIsAnimating(false);
-      }
-    }, 200);
-  };
+  }, [isAuthorized, isRefreshing, fetchPosts]);
 
   const handleEditPost = useCallback((postId: string) => {
     // Prevent rapid tapping during animation
@@ -478,28 +436,6 @@ const ManagePosts: React.FC = () => {
   const selectSort = (value: string) => {
     setSelectedSort(value);
     closeSortMenu();
-  };
-
-  const onPressDate = () => {
-    const base = selectedDateObj ?? new Date();
-    setTmpMonth(base.getMonth());
-    setTmpYear(base.getFullYear());
-    setTmpDay(base.getDate());
-    setShowDatePicker(true);
-  };
-
-  const confirmTmpDate = () => {
-    const safeDay = Math.min(tmpDay, getDaysInMonth(tmpYear, tmpMonth));
-    const next = new Date(tmpYear, tmpMonth, safeDay);
-    setSelectedDateObj(next);
-    setFilterDate(formatDate(next));
-    setShowDatePicker(false);
-  };
-
-  const cancelTmpDate = () => setShowDatePicker(false);
-
-  const handleFilterByDate = () => {
-    onPressDate();
   };
 
   const handleCategoryChange = () => {
@@ -734,6 +670,15 @@ const ManagePosts: React.FC = () => {
         bounces={true}
         removeClippedSubviews={true}
         scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            tintColor={theme.colors.primary}
+            colors={[theme.colors.primary]}
+            progressBackgroundColor={isDarkMode ? '#1F2937' : '#F9FAFB'}
+          />
+        }
       >
 
         {/* Filter Posts Section */}
@@ -747,28 +692,12 @@ const ManagePosts: React.FC = () => {
         >
           <View style={styles.filterHeaderRow}>
             <Text style={[styles.filterTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>Filter Posts</Text>
-            <View style={styles.filterActions}>
-              <TouchableOpacity 
-                style={[styles.demoLoadingBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, isLoading && { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.primary }]} 
-                onPress={simulateLoading}
-                disabled={isLoading}
-              >
-                <Ionicons 
-                  name={isLoading ? "hourglass" : "refresh"} 
-                  size={14} 
-                  color={isLoading ? theme.colors.primary : theme.colors.textMuted} 
-                />
-                  <Text style={[styles.demoLoadingText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(11) }, isLoading && { color: theme.colors.primary, fontWeight: '600' }]}>
-                  {isLoading ? "Refreshing..." : "Refresh Posts"}
-                </Text>
+            {hasActiveFilters && (
+              <TouchableOpacity style={[styles.clearFiltersBtn, { backgroundColor: isDarkMode ? '#7F1D1D' : '#FEF2F2' }]} onPress={clearAllFilters}>
+                <Ionicons name="close-circle" size={16} color={isDarkMode ? '#FCA5A5' : '#DC2626'} />
+                <Text style={[styles.clearFiltersText, { color: isDarkMode ? '#FCA5A5' : '#DC2626', fontSize: theme.fontSize.scaleSize(12) }]}>Clear All</Text>
               </TouchableOpacity>
-              {hasActiveFilters && (
-                <TouchableOpacity style={[styles.clearFiltersBtn, { backgroundColor: isDarkMode ? '#7F1D1D' : '#FEF2F2' }]} onPress={clearAllFilters}>
-                  <Ionicons name="close-circle" size={16} color={isDarkMode ? '#FCA5A5' : '#DC2626'} />
-                  <Text style={[styles.clearFiltersText, { color: isDarkMode ? '#FCA5A5' : '#DC2626', fontSize: theme.fontSize.scaleSize(12) }]}>Clear All</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+            )}
           </View>
           
           {/* Search Bar */}
@@ -809,11 +738,15 @@ const ManagePosts: React.FC = () => {
                 <View style={[styles.categoryFilterIconWrap, { backgroundColor: currentCategory.color + '22' }]}>
                   <Ionicons name={currentCategory.icon as any} size={16} color={currentCategory.color} />
                 </View>
-                <Text style={[
-                  styles.categoryText, 
-                  { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) },
-                  selectedCategory !== 'All Categories' && { color: theme.colors.primary, fontWeight: '700' }
-                ]}>
+                <Text 
+                  style={[
+                    styles.categoryText, 
+                    { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) },
+                    selectedCategory !== 'All Categories' && { color: theme.colors.primary, fontWeight: '700' }
+                  ]}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
                   {selectedCategory}
                 </Text>
               </View>
@@ -824,35 +757,6 @@ const ManagePosts: React.FC = () => {
               />
               {selectedCategory !== 'All Categories' && (
                 <View style={[styles.activeFilterBadge, { backgroundColor: currentCategory.color }]}>
-                  <Ionicons name="checkmark" size={10} color="#fff" />
-                </View>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[
-                styles.dateFilterBtn, 
-                {
-                  borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)',
-                },
-                filterDate !== '' && { borderColor: theme.colors.primary, backgroundColor: isDarkMode ? theme.colors.surfaceAlt : '#F0F8FF', borderWidth: 2 }
-              ]} 
-              onPress={handleFilterByDate}
-            >
-              <Ionicons 
-                name="calendar" 
-                size={18} 
-                color={filterDate !== '' ? theme.colors.primary : theme.colors.text} 
-              />
-              <Text style={[
-                styles.dateFilterText,
-                { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) },
-                filterDate !== '' && { color: theme.colors.primary, fontWeight: '700' }
-              ]}>
-                {filterDate || 'Filter by date'}
-              </Text>
-              {filterDate !== '' && (
-                <View style={[styles.activeFilterBadge, { backgroundColor: theme.colors.primary }]}>
                   <Ionicons name="checkmark" size={10} color="#fff" />
                 </View>
               )}
@@ -878,11 +782,15 @@ const ManagePosts: React.FC = () => {
                       color={selectedCreatorRole === 'moderator' ? '#10B981' : selectedCreatorRole === 'admin' ? '#3B82F6' : '#6B7280'} 
                     />
                   </View>
-                  <Text style={[
-                    styles.categoryText, 
-                    { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) },
-                    selectedCreatorRole !== 'all' && { color: selectedCreatorRole === 'moderator' ? '#10B981' : '#3B82F6', fontWeight: '700' }
-                  ]}>
+                  <Text 
+                    style={[
+                      styles.categoryText, 
+                      { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) },
+                      selectedCreatorRole !== 'all' && { color: selectedCreatorRole === 'moderator' ? '#10B981' : '#3B82F6', fontWeight: '700' }
+                    ]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
                     {selectedCreatorRole === 'all' ? 'All Posts' : selectedCreatorRole === 'moderator' ? 'Moderator' : 'Admin'}
                   </Text>
                 </View>
@@ -942,34 +850,7 @@ const ManagePosts: React.FC = () => {
         <View style={styles.postsContainer} collapsable={false}>
           <Text style={[styles.postsTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>Posts ({sortedPosts.length})</Text>
           
-          {isLoading ? (
-            // Skeleton Loaders
-            Array.from({ length: 4 }).map((_, index) => (
-              <BlurView
-                key={`skeleton-${index}`}
-                intensity={Platform.OS === 'ios' ? 50 : 40}
-                tint={isDarkMode ? 'dark' : 'light'}
-                style={[styles.postCard, {
-                  backgroundColor: isDarkMode ? 'rgba(42, 42, 42, 0.5)' : 'rgba(255, 255, 255, 0.6)',
-                  borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-                }]}
-              >
-                <View style={styles.postHeader}>
-                  <View style={styles.postTitleContainer}>
-                    <View style={styles.skeletonTitle} />
-                    <View style={styles.tagsContainer}>
-                      <View style={styles.skeletonTag} />
-                      <View style={styles.skeletonTag} />
-                    </View>
-                  </View>
-                  <View style={styles.postActions}>
-                    <View style={styles.skeletonMoreBtn} />
-                  </View>
-                </View>
-                <View style={styles.skeletonDate} />
-              </BlurView>
-            ))
-          ) : isLoadingPosts ? (
+          {isLoadingPosts && !isRefreshing ? (
             Array.from({ length: 4 }).map((_, index) => (
               <BlurView
                 key={`loading-${index}`}
@@ -1154,27 +1035,6 @@ const ManagePosts: React.FC = () => {
         sheetY={deleteSheetY}
       />
 
-      {/* Refresh Success Modal */}
-      <InfoModal
-        visible={isRefreshSuccessOpen}
-        onClose={() => setIsRefreshSuccessOpen(false)}
-        title="Posts Refreshed!"
-        subtitle="Your posts list has been updated successfully."
-        cards={[
-          {
-            icon: 'time-outline',
-            iconColor: '#059669',
-            iconBgColor: '#ECFDF5',
-            text: `Refreshed at ${new Date().toLocaleTimeString()}`
-          },
-          {
-            icon: 'checkmark-circle-outline',
-            iconColor: '#059669',
-            iconBgColor: '#ECFDF5',
-            text: 'All posts are now up to date'
-          }
-        ]}
-      />
       {/* Removed Edit Modal (redundant) */}
       {/* Category Menu Modal */}
       <Modal visible={isCategoryOpen} transparent animationType="fade" onRequestClose={closeCategoryMenu}>
@@ -1281,59 +1141,6 @@ const ManagePosts: React.FC = () => {
         </View>
       </Modal>
 
-      {/* Date Picker Modal */}
-      {showDatePicker && (
-        <Modal transparent animationType="fade" onRequestClose={cancelTmpDate}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.dateModal}>
-              <Text style={[styles.dateModalTitle, { fontSize: theme.fontSize.scaleSize(16) }]}>Select Date</Text>
-              <View style={styles.datePickersRow}>
-                {/* Month */}
-                <View style={styles.datePickerCol}>
-                  <Text style={[styles.datePickerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>Month</Text>
-                  <ScrollView style={styles.datePickerList}>
-                    {months.map((m, idx) => (
-                      <TouchableOpacity key={m} style={[styles.datePickerItem, tmpMonth === idx && styles.datePickerItemActive]} onPress={() => setTmpMonth(idx)}>
-                        <Text style={[styles.datePickerText, { fontSize: theme.fontSize.scaleSize(13) }, tmpMonth === idx && styles.datePickerTextActive]} numberOfLines={1}>{m}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-                {/* Day */}
-                <View style={styles.datePickerCol}>
-                  <Text style={[styles.datePickerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>Day</Text>
-                  <ScrollView style={styles.datePickerList}>
-                    {dayOptions.map((d) => (
-                      <TouchableOpacity key={d} style={[styles.datePickerItem, tmpDay === d && styles.datePickerItemActive]} onPress={() => setTmpDay(d)}>
-                        <Text style={[styles.datePickerText, { fontSize: theme.fontSize.scaleSize(13) }, tmpDay === d && styles.datePickerTextActive]}>{d}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-                {/* Year */}
-                <View style={styles.datePickerCol}>
-                  <Text style={[styles.datePickerLabel, { fontSize: theme.fontSize.scaleSize(11) }]}>Year</Text>
-                  <ScrollView style={styles.datePickerList}>
-                    {yearOptions.map((y) => (
-                      <TouchableOpacity key={y} style={[styles.datePickerItem, tmpYear === y && styles.datePickerItemActive]} onPress={() => setTmpYear(y)}>
-                        <Text style={[styles.datePickerText, { fontSize: theme.fontSize.scaleSize(13) }, tmpYear === y && styles.datePickerTextActive]}>{y}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              </View>
-              <View style={styles.dateModalActions}>
-                <TouchableOpacity style={styles.cancelBtn} onPress={cancelTmpDate}>
-                  <Text style={[styles.cancelText, { fontSize: theme.fontSize.scaleSize(14) }]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.publishBtn} onPress={confirmTmpDate}>
-                  <Text style={[styles.publishText, { fontSize: theme.fontSize.scaleSize(14) }]}>Done</Text>
-                </TouchableOpacity>
-                </View>
-            </View>
-          </View>
-        </Modal>
-      )}
     </View>
   );
 };
@@ -1618,6 +1425,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
     flexShrink: 1,
+    minWidth: 0,
   },
   dateFilterBtn: {
     flexDirection: 'row',
@@ -1757,6 +1565,7 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 8,
     minWidth: 0,
+    flexShrink: 1,
   },
   categoryFilterIconWrap: {
     width: 20,
@@ -1935,6 +1744,65 @@ const styles = StyleSheet.create({
     color: '#222',
     marginBottom: 8,
     textAlign: 'center',
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  calendarNavButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.04)',
+  },
+  calendarMonthYear: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  calendarWeekdays: {
+    flexDirection: 'row',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  calendarWeekday: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  calendarWeekdayText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 4,
+    marginBottom: 12,
+  },
+  calendarDayCell: {
+    width: '14.28%',
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  calendarDayPlaceholder: {
+    width: 40,
+    height: 40,
+  },
+  calendarDayButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarDayText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
   datePickersRow: {
     flexDirection: 'row',

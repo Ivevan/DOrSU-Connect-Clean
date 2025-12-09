@@ -470,65 +470,35 @@ const ActivityLogScreen = () => {
         </Animated.View>
       </View>
 
-      {/* Header */}
-      <View style={[styles.header, { 
-        marginTop: safeInsets.top,
-        marginLeft: safeInsets.left,
-        marginRight: safeInsets.right,
-      }]}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity 
-            onPress={() => navigation.goBack()} 
-            style={styles.menuButton}
-            activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            accessibilityLabel="Go back"
-            accessibilityRole="button"
-          >
-            <Ionicons name="arrow-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
-          </TouchableOpacity>
-        </View>
-        <Text 
-          style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]}
-          pointerEvents="none"
+      {/* Header - Fixed position to prevent layout shifts */}
+      <View 
+        style={[styles.header, { 
+          backgroundColor: 'transparent',
+          top: safeInsets.top,
+          marginLeft: safeInsets.left,
+          marginRight: safeInsets.right,
+        }]}
+        collapsable={false}
+      >
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          activeOpacity={0.7}
+          accessibilityLabel="Go back"
+          accessibilityRole="button"
         >
-          Activity Log
-        </Text>
-        <View style={styles.headerRight}>
-          {isAdmin ? (
-            <TouchableOpacity 
-              style={styles.profileButton} 
-              onPress={() => navigation.navigate('AdminSettings')} 
-              activeOpacity={0.7}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityLabel="Admin profile - Go to settings"
-              accessibilityRole="button"
-            >
-              <View style={[styles.profileIconCircle, { backgroundColor: theme.colors.accent }]} pointerEvents="none">
-                <Text style={[styles.profileInitials, { fontSize: theme.fontSize.scaleSize(13) }]}>AD</Text>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity 
-              style={styles.profileButton} 
-              onPress={() => navigation.navigate('UserSettings')} 
-              activeOpacity={0.7}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityLabel="Go to settings"
-              accessibilityRole="button"
-            >
-              <View style={[styles.profileIconCircle, { backgroundColor: theme.colors.accent }]} pointerEvents="none">
-                <Ionicons name="settings-outline" size={18} color="#FFF" />
-              </View>
-            </TouchableOpacity>
-          )}
-        </View>
+          <Ionicons name="chevron-back" size={28} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]}>Activity Log</Text>
       </View>
 
       {/* Main Content */}
       <View style={styles.contentWrapper}>
         <ScrollView
-          style={styles.content}
+          style={[styles.content, {
+            marginTop: safeInsets.top + 64,
+          }]}
           contentContainerStyle={{
             paddingHorizontal: 16,
             paddingTop: 16,
@@ -934,68 +904,30 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 999,
+    backgroundColor: 'transparent',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: 'transparent',
-    zIndex: 10,
-    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
-  headerLeft: {
-    width: 44,
-    zIndex: 11,
-  },
-  menuButton: {
+  backButton: {
     width: 44,
     height: 44,
-    minWidth: 44,
-    minHeight: 44,
-    borderRadius: 18,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 12,
+    zIndex: 1000,
   },
   headerTitle: {
     fontSize: 17,
     fontWeight: '600',
     letterSpacing: -0.3,
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    textAlign: 'center',
-    zIndex: 1,
-    pointerEvents: 'none',
-  },
-  headerRight: {
-    width: 44,
-    alignItems: 'flex-end',
-    zIndex: 11,
-  },
-  profileButton: {
-    width: 44,
-    height: 44,
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 12,
-  },
-  profileIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-    pointerEvents: 'none',
-  },
-  profileInitials: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFF',
-    letterSpacing: -0.3,
+    marginLeft: 8,
   },
   contentWrapper: {
     flex: 1,

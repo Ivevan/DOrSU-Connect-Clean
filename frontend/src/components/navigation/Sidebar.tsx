@@ -263,17 +263,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           roleGate: 'admin',
         },
         {
-          key: 'activityLog',
-          label: 'Activity Log',
-          icon: isCurrent('ActivityLog') ? 'document-text' : 'document-text-outline',
-          target: 'ActivityLog' as keyof RootStackParamList,
-          onPress: () => {
-            onClose();
-            navigation.navigate('ActivityLog');
-          },
-          roleGate: 'admin',
-        },
-        {
           key: 'settings',
           label: 'Profile Settings',
           icon: isCurrent('AdminSettings') ? 'person-circle' : 'person-circle-outline',

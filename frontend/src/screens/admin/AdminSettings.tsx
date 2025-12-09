@@ -40,6 +40,7 @@ type RootStackParamList = {
   TermsOfUse: undefined;
   PrivacyPolicy: undefined;
   Licenses: undefined;
+  ActivityLog: undefined;
 };
 
 const AdminSettings = () => {
@@ -565,6 +566,16 @@ const AdminSettings = () => {
               }}
             >
               <Text style={[styles.sectionTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Email</Text>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.sectionTitleButton}
+              onPress={() => {
+                navigation.navigate('ActivityLog' as any);
+              }}
+            >
+              <Text style={[styles.sectionTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Activity Log</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 

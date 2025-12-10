@@ -669,6 +669,12 @@ const AdminDataService = {
         if (updates.description) formData.append('description', updates.description || '');
         if (updates.category) formData.append('category', updates.category);
         if (updates.date) formData.append('date', updates.date);
+        // Include approval fields if present
+        if ((updates as any).status !== undefined) formData.append('status', String((updates as any).status));
+        if ((updates as any).isApproved !== undefined) formData.append('isApproved', String((updates as any).isApproved));
+        if ((updates as any).approvedAt) formData.append('approvedAt', String((updates as any).approvedAt));
+        if ((updates as any).approvedBy) formData.append('approvedBy', String((updates as any).approvedBy));
+        if ((updates as any).creatorRole) formData.append('creatorRole', String((updates as any).creatorRole));
 
         // Handle image upload
         if (imageUri && typeof imageUri === 'string') {
@@ -747,6 +753,12 @@ const AdminDataService = {
           isPinned: updates.isPinned,
           isUrgent: updates.isUrgent,
           source: updates.source,
+          // Include approval fields if present
+          status: (updates as any).status,
+          isApproved: (updates as any).isApproved,
+          approvedAt: (updates as any).approvedAt,
+          approvedBy: (updates as any).approvedBy,
+          creatorRole: (updates as any).creatorRole,
         };
         
         // Remove undefined/null values to keep JSON clean

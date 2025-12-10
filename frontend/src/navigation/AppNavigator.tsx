@@ -22,6 +22,7 @@ import AdminGeneralSettings from '../screens/admin/AdminGeneralSettings';
 import AdminSettings from '../screens/admin/AdminSettings';
 import CalendarHelpScreen from '../screens/admin/CalendarHelpScreen';
 import ManagePosts from '../screens/admin/ManagePosts';
+import ModeratorPosts from '../screens/admin/ModeratorPosts';
 import PostUpdate from '../screens/admin/PostUpdate';
 import CreateAccount from '../screens/auth/CreateAccount';
 import ForgotPassword from '../screens/auth/ForgotPassword';
@@ -592,6 +593,18 @@ const AppNavigator = () => {
         <Stack.Screen 
           name="ManagePosts" 
           component={ManagePosts}
+          options={{
+            headerShown: false,
+            animation: 'fade' as const,
+            animationDuration: 0,
+            contentStyle: {
+              backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3',
+            },
+          }}
+        />
+        <Stack.Screen 
+          name="ModeratorPosts" 
+          component={ModeratorPosts}
           options={{
             headerShown: false,
             animation: 'fade' as const,

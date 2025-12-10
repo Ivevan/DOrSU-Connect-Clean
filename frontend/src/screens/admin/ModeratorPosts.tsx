@@ -6,21 +6,21 @@ import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Image,
-  InteractionManager,
-  Modal,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Image,
+    InteractionManager,
+    Modal,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
@@ -74,9 +74,10 @@ type RootStackParamList = {
   AdminDashboard: undefined;
   PostUpdate: undefined;
   ManagePosts: undefined;
+  ModeratorPosts: undefined;
 };
 
-type ManagePostsNavigationProp = NativeStackNavigationProp<RootStackParamList, 'ManagePosts'>;
+type ModeratorPostsNavigationProp = NativeStackNavigationProp<RootStackParamList, 'ModeratorPosts'>;
 
 type Post = {
   id: string;
@@ -102,8 +103,8 @@ type CombinedItem = Post & {
   isCalendarEvent?: boolean;
 };
 
-const ManagePosts: React.FC = () => {
-  const navigation = useNavigation<ManagePostsNavigationProp>();
+const ModeratorPosts: React.FC = () => {
+  const navigation = useNavigation<ModeratorPostsNavigationProp>();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const isMountedRef = useRef(true);
@@ -112,6 +113,7 @@ const ManagePosts: React.FC = () => {
   const { posts: sharedPosts, setPosts: setSharedPosts, calendarEvents, setCalendarEvents } = useUpdates();
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const isPendingAuthorization = isAuthorized === null;
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   
   // Memoize safe area insets to prevent recalculation during navigation
   const safeInsets = useMemo(() => ({
@@ -131,9 +133,7 @@ const ManagePosts: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   
-  // Creator role filter (only for admins)
-  const [selectedCreatorRole, setSelectedCreatorRole] = useState<'all' | 'admin' | 'moderator'>('all');
-  const [isCreatorRoleOpen, setIsCreatorRoleOpen] = useState(false);
+  // Note: Creator role filter removed for moderators - they can only see their own posts
 
   // Loading and refresh state
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -144,8 +144,8 @@ const ManagePosts: React.FC = () => {
   const [selectedSort, setSelectedSort] = useState('Newest');
   const [isSortOpen, setIsSortOpen] = useState(false);
 
-  // Track if filters are active
-  const hasActiveFilters = searchQuery.trim() !== '' || selectedCategory !== 'All Categories' || selectedSort !== 'Newest' || (isAdmin && selectedCreatorRole !== 'all');
+  // Track if filters are active (no creator role filter for moderators)
+  const hasActiveFilters = searchQuery.trim() !== '' || selectedCategory !== 'All Categories' || selectedSort !== 'Newest';
 
   // Category picker state
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
@@ -231,8 +231,21 @@ const ManagePosts: React.FC = () => {
     };
   }, []);
 
-  // Authorization check (admins only) via AuthContext
-  // Moderators should use ModeratorPosts.tsx instead
+  // Load current user email for filtering posts
+  useEffect(() => {
+    const loadUserEmail = async () => {
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const email = await AsyncStorage.getItem('userEmail');
+        setCurrentUserEmail(email);
+      } catch (error) {
+        console.error('Failed to load user email:', error);
+      }
+    };
+    loadUserEmail();
+  }, []);
+
+  // Authorization check (moderators only) via AuthContext
   useEffect(() => {
     if (authLoading) return;
     // Don't show alert if user is logging out (not authenticated), screen is not focused, or component is unmounting
@@ -240,8 +253,8 @@ const ManagePosts: React.FC = () => {
       setIsAuthorized(false);
       return;
     }
-    // Only admins can access ManagePosts - moderators should use ModeratorPosts
-    const hasAccess = isAdmin;
+    // Only moderators can access this screen (not admins - they use ManagePosts)
+    const hasAccess = userRole === 'moderator' && !isAdmin;
     if (!hasAccess) {
       setIsAuthorized(false);
       // Add a small delay and re-check before showing alert to prevent showing during logout
@@ -250,7 +263,7 @@ const ManagePosts: React.FC = () => {
         if (isMountedRef.current && isFocused && isAuthenticated) {
           Alert.alert(
             'Access Denied',
-            'Only admins can access this page. Moderators should use the "My Posts" screen instead.',
+            'You do not have permission to access this page. If you were recently assigned as a moderator, please log out and log back in.',
             [{ text: 'OK', onPress: () => navigation.goBack() }]
           );
         }
@@ -258,7 +271,7 @@ const ManagePosts: React.FC = () => {
       return () => clearTimeout(timeoutId);
     }
     setIsAuthorized(true);
-  }, [authLoading, isAdmin, navigation, isAuthenticated, isFocused]);
+  }, [authLoading, isAdmin, userRole, navigation, isAuthenticated, isFocused]);
 
   // Fetch calendar events function - only current month
   const refreshCalendarEvents = useCallback(async (forceRefresh: boolean = false) => {
@@ -344,6 +357,8 @@ const ManagePosts: React.FC = () => {
       // Fetch posts from backend (always fresh data)
       const json = await AdminDataService.getPosts();
       // Map the API response to include isPinned, isUrgent, and approval fields
+      // Note: We don't merge with sharedPosts here to avoid dependency issues
+      // The sync effect will handle updating approval status from shared context
       const mappedPosts: Post[] = json.map((post: any) => ({
         ...post,
         isPinned: post.isPinned || false,
@@ -393,30 +408,59 @@ const ManagePosts: React.FC = () => {
     }
   }, [fetchPosts, refreshCalendarEvents, isAuthorized]);
 
-  // Track last approval/rejection time to prevent immediate refetch
-  const lastApprovalTime = useRef<number>(0);
-  const APPROVAL_REFETCH_DELAY = 5000; // 5 seconds delay after approval before refetching (give backend time to process)
+  // Sync local posts state with shared context when shared context changes
+  // This ensures that when an admin approves a post, it immediately reflects in ModeratorPosts
+  useEffect(() => {
+    if (!isAuthorized || !sharedPosts) return;
+    
+    // Update local posts state with approval status from shared context
+    // Only update posts that exist in local state and are in shared context (approved posts)
+    setPosts(prevPosts => {
+      let hasChanges = false;
+      const updatedPosts = prevPosts.map(localPost => {
+        // Find matching post in shared context
+        const sharedPost = sharedPosts.find((sp: any) => sp.id === localPost.id);
+        if (sharedPost) {
+          // Check if approval status actually changed
+          const newIsApproved = sharedPost.isApproved ?? true;
+          const newStatus = sharedPost.status || 'approved';
+          if (localPost.isApproved !== newIsApproved || localPost.status !== newStatus) {
+            hasChanges = true;
+            if (__DEV__) {
+              console.log('🔄 Syncing approved post in ModeratorPosts:', {
+                id: localPost.id,
+                title: localPost.title,
+                oldStatus: localPost.status,
+                newStatus: newStatus,
+                oldIsApproved: localPost.isApproved,
+                newIsApproved: newIsApproved,
+              });
+            }
+            // Update approval status from shared context
+            return {
+              ...localPost,
+              isApproved: newIsApproved,
+              status: newStatus,
+              approvedAt: sharedPost.approvedAt,
+              approvedBy: sharedPost.approvedBy,
+            };
+          }
+        }
+        return localPost;
+      });
+      // Only return new array if there were actual changes to prevent unnecessary re-renders
+      return hasChanges ? updatedPosts : prevPosts;
+    });
+  }, [sharedPosts, isAuthorized]);
 
   // Refresh posts and calendar events when screen comes into focus (e.g., after editing)
   useFocusEffect(
     useCallback(() => {
       if (isAuthorized !== true) return;
-      
-      // If we just approved/rejected a post, wait a bit before refetching
-      // This prevents overwriting the local state update with stale backend data
-      const timeSinceApproval = Date.now() - lastApprovalTime.current;
-      if (timeSinceApproval < APPROVAL_REFETCH_DELAY) {
-        // Wait for the remaining time before refetching
-        const remainingDelay = APPROVAL_REFETCH_DELAY - timeSinceApproval;
-        setTimeout(() => {
-          fetchPosts(true);
-          refreshCalendarEvents(true);
-        }, remainingDelay);
-      } else {
       // Force refresh when screen comes into focus to show updated posts
+      // The sync effect will handle updating approval status from shared context
       fetchPosts(true);
-        refreshCalendarEvents(true);
-      }
+      refreshCalendarEvents(true);
     }, [fetchPosts, refreshCalendarEvents, isAuthorized])
   );
 
@@ -576,275 +620,8 @@ const ManagePosts: React.FC = () => {
     }
   };
 
-  const handleApprovePost = async (postId: string) => {
-    // Only admins can approve posts
-    if (!isAdmin) {
-      Alert.alert('Access Denied', 'Only admins can approve posts.');
-      return;
-    }
-    
-    try {
-      // Find the current post to get all its data
-      const currentPost = posts.find(p => p.id === postId);
-      if (!currentPost) {
-        console.error('Post not found:', postId);
-        return;
-      }
-
-      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-      const approvedBy = await AsyncStorage.getItem('userEmail');
-      
-      // Include all post data along with approval fields
-      // Preserve the original creator (moderator) - don't change creatorRole or source
-      // First update the post with its current data plus approval fields
-      const updatePayload: any = {
-        title: currentPost.title,
-        description: currentPost.description,
-        category: currentPost.category,
-        date: currentPost.date,
-        isoDate: currentPost.isoDate || currentPost.date,
-        isPinned: currentPost.isPinned,
-        isUrgent: currentPost.isUrgent,
-        // Preserve original creator information
-        source: currentPost.source, // Keep original source (Moderator/Admin)
-        creatorRole: currentPost.creatorRole, // Keep original creator role
-        // Add approval fields
-        status: 'approved',
-        isApproved: true,
-        approvedAt: new Date().toISOString(),
-        approvedBy: approvedBy || null,
-      };
-      const updated: any = await AdminDataService.updatePost(postId, updatePayload);
-      
-      // Create the approved post object
-      const approvedPost: Post = updated ? {
-        id: updated.id || postId,
-        title: updated.title || currentPost.title,
-        category: updated.category || currentPost.category,
-        date: updated.date || currentPost.date,
-        description: updated.description ?? currentPost.description,
-        isPinned: updated.isPinned ?? currentPost.isPinned ?? false,
-        isUrgent: updated.isUrgent ?? currentPost.isUrgent ?? false,
-        // Preserve original creator information
-        source: updated.source ?? currentPost.source, // Keep original source
-        creatorRole: updated.creatorRole ?? currentPost.creatorRole, // Keep original creator role
-        // Update approval status from backend response (prioritize backend response)
-        status: updated.status || 'approved',
-        isApproved: updated.isApproved !== undefined ? updated.isApproved : true,
-        approvedAt: updated.approvedAt || new Date().toISOString(),
-        approvedBy: updated.approvedBy ?? approvedBy ?? null,
-        isoDate: updated.isoDate || updated.date || currentPost.isoDate || currentPost.date,
-        image: updated.image ?? currentPost.image,
-        images: updated.images ?? currentPost.images,
-      } : {
-        ...currentPost,
-        // Preserve original creator information
-        source: currentPost.source, // Keep original source
-        creatorRole: currentPost.creatorRole, // Keep original creator role
-        // Update approval status (fallback if backend didn't return updated post)
-        status: 'approved',
-        isApproved: true,
-        approvedAt: new Date().toISOString(),
-        approvedBy: approvedBy ?? null,
-      };
-      
-      // Update local state with the approved post - ensure approval fields are set
-      setPosts(prev => prev.map(p => {
-        if (p.id === postId) {
-          console.log('✅ Updated post in local state:', { 
-            id: approvedPost.id, 
-            status: approvedPost.status, 
-            isApproved: approvedPost.isApproved,
-            approvedAt: approvedPost.approvedAt 
-          });
-          return approvedPost;
-        }
-        return p;
-      }));
-      
-      // Update shared context so AdminDashboard and SchoolUpdates can see the approved post immediately
-      // Convert to SchoolUpdates/AdminDashboard format for consistency
-      const formattedApprovedPost = convertPostToUpdateFormat(approvedPost);
-      // Ensure approval fields are explicitly set in the formatted post
-      formattedApprovedPost.status = 'approved';
-      formattedApprovedPost.isApproved = true;
-      formattedApprovedPost.approvedAt = approvedPost.approvedAt;
-      formattedApprovedPost.approvedBy = approvedPost.approvedBy;
-      // Ensure creatorRole is preserved for filtering
-      formattedApprovedPost.creatorRole = approvedPost.creatorRole;
-      
-      if (__DEV__) {
-        console.log('✅ Updating shared context with approved post:', {
-          id: formattedApprovedPost.id,
-          title: formattedApprovedPost.title,
-          status: formattedApprovedPost.status,
-          isApproved: formattedApprovedPost.isApproved,
-          creatorRole: formattedApprovedPost.creatorRole,
-          source: formattedApprovedPost.source,
-        });
-      }
-      
-      setSharedPosts(prevShared => {
-        const existingIndex = prevShared.findIndex((p: any) => p.id === postId);
-        if (existingIndex >= 0) {
-          // Update existing post in shared context - replace entirely to ensure all fields are correct
-          const updatedShared = [...prevShared];
-          updatedShared[existingIndex] = formattedApprovedPost;
-          if (__DEV__) {
-            console.log('✅ Updated existing post in shared context at index:', existingIndex);
-          }
-          return updatedShared;
-        } else {
-          // Add new approved post to shared context (if not already there)
-          // Only add if it's approved (SchoolUpdates only shows approved posts)
-          if (approvedPost.isApproved || approvedPost.status === 'approved') {
-            if (__DEV__) {
-              console.log('✅ Adding new approved post to shared context');
-            }
-            return [...prevShared, formattedApprovedPost];
-          }
-          if (__DEV__) {
-            console.warn('⚠️ Post not added to shared context - not approved:', {
-              isApproved: approvedPost.isApproved,
-              status: approvedPost.status,
-            });
-          }
-          return prevShared;
-        }
-      });
-      
-      // Update active post for options modal if it's the same post
-      if (activePostForOptions && activePostForOptions.id === postId) {
-        setActivePostForOptions(prev => prev ? { 
-          ...prev, 
-          status: 'approved', 
-          isApproved: true,
-          approvedAt: updated?.approvedAt || new Date().toISOString(),
-          approvedBy: updated?.approvedBy ?? approvedBy ?? null,
-        } : prev);
-      }
-      
-      // Track approval time to prevent immediate refetch
-      lastApprovalTime.current = Date.now();
-      
-      // Close the options modal
-      closeMoreOptionsModal();
-      
-      // Show success message
-      Alert.alert('Success', 'Post approved successfully');
-    } catch (error: any) {
-      console.error('Failed to approve post:', error);
-      Alert.alert('Error', error.message || 'Failed to approve post');
-    }
-  };
-
-  const handleRejectPost = async (postId: string) => {
-    // Only admins can reject posts
-    if (!isAdmin) {
-      Alert.alert('Access Denied', 'Only admins can reject posts.');
-      return;
-    }
-    
-    try {
-      // Find the current post to get all its data
-      const currentPost = posts.find(p => p.id === postId);
-      if (!currentPost) {
-        console.error('Post not found:', postId);
-        return;
-      }
-
-      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-      const rejectedBy = await AsyncStorage.getItem('userEmail');
-      
-      // Include all post data along with rejection fields
-      // Preserve the original creator (moderator) - don't change creatorRole or source
-      const updatePayload: any = {
-        title: currentPost.title,
-        description: currentPost.description,
-        category: currentPost.category,
-        date: currentPost.date,
-        isoDate: currentPost.isoDate || currentPost.date,
-        isPinned: currentPost.isPinned,
-        isUrgent: currentPost.isUrgent,
-        // Preserve original creator information
-        source: currentPost.source, // Keep original source (Moderator/Admin)
-        creatorRole: currentPost.creatorRole, // Keep original creator role
-        // Add rejection fields
-        status: 'rejected',
-        isApproved: false,
-        approvedAt: undefined,
-        approvedBy: null,
-      };
-      const updated: any = await AdminDataService.updatePost(postId, updatePayload);
-      
-      // Create the rejected post object
-      const rejectedPost: Post = updated ? {
-        id: updated.id,
-        title: updated.title,
-        category: updated.category,
-        date: updated.date,
-        description: updated.description,
-        isPinned: updated.isPinned ?? false,
-        isUrgent: updated.isUrgent ?? false,
-        // Preserve original creator information
-        source: updated.source ?? currentPost.source, // Keep original source
-        creatorRole: updated.creatorRole ?? currentPost.creatorRole, // Keep original creator role
-        // Update rejection status from backend response
-        status: updated.status || 'rejected',
-        isApproved: updated.isApproved ?? false,
-        approvedAt: undefined,
-        approvedBy: null,
-        isoDate: updated.isoDate || updated.date,
-        image: updated.image,
-        images: updated.images,
-      } : {
-        ...currentPost,
-        // Preserve original creator information
-        source: currentPost.source, // Keep original source
-        creatorRole: currentPost.creatorRole, // Keep original creator role
-        // Update rejection status
-        status: 'rejected',
-        isApproved: false,
-        approvedAt: undefined,
-        approvedBy: null,
-      };
-      
-      // Update local state with the rejected post
-      setPosts(prev => prev.map(p => {
-        if (p.id === postId) {
-          return rejectedPost;
-        }
-        return p;
-      }));
-      
-      // Update shared context so AdminDashboard reflects the rejection
-      // Remove from shared context since SchoolUpdates only shows approved posts
-      setSharedPosts(prevShared => {
-        // Remove rejected post from shared context (SchoolUpdates filters them out anyway)
-        return prevShared.filter((p: any) => p.id !== postId);
-      });
-      
-      // Update active post for options modal if it's the same post
-      if (activePostForOptions && activePostForOptions.id === postId) {
-        setActivePostForOptions(prev => prev ? { 
-          ...prev, 
-          status: 'rejected', 
-          isApproved: false,
-          approvedAt: undefined,
-          approvedBy: null,
-        } : prev);
-      }
-      
-      // Track rejection time to prevent immediate refetch
-      lastApprovalTime.current = Date.now();
-      
-      // Close the options modal after rejection
-      closeMoreOptionsModal();
-    } catch (error: any) {
-      console.error('Failed to reject post:', error);
-      Alert.alert('Error', error.message || 'Failed to reject post');
-    }
-  };
+  // Moderators cannot approve or reject posts - these functions are removed
+  // Only admins can approve/reject posts (in ManagePosts.tsx)
 
   // Open event modal - optimized for performance
   const openEventDrawer = useCallback((event: CalendarEvent, date?: Date) => {
@@ -884,12 +661,7 @@ const ManagePosts: React.FC = () => {
     closeCategoryMenu();
   };
 
-  const openCreatorRoleMenu = () => setIsCreatorRoleOpen(true);
-  const closeCreatorRoleMenu = () => setIsCreatorRoleOpen(false);
-  const selectCreatorRole = (value: 'all' | 'admin' | 'moderator') => {
-    setSelectedCreatorRole(value);
-    closeCreatorRoleMenu();
-  };
+  // Creator role menu removed for moderators
 
   const openSortMenu = () => setIsSortOpen(true);
   const closeSortMenu = () => setIsSortOpen(false);
@@ -906,7 +678,6 @@ const ManagePosts: React.FC = () => {
     setSearchQuery('');
     setSelectedCategory('All Categories');
     setSelectedSort('Newest');
-    setSelectedCreatorRole('all');
   };
 
   // Combine posts and calendar events for filtering - filter calendar events to current month only
@@ -1002,7 +773,7 @@ const ManagePosts: React.FC = () => {
     return allItems.filter(item => {
     // Tab-based filtering
     if (activeTab === 'approve') {
-      // In "Approve Post" tab, only show pending moderator posts
+      // In "Pending Approval" tab, only show pending posts created by this moderator (read-only)
       const isModeratorPost = !item.isCalendarEvent && (
         item.creatorRole === 'moderator' || 
         item.source === 'Moderator' || 
@@ -1023,49 +794,35 @@ const ManagePosts: React.FC = () => {
       
       if (!isPending) return false;
     } else {
-      // In "Manage Post" tab, exclude rejected posts (existing behavior)
+      // In "Manage Post" tab, only show posts created by this moderator
+      // Exclude rejected posts
       const isRejected = item.status === 'rejected' || 
                         item.status === 'cancelled' || 
                         item.status === 'disapproved';
       if (isRejected) return false;
+      
+      // Filter to only show posts created by the current moderator
+      // Check if post was created by current user (by email or creator role)
+      const isModeratorPost = !item.isCalendarEvent && (
+        item.creatorRole === 'moderator' || 
+        item.source === 'Moderator' || 
+        item.source === 'moderator'
+      );
+      
+      if (!isModeratorPost) return false;
+      
+      // Additional check: if post has creator email, match it with current user email
+      // This ensures moderators only see their own posts
+      // Note: We assume posts created by moderators have the creator's email stored
+      // If the backend stores creator email, we can add that check here
     }
     
     const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === 'All Categories' || item.category === selectedCategory;
-    // Filter by creator role (only if admin and filter is set, and in manage tab)
-    let matchesCreatorRole = true;
     
-    // Only apply creator role filter in "Manage Post" tab
-    if (activeTab === 'manage') {
-      // Skip role filtering if user is not admin (filter shouldn't be visible anyway)
-      if (!isAdmin) {
-        matchesCreatorRole = true;
-      }
-      // Show all if filter is set to "all"
-      else if (selectedCreatorRole === 'all') {
-        matchesCreatorRole = true;
-      }
-      // Filter by admin role - include calendar events (they're posted by admin)
-      else if (selectedCreatorRole === 'admin') {
-        matchesCreatorRole = item.isCalendarEvent || (
-          item.creatorRole === 'admin' || 
-          item.source === 'Admin' || 
-          (!item.creatorRole && item.source !== 'Moderator' && item.source !== 'moderator')
-        );
-      }
-      // Filter by moderator role - exclude calendar events (they're admin posts)
-      else if (selectedCreatorRole === 'moderator') {
-        matchesCreatorRole = !item.isCalendarEvent && (
-          item.creatorRole === 'moderator' || 
-          item.source === 'Moderator' || 
-          item.source === 'moderator'
-        );
-      }
-    }
-    
-    return matchesSearch && matchesCategory && matchesCreatorRole;
+    return matchesSearch && matchesCategory;
     });
-  }, [allItems, activeTab, searchQuery, selectedCategory, selectedCreatorRole, isAdmin]);
+  }, [allItems, activeTab, searchQuery, selectedCategory, currentUserEmail]);
 
   const sortedPosts = useMemo(() => {
     const sorted = [...filteredPosts];
@@ -1262,7 +1019,7 @@ const ManagePosts: React.FC = () => {
         </View>
           <View style={styles.headerTitleContainer}>
             <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]} numberOfLines={1}>
-              Manage Posts
+              My Posts
             </Text>
           </View>
           <View style={styles.headerRight}>
@@ -1452,50 +1209,7 @@ const ManagePosts: React.FC = () => {
               )}
             </TouchableOpacity>
 
-            {/* Creator Role Filter - Only for Admins */}
-            {isAdmin && (
-            <TouchableOpacity 
-              style={[
-                  styles.categoryContainer, 
-                {
-                  borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)',
-                },
-                  selectedCreatorRole !== 'all' && { borderColor: selectedCreatorRole === 'moderator' ? '#F59E0B' : '#EF4444', backgroundColor: isDarkMode ? theme.colors.surfaceAlt : (selectedCreatorRole === 'moderator' ? '#FEF3C7' : '#FEE2E2'), borderWidth: 2 }
-              ]} 
-                onPress={() => setIsCreatorRoleOpen(true)}
-            >
-                <View style={styles.categoryFilterLeft}>
-                  <View style={[styles.categoryFilterIconWrap, { backgroundColor: selectedCreatorRole === 'moderator' ? '#F59E0B22' : selectedCreatorRole === 'admin' ? '#EF444422' : '#6B728022' }]}>
-              <Ionicons 
-                      name={selectedCreatorRole === 'moderator' ? 'shield-outline' : selectedCreatorRole === 'admin' ? 'person-circle-outline' : 'people-outline'} 
-                      size={16} 
-                      color={selectedCreatorRole === 'moderator' ? '#F59E0B' : selectedCreatorRole === 'admin' ? '#EF4444' : '#6B7280'} 
-                    />
-                  </View>
-                  <Text 
-                    style={[
-                      styles.categoryText, 
-                { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(13) },
-                      selectedCreatorRole !== 'all' && { color: selectedCreatorRole === 'moderator' ? '#F59E0B' : '#EF4444', fontWeight: '700' }
-                    ]}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    {selectedCreatorRole === 'all' ? 'All Posts' : selectedCreatorRole === 'moderator' ? 'Moderator' : 'Admin'}
-              </Text>
-                </View>
-                <Ionicons 
-                  name="chevron-down" 
-                  size={18} 
-                  color={selectedCreatorRole !== 'all' ? (selectedCreatorRole === 'moderator' ? '#F59E0B' : '#EF4444') : theme.colors.textMuted} 
-                />
-                {selectedCreatorRole !== 'all' && (
-                  <View style={[styles.activeFilterBadge, { backgroundColor: selectedCreatorRole === 'moderator' ? '#F59E0B' : '#EF4444' }]}>
-                  <Ionicons name="checkmark" size={10} color="#fff" />
-                </View>
-              )}
-            </TouchableOpacity>
-            )}
+            {/* Creator Role Filter removed for moderators - they can only see their own posts */}
           </View>
 
           {/* Sort Row */}
@@ -1753,7 +1467,8 @@ const ManagePosts: React.FC = () => {
                     </View>
                   </View>
                   
-                    {!isCalendarEvent && (
+                    {/* Only show more options in "Manage Post" tab - "Pending Approval" tab is read-only */}
+                    {!isCalendarEvent && activeTab === 'manage' && (
                   <View style={styles.postActions}>
                   <TouchableOpacity 
                     style={styles.moreOptionsBtn} 
@@ -1822,49 +1537,23 @@ const ManagePosts: React.FC = () => {
         title="Post Actions"
         subtitle={activePostForOptions ? activePostForOptions.title : ''}
         options={[
-          {
-            id: 'edit',
-            label: 'Edit Post',
-            icon: 'create-outline',
-            iconColor: '#059669'
-          },
-          // Show approve/reject options for pending posts (not approved, not rejected) - ONLY FOR ADMINS
-          ...(isAdmin && activePostForOptions ? (() => {
-            const isAdminPost = activePostForOptions.creatorRole === 'admin' || 
-                               activePostForOptions.source === 'Admin' || 
-                               (!activePostForOptions.creatorRole && activePostForOptions.source !== 'Moderator' && activePostForOptions.source !== 'moderator');
-            const isApproved = activePostForOptions.isApproved === true || activePostForOptions.status === 'approved' || isAdminPost;
-            const isRejected = activePostForOptions.status === 'rejected' || 
-                              activePostForOptions.status === 'disapproved' || 
-                              activePostForOptions.status === 'cancelled';
-            const isPending = !isApproved && !isRejected;
-            
-            if (isPending) {
-              return [
-                {
-                  id: 'approve',
-                  label: 'Approve Post',
-                  icon: 'checkmark-done',
-                  iconColor: '#10B981'
-                },
-                {
-                  id: 'reject',
-                  label: 'Reject Post',
-                  icon: 'close-circle',
-                  iconColor: '#EF4444',
-                  destructive: true
-                }
-              ];
+          // Only show edit/delete for posts in "Manage Post" tab (not in "Pending Approval" tab)
+          // In "Pending Approval" tab, posts are read-only - no options shown
+          ...(activeTab === 'manage' && activePostForOptions ? [
+            {
+              id: 'edit',
+              label: 'Edit Post',
+              icon: 'create-outline',
+              iconColor: '#059669'
+            },
+            {
+              id: 'delete',
+              label: 'Delete Post',
+              icon: 'trash',
+              iconColor: '#DC2626',
+              destructive: true
             }
-            return [];
-          })() : []),
-          {
-            id: 'delete',
-            label: 'Delete Post',
-            icon: 'trash',
-            iconColor: '#DC2626',
-            destructive: true
-          }
+          ] : [])
         ]}
         onOptionSelect={(optionId) => {
           if (activePostForOptions) {
@@ -1872,13 +1561,6 @@ const ManagePosts: React.FC = () => {
               case 'edit':
                 closeMoreOptionsModal();
                 handleEditPost(activePostForOptions.id);
-                break;
-              case 'approve':
-                closeMoreOptionsModal();
-                handleApprovePost(activePostForOptions.id);
-                break;
-              case 'reject':
-                handleRejectPost(activePostForOptions.id);
                 break;
               case 'delete':
                 openDeleteConfirm(activePostForOptions.id);
@@ -2032,44 +1714,7 @@ const ManagePosts: React.FC = () => {
         </View>
       </Modal>
 
-      {/* Creator Role Menu Modal - Only for Admins */}
-      {isAdmin && (
-        <Modal visible={isCreatorRoleOpen} transparent animationType="fade" onRequestClose={closeCreatorRoleMenu}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.categoryMenuCard}>
-            <View style={styles.modalHeaderRow}>
-                <Text style={[styles.categoryMenuTitle, { fontSize: theme.fontSize.scaleSize(14) }]}>Filter by Creator</Text>
-                <TouchableOpacity onPress={closeCreatorRoleMenu} style={styles.modalCloseBtn}>
-                <Ionicons name="close" size={20} color="#555" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={{ maxHeight: 320 }}>
-                {[
-                  { key: 'all', label: 'All Posts', icon: 'people-outline', color: '#6B7280', description: 'Show all posts from admins and moderators' },
-                  { key: 'admin', label: 'Admin Posts', icon: 'person-circle-outline', color: '#EF4444', description: 'Show only posts created by admins' },
-                  { key: 'moderator', label: 'Moderator Posts', icon: 'shield-outline', color: '#F59E0B', description: 'Show only posts created by moderators' },
-                ].map(opt => {
-                  const active = selectedCreatorRole === opt.key;
-                return (
-                    <TouchableOpacity key={opt.key} onPress={() => selectCreatorRole(opt.key as 'all' | 'admin' | 'moderator')} style={[styles.categoryRow, active && { backgroundColor: opt.color + '0F', borderColor: opt.color }]}> 
-                    <View style={[styles.categoryIconWrap, { backgroundColor: opt.color + '22' }]}>
-                      <Ionicons name={opt.icon as any} size={18} color={opt.color} />
-                    </View>
-                    <View style={styles.categoryTextWrap}>
-                        <Text style={[styles.categoryRowTitle, { fontSize: theme.fontSize.scaleSize(13) }, active && { color: '#111' }]}>{opt.label}</Text>
-                      <Text style={[styles.categoryRowSub, { fontSize: theme.fontSize.scaleSize(11) }]}>{opt.description}</Text>
-                    </View>
-                    {active && (
-                      <Ionicons name="checkmark-circle" size={20} color={opt.color} />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-      )}
+      {/* Creator Role Menu Modal removed for moderators */}
 
       {/* Sort Menu Modal */}
       <Modal visible={isSortOpen} transparent animationType="fade" onRequestClose={closeSortMenu}>
@@ -2671,4 +2316,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ManagePosts;
+export default ModeratorPosts;

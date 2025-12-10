@@ -1204,6 +1204,11 @@ export class ScheduleService {
         const descriptionPart = parts.find(p => p.name === 'description');
         const categoryPart = parts.find(p => p.name === 'category');
         const datePart = parts.find(p => p.name === 'date');
+        const statusPart = parts.find(p => p.name === 'status');
+        const isApprovedPart = parts.find(p => p.name === 'isApproved');
+        const approvedAtPart = parts.find(p => p.name === 'approvedAt');
+        const approvedByPart = parts.find(p => p.name === 'approvedBy');
+        const creatorRolePart = parts.find(p => p.name === 'creatorRole');
         const imagePart = parts.find(p => p.filename);
 
         if (titlePart) updateData.title = titlePart.data.toString('utf8').trim();
@@ -1218,6 +1223,18 @@ export class ScheduleService {
             updateData.isoDate = date; // Date object for queries
           }
         }
+        // Extract approval fields
+        if (statusPart) updateData.status = statusPart.data.toString('utf8').trim();
+        if (isApprovedPart) {
+          const isApprovedStr = isApprovedPart.data.toString('utf8').trim().toLowerCase();
+          updateData.isApproved = isApprovedStr === 'true' || isApprovedStr === '1';
+        }
+        if (approvedAtPart) {
+          const approvedAtStr = approvedAtPart.data.toString('utf8').trim();
+          updateData.approvedAt = approvedAtStr || null;
+        }
+        if (approvedByPart) updateData.approvedBy = approvedByPart.data.toString('utf8').trim() || null;
+        if (creatorRolePart) updateData.creatorRole = creatorRolePart.data.toString('utf8').trim();
 
         // Handle image upload if present
         if (imagePart) {

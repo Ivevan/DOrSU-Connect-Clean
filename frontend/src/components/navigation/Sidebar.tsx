@@ -27,6 +27,7 @@ type RootStackParamList = {
   AdminSettings: undefined;
   PostUpdate: undefined;
   ManagePosts: undefined;
+  ModeratorPosts: undefined;
   ManageAccounts: undefined;
   ActivityLog: undefined;
 };
@@ -320,12 +321,12 @@ const Sidebar: React.FC<SidebarProps> = ({
         },
         {
           key: 'managePosts',
-          label: 'Manage Posts',
-          icon: isCurrent('ManagePosts') ? 'list' : 'list-outline',
-          target: 'ManagePosts' as keyof RootStackParamList,
+          label: 'My Posts',
+          icon: isCurrent('ModeratorPosts') ? 'list' : 'list-outline',
+          target: 'ModeratorPosts' as keyof RootStackParamList,
           onPress: () => {
             onClose();
-            navigation.navigate('ManagePosts');
+            navigation.navigate('ModeratorPosts');
           },
         },
         {

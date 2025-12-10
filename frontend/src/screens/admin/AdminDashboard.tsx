@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -8,8 +8,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Alert, Animated, Image, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // import AddPostDrawer from '../../components/dashboard/AddPostDrawer'; // Replaced with PostUpdate screen navigation
-import AdminBottomNavBar from '../../components/navigation/AdminBottomNavBar';
-import AdminSidebar from '../../components/navigation/AdminSidebar';
+import BottomNavBar from '../../components/navigation/BottomNavBar';
+import Sidebar from '../../components/navigation/Sidebar';
 import { useAuth } from '../../contexts/AuthContext';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import { useUpdates } from '../../contexts/UpdatesContext';
@@ -131,7 +131,7 @@ const timeFilterOptions = [
 const AdminDashboard = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
-  const { isLoading: authLoading, userRole, isAdmin, refreshUser } = useAuth();
+  const { isLoading: authLoading, userRole, isAdmin, refreshUser, isAuthenticated } = useAuth();
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const isPendingAuthorization = isAuthorized === null;
   const resolvedLegendItems = useMemo<LegendItem[]>(() => legendItemsData, []);
@@ -162,7 +162,9 @@ const AdminDashboard = () => {
     ] as [string, string, string];
   };
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const isFocused = useIsFocused();
   const scrollRef = useRef<ScrollView>(null);
+  const isMountedRef = useRef(true);
   
   // Memoize safe area insets to prevent recalculation during navigation
   const safeInsets = useMemo(() => ({
@@ -203,21 +205,40 @@ const AdminDashboard = () => {
     }, [authLoading, refreshUser])
   );
 
+  // Track mount state to prevent alerts during unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   // Authorization check (admins and moderators) via AuthContext
   useEffect(() => {
     if (authLoading) return;
+    // Don't show alert if user is logging out (not authenticated), screen is not focused, or component is unmounting
+    if (!isAuthenticated || !isFocused || !isMountedRef.current) {
+      setIsAuthorized(false);
+      return;
+    }
     const hasAccess = isAdmin || userRole === 'moderator';
     if (!hasAccess) {
       setIsAuthorized(false);
-      Alert.alert(
-        'Access Denied',
-        'You do not have permission to access this page.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
-      return;
+      // Add a small delay and re-check before showing alert to prevent showing during logout
+      const timeoutId = setTimeout(() => {
+        // Triple-check we're still mounted, focused, and authenticated before showing alert
+        if (isMountedRef.current && isFocused && isAuthenticated) {
+          Alert.alert(
+            'Access Denied',
+            'You do not have permission to access this page.',
+            [{ text: 'OK', onPress: () => navigation.goBack() }]
+          );
+        }
+      }, 100);
+      return () => clearTimeout(timeoutId);
     }
     setIsAuthorized(true);
-  }, [authLoading, isAdmin, userRole, navigation]);
+  }, [authLoading, isAdmin, userRole, navigation, isAuthenticated, isFocused]);
   
   // Dashboard data
   const [timeFilter, setTimeFilter] = useState<'all' | 'upcomingmonth' | 'lastmonth' | 'thismonth'>('thismonth');
@@ -708,39 +729,26 @@ const AdminDashboard = () => {
   const openEventDrawer = useCallback((event: CalendarEvent, date?: Date) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
-    // Batch state updates for better performance
-    if (date) {
-      const dateKey = formatDateKey(date);
-      const eventsOnDate = calendarEvents.filter(e => {
-        const eventDateKey = parseAnyDateToKey(e.isoDate || e.date);
-        return eventDateKey === dateKey;
-      });
-      const mappedEvents = eventsOnDate.map(e => ({
-        id: e._id || `calendar-${e.isoDate}-${e.title}`,
-        title: e.title,
-        color: categoryToColors(e.category || 'Event').dot,
-        type: e.category || 'Event',
-        category: e.category,
-        description: e.description,
-        isoDate: e.isoDate,
-        date: e.date,
-        time: e.time,
-        startDate: e.startDate,
-        endDate: e.endDate,
-      }));
-      
-      // Batch all state updates together
-      setSelectedEvent(event);
-      setSelectedDateForDrawer(date);
-      setSelectedDateEvents(mappedEvents);
-      setShowEventDrawer(true);
-    } else {
-      // Batch all state updates together
-      setSelectedEvent(event);
-      setSelectedDateForDrawer(null);
-      setSelectedDateEvents([]);
-      setShowEventDrawer(true);
-    }
+    // Only display the single selected event, not all events on the date
+    const singleEvent = {
+      id: event._id || `calendar-${event.isoDate}-${event.title}`,
+      title: event.title,
+      color: categoryToColors(event.category || 'Event').dot,
+      type: event.category || 'Event',
+      category: event.category,
+      description: event.description,
+      isoDate: event.isoDate,
+      date: event.date,
+      time: event.time,
+      startDate: event.startDate,
+      endDate: event.endDate,
+    };
+    
+    // Batch all state updates together
+    setSelectedEvent(event);
+    setSelectedDateForDrawer(date || null);
+    setSelectedDateEvents([singleEvent]); // Only include the clicked event
+    setShowEventDrawer(true);
   }, [calendarEvents]);
   
   // Close event modal
@@ -781,7 +789,23 @@ const AdminDashboard = () => {
       
       // Fetch recent updates (posts/announcements) - use cache if available
       const rawPosts = await AdminDataService.getPosts();
-        const postsData = rawPosts.map(post => {
+      
+      // Filter to only show approved posts (approved by PIO admin)
+      // Admin posts are automatically approved, moderator posts need approval
+      const approvedPosts = rawPosts.filter(post => {
+        // Check if post is approved
+        const isApproved = post.isApproved === true || post.status === 'approved';
+        
+        // Admin posts are automatically approved
+        const isAdminPost = post.creatorRole === 'admin' || 
+                           post.source === 'Admin' || 
+                           (!post.creatorRole && post.source !== 'Moderator' && post.source !== 'moderator');
+        
+        // Include if approved OR if it's an admin post (admin posts are auto-approved)
+        return isApproved || isAdminPost;
+      });
+      
+        const postsData = approvedPosts.map(post => {
           // Ensure images array is properly set
           let images = post.images;
           if (!images || !Array.isArray(images) || images.length === 0) {
@@ -875,8 +899,24 @@ const AdminDashboard = () => {
   useEffect(() => {
     if (posts.length > 0) {
       setIsLoadingDashboard(false);
+      
+      // Filter to only show approved posts (approved by PIO admin)
+      // Admin posts are automatically approved, moderator posts need approval
+      const approvedPosts = posts.filter((post: any) => {
+        // Check if post is approved
+        const isApproved = post.isApproved === true || post.status === 'approved';
+        
+        // Admin posts are automatically approved
+        const isAdminPost = post.creatorRole === 'admin' || 
+                           post.source === 'Admin' || 
+                           (!post.creatorRole && post.source !== 'Moderator' && post.source !== 'moderator');
+        
+        // Include if approved OR if it's an admin post (admin posts are auto-approved)
+        return isApproved || isAdminPost;
+      });
+      
       // Process existing posts into allUpdates format
-      const postsData = posts.map((post: any) => {
+      const postsData = approvedPosts.map((post: any) => {
         let images = post.images;
         if (!images || !Array.isArray(images) || images.length === 0) {
           if (post.image) {
@@ -999,19 +1039,21 @@ const AdminDashboard = () => {
   }, [fetchDashboardData, refreshCalendarEvents]);
 
   if (isAuthorized === false) {
-    return null;
+    return (
+      <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }} />
+    );
   }
 
   if (isPendingAuthorization) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }}>
         <ActivityIndicator size="large" color={theme.colors.accent} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container} collapsable={false}>
+    <View style={[styles.container, { backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }]} collapsable={false}>
       <StatusBar
         backgroundColor="transparent"
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
@@ -1157,10 +1199,11 @@ const AdminDashboard = () => {
         </View>
       </LinearGradient>
       
-      {/* Admin Sidebar Component */}
-      <AdminSidebar
+      {/* Sidebar Component */}
+      <Sidebar
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
+        allowedRoles={['admin', 'moderator']}
       />
 
       {/* Main Content - Scrollable with Curved Top */}
@@ -1587,11 +1630,12 @@ const AdminDashboard = () => {
         bottom: 0,
         paddingBottom: safeInsets.bottom,
       }]} collapsable={false}>
-        <AdminBottomNavBar
+        <BottomNavBar
+          tabType="admin"
           activeTab="dashboard"
-          onChatPress={() => navigation.navigate('AdminAIChat')}
-          onDashboardPress={() => navigation.navigate('AdminDashboard')}
-          onCalendarPress={() => {
+          onFirstPress={() => navigation.navigate('AdminAIChat')}
+          onSecondPress={() => navigation.navigate('AdminDashboard')}
+          onThirdPress={() => {
             // Moderators use regular Calendar, admins use AdminCalendar
             if (userRole === 'moderator') {
               navigation.navigate('Calendar' as any);

@@ -2,8 +2,7 @@
 // This file exports all the main components and utilities
 
 // Components
-export { default as AdminBottomNavBar } from './components/navigation/AdminBottomNavBar';
-export { default as UserBottomNavBar } from './components/navigation/UserBottomNavBar';
+export { default as BottomNavBar } from './components/navigation/BottomNavBar';
 export { default as LetterGlitch } from './components/common/LetterGlitch';
 export { default as ThemeSwitchOverlay } from './components/common/ThemeSwitchOverlay';
 export { default as ThemeTestComponent } from './components/common/ThemeTestComponent';

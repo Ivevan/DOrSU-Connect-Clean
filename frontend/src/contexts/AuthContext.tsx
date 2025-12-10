@@ -347,6 +347,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         inactivityTimerRef.current = null;
       }
       
+      // Log logout activity to backend BEFORE clearing tokens
+      try {
+        const token = userToken || await AsyncStorage.getItem('userToken');
+        if (token) {
+          const apiConfig = require('../config/api.config').default;
+          await fetch(`${apiConfig.baseUrl}/api/auth/logout`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          }).catch((error) => {
+            // Don't block logout if logging fails
+            console.warn('Failed to log logout activity:', error);
+          });
+        }
+      } catch (error) {
+        // Don't block logout if logging fails
+        console.warn('Failed to log logout activity:', error);
+      }
+      
       // Clear UpdatesContext data and reset session flags
       try {
         // Call global clear function from UpdatesContext

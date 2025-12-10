@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer, useNavigationContainerRef, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as Linking from 'expo-linking';
 import React, { useEffect, useState } from 'react';
@@ -42,7 +42,7 @@ const Stack = createNativeStackNavigator();
 
 // Optimized animation config for better performance; theme-aware nav bar
 const useScreenOptions = () => {
-  const { theme } = useTheme();
+  const { isDarkMode } = useTheme();
   return React.useMemo(() => ({
     headerShown: false,
     animation: 'fade' as const,
@@ -50,17 +50,18 @@ const useScreenOptions = () => {
     gestureEnabled: false,
     presentation: 'card' as const,
     contentStyle: {
-      backgroundColor: 'transparent',
+      backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3', // Theme-aware background to prevent white screens
     },
     // Keep screens mounted between navigations so heavy screens like SchoolUpdates
     // don't unmount/remount (which feels like a reload) on every tab switch.
     detachInactiveScreens: false,
     freezeOnBlur: false,
     // Remove runtime nav bar color to avoid live switching; rely on OS/app.json on minimize/resume
-  }), [theme]);
+  }), [isDarkMode]);
 };
 
 const AppNavigator = () => {
+  const { isDarkMode } = useTheme();
   const screenOptions = useScreenOptions();
   const [isLoading, setIsLoading] = useState(true);
   const [initialRoute, setInitialRoute] = useState<string>('SplashScreen');
@@ -340,16 +341,39 @@ const AppNavigator = () => {
   // Show loading indicator while checking auth status
   if (isLoading || authLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1F2937' }}>
-        <ActivityIndicator size="large" color="#FFFFFF" />
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }}>
+        <ActivityIndicator size="large" color={isDarkMode ? '#FFFFFF' : '#2563EB'} />
       </View>
     );
   }
-
+  
   return (
     <UpdatesProvider>
     <NavigationContainer 
       ref={navigationRef}
+      theme={isDarkMode ? {
+        ...DarkTheme,
+        colors: {
+          ...DarkTheme.colors,
+          primary: '#2563EB',
+          background: '#0B1220',
+          card: '#111827',
+          text: '#F9FAFB',
+          border: '#374151',
+          notification: '#2563EB',
+        },
+      } : {
+        ...DefaultTheme,
+        colors: {
+          ...DefaultTheme.colors,
+          primary: '#2563EB',
+          background: '#FBF8F3',
+          card: '#F8F5F0',
+          text: '#1F2937',
+          border: '#E5E7EB',
+          notification: '#2563EB',
+        },
+      }}
       onReady={() => {
         // Reset timer when navigation is ready (user is active)
         console.log('🧭 Navigation ready - Resetting inactivity timer');
@@ -413,9 +437,9 @@ const AppNavigator = () => {
             animationDuration: 0,
             // Prevent layout shifts during navigation
             freezeOnBlur: false, // Changed to false to prevent delay
-            // Ensure consistent layout
+            // Ensure consistent layout with theme-aware background
             contentStyle: {
-              backgroundColor: 'transparent',
+              backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3',
             },
           }}
         />
@@ -485,7 +509,10 @@ const AppNavigator = () => {
             animationDuration: 0,
             freezeOnBlur: false,
             contentStyle: {
-              backgroundColor: 'transparent',
+              backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3',
+            },
+            contentStyle: {
+              backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3',
             },
           }}
         />
@@ -497,7 +524,7 @@ const AppNavigator = () => {
             animationDuration: 0,
             freezeOnBlur: false,
             contentStyle: {
-              backgroundColor: 'transparent',
+              backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3',
             },
           }}
         />
@@ -553,16 +580,27 @@ const AppNavigator = () => {
           name="PostUpdate" 
           component={PostUpdate}
           options={{
-            presentation: 'modal' as const,
-            animation: 'slide_from_bottom' as const,
-            animationDuration: 300,
+            presentation: 'card' as const,
+            animation: 'fade' as const,
+            animationDuration: 0,
             freezeOnBlur: false,
             contentStyle: {
-              backgroundColor: 'transparent',
+              backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3',
             },
           }}
         />
-        <Stack.Screen name="ManagePosts" component={ManagePosts} />
+        <Stack.Screen 
+          name="ManagePosts" 
+          component={ManagePosts}
+          options={{
+            headerShown: false,
+            animation: 'fade' as const,
+            animationDuration: 0,
+            contentStyle: {
+              backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3',
+            },
+          }}
+        />
         <Stack.Screen name="UserHelpCenter" component={UserHelpCenterScreen} />
         <Stack.Screen name="TermsOfUse" component={TermsOfUseScreen} />
         <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />

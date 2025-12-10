@@ -7,8 +7,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Dimensions, Image, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
-import UserSidebar from '../../components/navigation/UserSidebar';
+import BottomNavBar from '../../components/navigation/BottomNavBar';
+import Sidebar from '../../components/navigation/Sidebar';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import ViewEventModal from '../../modals/ViewEventModal';
 import AdminDataService from '../../services/AdminDataService';
@@ -478,9 +478,24 @@ const SchoolUpdates = () => {
       // Fetch recent updates (posts/announcements) - use cache if available
       const posts = await AdminDataService.getPosts();
       
+      // Filter to only show approved posts (approved by PIO admin)
+      // Admin posts are automatically approved, moderator posts need approval
+      const approvedPosts = posts.filter(post => {
+        // Check if post is approved
+        const isApproved = post.isApproved === true || post.status === 'approved';
+        
+        // Admin posts are automatically approved
+        const isAdminPost = post.creatorRole === 'admin' || 
+                           post.source === 'Admin' || 
+                           (!post.creatorRole && post.source !== 'Moderator' && post.source !== 'moderator');
+        
+        // Include if approved OR if it's an admin post (admin posts are auto-approved)
+        return isApproved || isAdminPost;
+      });
+      
       // Debug logging removed for performance in development (large payloads can cause noticeable lag)
       
-      const postsData = posts.map(post => {
+      const postsData = approvedPosts.map(post => {
         // Ensure images array is properly set
         let images = post.images;
         if (!images || !Array.isArray(images) || images.length === 0) {
@@ -1205,39 +1220,26 @@ const SchoolUpdates = () => {
 
   // Open event modal (view-only) - optimized for performance
   const openEventDrawer = useCallback((event: CalendarEvent, date?: Date) => {
-    // Batch state updates for better performance
-    if (date) {
-      // Find all events on this date
-      const eventsOnDate = calendarEvents.filter(e => {
-        const eventDate = new Date(e.isoDate || e.date);
-        return eventDate.toDateString() === date.toDateString();
-      });
-      const mappedEvents = eventsOnDate.map(e => ({
-        id: e._id || `calendar-${e.isoDate}-${e.title}`,
-        title: e.title,
-        color: categoryToColors(e.category || 'Event').dot,
-        type: e.category || 'Event',
-        category: e.category,
-        description: e.description,
-        isoDate: e.isoDate,
-        date: e.date,
-        time: e.time,
-        startDate: e.startDate,
-        endDate: e.endDate,
-      }));
-      
-      // Batch all state updates together
-      setSelectedEvent(event);
-      setSelectedDateForDrawer(date);
-      setSelectedDateEvents(mappedEvents);
-      setShowEventDrawer(true);
-    } else {
-      // Batch all state updates together
-      setSelectedEvent(event);
-      setSelectedDateForDrawer(null);
-      setSelectedDateEvents([]);
-      setShowEventDrawer(true);
-    }
+    // Only display the single selected event, not all events on the date
+    const singleEvent = {
+      id: event._id || `calendar-${event.isoDate}-${event.title}`,
+      title: event.title,
+      color: categoryToColors(event.category || 'Event').dot,
+      type: event.category || 'Event',
+      category: event.category,
+      description: event.description,
+      isoDate: event.isoDate,
+      date: event.date,
+      time: event.time,
+      startDate: event.startDate,
+      endDate: event.endDate,
+    };
+    
+    // Batch all state updates together
+    setSelectedEvent(event);
+    setSelectedDateForDrawer(date || null);
+    setSelectedDateEvents([singleEvent]); // Only include the clicked event
+    setShowEventDrawer(true);
   }, [calendarEvents]);
   
   // Close event modal
@@ -1398,10 +1400,11 @@ const SchoolUpdates = () => {
         </View>
       </LinearGradient>
       
-      {/* User Sidebar Component */}
-      <UserSidebar
+      {/* Sidebar Component */}
+      <Sidebar
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
+        allowedRoles={['user', 'moderator', 'admin']}
       />
 
       {/* Main Content - Scrollable with Curved Top */}
@@ -1878,7 +1881,7 @@ const SchoolUpdates = () => {
         bottom: 0,
         paddingBottom: safeInsets.bottom,
       }]} collapsable={false}>
-        <UserBottomNavBar />
+        <BottomNavBar tabType="user" autoDetect />
       </View>
     </View>
   );

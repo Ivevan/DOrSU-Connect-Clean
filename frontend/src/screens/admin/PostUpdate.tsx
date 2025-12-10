@@ -25,7 +25,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import AdminDataService from '../../services/AdminDataService';
 import NotificationService from '../../services/NotificationService';
-import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as DocumentPicker from 'expo-document-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -45,13 +45,15 @@ type PostUpdateNavigationProp = NativeStackNavigationProp<RootStackParamList, 'P
 
 const PostUpdate: React.FC = () => {
   const navigation = useNavigation<PostUpdateNavigationProp>();
+  const isFocused = useIsFocused();
   const route = useRoute<any>();
   const editingPostId: string | undefined = route?.params?.postId;
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
-  const { isLoading: authLoading, userRole, isAdmin, refreshUser } = useAuth();
+  const { isLoading: authLoading, userRole, isAdmin, refreshUser, isAuthenticated } = useAuth();
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const isPendingAuthorization = isAuthorized === null;
+  const isMountedRef = useRef(true);
   
   // Memoize safe area insets to prevent recalculation during navigation
   const safeInsets = useMemo(() => ({
@@ -117,10 +119,6 @@ const PostUpdate: React.FC = () => {
   const bgFade1 = useRef(new Animated.Value(0)).current;
   const bgFade2 = useRef(new Animated.Value(0)).current;
 
-  // Screen entrance animation - starts from bottom
-  const screenSlideY = useRef(new Animated.Value(1000)).current;
-  const screenOpacity = useRef(new Animated.Value(0)).current;
-
   // Bottom sheet animation refs (category menu now uses floating modal, no animation needed)
   const datePickerSheetY = useRef(new Animated.Value(300)).current;
   const cancelAlertSheetY = useRef(new Animated.Value(300)).current;
@@ -148,23 +146,42 @@ const PostUpdate: React.FC = () => {
   const [tmpYear, setTmpYear] = useState<number>(current.getFullYear());
   const [tmpDay, setTmpDay] = useState<number>(current.getDate());
 
+  // Track mount state to prevent alerts during unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   // Authorization check (admins and moderators) via AuthContext
   useEffect(() => {
     if (authLoading) return;
+    // Don't show alert if user is logging out (not authenticated), screen is not focused, or component is unmounting
+    if (!isAuthenticated || !isFocused || !isMountedRef.current) {
+      setIsAuthorized(false);
+      return;
+    }
     const hasAccess = isAdmin || userRole === 'moderator';
     if (!hasAccess) {
       setIsAuthorized(false);
-      Alert.alert(
-        'Access Denied',
-        'You do not have permission to access this page. If you were recently assigned as a moderator, please log out and log back in.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
-      return;
+      // Add a small delay and re-check before showing alert to prevent showing during logout
+      const timeoutId = setTimeout(() => {
+        // Triple-check we're still mounted, focused, and authenticated before showing alert
+        if (isMountedRef.current && isFocused && isAuthenticated) {
+          Alert.alert(
+            'Access Denied',
+            'You do not have permission to access this page. If you were recently assigned as a moderator, please log out and log back in.',
+            [{ text: 'OK', onPress: () => navigation.goBack() }]
+          );
+        }
+      }, 100);
+      return () => clearTimeout(timeoutId);
     }
     setIsAuthorized(true);
-  }, [authLoading, isAdmin, userRole, navigation]);
+  }, [authLoading, isAdmin, userRole, navigation, isAuthenticated, isFocused]);
   
-  // Refresh user role and animate screen entrance when screen comes into focus
+  // Refresh user role when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       // Refresh user role to ensure latest role is loaded
@@ -173,33 +190,7 @@ const PostUpdate: React.FC = () => {
           // Silent fail - role will be checked in authorization useEffect
         });
       }
-      
-      // Reset animation values
-      // Reset animation values
-      screenSlideY.setValue(1000);
-      screenOpacity.setValue(0);
-      
-      // Animate screen entrance
-      Animated.parallel([
-        Animated.spring(screenSlideY, {
-          toValue: 0,
-          useNativeDriver: true,
-          tension: 65,
-          friction: 11,
-        }),
-        Animated.timing(screenOpacity, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
-
-      return () => {
-        // Cleanup: reset animation when screen loses focus
-        screenSlideY.setValue(1000);
-        screenOpacity.setValue(0);
-      };
-    }, [screenSlideY, screenOpacity])
+    }, [authLoading, refreshUser])
   );
 
   // Animate floating background orbs on mount
@@ -797,26 +788,29 @@ const PostUpdate: React.FC = () => {
     setTimeout(() => setIsAnimating(false), 300);
   }, [isAnimating, pickedFile]);
 
-  if (isAuthorized === false) {
-    return null;
-  }
+  // Get background color immediately to prevent white flash
+  const backgroundColor = isDarkMode ? '#0B1220' : '#FBF8F3';
 
-  if (isPendingAuthorization) {
+  if (authLoading || isPendingAuthorization) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#2563EB" />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor }}>
+        <ActivityIndicator size="large" color={theme.colors.accent} />
       </View>
     );
   }
 
+  if (isAuthorized === false) {
+    return (
+      <View style={{ flex: 1, backgroundColor }} />
+    );
+  }
+
   return (
-    <Animated.View 
+    <View 
       style={[
         styles.container, 
         {
-          backgroundColor: 'transparent',
-          transform: [{ translateY: screenSlideY }],
-          opacity: screenOpacity,
+          backgroundColor,
         }
       ]} 
       collapsable={false}
@@ -828,10 +822,16 @@ const PostUpdate: React.FC = () => {
         hidden={false}
       />
       
+      {/* Status Bar Background Overlay */}
+      <View style={[styles.statusBarOverlay, {
+        height: safeInsets.top,
+        backgroundColor,
+      }]} />
+      
       {/* Warm Gradient Background */}
       <LinearGradient
         colors={[
-          isDarkMode ? '#0B1220' : '#FBF8F3',
+          backgroundColor,
           isDarkMode ? '#111827' : '#F8F5F0',
           isDarkMode ? '#1F2937' : '#F5F2ED'
         ]}
@@ -1451,7 +1451,7 @@ const PostUpdate: React.FC = () => {
           </View>
         </View>
       </BlurView>
-    </Animated.View>
+    </View>
   );
 };
 
@@ -1532,6 +1532,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 1000,
+  },
+  statusBarOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 998,
   },
   scrollView: {
     flex: 1,

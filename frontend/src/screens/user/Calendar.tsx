@@ -11,8 +11,8 @@ import { Animated, Image, Platform, RefreshControl, ScrollView, StatusBar, Style
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CalendarGrid from '../../components/common/CalendarGrid';
-import UserBottomNavBar from '../../components/navigation/UserBottomNavBar';
-import UserSidebar from '../../components/navigation/UserSidebar';
+import BottomNavBar from '../../components/navigation/BottomNavBar';
+import Sidebar from '../../components/navigation/Sidebar';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import { useCalendar } from '../../hooks/useCalendar';
 import MonthPickerModal from '../../modals/MonthPickerModal';
@@ -877,12 +877,13 @@ const CalendarScreen = () => {
         bottom: 0,
         paddingBottom: safeInsets.bottom,
       }]} collapsable={false}>
-      <UserBottomNavBar />
+      <BottomNavBar tabType="user" autoDetect />
       </View>
 
-      <UserSidebar
+      <Sidebar
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
+        allowedRoles={['user', 'moderator', 'admin']}
       />
     </View>
     </GestureHandlerRootView>

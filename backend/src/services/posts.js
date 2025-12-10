@@ -302,8 +302,14 @@ export class PostService {
         createdAt: post.createdAt || new Date(),
         updatedAt: post.updatedAt || new Date(),
         createdBy: post.createdBy || 'admin',
+        creatorRole: post.creatorRole || (post.source === 'Moderator' ? 'moderator' : 'admin'), // Include creator role for filtering
         isPinned: post.isPinned || false,
         isUrgent: post.isUrgent || false,
+        // Approval fields
+        isApproved: post.isApproved !== undefined ? post.isApproved : (post.status === 'approved'),
+        status: post.status || (post.isApproved ? 'approved' : 'draft'),
+        approvedAt: post.approvedAt || null,
+        approvedBy: post.approvedBy || null,
       }));
 
       this.sendJson(res, 200, {
@@ -498,6 +504,12 @@ export class PostService {
           createdBy: updatedPost.createdBy || 'admin',
           isPinned: updatedPost.isPinned || false,
           isUrgent: updatedPost.isUrgent || false,
+          // Include approval fields
+          status: updatedPost.status || null,
+          isApproved: updatedPost.isApproved !== undefined ? updatedPost.isApproved : null,
+          approvedAt: updatedPost.approvedAt || null,
+          approvedBy: updatedPost.approvedBy || null,
+          creatorRole: updatedPost.creatorRole || null,
         },
       });
       return true;

@@ -2,17 +2,15 @@ import React from 'react';
 import { renderScreen, screen, waitFor } from '../../../__tests__/screen-test-utils';
 import AdminAIChat from '../AdminAIChat';
 
-// Mock AdminBottomNavBar
-jest.mock('../../../components/navigation/AdminBottomNavBar', () => {
+// Mock BottomNavBar
+jest.mock('../../../components/navigation/BottomNavBar', () => {
   const React = require('react');
   const { View, Text } = require('react-native');
-  return ({ onDashboardPress, onChatPress, onCalendarPress, onPostsPress, onSettingsPress }: any) => (
+  return ({ onFirstPress, onSecondPress, onThirdPress, tabType, activeTab }: any) => (
     <View testID="admin-bottom-nav-bar">
-      <Text testID="nav-dashboard" onPress={onDashboardPress}>Dashboard</Text>
-      <Text testID="nav-chat" onPress={onChatPress}>Chat</Text>
-      <Text testID="nav-calendar" onPress={onCalendarPress}>Calendar</Text>
-      <Text testID="nav-posts" onPress={onPostsPress}>Posts</Text>
-      <Text testID="nav-settings" onPress={onSettingsPress}>Settings</Text>
+      <Text testID="nav-first" onPress={onFirstPress}>First</Text>
+      <Text testID="nav-second" onPress={onSecondPress}>Second</Text>
+      <Text testID="nav-third" onPress={onThirdPress}>Third</Text>
     </View>
   );
 });

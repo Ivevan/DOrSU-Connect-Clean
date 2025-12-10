@@ -148,7 +148,11 @@ class ActivityLogService {
         if (response.status === 401) {
           throw new Error('Unauthorized: Please log in again');
         } else if (response.status === 403) {
-          throw new Error('Forbidden: Admin access required');
+          // Check if error message indicates admin requirement or if it's a different 403
+          const errorMsg = errorData.error || 'Forbidden';
+          throw new Error(errorMsg.includes('Admin access required') 
+            ? 'Forbidden: Admin access required' 
+            : errorMsg);
         }
         throw new Error(errorData.error || `Failed to fetch activity logs: ${response.statusText}`);
       }

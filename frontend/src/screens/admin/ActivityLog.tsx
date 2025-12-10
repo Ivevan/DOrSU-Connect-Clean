@@ -16,7 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeValues } from '../../contexts/ThemeContext';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ActivityLogService, { ActivityLog, ActivityLogFilters } from '../../services/ActivityLogService';
@@ -31,16 +31,14 @@ type RootStackParamList = {
   ActivityLog: undefined;
   AdminDashboard: undefined;
   AdminSettings: undefined;
+  UserSettings: undefined;
 };
 
 const ACTION_TYPES = [
   { key: '', label: 'All Actions' },
   { key: 'user.login', label: 'Login' },
   { key: 'user.logout', label: 'Logout' },
-  { key: 'user.register', label: 'Registration' },
-  { key: 'user.account_delete', label: 'Account Deletion' },
   { key: 'admin.role_change', label: 'Role Change' },
-  { key: 'admin.user_delete', label: 'User Deletion' },
   { key: 'admin.post_create', label: 'Post Created' },
   { key: 'admin.post_update', label: 'Post Updated' },
   { key: 'admin.post_delete', label: 'Post Deleted' },
@@ -50,7 +48,8 @@ const ActivityLogScreen = () => {
   const insets = useSafeAreaInsets();
   const { isDarkMode, theme } = useThemeValues();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { isLoading: authLoading, userRole, isAdmin } = useAuth();
+  const isFocused = useIsFocused();
+  const { isLoading: authLoading, userRole, isAdmin, isAuthenticated } = useAuth();
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -64,6 +63,7 @@ const ActivityLogScreen = () => {
 
   // Animated floating orb
   const floatAnim1 = useRef(new Animated.Value(0)).current;
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     const animate = () => {
@@ -85,23 +85,27 @@ const ActivityLogScreen = () => {
     animate();
   }, []);
 
-  // Check admin authorization (admin only) via AuthContext
+  // Track mount state to prevent alerts during unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Check authorization - admins can see all logs, users can see their own
   useEffect(() => {
     if (authLoading) return;
-    const hasAccess = isAdmin; // only admins (not moderators)
-    if (!hasAccess) {
+    // Don't show alert if user is logging out (not authenticated), screen is not focused, or component is unmounting
+    if (!isAuthenticated || !isFocused || !isMountedRef.current) {
       setIsAuthorized(false);
-      Alert.alert(
-        'Access Denied',
-        'You do not have permission to access this page. Admin access required.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
       return;
     }
+    // Both admins and regular users can access (users will see only their own logs)
     setIsAuthorized(true);
     loadLogs(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigation, authLoading, isAdmin]);
+  }, [navigation, authLoading, isAuthenticated, isFocused]);
 
   const loadLogs = useCallback(async (isRefresh = false) => {
     try {
@@ -117,12 +121,36 @@ const ActivityLogScreen = () => {
         skip: 0,
       };
 
-      if (selectedAction) {
-        filters.action = selectedAction;
-      }
-
-      if (searchQuery.trim()) {
-        filters.userEmail = searchQuery.trim();
+      // For non-admin users, only show login and logout actions
+      if (!isAdmin) {
+        const userEmail = await AsyncStorage.getItem('userEmail');
+        if (userEmail) {
+          filters.userEmail = userEmail;
+        }
+        // Only allow login and logout actions for non-admin users
+        if (selectedAction) {
+          // Only allow user.login or user.logout
+          if (selectedAction === 'user.login' || selectedAction === 'user.logout') {
+            filters.action = selectedAction;
+          } else {
+            // If invalid action selected, reset to empty (will show all user actions, filtered on frontend)
+            setSelectedAction('');
+          }
+        }
+        // Don't allow search for non-admin users (they only see their own logs)
+        // Clear search query if user tries to search
+        if (searchQuery.trim()) {
+          setSearchQuery('');
+        }
+      } else {
+        // Admin can filter by any action
+        if (selectedAction) {
+          filters.action = selectedAction;
+        }
+        // Admin can search by email
+        if (searchQuery.trim()) {
+          filters.userEmail = searchQuery.trim();
+        }
       }
 
       const result = await ActivityLogService.getActivityLogs(filters);
@@ -138,7 +166,7 @@ const ActivityLogScreen = () => {
       setRefreshing(false);
       setIsInitialLoad(false);
     }
-  }, [isInitialLoad, selectedAction, searchQuery]);
+  }, [isInitialLoad, selectedAction, searchQuery, isAdmin]);
 
   useEffect(() => {
     if (isAuthorized === true && !isInitialLoad) {
@@ -310,23 +338,66 @@ const ActivityLogScreen = () => {
     }
   };
 
-  // Filter logs based on search query
+  // Filter logs based on search query and user permissions
   const filteredLogs = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return logs;
+    let filtered = logs;
+    
+    // For non-admin users, ONLY show login and logout actions - filter out everything else
+    if (!isAdmin) {
+      filtered = filtered.filter(log => 
+        log.action === 'user.login' || log.action === 'user.logout'
+      );
     }
     
-    const query = searchQuery.trim().toLowerCase();
-    return logs.filter(log => {
-      const emailMatch = log.userEmail?.toLowerCase().includes(query) || false;
-      const nameMatch = log.userName?.toLowerCase().includes(query) || false;
-      const actionMatch = getActionLabel(log.action).toLowerCase().includes(query) || false;
-      return emailMatch || nameMatch || actionMatch;
-    });
-  }, [logs, searchQuery]);
+    // Apply selected action filter (for admin, this is already applied in loadLogs, but we apply it here too for consistency)
+    if (selectedAction && isAdmin) {
+      filtered = filtered.filter(log => log.action === selectedAction);
+    } else if (selectedAction && !isAdmin) {
+      // For non-admin, only allow login/logout actions
+      if (selectedAction === 'user.login' || selectedAction === 'user.logout') {
+        filtered = filtered.filter(log => log.action === selectedAction);
+      } else {
+        // Invalid action for user, show nothing
+        filtered = [];
+      }
+    }
+    
+    // Apply search query filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter(log => {
+        // For admin: search by email, name, or action
+        // For user: search by action only (they only see their own logs)
+        if (isAdmin) {
+          const emailMatch = log.userEmail?.toLowerCase().includes(query) || false;
+          const nameMatch = log.userName?.toLowerCase().includes(query) || false;
+          const actionMatch = getActionLabel(log.action).toLowerCase().includes(query) || false;
+          return emailMatch || nameMatch || actionMatch;
+        } else {
+          // User can only search by action
+          const actionMatch = getActionLabel(log.action).toLowerCase().includes(query) || false;
+          return actionMatch;
+        }
+      });
+    }
+    
+    return filtered;
+  }, [logs, searchQuery, selectedAction, isAdmin]);
+
+  const isPendingAuthorization = isAuthorized === null;
+
+  if (authLoading || isPendingAuthorization) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }}>
+        <ActivityIndicator size="large" color={theme.colors.accent} />
+      </View>
+    );
+  }
 
   if (isAuthorized === false) {
-    return null;
+    return (
+      <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }} />
+    );
   }
 
   const safeInsets = {
@@ -336,10 +407,8 @@ const ActivityLogScreen = () => {
     right: insets.right,
   };
 
-  const isPendingAuthorization = isAuthorized === null;
-
   return (
-    <View style={styles.container} collapsable={false}>
+    <View style={[styles.container, { backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }]} collapsable={false}>
       <StatusBar
         backgroundColor="transparent"
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
@@ -415,50 +484,35 @@ const ActivityLogScreen = () => {
         </Animated.View>
       </View>
 
-      {/* Header */}
-      <View style={[styles.header, { 
-        marginTop: safeInsets.top,
-        marginLeft: safeInsets.left,
-        marginRight: safeInsets.right,
-      }]}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity 
-            onPress={() => navigation.goBack()} 
-            style={styles.menuButton}
-            activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            accessibilityLabel="Go back"
-            accessibilityRole="button"
-          >
-            <Ionicons name="arrow-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
-          </TouchableOpacity>
-        </View>
-        <Text 
-          style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]}
-          pointerEvents="none"
+      {/* Header - Fixed position to prevent layout shifts */}
+      <View 
+        style={[styles.header, { 
+          backgroundColor: 'transparent',
+          top: safeInsets.top,
+          marginLeft: safeInsets.left,
+          marginRight: safeInsets.right,
+        }]}
+        collapsable={false}
+      >
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          activeOpacity={0.7}
+          accessibilityLabel="Go back"
+          accessibilityRole="button"
         >
-          Activity Log
-        </Text>
-        <View style={styles.headerRight}>
-          <TouchableOpacity 
-            style={styles.profileButton} 
-            onPress={() => navigation.navigate('AdminSettings')} 
-            activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            accessibilityLabel="Admin profile - Go to settings"
-            accessibilityRole="button"
-          >
-            <View style={[styles.profileIconCircle, { backgroundColor: theme.colors.accent }]} pointerEvents="none">
-              <Text style={[styles.profileInitials, { fontSize: theme.fontSize.scaleSize(13) }]}>AD</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
+          <Ionicons name="chevron-back" size={28} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]}>Activity Log</Text>
       </View>
 
       {/* Main Content */}
       <View style={styles.contentWrapper}>
         <ScrollView
-          style={styles.content}
+          style={[styles.content, {
+            marginTop: safeInsets.top + 64,
+          }]}
           contentContainerStyle={{
             paddingHorizontal: 16,
             paddingTop: 16,
@@ -500,12 +554,13 @@ const ActivityLogScreen = () => {
                       color: theme.colors.text,
                       fontSize: theme.fontSize.scaleSize(14),
                     }]}
-                    placeholder="Search by user email or name..."
+                    placeholder={isAdmin ? "Search by user email or name..." : "Search by action..."}
                     placeholderTextColor={theme.colors.textMuted}
                     value={searchQuery}
                     onChangeText={setSearchQuery}
                     returnKeyType="search"
                     clearButtonMode="while-editing"
+                    editable={true}
                   />
                   {searchQuery.length > 0 && (
                     <TouchableOpacity
@@ -522,7 +577,7 @@ const ActivityLogScreen = () => {
                 </BlurView>
               </View>
 
-              {/* Action Filter */}
+              {/* Action Filter - Show for both admin and user */}
               <View style={styles.filterSection}>
                 <TouchableOpacity
                   style={[styles.filterButton, {
@@ -552,7 +607,14 @@ const ActivityLogScreen = () => {
                       borderColor: 'rgba(255, 255, 255, 0.2)',
                     }]}
                   >
-                    {ACTION_TYPES.map((option) => (
+                    {ACTION_TYPES.filter(option => {
+                      // For non-admin users, only show login and logout actions
+                      if (!isAdmin) {
+                        return option.key === 'user.login' || option.key === 'user.logout' || option.key === '';
+                      }
+                      // Admin can see all actions
+                      return true;
+                    }).map((option) => (
                       <TouchableOpacity
                         key={option.key}
                         style={[
@@ -856,68 +918,30 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 999,
+    backgroundColor: 'transparent',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: 'transparent',
-    zIndex: 10,
-    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
   },
-  headerLeft: {
-    width: 44,
-    zIndex: 11,
-  },
-  menuButton: {
+  backButton: {
     width: 44,
     height: 44,
-    minWidth: 44,
-    minHeight: 44,
-    borderRadius: 18,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 12,
+    zIndex: 1000,
   },
   headerTitle: {
     fontSize: 17,
     fontWeight: '600',
     letterSpacing: -0.3,
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    textAlign: 'center',
-    zIndex: 1,
-    pointerEvents: 'none',
-  },
-  headerRight: {
-    width: 44,
-    alignItems: 'flex-end',
-    zIndex: 11,
-  },
-  profileButton: {
-    width: 44,
-    height: 44,
-    minWidth: 44,
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 12,
-  },
-  profileIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-    pointerEvents: 'none',
-  },
-  profileInitials: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#FFF',
-    letterSpacing: -0.3,
+    marginLeft: 8,
   },
   contentWrapper: {
     flex: 1,

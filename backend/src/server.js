@@ -819,6 +819,48 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Logout endpoint - log logout activity
+  if (method === 'POST' && url === '/api/auth/logout') {
+    if (!authService || !mongoService || !activityLogService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      // Even if not authenticated, return success (user might have already logged out)
+      sendJson(res, 200, { success: true, message: 'Logged out successfully' });
+      return;
+    }
+
+    try {
+      // Log logout activity before clearing session
+      const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.socket.remoteAddress;
+      const userAgent = req.headers['user-agent'] || 'unknown';
+      
+      await activityLogService.logActivity(
+        auth.userId,
+        'user.logout',
+        {
+          email: auth.email || null,
+        },
+        {
+          ipAddress: Array.isArray(ipAddress) ? ipAddress[0] : ipAddress,
+          userAgent: userAgent,
+          timestamp: new Date()
+        }
+      );
+
+      Logger.success(`✅ User logged out: ${auth.userId || auth.email}`);
+      sendJson(res, 200, { success: true, message: 'Logged out successfully' });
+    } catch (error) {
+      Logger.error('Logout error:', error.message);
+      // Still return success even if logging fails (don't block logout)
+      sendJson(res, 200, { success: true, message: 'Logged out successfully' });
+    }
+    return;
+  }
+
   // Change password
   if (method === 'POST' && url === '/api/auth/change-password') {
     if (!authService || !mongoService) {
@@ -1080,7 +1122,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Get activity logs (admin only) - Check both with and without trailing slash
+  // Get activity logs (admin can see all, users can see their own) - Check both with and without trailing slash
   if (method === 'GET' && (url === '/api/activity-logs' || url === '/api/activity-logs/')) {
     Logger.info(`📋 Activity logs endpoint hit: ${method} ${url} (raw: ${rawUrl})`);
     
@@ -1108,12 +1150,6 @@ const server = http.createServer(async (req, res) => {
       isAdmin = user && user.role === 'admin';
     }
 
-    if (!isAdmin) {
-      Logger.warn(`Activity logs: Forbidden access attempt by user ${auth.userId}`);
-      sendJson(res, 403, { error: 'Forbidden: Admin access required' });
-      return;
-    }
-
     try {
       const userId = urlObj.searchParams.get('userId') || null;
       const action = urlObj.searchParams.get('action') || null;
@@ -1123,14 +1159,29 @@ const server = http.createServer(async (req, res) => {
       const limit = parseInt(urlObj.searchParams.get('limit') || '100', 10);
       const skip = parseInt(urlObj.searchParams.get('skip') || '0', 10);
 
-      Logger.info(`📋 Activity logs: Fetching with filters`, { userId, action, limit, skip });
+      Logger.info(`📋 Activity logs: Fetching with filters`, { userId, action, limit, skip, isAdmin });
 
       const filters = {};
+      
+      // If user is not admin, restrict to their own logs only
+      if (!isAdmin) {
+        // Force filter by authenticated user's ID or email
+        filters.userId = auth.userId;
+        // Also filter by email if available
+        if (auth.email) {
+          filters.userEmail = auth.email;
+        }
+        Logger.info(`📋 Activity logs: Non-admin user, restricting to own logs (userId: ${auth.userId}, email: ${auth.email})`);
+      } else {
+        // Admin can filter by any userId or userEmail
       if (userId) filters.userId = userId;
+        if (userEmail) filters.userEmail = userEmail;
+      }
+      
+      // Action filter applies to both admin and user
       if (action) filters.action = action;
       if (startDate) filters.startDate = startDate;
       if (endDate) filters.endDate = endDate;
-      if (userEmail) filters.userEmail = userEmail;
 
       const result = await activityLogService.getActivityLogs(filters, limit, skip);
       Logger.success(`📋 Activity logs: Retrieved ${result.logs.length} logs (total: ${result.total})`);

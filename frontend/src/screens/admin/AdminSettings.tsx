@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useIsFocused } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
 import * as DocumentPicker from 'expo-document-picker';
@@ -40,16 +40,19 @@ type RootStackParamList = {
   TermsOfUse: undefined;
   PrivacyPolicy: undefined;
   Licenses: undefined;
+  ActivityLog: undefined;
 };
 
 const AdminSettings = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const isFocused = useIsFocused();
   const { isDarkMode, theme } = useThemeValues();
-  const { isLoading: authLoading, userRole, isAdmin } = useAuth();
+  const { isLoading: authLoading, userRole, isAdmin, isAuthenticated } = useAuth();
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const isPendingAuthorization = isAuthorized === null;
   const scrollRef = useRef<ScrollView>(null);
+  const isMountedRef = useRef(true);
   
   // Animated floating background orb
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -180,37 +183,56 @@ const AdminSettings = () => {
     }, [])
   );
 
+  // Track mount state to prevent alerts during unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   // Authorization check (admins only - moderators should use UserSettings)
   useEffect(() => {
     if (authLoading) return;
+    // Don't show alert if user is logging out (not authenticated), screen is not focused, or component is unmounting
+    if (!isAuthenticated || !isFocused || !isMountedRef.current) {
+      setIsAuthorized(false);
+      return;
+    }
     
     // Only admins can access AdminSettings
     if (!isAdmin) {
       setIsAuthorized(false);
       
-      // If user is moderator, redirect to UserSettings
-      if (userRole === 'moderator') {
-        Alert.alert(
-          'Access Redirected',
-          'Moderators can only access the regular settings. You have been redirected to user settings.',
-          [{ 
-            text: 'OK', 
-            onPress: () => navigation.replace('UserSettings' as any) 
-          }]
-        );
-      } else {
-        // Regular users or unauthorized
-        Alert.alert(
-          'Access Denied',
-          'You do not have permission to access this page.',
-          [{ text: 'OK', onPress: () => navigation.goBack() }]
-        );
-      }
-      return;
+      // Add a small delay and re-check before showing alert to prevent showing during logout
+      const timeoutId = setTimeout(() => {
+        // Triple-check we're still mounted, focused, and authenticated before showing alert
+        if (isMountedRef.current && isFocused && isAuthenticated) {
+          // If user is moderator, redirect to UserSettings
+          if (userRole === 'moderator') {
+            Alert.alert(
+              'Access Redirected',
+              'Moderators can only access the regular settings. You have been redirected to user settings.',
+              [{ 
+                text: 'OK', 
+                onPress: () => navigation.replace('UserSettings' as any) 
+              }]
+            );
+          } else {
+            // Regular users or unauthorized
+            Alert.alert(
+              'Access Denied',
+              'You do not have permission to access this page.',
+              [{ text: 'OK', onPress: () => navigation.goBack() }]
+            );
+          }
+        }
+      }, 100);
+      return () => clearTimeout(timeoutId);
     }
     
     setIsAuthorized(true);
-  }, [authLoading, isAdmin, userRole, navigation]);
+  }, [authLoading, isAdmin, userRole, navigation, isAuthenticated, isFocused]);
 
   // Handle profile picture upload
   const handleProfilePictureUpload = useCallback(async () => {
@@ -317,12 +339,14 @@ const AdminSettings = () => {
 
   // Don't render if not authorized (will be redirected)
   if (!isAuthorized) {
-    return null;
+    return (
+      <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }} />
+    );
   }
 
   return (
     <View style={[styles.container, {
-      backgroundColor: 'transparent',
+      backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3',
     }]} collapsable={false}>
       <StatusBar
         backgroundColor="transparent"
@@ -542,6 +566,16 @@ const AdminSettings = () => {
               }}
             >
               <Text style={[styles.sectionTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Email</Text>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.sectionTitleButton}
+              onPress={() => {
+                navigation.navigate('ActivityLog' as any);
+              }}
+            >
+              <Text style={[styles.sectionTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(16) }]}>Activity Log</Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.textMuted} />
             </TouchableOpacity>
 

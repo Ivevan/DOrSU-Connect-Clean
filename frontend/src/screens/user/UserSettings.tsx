@@ -34,6 +34,7 @@ type RootStackParamList = {
   AccountSettings: undefined;
   GeneralSettings: undefined;
   EmailSettings: undefined;
+  ActivityLog: undefined;
 };
 
 const UserSettings = () => {
@@ -633,6 +634,14 @@ const UserSettings = () => {
               onPress={() => navigation.navigate('EmailSettings')}
             >
               <Text style={[styles.sectionTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>Email</Text>
+              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.sectionTitleButton}
+              onPress={() => navigation.navigate('ActivityLog' as any)}
+            >
+              <Text style={[styles.sectionTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>Activity Log</Text>
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
 

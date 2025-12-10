@@ -318,13 +318,30 @@ const ManagePosts: React.FC = () => {
     }
   }, [fetchPosts, refreshCalendarEvents, isAuthorized]);
 
+  // Track last approval/rejection time to prevent immediate refetch
+  const lastApprovalTime = useRef<number>(0);
+  const APPROVAL_REFETCH_DELAY = 5000; // 5 seconds delay after approval before refetching (give backend time to process)
+
   // Refresh posts and calendar events when screen comes into focus (e.g., after editing)
   useFocusEffect(
     useCallback(() => {
       if (isAuthorized !== true) return;
-      // Force refresh when screen comes into focus to show updated posts
-      fetchPosts(true);
-      refreshCalendarEvents(true);
+      
+      // If we just approved/rejected a post, wait a bit before refetching
+      // This prevents overwriting the local state update with stale backend data
+      const timeSinceApproval = Date.now() - lastApprovalTime.current;
+      if (timeSinceApproval < APPROVAL_REFETCH_DELAY) {
+        // Wait for the remaining time before refetching
+        const remainingDelay = APPROVAL_REFETCH_DELAY - timeSinceApproval;
+        setTimeout(() => {
+          fetchPosts(true);
+          refreshCalendarEvents(true);
+        }, remainingDelay);
+      } else {
+        // Force refresh when screen comes into focus to show updated posts
+        fetchPosts(true);
+        refreshCalendarEvents(true);
+      }
     }, [fetchPosts, refreshCalendarEvents, isAuthorized])
   );
 
@@ -467,6 +484,12 @@ const ManagePosts: React.FC = () => {
   };
 
   const handleApprovePost = async (postId: string) => {
+    // Only admins can approve posts
+    if (!isAdmin) {
+      Alert.alert('Access Denied', 'Only admins can approve posts.');
+      return;
+    }
+    
     try {
       // Find the current post to get all its data
       const currentPost = posts.find(p => p.id === postId);
@@ -500,43 +523,70 @@ const ManagePosts: React.FC = () => {
       };
       const updated: any = await AdminDataService.updatePost(postId, updatePayload);
       
+      // Update local state with the approved post - ensure approval fields are set
       setPosts(prev => prev.map(p => {
         if (p.id === postId) {
+          // Use backend response if available, otherwise use local update
           const next: Post = updated ? {
-            id: updated.id,
-            title: updated.title,
-            category: updated.category,
-            date: updated.date,
-            description: updated.description,
-            isPinned: updated.isPinned ?? false,
-            isUrgent: updated.isUrgent ?? false,
+            id: updated.id || postId,
+            title: updated.title || currentPost.title,
+            category: updated.category || currentPost.category,
+            date: updated.date || currentPost.date,
+            description: updated.description ?? currentPost.description,
+            isPinned: updated.isPinned ?? currentPost.isPinned ?? false,
+            isUrgent: updated.isUrgent ?? currentPost.isUrgent ?? false,
             // Preserve original creator information
             source: updated.source ?? currentPost.source, // Keep original source
             creatorRole: updated.creatorRole ?? currentPost.creatorRole, // Keep original creator role
-            // Update approval status
+            // Update approval status from backend response (prioritize backend response)
             status: updated.status || 'approved',
-            isApproved: updated.isApproved ?? true,
+            isApproved: updated.isApproved !== undefined ? updated.isApproved : true,
             approvedAt: updated.approvedAt || new Date().toISOString(),
             approvedBy: updated.approvedBy ?? approvedBy ?? null,
-            isoDate: updated.isoDate || updated.date,
+            isoDate: updated.isoDate || updated.date || currentPost.isoDate || currentPost.date,
+            image: updated.image ?? currentPost.image,
+            images: updated.images ?? currentPost.images,
           } : {
             ...p,
             // Preserve original creator information
             source: p.source, // Keep original source
             creatorRole: p.creatorRole, // Keep original creator role
-            // Update approval status
+            // Update approval status (fallback if backend didn't return updated post)
             status: 'approved',
             isApproved: true,
             approvedAt: new Date().toISOString(),
             approvedBy: approvedBy ?? null,
           };
+          console.log('✅ Updated post in local state:', { 
+            id: next.id, 
+            status: next.status, 
+            isApproved: next.isApproved,
+            approvedAt: next.approvedAt 
+          });
           return next;
         }
         return p;
       }));
+      
+      // Update active post for options modal if it's the same post
       if (activePostForOptions && activePostForOptions.id === postId) {
-        setActivePostForOptions(prev => prev ? { ...prev, status: 'approved', isApproved: true } : prev);
+        setActivePostForOptions(prev => prev ? { 
+          ...prev, 
+          status: 'approved', 
+          isApproved: true,
+          approvedAt: updated?.approvedAt || new Date().toISOString(),
+          approvedBy: updated?.approvedBy ?? approvedBy ?? null,
+        } : prev);
       }
+      
+      // Track approval time to prevent immediate refetch
+      lastApprovalTime.current = Date.now();
+      
+      // Close the options modal
+      closeMoreOptionsModal();
+      
+      // Show success message
+      Alert.alert('Success', 'Post approved successfully');
     } catch (error: any) {
       console.error('Failed to approve post:', error);
       Alert.alert('Error', error.message || 'Failed to approve post');
@@ -544,6 +594,12 @@ const ManagePosts: React.FC = () => {
   };
 
   const handleRejectPost = async (postId: string) => {
+    // Only admins can reject posts
+    if (!isAdmin) {
+      Alert.alert('Access Denied', 'Only admins can reject posts.');
+      return;
+    }
+    
     try {
       // Find the current post to get all its data
       const currentPost = posts.find(p => p.id === postId);
@@ -576,6 +632,7 @@ const ManagePosts: React.FC = () => {
       };
       const updated: any = await AdminDataService.updatePost(postId, updatePayload);
       
+      // Update local state with the rejected post
       setPosts(prev => prev.map(p => {
         if (p.id === postId) {
           const next: Post = updated ? {
@@ -589,12 +646,14 @@ const ManagePosts: React.FC = () => {
             // Preserve original creator information
             source: updated.source ?? currentPost.source, // Keep original source
             creatorRole: updated.creatorRole ?? currentPost.creatorRole, // Keep original creator role
-            // Update rejection status
+            // Update rejection status from backend response
             status: updated.status || 'rejected',
             isApproved: updated.isApproved ?? false,
-            approvedAt: updated.approvedAt || undefined,
-            approvedBy: updated.approvedBy ?? null,
+            approvedAt: undefined,
+            approvedBy: null,
             isoDate: updated.isoDate || updated.date,
+            image: updated.image,
+            images: updated.images,
           } : {
             ...p,
             // Preserve original creator information
@@ -610,9 +669,20 @@ const ManagePosts: React.FC = () => {
         }
         return p;
       }));
+      
+      // Update active post for options modal if it's the same post
       if (activePostForOptions && activePostForOptions.id === postId) {
-        setActivePostForOptions(prev => prev ? { ...prev, status: 'rejected', isApproved: false } : prev);
+        setActivePostForOptions(prev => prev ? { 
+          ...prev, 
+          status: 'rejected', 
+          isApproved: false,
+          approvedAt: undefined,
+          approvedBy: null,
+        } : prev);
       }
+      
+      // Track rejection time to prevent immediate refetch
+      lastApprovalTime.current = Date.now();
       
       // Close the options modal after rejection
       closeMoreOptionsModal();
@@ -1450,8 +1520,8 @@ const ManagePosts: React.FC = () => {
             icon: 'create-outline',
             iconColor: '#059669'
           },
-          // Show approve/reject options for pending posts (not approved, not rejected)
-          ...(activePostForOptions ? (() => {
+          // Show approve/reject options for pending posts (not approved, not rejected) - ONLY FOR ADMINS
+          ...(isAdmin && activePostForOptions ? (() => {
             const isAdminPost = activePostForOptions.creatorRole === 'admin' || 
                                activePostForOptions.source === 'Admin' || 
                                (!activePostForOptions.creatorRole && activePostForOptions.source !== 'Moderator' && activePostForOptions.source !== 'moderator');

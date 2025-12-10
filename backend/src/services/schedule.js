@@ -1380,6 +1380,12 @@ export class ScheduleService {
           createdBy: updatedPost.createdBy || 'admin',
           isPinned: updatedPost.isPinned || false,
           isUrgent: updatedPost.isUrgent || false,
+          // Include approval fields
+          status: updatedPost.status || null,
+          isApproved: updatedPost.isApproved !== undefined ? updatedPost.isApproved : null,
+          approvedAt: updatedPost.approvedAt || null,
+          approvedBy: updatedPost.approvedBy || null,
+          creatorRole: updatedPost.creatorRole || null,
         },
       });
       return true;
@@ -1560,6 +1566,16 @@ export class ScheduleService {
           year: eventData.year || null,
           semester: eventData.semester || null,
         };
+        
+        // Include approval fields if provided (don't overwrite with undefined)
+        if (eventData.status !== undefined) updates.status = eventData.status;
+        if (eventData.isApproved !== undefined) updates.isApproved = eventData.isApproved;
+        if (eventData.approvedAt !== undefined) updates.approvedAt = eventData.approvedAt;
+        if (eventData.approvedBy !== undefined) updates.approvedBy = eventData.approvedBy;
+        if (eventData.creatorRole !== undefined) updates.creatorRole = eventData.creatorRole;
+        if (eventData.source !== undefined) updates.source = eventData.source;
+        if (eventData.isPinned !== undefined) updates.isPinned = eventData.isPinned;
+        if (eventData.isUrgent !== undefined) updates.isUrgent = eventData.isUrgent;
       }
 
       // Regenerate embedding if text fields changed

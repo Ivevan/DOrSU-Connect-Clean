@@ -504,6 +504,12 @@ export class PostService {
           createdBy: updatedPost.createdBy || 'admin',
           isPinned: updatedPost.isPinned || false,
           isUrgent: updatedPost.isUrgent || false,
+          // Include approval fields
+          status: updatedPost.status || null,
+          isApproved: updatedPost.isApproved !== undefined ? updatedPost.isApproved : null,
+          approvedAt: updatedPost.approvedAt || null,
+          approvedBy: updatedPost.approvedBy || null,
+          creatorRole: updatedPost.creatorRole || null,
         },
       });
       return true;

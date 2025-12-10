@@ -20,6 +20,11 @@ export interface Post {
   isPinned?: boolean;
   isUrgent?: boolean;
   source?: string;
+  status?: string;
+  isApproved?: boolean;
+  approvedAt?: string;
+  approvedBy?: string | null;
+  creatorRole?: 'admin' | 'moderator';
 }
 
 export interface PostPartial {
@@ -792,6 +797,12 @@ const AdminDataService = {
           isPinned: Boolean(updatedEvent.isPinned || updatedEvent.pinned),
           isUrgent: Boolean(updatedEvent.isUrgent),
           source: updatedEvent.source || 'Admin',
+          // Include approval fields from backend response
+          status: updatedEvent.status,
+          isApproved: updatedEvent.isApproved,
+          approvedAt: updatedEvent.approvedAt,
+          approvedBy: updatedEvent.approvedBy,
+          creatorRole: updatedEvent.creatorRole,
         };
         
         // Update local store - match by both id and _id to handle ID format differences
@@ -814,11 +825,12 @@ const AdminDataService = {
         recentlyUpdatedPosts.set(eventId, updatedPost);
         recentlyUpdatedPosts.set(stringId, updatedPost);
         
-        // Clear from recently updated after 5 seconds (backend should have processed by then)
+        // Clear from recently updated after 10 seconds (backend should have processed by then)
+        // This matches the refetch delay in ManagePosts.tsx
         setTimeout(() => {
           recentlyUpdatedPosts.delete(eventId);
           recentlyUpdatedPosts.delete(stringId);
-        }, 5000);
+        }, 10000);
         
         console.log('✅ Local store updated with post:', { id: eventId, title: updatedPost.title });
         return updatedPost;

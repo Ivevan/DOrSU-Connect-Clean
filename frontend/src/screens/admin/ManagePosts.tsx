@@ -89,6 +89,9 @@ const ManagePosts: React.FC = () => {
   const headerHeightRef = useRef<number>(72);
   const [headerHeight, setHeaderHeight] = useState(72);
   
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'manage' | 'approve'>('manage');
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
   
@@ -695,36 +698,25 @@ const ManagePosts: React.FC = () => {
 
   // Open event modal - optimized for performance
   const openEventDrawer = useCallback((event: CalendarEvent, date?: Date) => {
-    if (date) {
-      const dateKey = formatDateKey(date);
-      const eventsOnDate = calendarEvents.filter(e => {
-        const eventDateKey = parseAnyDateToKey(e.isoDate || e.date);
-        return eventDateKey === dateKey;
-      });
-      const mappedEvents = eventsOnDate.map(e => ({
-        id: e._id || `calendar-${e.isoDate}-${e.title}`,
-        title: e.title,
-        color: categoryToColors(e.category || 'Event').dot,
-        type: e.category || 'Event',
-        category: e.category,
-        description: e.description,
-        isoDate: e.isoDate,
-        date: e.date,
-        time: e.time,
-        startDate: e.startDate,
-        endDate: e.endDate,
-      }));
-      
-      setSelectedEvent(event);
-      setSelectedDateForDrawer(date);
-      setSelectedDateEvents(mappedEvents);
-      setShowEventDrawer(true);
-    } else {
-      setSelectedEvent(event);
-      setSelectedDateForDrawer(null);
-      setSelectedDateEvents([]);
-      setShowEventDrawer(true);
-    }
+    // Only display the single selected event, not all events on the date
+    const singleEvent = {
+      id: event._id || `calendar-${event.isoDate}-${event.title}`,
+      title: event.title,
+      color: categoryToColors(event.category || 'Event').dot,
+      type: event.category || 'Event',
+      category: event.category,
+      description: event.description,
+      isoDate: event.isoDate,
+      date: event.date,
+      time: event.time,
+      startDate: event.startDate,
+      endDate: event.endDate,
+    };
+    
+    setSelectedEvent(event);
+    setSelectedDateForDrawer(date || null);
+    setSelectedDateEvents([singleEvent]); // Only include the clicked event
+    setShowEventDrawer(true);
   }, [calendarEvents]);
   
   // Close event modal
@@ -857,35 +849,69 @@ const ManagePosts: React.FC = () => {
   }, [posts, calendarEvents]);
 
   const filteredPosts = allItems.filter(item => {
-    const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'All Categories' || item.category === selectedCategory;
-    // Filter by creator role (only if admin and filter is set)
-    let matchesCreatorRole = true;
-    
-    // Skip role filtering if user is not admin (filter shouldn't be visible anyway)
-    if (!isAdmin) {
-      matchesCreatorRole = true;
-    }
-    // Show all if filter is set to "all"
-    else if (selectedCreatorRole === 'all') {
-      matchesCreatorRole = true;
-    }
-    // Filter by admin role - include calendar events (they're posted by admin)
-    else if (selectedCreatorRole === 'admin') {
-      matchesCreatorRole = item.isCalendarEvent || (
-        item.creatorRole === 'admin' || 
-        item.source === 'Admin' || 
-        (!item.creatorRole && item.source !== 'Moderator' && item.source !== 'moderator')
-      );
-    }
-    // Filter by moderator role - exclude calendar events (they're admin posts)
-    else if (selectedCreatorRole === 'moderator') {
-      matchesCreatorRole = !item.isCalendarEvent && (
+    // Tab-based filtering
+    if (activeTab === 'approve') {
+      // In "Approve Post" tab, only show pending moderator posts
+      const isModeratorPost = !item.isCalendarEvent && (
         item.creatorRole === 'moderator' || 
         item.source === 'Moderator' || 
         item.source === 'moderator'
       );
+      
+      if (!isModeratorPost) return false;
+      
+      // Check if post is pending (not approved, not rejected)
+      const isAdminPost = item.creatorRole === 'admin' || 
+                         item.source === 'Admin' || 
+                         (!item.creatorRole && item.source !== 'Moderator' && item.source !== 'moderator');
+      const isApproved = item.isApproved === true || item.status === 'approved' || isAdminPost;
+      const isRejected = item.status === 'rejected' || 
+                        item.status === 'cancelled' || 
+                        item.status === 'disapproved';
+      const isPending = !isApproved && !isRejected;
+      
+      if (!isPending) return false;
+    } else {
+      // In "Manage Post" tab, exclude rejected posts (existing behavior)
+      const isRejected = item.status === 'rejected' || 
+                        item.status === 'cancelled' || 
+                        item.status === 'disapproved';
+      if (isRejected) return false;
     }
+    
+    const matchesSearch = item.title.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = selectedCategory === 'All Categories' || item.category === selectedCategory;
+    // Filter by creator role (only if admin and filter is set, and in manage tab)
+    let matchesCreatorRole = true;
+    
+    // Only apply creator role filter in "Manage Post" tab
+    if (activeTab === 'manage') {
+      // Skip role filtering if user is not admin (filter shouldn't be visible anyway)
+      if (!isAdmin) {
+        matchesCreatorRole = true;
+      }
+      // Show all if filter is set to "all"
+      else if (selectedCreatorRole === 'all') {
+        matchesCreatorRole = true;
+      }
+      // Filter by admin role - include calendar events (they're posted by admin)
+      else if (selectedCreatorRole === 'admin') {
+        matchesCreatorRole = item.isCalendarEvent || (
+          item.creatorRole === 'admin' || 
+          item.source === 'Admin' || 
+          (!item.creatorRole && item.source !== 'Moderator' && item.source !== 'moderator')
+        );
+      }
+      // Filter by moderator role - exclude calendar events (they're admin posts)
+      else if (selectedCreatorRole === 'moderator') {
+        matchesCreatorRole = !item.isCalendarEvent && (
+          item.creatorRole === 'moderator' || 
+          item.source === 'Moderator' || 
+          item.source === 'moderator'
+        );
+      }
+    }
+    
     return matchesSearch && matchesCategory && matchesCreatorRole;
   });
 
@@ -1121,15 +1147,85 @@ const ManagePosts: React.FC = () => {
           />
         }
       >
+        {/* Tabs Section */}
+        <View style={styles.tabsContainer}>
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 50 : 40}
+            tint={isDarkMode ? 'dark' : 'light'}
+            style={[styles.tabsBlurView, {
+              backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.6)' : 'rgba(255, 255, 255, 0.7)',
+              borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
+            }]}
+          >
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                activeTab === 'manage' && styles.tabButtonActive,
+                activeTab === 'manage' && { backgroundColor: theme.colors.accent + '20', borderColor: theme.colors.accent }
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setActiveTab('manage');
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons 
+                name="document-text-outline" 
+                size={18} 
+                color={activeTab === 'manage' ? theme.colors.accent : theme.colors.textMuted} 
+              />
+              <Text style={[
+                styles.tabButtonText,
+                { 
+                  color: activeTab === 'manage' ? theme.colors.accent : theme.colors.textMuted,
+                  fontSize: theme.fontSize.scaleSize(14),
+                  fontWeight: activeTab === 'manage' ? '700' : '500'
+                }
+              ]}>
+                Manage Post
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                activeTab === 'approve' && styles.tabButtonActive,
+                activeTab === 'approve' && { backgroundColor: theme.colors.accent + '20', borderColor: theme.colors.accent }
+              ]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setActiveTab('approve');
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons 
+                name="checkmark-circle-outline" 
+                size={18} 
+                color={activeTab === 'approve' ? theme.colors.accent : theme.colors.textMuted} 
+              />
+              <Text style={[
+                styles.tabButtonText,
+                { 
+                  color: activeTab === 'approve' ? theme.colors.accent : theme.colors.textMuted,
+                  fontSize: theme.fontSize.scaleSize(14),
+                  fontWeight: activeTab === 'approve' ? '700' : '500'
+                }
+              ]}>
+                Pending Approval
+              </Text>
+            </TouchableOpacity>
+          </BlurView>
+        </View>
 
-        {/* Filter Posts Section */}
+        {/* Filter Posts Section - Only show in Manage Post tab */}
+        {activeTab === 'manage' && (
         <BlurView
           intensity={Platform.OS === 'ios' ? 50 : 40}
           tint={isDarkMode ? 'dark' : 'light'}
           style={[styles.filterContainer, {
             backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.6)' : 'rgba(255, 255, 255, 0.7)',
             borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
-            marginTop: 0,
+            marginTop: 12,
           }]}
         >
           <View style={styles.filterHeaderRow}>
@@ -1287,10 +1383,15 @@ const ManagePosts: React.FC = () => {
             </TouchableOpacity>
           </View>
         </BlurView>
+        )}
 
         {/* Posts List */}
         <View style={styles.postsContainer} collapsable={false}>
-          <Text style={[styles.postsTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>Posts & Events ({sortedPosts.length})</Text>
+          <Text style={[styles.postsTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>
+            {activeTab === 'approve' 
+              ? `Pending Posts (${sortedPosts.length})` 
+              : `Posts & Events (${sortedPosts.length})`}
+          </Text>
           
           {(isLoadingPosts || isLoadingCalendarEvents) && !isRefreshing ? (
             <View style={styles.loadingContainer}>
@@ -1307,18 +1408,26 @@ const ManagePosts: React.FC = () => {
             // Empty State
           <View style={styles.emptyStateContainer}>
             <View style={styles.emptyStateIcon}>
-              <Ionicons name="document-text-outline" size={48} color={theme.colors.textMuted} />
+              <Ionicons 
+                name={activeTab === 'approve' ? 'checkmark-circle-outline' : 'document-text-outline'} 
+                size={48} 
+                color={theme.colors.textMuted} 
+              />
             </View>
             <Text style={[styles.emptyStateTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(18) }]}>
-                {hasActiveFilters ? 'No posts found' : 'No posts yet'}
+                {activeTab === 'approve' 
+                  ? 'No pending posts' 
+                  : hasActiveFilters ? 'No posts found' : 'No posts yet'}
               </Text>
             <Text style={[styles.emptyStateSubtitle, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(14) }]}>
-                {hasActiveFilters 
-                  ? 'Try adjusting your filters or search terms'
-                  : 'Create your first post to get started'
+                {activeTab === 'approve'
+                  ? 'All moderator posts have been reviewed'
+                  : hasActiveFilters 
+                    ? 'Try adjusting your filters or search terms'
+                    : 'Create your first post to get started'
                 }
               </Text>
-              {!hasActiveFilters && (
+              {!hasActiveFilters && activeTab === 'manage' && (
               <TouchableOpacity style={[styles.emptyStateButton, { backgroundColor: theme.colors.primary }]} onPress={handleNewPost}>
                   <Ionicons name="add" size={20} color="#fff" />
                   <Text style={[styles.emptyStateButtonText, { fontSize: theme.fontSize.scaleSize(14) }]}>Create First Post</Text>
@@ -1924,6 +2033,35 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#fff',
     fontWeight: '700',
+  },
+  tabsContainer: {
+    marginBottom: 12,
+  },
+  tabsBlurView: {
+    flexDirection: 'row',
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 4,
+    overflow: 'hidden',
+  },
+  tabButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  tabButtonActive: {
+    borderWidth: 1,
+  },
+  tabButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   filterContainer: {
     padding: 16,

@@ -1220,39 +1220,26 @@ const SchoolUpdates = () => {
 
   // Open event modal (view-only) - optimized for performance
   const openEventDrawer = useCallback((event: CalendarEvent, date?: Date) => {
-    // Batch state updates for better performance
-    if (date) {
-      // Find all events on this date
-      const eventsOnDate = calendarEvents.filter(e => {
-        const eventDate = new Date(e.isoDate || e.date);
-        return eventDate.toDateString() === date.toDateString();
-      });
-      const mappedEvents = eventsOnDate.map(e => ({
-        id: e._id || `calendar-${e.isoDate}-${e.title}`,
-        title: e.title,
-        color: categoryToColors(e.category || 'Event').dot,
-        type: e.category || 'Event',
-        category: e.category,
-        description: e.description,
-        isoDate: e.isoDate,
-        date: e.date,
-        time: e.time,
-        startDate: e.startDate,
-        endDate: e.endDate,
-      }));
-      
-      // Batch all state updates together
-      setSelectedEvent(event);
-      setSelectedDateForDrawer(date);
-      setSelectedDateEvents(mappedEvents);
-      setShowEventDrawer(true);
-    } else {
-      // Batch all state updates together
-      setSelectedEvent(event);
-      setSelectedDateForDrawer(null);
-      setSelectedDateEvents([]);
-      setShowEventDrawer(true);
-    }
+    // Only display the single selected event, not all events on the date
+    const singleEvent = {
+      id: event._id || `calendar-${event.isoDate}-${event.title}`,
+      title: event.title,
+      color: categoryToColors(event.category || 'Event').dot,
+      type: event.category || 'Event',
+      category: event.category,
+      description: event.description,
+      isoDate: event.isoDate,
+      date: event.date,
+      time: event.time,
+      startDate: event.startDate,
+      endDate: event.endDate,
+    };
+    
+    // Batch all state updates together
+    setSelectedEvent(event);
+    setSelectedDateForDrawer(date || null);
+    setSelectedDateEvents([singleEvent]); // Only include the clicked event
+    setShowEventDrawer(true);
   }, [calendarEvents]);
   
   // Close event modal

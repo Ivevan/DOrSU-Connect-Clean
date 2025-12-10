@@ -135,12 +135,16 @@ const ActivityLogScreen = () => {
           // Only allow user.login or user.logout
           if (selectedAction === 'user.login' || selectedAction === 'user.logout') {
             filters.action = selectedAction;
+          } else {
+            // If invalid action selected, reset to empty (will show all user actions, filtered on frontend)
+            setSelectedAction('');
           }
-        } else {
-          // If no action selected, default to showing only login and logout
-          // We'll filter on the frontend since backend doesn't support multiple action filters
         }
         // Don't allow search for non-admin users (they only see their own logs)
+        // Clear search query if user tries to search
+        if (searchQuery.trim()) {
+          setSearchQuery('');
+        }
       } else {
         // Admin can filter by any action
         if (selectedAction) {
@@ -341,11 +345,24 @@ const ActivityLogScreen = () => {
   const filteredLogs = useMemo(() => {
     let filtered = logs;
     
-    // For non-admin users, only show login and logout actions
+    // For non-admin users, ONLY show login and logout actions - filter out everything else
     if (!isAdmin) {
       filtered = filtered.filter(log => 
         log.action === 'user.login' || log.action === 'user.logout'
       );
+    }
+    
+    // Apply selected action filter (for admin, this is already applied in loadLogs, but we apply it here too for consistency)
+    if (selectedAction && isAdmin) {
+      filtered = filtered.filter(log => log.action === selectedAction);
+    } else if (selectedAction && !isAdmin) {
+      // For non-admin, only allow login/logout actions
+      if (selectedAction === 'user.login' || selectedAction === 'user.logout') {
+        filtered = filtered.filter(log => log.action === selectedAction);
+      } else {
+        // Invalid action for user, show nothing
+        filtered = [];
+      }
     }
     
     // Apply search query filter
@@ -368,7 +385,7 @@ const ActivityLogScreen = () => {
     }
     
     return filtered;
-  }, [logs, searchQuery, isAdmin]);
+  }, [logs, searchQuery, selectedAction, isAdmin]);
 
   const isPendingAuthorization = isAuthorized === null;
 

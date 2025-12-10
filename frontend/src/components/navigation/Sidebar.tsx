@@ -546,21 +546,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                       }}
                       activeOpacity={0.7}
                     >
-                      {chat.userType && (
-                        <View
-                          style={[
-                            styles.historyAccent,
-                            {
-                              backgroundColor:
-                                chat.userType === 'student'
-                                  ? t.colors.accent
-                                  : colorTheme === 'dorsu'
-                                  ? '#FBBF24'
-                                  : '#6B7280',
-                            },
-                          ]}
-                        />
-                      )}
                       <View style={styles.historyItemContent}>
                         <View style={styles.historyItemTextContainer}>
                           <View style={styles.historyTitleRow}>
@@ -573,27 +558,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                             >
                               {chat.title}
                             </Text>
-                            {chat.userType && (
-                              <View
-                                style={[
-                                  styles.historyUserTypeBadge,
-                                  {
-                                    backgroundColor:
-                                      chat.userType === 'student'
-                                        ? t.colors.accent
-                                        : colorTheme === 'dorsu'
-                                        ? '#FBBF24'
-                                        : '#6B7280',
-                                  },
-                                ]}
-                              >
-                                <Text
-                                  style={[styles.historyUserTypeBadgeText, { fontSize: t.fontSize.scaleSize(9) }]}
-                                >
-                                  {chat.userType === 'student' ? 'Student' : 'Faculty'}
-                                </Text>
-                              </View>
-                            )}
                           </View>
                           <View style={styles.historyActionsRow}>
                             <Text
@@ -610,16 +574,16 @@ const Sidebar: React.FC<SidebarProps> = ({
                               onPress={() => handleDeleteChatClick(chat.id)}
                               accessibilityLabel="Delete chat"
                             >
-                              <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                              <Ionicons name="trash-outline" size={14} color="#EF4444" />
                             </TouchableOpacity>
                           </View>
                           {chat.timestamp && (
                             <View style={styles.historyDateRow}>
-                              <Ionicons name="time-outline" size={10} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
+                              <Ionicons name="time-outline" size={9} color={isDarkMode ? '#6B7280' : '#9CA3AF'} />
                               <Text
                                 style={[
                                   styles.historyDate,
-                                  { color: isDarkMode ? '#6B7280' : '#9CA3AF', fontSize: t.fontSize.scaleSize(11) },
+                                  { color: isDarkMode ? '#6B7280' : '#9CA3AF', fontSize: t.fontSize.scaleSize(10) },
                                 ]}
                               >
                                 {formatDate(
@@ -808,14 +772,14 @@ const styles = StyleSheet.create({
   },
   sidebarHistorySection: {
     flex: 1,
-    paddingTop: 8,
+    paddingTop: 4,
   },
   sidebarSectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
   },
   sidebarSectionTitle: {
     fontSize: 12,
@@ -836,23 +800,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   historyItem: {
-    marginBottom: 4,
+    marginBottom: 2,
     position: 'relative',
   },
   historyItemButton: {
     flexDirection: 'row',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
     position: 'relative',
-  },
-  historyAccent: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-    borderRadius: 2,
   },
   historyItemContent: {
     flex: 1,
@@ -861,57 +817,45 @@ const styles = StyleSheet.create({
   },
   historyItemTextContainer: {
     flex: 1,
-    marginLeft: 8,
+    marginLeft: 6,
   },
   historyTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
+    gap: 4,
+    marginBottom: 2,
     flexWrap: 'wrap',
   },
   historyTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     flex: 1,
     minWidth: 0,
-  },
-  historyUserTypeBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
-  historyUserTypeBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 9,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
   },
   historyActionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 4,
-    gap: 8,
+    marginBottom: 2,
+    gap: 6,
   },
   historyPreview: {
-    fontSize: 13,
+    fontSize: 12,
     flex: 1,
     minWidth: 0,
   },
   historyDateRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
+    gap: 3,
+    marginTop: 1,
   },
   historyDate: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '500',
   },
   deleteHistoryBtn: {
-    padding: 4,
+    padding: 3,
     borderRadius: 4,
     alignItems: 'center',
     justifyContent: 'center',

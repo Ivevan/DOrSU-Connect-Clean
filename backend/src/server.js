@@ -819,6 +819,48 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Logout endpoint - log logout activity
+  if (method === 'POST' && url === '/api/auth/logout') {
+    if (!authService || !mongoService || !activityLogService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      // Even if not authenticated, return success (user might have already logged out)
+      sendJson(res, 200, { success: true, message: 'Logged out successfully' });
+      return;
+    }
+
+    try {
+      // Log logout activity before clearing session
+      const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.socket.remoteAddress;
+      const userAgent = req.headers['user-agent'] || 'unknown';
+      
+      await activityLogService.logActivity(
+        auth.userId,
+        'user.logout',
+        {
+          email: auth.email || null,
+        },
+        {
+          ipAddress: Array.isArray(ipAddress) ? ipAddress[0] : ipAddress,
+          userAgent: userAgent,
+          timestamp: new Date()
+        }
+      );
+
+      Logger.success(`✅ User logged out: ${auth.userId || auth.email}`);
+      sendJson(res, 200, { success: true, message: 'Logged out successfully' });
+    } catch (error) {
+      Logger.error('Logout error:', error.message);
+      // Still return success even if logging fails (don't block logout)
+      sendJson(res, 200, { success: true, message: 'Logged out successfully' });
+    }
+    return;
+  }
+
   // Change password
   if (method === 'POST' && url === '/api/auth/change-password') {
     if (!authService || !mongoService) {
@@ -1132,7 +1174,7 @@ const server = http.createServer(async (req, res) => {
         Logger.info(`📋 Activity logs: Non-admin user, restricting to own logs (userId: ${auth.userId}, email: ${auth.email})`);
       } else {
         // Admin can filter by any userId or userEmail
-        if (userId) filters.userId = userId;
+      if (userId) filters.userId = userId;
         if (userEmail) filters.userEmail = userEmail;
       }
       

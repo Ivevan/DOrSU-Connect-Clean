@@ -9,7 +9,7 @@
       "environment": [
         { "name": "PORT", "value": "3000" },
         { "name": "MONGODB_URI", "value": "mongodb+srv://dcypher:admin@dorsuai.gdeuowj.mongodb.net/?retryWrites=true&w=majority&appName=DOrSUAI" },
-        { "name": "GROQ_API_KEYS", "value": "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,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,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" },
+        { "name": "GROQ_API_KEYS", "value": "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,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,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" },
         { "name": "JWT_SECRET", "value": "dorsu-connect-jwt-secret-change-in-production-2025" },
         { "name": "LOG_LEVEL", "value": "DEBUG" },
         { "name": "NODE_ENV", "value": "production" },

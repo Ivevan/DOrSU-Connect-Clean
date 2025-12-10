@@ -102,6 +102,7 @@ const ManagePosts: React.FC = () => {
   // Loading and refresh state
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0); // Force re-render on refresh
 
   // Sorting state
   const [selectedSort, setSelectedSort] = useState('Newest');
@@ -224,15 +225,20 @@ const ManagePosts: React.FC = () => {
   // Fetch calendar events function - only current month
   const refreshCalendarEvents = useCallback(async (forceRefresh: boolean = false) => {
     if (isAuthorized !== true) return;
-    // Prevent duplicate simultaneous fetches
+    // Prevent duplicate simultaneous fetches (unless forcing refresh)
     if (isFetchingCalendar.current && !forceRefresh) {
       return;
     }
 
-    // Cooldown check
+    // Cooldown check - skip if not forcing refresh
     const now = Date.now();
     if (!forceRefresh && now - lastCalendarFetchTime.current < CALENDAR_FETCH_COOLDOWN) {
       return;
+    }
+
+    // Reset fetching state if forcing refresh
+    if (forceRefresh) {
+      isFetchingCalendar.current = false;
     }
 
     isFetchingCalendar.current = true;
@@ -275,7 +281,7 @@ const ManagePosts: React.FC = () => {
   // Fetch posts function - reusable for both mount and focus
   const fetchPosts = useCallback(async (forceRefresh: boolean = false) => {
     if (isAuthorized !== true) return;
-    // Prevent duplicate simultaneous fetches
+    // Prevent duplicate simultaneous fetches (unless forcing refresh)
     if (isFetching.current && !forceRefresh) {
       return;
     }
@@ -284,6 +290,11 @@ const ManagePosts: React.FC = () => {
     const now = Date.now();
     if (!forceRefresh && now - lastFetchTime.current < FETCH_COOLDOWN) {
       return;
+    }
+
+    // Reset fetching state if forcing refresh
+    if (forceRefresh) {
+      isFetching.current = false;
     }
 
     isFetching.current = true;
@@ -305,6 +316,7 @@ const ManagePosts: React.FC = () => {
         approvedBy: post.approvedBy ?? null,
         isoDate: post.isoDate || post.date,
       }));
+      // Update posts state - this will trigger allItems to recalculate
       setPosts(mappedPosts);
     } catch (e: any) {
       setPostsError(e?.message || 'Failed to load posts');
@@ -362,17 +374,28 @@ const ManagePosts: React.FC = () => {
   }, [isAnimating, navigation]);
 
   const handleRefresh = useCallback(async () => {
-    if (isAuthorized !== true || isRefreshing) return;
+    if (isAuthorized !== true) return;
+    // Prevent multiple simultaneous refreshes
+    if (isRefreshing) return;
+    
     setIsRefreshing(true);
     try {
+      // Force refresh both posts and calendar events
       await Promise.all([
         fetchPosts(true),
         refreshCalendarEvents(true),
       ]);
+      // Increment refresh key to force re-render of cards
+      setRefreshKey(prev => prev + 1);
+    } catch (error) {
+      console.error('Refresh error:', error);
     } finally {
-      setIsRefreshing(false);
+      // Small delay to ensure state updates are processed
+      setTimeout(() => {
+        setIsRefreshing(false);
+      }, 100);
     }
-  }, [isAuthorized, isRefreshing, fetchPosts, refreshCalendarEvents]);
+  }, [isAuthorized, fetchPosts, refreshCalendarEvents]);
 
   const handleEditPost = useCallback((postId: string) => {
     // Prevent rapid tapping during animation
@@ -848,7 +871,8 @@ const ManagePosts: React.FC = () => {
     return [...postsList, ...calendarItems];
   }, [posts, calendarEvents]);
 
-  const filteredPosts = allItems.filter(item => {
+  const filteredPosts = useMemo(() => {
+    return allItems.filter(item => {
     // Tab-based filtering
     if (activeTab === 'approve') {
       // In "Approve Post" tab, only show pending moderator posts
@@ -913,7 +937,8 @@ const ManagePosts: React.FC = () => {
     }
     
     return matchesSearch && matchesCategory && matchesCreatorRole;
-  });
+    });
+  }, [allItems, activeTab, searchQuery, selectedCategory, selectedCreatorRole, isAdmin]);
 
   const sortedPosts = useMemo(() => {
     const sorted = [...filteredPosts];
@@ -1149,15 +1174,15 @@ const ManagePosts: React.FC = () => {
       >
         {/* Tabs Section */}
         <View style={styles.tabsContainer}>
-          <BlurView
-            intensity={Platform.OS === 'ios' ? 50 : 40}
-            tint={isDarkMode ? 'dark' : 'light'}
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 50 : 40}
+          tint={isDarkMode ? 'dark' : 'light'}
             style={[styles.tabsBlurView, {
               backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.6)' : 'rgba(255, 255, 255, 0.7)',
               borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
             }]}
           >
-            <TouchableOpacity
+              <TouchableOpacity 
               style={[
                 styles.tabButton,
                 activeTab === 'manage' && styles.tabButtonActive,
@@ -1168,8 +1193,8 @@ const ManagePosts: React.FC = () => {
                 setActiveTab('manage');
               }}
               activeOpacity={0.7}
-            >
-              <Ionicons 
+              >
+                <Ionicons 
                 name="document-text-outline" 
                 size={18} 
                 color={activeTab === 'manage' ? theme.colors.accent : theme.colors.textMuted} 
@@ -1183,8 +1208,8 @@ const ManagePosts: React.FC = () => {
                 }
               ]}>
                 Manage Post
-              </Text>
-            </TouchableOpacity>
+                </Text>
+              </TouchableOpacity>
             
             <TouchableOpacity
               style={[
@@ -1387,11 +1412,21 @@ const ManagePosts: React.FC = () => {
 
         {/* Posts List */}
         <View style={styles.postsContainer} collapsable={false}>
-          <Text style={[styles.postsTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>
-            {activeTab === 'approve' 
-              ? `Pending Posts (${sortedPosts.length})` 
-              : `Posts & Events (${sortedPosts.length})`}
-          </Text>
+          <View style={styles.postsTitleRow}>
+            <Text style={[styles.postsTitle, { color: theme.colors.text, fontSize: theme.fontSize.scaleSize(14) }]}>
+              {activeTab === 'approve' 
+                ? `Pending Posts (${sortedPosts.length})` 
+                : `Posts & Events (${sortedPosts.length})`}
+            </Text>
+            {isRefreshing && (
+              <View style={styles.refreshingIndicator}>
+                <ActivityIndicator size="small" color={theme.colors.accent} />
+                <Text style={[styles.refreshingText, { color: theme.colors.textMuted, fontSize: theme.fontSize.scaleSize(12) }]}>
+                  Refreshing...
+                </Text>
+              </View>
+            )}
+          </View>
           
           {(isLoadingPosts || isLoadingCalendarEvents) && !isRefreshing ? (
             <View style={styles.loadingContainer}>
@@ -1423,8 +1458,8 @@ const ManagePosts: React.FC = () => {
                 {activeTab === 'approve'
                   ? 'All moderator posts have been reviewed'
                   : hasActiveFilters 
-                    ? 'Try adjusting your filters or search terms'
-                    : 'Create your first post to get started'
+                  ? 'Try adjusting your filters or search terms'
+                  : 'Create your first post to get started'
                 }
               </Text>
               {!hasActiveFilters && activeTab === 'manage' && (
@@ -1444,7 +1479,7 @@ const ManagePosts: React.FC = () => {
                 
                 return (
             <TouchableOpacity
-              key={item.id}
+              key={`${item.id}-${refreshKey}`}
               activeOpacity={0.7}
               onPress={() => {
                 if (isCalendarEvent) {
@@ -1504,6 +1539,7 @@ const ManagePosts: React.FC = () => {
             <View style={[styles.postCard, {
               backgroundColor: isDarkMode ? 'rgba(31, 41, 55, 0.6)' : 'rgba(255, 255, 255, 0.7)',
               borderColor: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.08)',
+              opacity: isRefreshing ? 0.6 : 1,
             }]}>
             <BlurView
               intensity={Platform.OS === 'ios' ? 50 : 40}
@@ -2192,11 +2228,28 @@ const styles = StyleSheet.create({
   postsContainer: {
     marginBottom: 16,
   },
+  postsTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
   postsTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: '#444',
-    marginBottom: 12,
+    flex: 1,
+  },
+  refreshingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  refreshingText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   postCard: {
     borderRadius: 20,

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -338,8 +339,8 @@ const ManagePosts: React.FC = () => {
           refreshCalendarEvents(true);
         }, remainingDelay);
       } else {
-        // Force refresh when screen comes into focus to show updated posts
-        fetchPosts(true);
+      // Force refresh when screen comes into focus to show updated posts
+      fetchPosts(true);
         refreshCalendarEvents(true);
       }
     }, [fetchPosts, refreshCalendarEvents, isAuthorized])
@@ -1351,8 +1352,43 @@ const ManagePosts: React.FC = () => {
                     openEventDrawer(fullEvent, eventDate);
                   }
                 } else {
-                  // Regular post - open options or navigate to edit
-                  handleMoreOptions(item.id);
+                  // Regular post - convert to CalendarEvent format for ViewEventModal (same as AdminDashboard)
+                  const eventDate = item.isoDate || item.date 
+                    ? new Date(item.isoDate || item.date)
+                    : new Date();
+                  
+                  const event: any = {
+                    _id: item.id,
+                    id: item.id,
+                    title: item.title,
+                    description: item.description,
+                    category: item.category,
+                    date: item.isoDate || item.date,
+                    isoDate: item.isoDate || item.date,
+                    image: item.image,
+                    images: item.images,
+                    time: (item as any).time || undefined,
+                    source: item.source,
+                    creatorRole: item.creatorRole,
+                  };
+                  
+                  setSelectedEvent(event);
+                  setSelectedDateForDrawer(eventDate);
+                  setSelectedDateEvents([{
+                    id: item.id,
+                    title: item.title,
+                    color: accentColor,
+                    type: item.category,
+                    category: item.category,
+                    description: item.description,
+                    isoDate: item.isoDate || item.date,
+                    date: item.isoDate || item.date,
+                    time: (item as any).time || undefined,
+                    image: item.image,
+                    images: item.images,
+                  }]);
+                  setShowEventDrawer(true);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 }
               }}
             >
@@ -1642,7 +1678,7 @@ const ManagePosts: React.FC = () => {
           // Check if it's a calendar event (has _id) or an update/post
           const event = selectedEvent as any;
           if (event._id) {
-            // Calendar event deletion
+            // Calendar event deletion - ViewEventModal handles confirmation, just execute deletion
             try {
               setIsDeleting(true);
               const eventId = event._id || '';
@@ -1659,14 +1695,33 @@ const ManagePosts: React.FC = () => {
               await refreshCalendarEvents(true);
               closeEventDrawer();
               setSelectedEvent(null);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             } catch (error) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
               Alert.alert('Error', 'Failed to delete event');
             } finally {
               setIsDeleting(false);
             }
           } else if (event.id) {
-            // Post/Update deletion - handled by options modal
-            closeEventDrawer();
+            // Post/Update deletion - ViewEventModal handles confirmation, just execute deletion
+            try {
+              setIsDeleting(true);
+              await AdminDataService.deletePost(event.id);
+              
+              // Immediately remove from context for instant UI update
+              setPosts(prevPosts => prevPosts.filter((p: any) => p.id !== event.id));
+              
+              // Refresh dashboard data after deletion
+              await fetchPosts(true);
+              closeEventDrawer();
+              setSelectedEvent(null);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            } catch (error) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              Alert.alert('Error', 'Failed to delete post');
+            } finally {
+              setIsDeleting(false);
+            }
           }
         }}
       />

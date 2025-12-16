@@ -121,10 +121,21 @@ const CreateAccount = () => {
       return 'Please enter a valid email address';
     }
     const emailDomain = value.toLowerCase().split('@')[1];
-    const allowedDomains = ['dorsu.edu.ph', 'gmail.com', 'yahoo.com', 'outlook.com', 'ymail.com', 'hotmail.com'];
-    if (!emailDomain || !allowedDomains.includes(emailDomain)) {
-      return 'Only @dorsu.edu.ph, @gmail.com, @yahoo.com, @outlook.com, @ymail.com, and @hotmail.com addresses are supported';
+    
+    // Faculty accounts must use school email only
+    if (userType === 'faculty') {
+      const schoolDomains = ['dorsu.edu.ph'];
+      if (!emailDomain || !schoolDomains.includes(emailDomain)) {
+        return 'Faculty accounts must use a school email address (@dorsu.edu.ph)';
+      }
+    } else {
+      // Student accounts can use multiple domains
+      const allowedDomains = ['dorsu.edu.ph', 'gmail.com', 'yahoo.com', 'outlook.com', 'ymail.com', 'hotmail.com'];
+      if (!emailDomain || !allowedDomains.includes(emailDomain)) {
+        return 'Only @dorsu.edu.ph, @gmail.com, @yahoo.com, @outlook.com, @ymail.com, and @hotmail.com addresses are supported';
+      }
     }
+    
     if (TEMP_EMAIL_DOMAINS.includes(emailDomain)) {
       return 'Temporary emails not allowed';
     }

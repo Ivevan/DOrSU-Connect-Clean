@@ -305,8 +305,8 @@ const GetStarted = () => {
             </TouchableOpacity>
           </Animated.View>
           
-          {/* Google Sign-In Button */}
-          <Animated.View style={{ transform: [{ scale: googleButtonScale }] }}>
+          {/* Google Sign-In Button - Temporarily Removed */}
+          {/* <Animated.View style={{ transform: [{ scale: googleButtonScale }] }}>
             <TouchableOpacity 
               style={[styles.googleButton, (isGoogleLoading || !isOnline) && styles.actionButtonDisabled]}
               onPress={handleGoogleSignIn}
@@ -339,7 +339,7 @@ const GetStarted = () => {
                 </>
               )}
             </TouchableOpacity>
-          </Animated.View>
+          </Animated.View> */}
         </View>
 
         {/* University Branding Section */}

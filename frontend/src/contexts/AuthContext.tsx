@@ -12,8 +12,9 @@ interface AuthContextType {
   userToken: string | null;
   userEmail: string | null;
   userName: string | null;
-  userRole: 'user' | 'moderator' | 'admin' | null;
+  userRole: 'user' | 'moderator' | 'admin' | 'superadmin' | null;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   firebaseUser: User | null;
   login: (token: string, email: string, userName: string, userId: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -43,8 +44,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [userToken, setUserToken] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
-  const [userRole, setUserRole] = useState<'user' | 'moderator' | 'admin' | null>(null);
+  const [userRole, setUserRole] = useState<'user' | 'moderator' | 'admin' | 'superadmin' | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   
   // Inactivity timer - auto logout after 30 seconds (30,000ms)
@@ -60,15 +62,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (!token) {
         setUserRole(null);
         setIsAdmin(false);
+        setIsSuperAdmin(false);
         return;
       }
 
-      // Static admin token shortcut
+      // Static admin token shortcut (treat as superadmin)
       if (token.startsWith('admin_')) {
-        await AsyncStorage.setItem('userRole', 'admin');
+        await AsyncStorage.setItem('userRole', 'superadmin');
         await AsyncStorage.setItem('isAdmin', 'true');
-        setUserRole('admin');
+        await AsyncStorage.setItem('isSuperAdmin', 'true');
+        setUserRole('superadmin');
         setIsAdmin(true);
+        setIsSuperAdmin(true);
         return;
       }
 
@@ -83,22 +88,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (!resp.ok) {
         setUserRole(null);
         setIsAdmin(false);
+        setIsSuperAdmin(false);
         return;
       }
 
       const data = await resp.json();
       if (data?.success && data?.user) {
-        const role = (data.user.role || 'user') as 'user' | 'moderator' | 'admin';
-        const adminFlag = role === 'admin';
+        const role = (data.user.role || 'user') as 'user' | 'moderator' | 'admin' | 'superadmin';
+        const adminFlag = role === 'admin' || role === 'superadmin';
+        const superAdminFlag = role === 'superadmin';
         await AsyncStorage.setItem('userRole', role);
         await AsyncStorage.setItem('isAdmin', adminFlag ? 'true' : 'false');
+        await AsyncStorage.setItem('isSuperAdmin', superAdminFlag ? 'true' : 'false');
         setUserRole(role);
         setIsAdmin(adminFlag);
+        setIsSuperAdmin(superAdminFlag);
       }
     } catch (error) {
       console.error('refreshUser error:', error);
       setUserRole(null);
       setIsAdmin(false);
+      setIsSuperAdmin(false);
     }
   }, []);
 
@@ -109,15 +119,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const token = await AsyncStorage.getItem('userToken');
       const email = await AsyncStorage.getItem('userEmail');
       const name = await AsyncStorage.getItem('userName');
-      const role = await AsyncStorage.getItem('userRole') as 'user' | 'moderator' | 'admin' | null;
-      const isAdminFlag = (await AsyncStorage.getItem('isAdmin')) === 'true';
+      const role = await AsyncStorage.getItem('userRole') as 'user' | 'moderator' | 'admin' | 'superadmin' | null;
+      const isAdminFlagFromStorage = (await AsyncStorage.getItem('isAdmin')) === 'true';
+      const isSuperAdminFlag = (await AsyncStorage.getItem('isSuperAdmin')) === 'true';
+      const effectiveAdminFlag = isAdminFlagFromStorage || role === 'superadmin';
       
       if (token && email) {
         setUserToken(token);
         setUserEmail(email);
         setUserName(name);
         setUserRole(role);
-        setIsAdmin(isAdminFlag);
+        setIsAdmin(effectiveAdminFlag);
+        setIsSuperAdmin(isSuperAdminFlag || role === 'superadmin');
         setIsAuthenticated(true);
         // Also refresh from backend to ensure latest role
         refreshUser().catch(() => {});
@@ -171,14 +184,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 await AsyncStorage.setItem('userName', userName);
                 
                 // Store user role
-                const userRole = data.user?.role || 'user';
+                const userRole = (data.user?.role || 'user') as 'user' | 'moderator' | 'admin' | 'superadmin';
+                const adminFlag = userRole === 'admin' || userRole === 'superadmin';
+                const superAdminFlag = userRole === 'superadmin';
                 await AsyncStorage.setItem('userRole', userRole);
-                await AsyncStorage.setItem('isAdmin', userRole === 'admin' ? 'true' : 'false');
+                await AsyncStorage.setItem('isAdmin', adminFlag ? 'true' : 'false');
+                await AsyncStorage.setItem('isSuperAdmin', superAdminFlag ? 'true' : 'false');
                 
                 // Update state
                 setUserToken(data.token);
                 setUserEmail(currentUser.email);
                 setUserName(userName);
+                setUserRole(userRole);
+                setIsAdmin(adminFlag);
+                setIsSuperAdmin(superAdminFlag);
                 
                 console.log('✅ AuthContext: Google user saved to MongoDB and backend JWT stored', {
                   userId: data.user.id,
@@ -205,10 +224,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
       
       setIsAuthenticated(false);
+      setIsAdmin(false);
+      setIsSuperAdmin(false);
       return false;
     } catch (error) {
       console.error('Auth check error:', error);
       setIsAuthenticated(false);
+      setIsAdmin(false);
+      setIsSuperAdmin(false);
       return false;
     } finally {
       setIsLoading(false);
@@ -282,12 +305,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Default to user until refreshed
       await AsyncStorage.setItem('userRole', 'user');
       await AsyncStorage.setItem('isAdmin', 'false');
+      await AsyncStorage.setItem('isSuperAdmin', 'false');
       
       setUserToken(token);
       setUserEmail(email);
       setUserName(name);
       setUserRole('user');
       setIsAdmin(false);
+      setIsSuperAdmin(false);
       setIsAuthenticated(true);
       // Refresh role from backend
       refreshUser().catch(() => {});
@@ -395,6 +420,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         'userId',
         'userRole',
         'isAdmin',
+        'isSuperAdmin',
         'adminToken',
         'adminEmail',
         'userFirstName',
@@ -432,6 +458,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setFirebaseUser(null);
       setUserRole(null);
       setIsAdmin(false);
+      setIsSuperAdmin(false);
       setIsAuthenticated(false);
     } catch (error) {
       console.error('Logout error:', error);
@@ -501,6 +528,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     userName,
     userRole,
     isAdmin,
+    isSuperAdmin,
     firebaseUser,
     login,
     logout,

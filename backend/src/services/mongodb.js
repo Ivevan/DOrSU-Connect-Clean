@@ -848,6 +848,12 @@ class MongoDBService {
       const userWithRole = {
         ...user,
         role: user.role || 'user', // Default to 'user' if not specified
+        studentVerification: {
+          status: 'pending', // Default to pending until verified
+          submittedAt: null,
+          verifiedAt: null
+        },
+        isActive: user.isActive !== undefined ? user.isActive : true
       };
       const result = await collection.insertOne(userWithRole);
       Logger.success(`✅ User created: ${user.email}`);
@@ -981,7 +987,7 @@ class MongoDBService {
         throw new Error(`Invalid user ID format: ${userId}`);
       }
       
-      const validRoles = ['user', 'moderator', 'admin'];
+      const validRoles = ['user', 'moderator', 'admin', 'superadmin'];
       if (!validRoles.includes(role)) {
         throw new Error(`Invalid role. Must be one of: ${validRoles.join(', ')}`);
       }
@@ -1687,6 +1693,160 @@ class MongoDBService {
       return count;
     } catch (error) {
       Logger.error('Failed to get activity log count:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Verify student credentials against database
+   * Checks if studentId and fullName match a student record
+   * Currently uses hardcoded student data - replace with actual database lookup when available
+   */
+  async verifyStudentCredentialsInDB(studentId, fullName) {
+    try {
+      // Hardcoded student records for verification
+      // TODO: Replace with actual database lookup when student database is available
+      const validStudents = [
+        {
+          studentId: '2022-0987',
+          fullName: 'Ivan J P. Vasay'
+        }
+        // Add more students here as needed
+      ];
+
+      // Normalize inputs for comparison
+      const normalizedStudentId = studentId.trim().toUpperCase();
+      const normalizedFullName = fullName.trim().toLowerCase().replace(/\s+/g, ' ');
+
+      // Check against hardcoded records
+      const matchedStudent = validStudents.find(student => {
+        const normalizedRecordId = student.studentId.trim().toUpperCase();
+        const normalizedRecordName = student.fullName.trim().toLowerCase().replace(/\s+/g, ' ');
+        
+        // Exact match on student ID
+        const idMatch = normalizedRecordId === normalizedStudentId;
+        
+        // Flexible name matching (handles variations like "Vasay, Ivan J P." or "Ivan J P. Vasay")
+        const nameParts = normalizedFullName.split(/[,\s]+/).filter(p => p.length > 0);
+        const recordNameParts = normalizedRecordName.split(/[,\s]+/).filter(p => p.length > 0);
+        
+        // Check if all name parts from input exist in record (order-independent)
+        const nameMatch = nameParts.length > 0 && 
+          nameParts.every(part => recordNameParts.some(recordPart => recordPart.includes(part) || part.includes(recordPart)));
+
+        return idMatch && nameMatch;
+      });
+
+      if (matchedStudent) {
+        Logger.success(`✅ Student verified: ${studentId} - ${fullName}`);
+        return { 
+          valid: true, 
+          requiresManualVerification: false 
+        };
+      }
+
+      Logger.warn(`❌ Student not found: ${studentId} - ${fullName}`);
+      return { 
+        valid: false, 
+        reason: 'Student credentials not found in database. Please verify your Student ID and Name.' 
+      };
+    } catch (error) {
+      Logger.error('Failed to verify student credentials:', error);
+      return { valid: false, reason: 'Database error occurred' };
+    }
+  }
+
+  /**
+   * Submit student credentials for verification (Student ID and Name)
+   */
+  async submitStudentVerification(userId, studentId, fullName) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.users || 'users');
+      const { ObjectId } = await import('mongodb');
+      
+      const updateData = {
+        studentVerification: {
+          status: 'pending', // 'pending', 'verified', 'rejected'
+          studentId: studentId.trim(),
+          fullName: fullName.trim(),
+          submittedAt: new Date(),
+          verifiedAt: null,
+          verifiedBy: null,
+          rejectionReason: null
+        },
+        updatedAt: new Date()
+      };
+
+      const result = await collection.updateOne(
+        { _id: new ObjectId(userId) },
+        { $set: updateData }
+      );
+
+      if (result.matchedCount === 0) {
+        throw new Error('User not found');
+      }
+
+      Logger.success(`✅ Student verification submitted for user: ${userId} (Student ID: ${studentId})`);
+      return true;
+    } catch (error) {
+      Logger.error('Failed to submit student verification:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Verify student credentials (admin/superadmin only)
+   */
+  async verifyStudentCredentials(userId, verifiedBy, verified = true, rejectionReason = null) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.users || 'users');
+      const { ObjectId } = await import('mongodb');
+      
+      const updateData = {
+        'studentVerification.status': verified ? 'verified' : 'rejected',
+        'studentVerification.verifiedAt': new Date(),
+        'studentVerification.verifiedBy': verifiedBy,
+        'studentVerification.rejectionReason': rejectionReason || null,
+        updatedAt: new Date()
+      };
+
+      const result = await collection.updateOne(
+        { _id: new ObjectId(userId) },
+        { $set: updateData }
+      );
+
+      if (result.matchedCount === 0) {
+        throw new Error('User not found');
+      }
+
+      Logger.success(`✅ Student verification ${verified ? 'approved' : 'rejected'} for user: ${userId}`);
+      return true;
+    } catch (error) {
+      Logger.error('Failed to verify student credentials:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get users pending verification
+   */
+  async getPendingVerifications(limit = 50, skip = 0) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.users || 'users');
+      
+      const users = await collection
+        .find({ 'studentVerification.status': 'pending' })
+        .sort({ 'studentVerification.submittedAt': 1 })
+        .limit(limit)
+        .skip(skip)
+        .toArray();
+
+      return users.map(user => ({
+        ...user,
+        _id: user._id ? user._id.toString() : user._id
+      }));
+    } catch (error) {
+      Logger.error('Failed to get pending verifications:', error);
       throw error;
     }
   }

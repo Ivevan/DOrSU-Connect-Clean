@@ -34,6 +34,7 @@ import PreviewModal from '../../modals/PreviewModal';
 import BottomSheet from '../../components/common/BottomSheet';
 import MonthPickerModal from '../../modals/MonthPickerModal';
 import { useAuth } from '../../contexts/AuthContext';
+import Sidebar from '../../components/navigation/Sidebar';
 
 type RootStackParamList = {
   AdminDashboard: undefined;
@@ -54,6 +55,7 @@ const PostUpdate: React.FC = () => {
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const isPendingAuthorization = isAuthorized === null;
   const isMountedRef = useRef(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   // Memoize safe area insets to prevent recalculation during navigation
   const safeInsets = useMemo(() => ({
@@ -900,20 +902,18 @@ const PostUpdate: React.FC = () => {
       >
         <View style={styles.headerLeft}>
           <TouchableOpacity
-            onPress={() => {
-              if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
-                navigation.goBack();
-              } else {
-                (navigation as any).navigate('AdminDashboard');
-              }
-            }}
+            onPress={() => setIsSidebarOpen(true)}
             style={styles.backButton}
-            accessibilityLabel="Go back"
+            accessibilityLabel="Open sidebar"
             accessibilityRole="button"
             activeOpacity={0.7}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="arrow-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+            <View style={styles.customHamburger} pointerEvents="none">
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineLong, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+            </View>
           </TouchableOpacity>
         </View>
         <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]} numberOfLines={1} pointerEvents="none">Post Update</Text>
@@ -1451,6 +1451,13 @@ const PostUpdate: React.FC = () => {
           </View>
         </View>
       </BlurView>
+
+      {/* Sidebar Component */}
+      <Sidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        allowedRoles={['superadmin', 'admin', 'moderator']}
+      />
     </View>
   );
 };
@@ -1593,6 +1600,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,
+  },
+  customHamburger: {
+    width: 24,
+    height: 18,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  hamburgerLine: {
+    height: 2.5,
+    borderRadius: 2,
+  },
+  hamburgerLineShort: {
+    width: 18,
+  },
+  hamburgerLineLong: {
+    width: 24,
   },
   headerTitle: {
     fontSize: 17,

@@ -27,6 +27,7 @@ import { Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '../../contexts/AuthContext';
+import Sidebar from '../../components/navigation/Sidebar';
 
 type RootStackParamList = {
   ManageAccounts: undefined;
@@ -39,7 +40,7 @@ const ManageAccounts = () => {
   const { isDarkMode, theme } = useThemeValues();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isFocused = useIsFocused();
-  const { isLoading: authLoading, userRole, isAdmin, refreshUser, isAuthenticated } = useAuth();
+  const { isLoading: authLoading, userRole, isAdmin, isSuperAdmin, refreshUser, isAuthenticated, userName, userEmail } = useAuth();
   const [users, setUsers] = useState<BackendUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -49,6 +50,10 @@ const ManageAccounts = () => {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+  const [selectedRoleFilter, setSelectedRoleFilter] = useState<'superadmin' | 'admin' | 'moderator' | 'user' | null>(null);
+  const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
+  const [profileImageError, setProfileImageError] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Animated floating orb
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -107,6 +112,28 @@ const ManageAccounts = () => {
     };
   }, []);
 
+  // Load user profile picture
+  useEffect(() => {
+    let cancelled = false;
+    const loadUserPhoto = async () => {
+      try {
+        const userPhoto = await AsyncStorage.getItem('userPhoto');
+        if (!cancelled) {
+          setBackendUserPhoto(userPhoto);
+          setProfileImageError(false);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to load user photo:', error);
+        }
+      }
+    };
+    loadUserPhoto();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Check admin authorization (admin only)
   useEffect(() => {
     if (authLoading) return;
@@ -140,13 +167,34 @@ const ManageAccounts = () => {
     loadUsers(true);
   }, [loadUsers]);
 
-  const handleRoleChange = async (userId: string, newRole: 'user' | 'moderator' | 'admin') => {
+  const handleRoleChange = async (userId: string, newRole: 'user' | 'moderator' | 'admin' | 'superadmin') => {
     try {
       setUpdatingUserId(userId);
       setOpenRoleDropdownUserId(null); // Close dropdown
       
       // Get user info
       const user = users.find(u => u._id === userId);
+      if (newRole === 'superadmin' && !isSuperAdmin) {
+        Alert.alert('Access Denied', 'Only a superadmin can assign the Superadmin role.');
+        setUpdatingUserId(null);
+        return;
+      }
+      if (newRole === 'admin' && !isSuperAdmin) {
+        Alert.alert('Access Denied', 'Only a superadmin can assign the Admin role.');
+        setUpdatingUserId(null);
+        return;
+      }
+      if (user?.role === 'superadmin' && !isSuperAdmin) {
+        Alert.alert('Access Denied', 'Only a superadmin can modify another superadmin.');
+        setUpdatingUserId(null);
+        return;
+      }
+      // Only superadmins can modify existing admin accounts (backend enforces this at line 1061-1063)
+      if (user?.role === 'admin' && !isSuperAdmin) {
+        Alert.alert('Access Denied', 'Only a superadmin can modify an admin account.');
+        setUpdatingUserId(null);
+        return;
+      }
       const capabilities = getRoleCapabilities(newRole);
       const capabilitiesText = capabilities.join(', ');
       
@@ -186,7 +234,7 @@ const ManageAccounts = () => {
         return;
       }
       
-      // For admin and user roles, show confirmation with capabilities
+      // For admin (superadmin-only) and user roles, show confirmation with capabilities
       Alert.alert(
         'Confirm Role Change',
         `Assign "${getRoleLabel(newRole)}" role to ${user?.email || 'this user'}?\n\nThis will grant the following capabilities:\n${capabilities.map(cap => `• ${cap}`).join('\n')}\n\nContinue?`,
@@ -245,6 +293,8 @@ const ManageAccounts = () => {
 
   const getRoleLabel = (role: string) => {
     switch (role) {
+      case 'superadmin':
+        return 'Superadmin';
       case 'admin':
         return 'Admin';
       case 'moderator':
@@ -255,8 +305,10 @@ const ManageAccounts = () => {
   };
 
   // Role capabilities definition
-  const getRoleCapabilities = (role: 'user' | 'moderator' | 'admin'): string[] => {
+  const getRoleCapabilities = (role: 'user' | 'moderator' | 'admin' | 'superadmin'): string[] => {
     switch (role) {
+      case 'superadmin':
+        return ['All Access', 'Manage admins', 'Promote/demote admins', 'Security settings'];
       case 'admin':
         return ['All Access'];
       case 'moderator':
@@ -267,11 +319,17 @@ const ManageAccounts = () => {
     }
   };
 
-  const roleOptions: Array<{ key: 'user' | 'moderator' | 'admin'; label: string; capabilities: string[] }> = [
+  const roleOptions: Array<{ key: 'user' | 'moderator' | 'admin' | 'superadmin'; label: string; capabilities: string[] }> = [
     { key: 'user', label: 'User', capabilities: getRoleCapabilities('user') },
     { key: 'moderator', label: 'Moderator', capabilities: getRoleCapabilities('moderator') },
     { key: 'admin', label: 'Admin', capabilities: getRoleCapabilities('admin') },
+    { key: 'superadmin', label: 'Superadmin', capabilities: getRoleCapabilities('superadmin') },
   ];
+  // Non-superadmin Admins can only assign User/Moderator; only Superadmin can see Admin/Superadmin options
+  const visibleRoleOptions = roleOptions.filter(option => {
+    if (isSuperAdmin) return true;
+    return option.key === 'user' || option.key === 'moderator';
+  });
 
   const getUserInitials = (user: BackendUser) => {
     // Priority: username -> email -> default
@@ -299,22 +357,57 @@ const ManageAccounts = () => {
     return 'U';
   };
 
-  // Filter users based on search query
+  // Get current user's initials for profile icon
+  const getCurrentUserInitials = () => {
+    if (userName && userName.trim()) {
+      const parts = userName.trim().split(' ').filter(p => p.length > 0);
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      }
+      if (parts[0] && parts[0].length >= 2) {
+        return parts[0].substring(0, 2).toUpperCase();
+      }
+      if (parts[0] && parts[0].length === 1) {
+        return (parts[0][0] + parts[0][0]).toUpperCase();
+      }
+    }
+    if (userEmail && userEmail.trim()) {
+      const emailPrefix = userEmail.trim().split('@')[0];
+      if (emailPrefix.length >= 2) {
+        return emailPrefix.substring(0, 2).toUpperCase();
+      }
+      if (emailPrefix.length === 1) {
+        return (emailPrefix[0] + emailPrefix[0]).toUpperCase();
+      }
+    }
+    return 'U';
+  };
+
+  // Filter users based on search query and role filter
   const filteredUsers = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return users;
+    let filtered = users;
+    
+    // Apply role filter
+    if (selectedRoleFilter) {
+      filtered = filtered.filter(user => (user.role || 'user') === selectedRoleFilter);
     }
     
-    const query = searchQuery.trim().toLowerCase();
-    return users.filter(user => {
-      const emailMatch = user.email?.toLowerCase().includes(query) || false;
-      const usernameMatch = user.username?.toLowerCase().includes(query) || false;
-      return emailMatch || usernameMatch;
-    });
-  }, [users, searchQuery]);
+    // Apply search query filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter(user => {
+        const emailMatch = user.email?.toLowerCase().includes(query) || false;
+        const usernameMatch = user.username?.toLowerCase().includes(query) || false;
+        return emailMatch || usernameMatch;
+      });
+    }
+    
+    return filtered;
+  }, [users, searchQuery, selectedRoleFilter]);
 
   // Group filtered users by role
   const groupedUsers = useMemo(() => ({
+    superadmin: filteredUsers.filter(u => (u.role || 'user') === 'superadmin'),
     admin: filteredUsers.filter(u => (u.role || 'user') === 'admin'),
     moderator: filteredUsers.filter(u => (u.role || 'user') === 'moderator'),
     user: filteredUsers.filter(u => (u.role || 'user') === 'user'),
@@ -322,6 +415,8 @@ const ManageAccounts = () => {
 
   const getSectionColor = (role: string): string => {
     switch (role) {
+      case 'superadmin':
+        return '#7C3AED';
       case 'admin':
         return '#EF4444';
       case 'moderator':
@@ -336,7 +431,10 @@ const ManageAccounts = () => {
   const [buttonLayouts, setButtonLayouts] = useState<Record<string, { x: number; y: number; width: number; height: number }>>({});
 
   // Render table row component to avoid duplication
-  const renderUserRow = (user: BackendUser, role: string, index: number) => (
+  const renderUserRow = (user: BackendUser, role: string, index: number) => {
+    const isImmutableForAdmin = !isSuperAdmin && (role === 'admin' || role === 'superadmin');
+
+    return (
     <BlurView
       key={user._id}
       intensity={Platform.OS === 'ios' ? 50 : 40}
@@ -419,14 +517,18 @@ const ManageAccounts = () => {
                 {
                   backgroundColor: getSectionColor(user.role || 'user'),
                   borderColor: getSectionColor(user.role || 'user'),
-                  opacity: updatingUserId === user._id ? 0.5 : 1,
+                  opacity: updatingUserId === user._id || isImmutableForAdmin ? 0.5 : 1,
                 },
               ]}
               onPress={() => {
+                if (isImmutableForAdmin) {
+                  Alert.alert('Access Denied', 'Only a superadmin can change the role of an Admin or Superadmin.');
+                  return;
+                }
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setOpenRoleDropdownUserId(openRoleDropdownUserId === user._id ? null : user._id);
               }}
-              disabled={updatingUserId === user._id}
+              disabled={updatingUserId === user._id || isImmutableForAdmin}
               activeOpacity={0.7}
             >
               {updatingUserId === user._id ? (
@@ -478,9 +580,9 @@ const ManageAccounts = () => {
                       }
                     ]}
                   >
-                    {roleOptions.map((option, index) => {
+                    {visibleRoleOptions.map((option, index) => {
                       const isSelected = (user.role || 'user') === option.key;
-                      const isLast = index === roleOptions.length - 1;
+                      const isLast = index === visibleRoleOptions.length - 1;
                       return (
                         <TouchableOpacity
                           key={option.key}
@@ -533,6 +635,7 @@ const ManageAccounts = () => {
       </View>
     </BlurView>
   );
+  };
 
   // Render table header component to avoid duplication
   const renderTableHeader = () => (
@@ -570,7 +673,7 @@ const ManageAccounts = () => {
   );
 
   // Render section component to avoid duplication
-  const renderSection = (role: 'admin' | 'moderator' | 'user', users: BackendUser[]) => {
+  const renderSection = (role: 'superadmin' | 'admin' | 'moderator' | 'user', users: BackendUser[]) => {
     if (users.length === 0) return null;
 
     return (
@@ -697,14 +800,18 @@ const ManageAccounts = () => {
       }]}>
         <View style={styles.headerLeft}>
           <TouchableOpacity 
-            onPress={() => navigation.goBack()} 
+            onPress={() => setIsSidebarOpen(true)} 
             style={styles.menuButton}
             activeOpacity={0.7}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            accessibilityLabel="Go back"
+            accessibilityLabel="Open sidebar"
             accessibilityRole="button"
           >
-            <Ionicons name="arrow-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+            <View style={styles.customHamburger} pointerEvents="none">
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineLong, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+            </View>
           </TouchableOpacity>
         </View>
         <Text 
@@ -722,9 +829,18 @@ const ManageAccounts = () => {
             accessibilityLabel="Admin profile - Go to settings"
             accessibilityRole="button"
           >
-            <View style={[styles.profileIconCircle, { backgroundColor: theme.colors.accent }]} pointerEvents="none">
-              <Text style={[styles.profileInitials, { fontSize: theme.fontSize.scaleSize(13) }]}>AD</Text>
-            </View>
+            {backendUserPhoto && !profileImageError ? (
+              <Image 
+                source={{ uri: backendUserPhoto }} 
+                style={styles.profileIconCircle}
+                resizeMode="cover"
+                onError={() => setProfileImageError(true)}
+              />
+            ) : (
+              <View style={[styles.profileIconCircle, { backgroundColor: theme.colors.accent }]} pointerEvents="none">
+                <Text style={[styles.profileInitials, { fontSize: theme.fontSize.scaleSize(13) }]}>{getCurrentUserInitials()}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -797,14 +913,96 @@ const ManageAccounts = () => {
                 </BlurView>
               </View>
 
-              {/* Search Results Count - Show when searching */}
-              {searchQuery.trim().length > 0 && (
+              {/* Legend Buttons */}
+              <View style={styles.legendSection}>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.legendContainer}
+                >
+                  <TouchableOpacity
+                    style={[
+                      styles.legendButton,
+                      {
+                        backgroundColor: selectedRoleFilter === null 
+                          ? (isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)')
+                          : 'transparent',
+                        borderColor: selectedRoleFilter === null 
+                          ? (isDarkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)')
+                          : (isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'),
+                      }
+                    ]}
+                    onPress={() => {
+                      setSelectedRoleFilter(null);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.legendButtonText,
+                      { 
+                        color: selectedRoleFilter === null 
+                          ? theme.colors.text 
+                          : theme.colors.textMuted,
+                        fontSize: theme.fontSize.scaleSize(11)
+                      }
+                    ]}>
+                      All
+                    </Text>
+                  </TouchableOpacity>
+
+                  {roleOptions.map((option) => {
+                    const isSelected = selectedRoleFilter === option.key;
+                    const roleColor = getSectionColor(option.key);
+                    
+                    return (
+                      <TouchableOpacity
+                        key={option.key}
+                        style={[
+                          styles.legendButton,
+                          {
+                            backgroundColor: isSelected 
+                              ? roleColor + '20'
+                              : 'transparent',
+                            borderColor: isSelected 
+                              ? roleColor 
+                              : (isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'),
+                            borderWidth: isSelected ? 1.5 : 1,
+                          }
+                        ]}
+                        onPress={() => {
+                          setSelectedRoleFilter(isSelected ? null : option.key);
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[styles.legendColorDot, { backgroundColor: roleColor }]} />
+                        <Text style={[
+                          styles.legendButtonText,
+                          { 
+                            color: isSelected ? roleColor : theme.colors.textMuted,
+                            fontSize: theme.fontSize.scaleSize(11),
+                            fontWeight: isSelected ? '700' : '500',
+                          }
+                        ]}>
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              {/* Search Results Count - Show when searching or filtering */}
+              {(searchQuery.trim().length > 0 || selectedRoleFilter) && (
                 <View style={styles.searchResultsHeader}>
                   <Text style={[styles.searchResultsCount, { 
                     color: theme.colors.textMuted, 
                     fontSize: theme.fontSize.scaleSize(12) 
                   }]}>
-                    {filteredUsers.length} {filteredUsers.length === 1 ? 'result' : 'results'} found for "{searchQuery}"
+                    {filteredUsers.length} {filteredUsers.length === 1 ? 'result' : 'results'} found
+                    {searchQuery.trim().length > 0 && ` for "${searchQuery}"`}
+                    {selectedRoleFilter && ` (${getRoleLabel(selectedRoleFilter)} only)`}
                   </Text>
                 </View>
               )}
@@ -821,6 +1019,7 @@ const ManageAccounts = () => {
               )}
 
               {/* Render sections */}
+              {renderSection('superadmin', groupedUsers.superadmin)}
               {renderSection('admin', groupedUsers.admin)}
               {renderSection('moderator', groupedUsers.moderator)}
               {renderSection('user', groupedUsers.user)}
@@ -837,6 +1036,13 @@ const ManageAccounts = () => {
           )}
         </ScrollView>
       </View>
+
+      {/* Sidebar Component */}
+      <Sidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        allowedRoles={['superadmin', 'admin', 'moderator']}
+      />
     </View>
   );
 };
@@ -894,6 +1100,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 12,
   },
+  customHamburger: {
+    width: 24,
+    height: 18,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  hamburgerLine: {
+    height: 2.5,
+    borderRadius: 2,
+  },
+  hamburgerLineShort: {
+    width: 18,
+  },
+  hamburgerLineLong: {
+    width: 24,
+  },
   headerTitle: {
     fontSize: 17,
     fontWeight: '600',
@@ -927,6 +1149,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'transparent',
     pointerEvents: 'none',
+    overflow: 'hidden',
   },
   profileInitials: {
     fontSize: 13,
@@ -1223,6 +1446,36 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     fontStyle: 'italic',
     opacity: 0.8,
+  },
+  legendSection: {
+    marginBottom: 16,
+  },
+  legendContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  legendButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 6,
+    minHeight: 36,
+  },
+  legendColorDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendButtonText: {
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
 });
 

@@ -9,7 +9,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Image, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CalendarGrid from '../../components/common/CalendarGrid';
@@ -54,7 +54,7 @@ const AdminCalendar = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isFocused = useIsFocused();
   const { isDarkMode, theme: t } = useThemeValues();
-  const { isLoading: authLoading, userRole, isAdmin, isAuthenticated } = useAuth();
+  const { isLoading: authLoading, userRole, isAdmin, isAuthenticated, userName, userEmail } = useAuth();
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const isPendingAuthorization = isAuthorized === null;
   const scrollRef = useRef<ScrollView>(null);
@@ -64,6 +64,7 @@ const AdminCalendar = () => {
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
+  const [profileImageError, setProfileImageError] = useState(false);
   
   // Background animation value (Copilot-style animated orb)
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -207,6 +208,32 @@ const AdminCalendar = () => {
     
     setIsAuthorized(true);
   }, [authLoading, isAdmin, userRole, navigation, isAuthenticated, isFocused]);
+
+  // Get current user's initials for profile icon
+  const getCurrentUserInitials = () => {
+    if (userName && userName.trim()) {
+      const parts = userName.trim().split(' ').filter(p => p.length > 0);
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      }
+      if (parts[0] && parts[0].length >= 2) {
+        return parts[0].substring(0, 2).toUpperCase();
+      }
+      if (parts[0] && parts[0].length === 1) {
+        return (parts[0][0] + parts[0][0]).toUpperCase();
+      }
+    }
+    if (userEmail && userEmail.trim()) {
+      const emailPrefix = userEmail.trim().split('@')[0];
+      if (emailPrefix.length >= 2) {
+        return emailPrefix.substring(0, 2).toUpperCase();
+      }
+      if (emailPrefix.length === 1) {
+        return (emailPrefix[0] + emailPrefix[0]).toUpperCase();
+      }
+    }
+    return 'U';
+  };
 
   // Animate floating background orb (Copilot-style)
   useEffect(() => {
@@ -1010,9 +1037,18 @@ const AdminCalendar = () => {
             accessibilityLabel="Admin profile - Go to settings"
             accessibilityRole="button"
           >
-            <View style={[styles.profileIconCircle, { backgroundColor: t.colors.accent }]} pointerEvents="none">
-              <Text style={[styles.profileInitials, { fontSize: t.fontSize.scaleSize(13) }]}>AD</Text>
-            </View>
+            {backendUserPhoto && !profileImageError ? (
+              <Image 
+                source={{ uri: backendUserPhoto }} 
+                style={styles.profileIconCircle}
+                resizeMode="cover"
+                onError={() => setProfileImageError(true)}
+              />
+            ) : (
+              <View style={[styles.profileIconCircle, { backgroundColor: t.colors.accent }]} pointerEvents="none">
+                <Text style={[styles.profileInitials, { fontSize: t.fontSize.scaleSize(13) }]}>{getCurrentUserInitials()}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -1354,7 +1390,7 @@ const AdminCalendar = () => {
       <Sidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
-        allowedRoles={['admin', 'moderator']}
+        allowedRoles={['superadmin', 'admin', 'moderator']}
       />
     </View>
     </GestureHandlerRootView>
@@ -1447,6 +1483,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'transparent', // Will be set dynamically via theme
     pointerEvents: 'none',
+    overflow: 'hidden',
   },
   profileInitials: {
     fontSize: 13,

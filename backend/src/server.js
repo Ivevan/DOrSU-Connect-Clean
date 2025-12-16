@@ -65,6 +65,9 @@ const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
 **Vision:** A university of excellence, innovation and inclusion
 **President:** Dr. Roy G. Ponce`;
 
+const ELEVATED_ROLES = ['admin', 'superadmin'];
+const hasAdminAccess = (role) => ELEVATED_ROLES.includes(role);
+
 async function initializeServices() {
   try {
     mongoService = getMongoDBService();
@@ -725,10 +728,204 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 404, { error: 'User not found' });
         return;
       }
-      sendJson(res, 200, { success: true, user });
+      
+      // Include verification status
+      const verificationStatus = user.studentVerification?.status || 'pending';
+      const isVerified = verificationStatus === 'verified';
+      
+      const userResponse = {
+        ...user,
+        isVerified,
+        verificationStatus
+      };
+      
+      sendJson(res, 200, { success: true, user: userResponse });
     } catch (error) {
       Logger.error('Get user error:', error.message);
       sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+
+  // Verify student credentials (public endpoint - before registration)
+  if (method === 'POST' && url === '/api/auth/verify-student-credentials') {
+    if (!mongoService) {
+      sendJson(res, 503, { error: 'Database service not available' });
+      return;
+    }
+
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { studentId, fullName } = JSON.parse(body || '{}');
+
+        if (!studentId || !fullName) {
+          sendJson(res, 400, { error: 'Student ID and Full Name are required' });
+          return;
+        }
+
+        // Validate Student ID format (e.g., 2022-0987)
+        const studentIdPattern = /^\d{4}-\d{4}$/;
+        if (!studentIdPattern.test(studentId.trim())) {
+          sendJson(res, 400, { error: 'Invalid Student ID format. Expected format: YYYY-NNNN (e.g., 2022-0987)' });
+          return;
+        }
+
+        // Validate name has at least 2 words
+        const nameParts = fullName.trim().split(/\s+/);
+        if (nameParts.length < 2) {
+          sendJson(res, 400, { error: 'Please provide your full name (Last Name and First Name)' });
+          return;
+        }
+
+        // Verify against database
+        const verification = await mongoService.verifyStudentCredentialsInDB(studentId.trim(), fullName.trim());
+        
+        if (verification.valid) {
+          sendJson(res, 200, { 
+            success: true, 
+            valid: true,
+            requiresManualVerification: verification.requiresManualVerification || false
+          });
+        } else {
+          sendJson(res, 200, { 
+            success: true, 
+            valid: false,
+            reason: verification.reason || 'Student credentials not found in database'
+          });
+        }
+      } catch (error) {
+        Logger.error('Verify student credentials error:', error.message);
+        sendJson(res, 500, { error: error.message || 'Failed to verify student credentials' });
+      }
+    });
+    return;
+  }
+
+  // Submit student verification (authenticated endpoint)
+  if (method === 'POST' && url === '/api/auth/submit-student-verification') {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { studentId, fullName } = JSON.parse(body || '{}');
+
+        if (!studentId || !fullName) {
+          sendJson(res, 400, { error: 'Student ID and Full Name are required' });
+          return;
+        }
+
+        // Validate Student ID format
+        const studentIdPattern = /^\d{4}-\d{4}$/;
+        if (!studentIdPattern.test(studentId.trim())) {
+          sendJson(res, 400, { error: 'Invalid Student ID format. Expected format: YYYY-NNNN' });
+          return;
+        }
+
+        // Validate name has at least 2 words
+        const nameParts = fullName.trim().split(/\s+/);
+        if (nameParts.length < 2) {
+          sendJson(res, 400, { error: 'Please provide your full name (Last Name and First Name)' });
+          return;
+        }
+
+        await mongoService.submitStudentVerification(auth.userId, studentId.trim(), fullName.trim());
+        sendJson(res, 200, { success: true, message: 'Student verification submitted successfully' });
+      } catch (error) {
+        Logger.error('Submit student verification error:', error.message);
+        sendJson(res, 500, { error: error.message || 'Failed to submit student verification' });
+      }
+    });
+    return;
+  }
+
+  // Verify student (admin/superadmin only)
+  if (method === 'POST' && url === '/api/auth/verify-student') {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+
+    // Check if user is admin or superadmin
+    const user = await mongoService.findUserById(auth.userId);
+    if (!user || !hasAdminAccess(user.role)) {
+      sendJson(res, 403, { error: 'Forbidden: Admin access required' });
+      return;
+    }
+
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { userId, verified, rejectionReason } = JSON.parse(body || '{}');
+
+        if (!userId) {
+          sendJson(res, 400, { error: 'User ID is required' });
+          return;
+        }
+
+        await mongoService.verifyStudentCredentials(
+          userId, 
+          auth.userId, 
+          verified !== false, 
+          rejectionReason || null
+        );
+        sendJson(res, 200, { success: true, message: `Student verification ${verified !== false ? 'approved' : 'rejected'}` });
+      } catch (error) {
+        Logger.error('Verify student error:', error.message);
+        sendJson(res, 500, { error: error.message || 'Failed to verify student' });
+      }
+    });
+    return;
+  }
+
+  // Get pending verifications (admin/superadmin only)
+  if (method === 'GET' && url === '/api/auth/pending-verifications') {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+
+    // Check if user is admin or superadmin
+    const user = await mongoService.findUserById(auth.userId);
+    if (!user || !hasAdminAccess(user.role)) {
+      sendJson(res, 403, { error: 'Forbidden: Admin access required' });
+      return;
+    }
+
+    try {
+      const limit = parseInt(req.url.split('?')[1]?.split('&').find(p => p.startsWith('limit='))?.split('=')[1] || '50', 10);
+      const skip = parseInt(req.url.split('?')[1]?.split('&').find(p => p.startsWith('skip='))?.split('=')[1] || '0', 10);
+      
+      const users = await mongoService.getPendingVerifications(limit, skip);
+      sendJson(res, 200, { success: true, count: users.length, users });
+    } catch (error) {
+      Logger.error('Get pending verifications error:', error.message);
+      sendJson(res, 500, { error: error.message || 'Failed to get pending verifications' });
     }
     return;
   }
@@ -913,7 +1110,7 @@ const server = http.createServer(async (req, res) => {
     if (!isAdmin) {
       // Check if user has admin role in database
       const user = await mongoService.findUserById(auth.userId);
-      if (!user || user.role !== 'admin') {
+      if (!user || !hasAdminAccess(user.role)) {
         sendJson(res, 403, { error: 'Forbidden: Admin access required' });
         return;
       }
@@ -950,7 +1147,7 @@ const server = http.createServer(async (req, res) => {
     if (!isAdmin) {
       // Check if user has admin role in database
       const user = await mongoService.findUserById(auth.userId);
-      if (!user || user.role !== 'admin') {
+      if (!user || !hasAdminAccess(user.role)) {
         sendJson(res, 403, { error: 'Forbidden: Admin access required' });
         return;
       }
@@ -984,7 +1181,7 @@ const server = http.createServer(async (req, res) => {
     let isAdmin = auth.isAdmin;
     if (!isAdmin) {
       const user = await mongoService.findUserById(auth.userId);
-      isAdmin = user && user.role === 'admin';
+      isAdmin = user && hasAdminAccess(user.role);
     }
 
     if (!isAdmin) {
@@ -1025,7 +1222,7 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         
-        const validRoles = ['user', 'moderator', 'admin'];
+        const validRoles = ['user', 'moderator', 'admin', 'superadmin'];
         if (!validRoles.includes(role)) {
           sendJson(res, 400, { error: `Invalid role. Must be one of: ${validRoles.join(', ')}` });
           return;
@@ -1033,9 +1230,32 @@ const server = http.createServer(async (req, res) => {
         
         Logger.info(`Attempting to update role for userId: ${userId} to role: ${role}`);
         
-        // Get current user role before update
+        // Get requester and target roles for authorization checks
+        const requesterRole = auth.role || (await mongoService.findUserById(auth.userId))?.role || 'user';
         const targetUser = await mongoService.findUserById(userId);
         const oldRole = targetUser?.role || 'user';
+
+        // Only superadmins can assign or change superadmin roles
+        if (role === 'superadmin' && requesterRole !== 'superadmin') {
+          sendJson(res, 403, { error: 'Forbidden: Superadmin role can only be assigned by a superadmin' });
+          return;
+        }
+        if (targetUser?.role === 'superadmin' && requesterRole !== 'superadmin') {
+          sendJson(res, 403, { error: 'Forbidden: Only a superadmin can modify another superadmin' });
+          return;
+        }
+
+        // Admins can ONLY assign User or Moderator roles (never Admin/Superadmin)
+        if (requesterRole === 'admin' && (role === 'admin' || role === 'superadmin')) {
+          sendJson(res, 403, { error: 'Forbidden: Admins may only assign User or Moderator roles' });
+          return;
+        }
+
+        // Only superadmins can modify existing admins (promote/demote/change)
+        if (targetUser?.role === 'admin' && requesterRole !== 'superadmin') {
+          sendJson(res, 403, { error: 'Forbidden: Only a superadmin can modify an admin account' });
+          return;
+        }
         
         const result = await mongoService.updateUserRole(userId, role);
         
@@ -1147,7 +1367,7 @@ const server = http.createServer(async (req, res) => {
     let isAdmin = auth.isAdmin;
     if (!isAdmin) {
       const user = await mongoService.findUserById(auth.userId);
-      isAdmin = user && user.role === 'admin';
+      isAdmin = user && hasAdminAccess(user.role);
     }
 
     try {
@@ -1211,7 +1431,7 @@ const server = http.createServer(async (req, res) => {
     let isAdmin = auth.isAdmin;
     if (!isAdmin) {
       const user = await mongoService.findUserById(auth.userId);
-      isAdmin = user && user.role === 'admin';
+      isAdmin = user && hasAdminAccess(user.role);
     }
 
     if (!isAdmin) {
@@ -1255,7 +1475,7 @@ const server = http.createServer(async (req, res) => {
     let isAdmin = auth.isAdmin;
     if (!isAdmin) {
       const user = await mongoService.findUserById(auth.userId);
-      isAdmin = user && user.role === 'admin';
+      isAdmin = user && hasAdminAccess(user.role);
     }
 
     if (!isAdmin) {

@@ -156,12 +156,15 @@ const GetStarted = () => {
               const data = await resp.json();
               if (resp.ok && data?.token && data?.user?.id) {
                 // Batch save backend token data
-                const userRole = data.user?.role || 'user';
+                const userRole = (data.user?.role || 'user') as 'user' | 'moderator' | 'admin' | 'superadmin';
+                const adminFlag = userRole === 'admin' || userRole === 'superadmin';
+                const superAdminFlag = userRole === 'superadmin';
                 const backendUpdates: Array<[string, string]> = [
                   ['userToken', data.token],
                   ['userId', String(data.user.id)],
                   ['userRole', userRole],
-                  ['isAdmin', userRole === 'admin' ? 'true' : 'false'],
+                  ['isAdmin', adminFlag ? 'true' : 'false'],
+                  ['isSuperAdmin', superAdminFlag ? 'true' : 'false'],
                 ];
                 if (data.user.email) {
                   backendUpdates.push(['userEmail', data.user.email]);
@@ -302,8 +305,8 @@ const GetStarted = () => {
             </TouchableOpacity>
           </Animated.View>
           
-          {/* Google Sign-In Button */}
-          <Animated.View style={{ transform: [{ scale: googleButtonScale }] }}>
+          {/* Google Sign-In Button - Temporarily Removed */}
+          {/* <Animated.View style={{ transform: [{ scale: googleButtonScale }] }}>
             <TouchableOpacity 
               style={[styles.googleButton, (isGoogleLoading || !isOnline) && styles.actionButtonDisabled]}
               onPress={handleGoogleSignIn}
@@ -336,7 +339,7 @@ const GetStarted = () => {
                 </>
               )}
             </TouchableOpacity>
-          </Animated.View>
+          </Animated.View> */}
         </View>
 
         {/* University Branding Section */}

@@ -46,6 +46,8 @@ const CreateAccount = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [studentId, setStudentId] = useState('');
+  const [fullName, setFullName] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -54,16 +56,23 @@ const CreateAccount = () => {
   const [isSendingVerification, setIsSendingVerification] = useState(false);
   const [emailVerificationStatus, setEmailVerificationStatus] = useState<'idle' | 'pending' | 'verified'>('idle');
   const [emailVerificationMessage, setEmailVerificationMessage] = useState('');
-  const [showNameFields, setShowNameFields] = useState(false);
+  const [userType, setUserType] = useState<'faculty' | 'student' | null>(null); // Track user type selection
+  const [studentVerified, setStudentVerified] = useState(false); // Track if student credentials are verified
+  const [isVerifyingStudent, setIsVerifyingStudent] = useState(false);
+  const [showEmailFields, setShowEmailFields] = useState(false); // Show email/password fields after student verification
   const [firebaseUser, setFirebaseUser] = useState<any>(null);
-  const [errors, setErrors] = useState({ email: '', password: '', confirmPassword: '', firstName: '', lastName: '', general: '' });
+  const [errors, setErrors] = useState({ email: '', password: '', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: '' });
   
   // Input focus states
   const emailFocus = useRef(new Animated.Value(0)).current;
   const passwordFocus = useRef(new Animated.Value(0)).current;
   const confirmPasswordFocus = useRef(new Animated.Value(0)).current;
+  const studentIdFocus = useRef(new Animated.Value(0)).current;
+  const fullNameFocus = useRef(new Animated.Value(0)).current;
   const firstNameFocus = useRef(new Animated.Value(0)).current;
   const lastNameFocus = useRef(new Animated.Value(0)).current;
+  const nameSectionOpacity = useRef(new Animated.Value(0)).current;
+  const nameSectionTranslateY = useRef(new Animated.Value(20)).current;
 
   // Handle back button/gesture to navigate to GetStarted
   useFocusEffect(
@@ -118,10 +127,21 @@ const CreateAccount = () => {
       return 'Please enter a valid email address';
     }
     const emailDomain = value.toLowerCase().split('@')[1];
-    const allowedDomains = ['dorsu.edu.ph', 'gmail.com', 'yahoo.com', 'outlook.com', 'ymail.com', 'hotmail.com'];
-    if (!emailDomain || !allowedDomains.includes(emailDomain)) {
-      return 'Only @dorsu.edu.ph, @gmail.com, @yahoo.com, @outlook.com, @ymail.com, and @hotmail.com addresses are supported';
+    
+    // Faculty accounts must use school email only
+    if (userType === 'faculty') {
+      const schoolDomains = ['dorsu.edu.ph'];
+      if (!emailDomain || !schoolDomains.includes(emailDomain)) {
+        return 'Faculty accounts must use a school email address (@dorsu.edu.ph)';
+      }
+    } else {
+      // Student accounts can use multiple domains
+      const allowedDomains = ['dorsu.edu.ph', 'gmail.com', 'yahoo.com', 'outlook.com', 'ymail.com', 'hotmail.com'];
+      if (!emailDomain || !allowedDomains.includes(emailDomain)) {
+        return 'Only @dorsu.edu.ph, @gmail.com, @yahoo.com, @outlook.com, @ymail.com, and @hotmail.com addresses are supported';
+      }
     }
+    
     if (TEMP_EMAIL_DOMAINS.includes(emailDomain)) {
       return 'Temporary emails not allowed';
     }
@@ -203,9 +223,6 @@ const CreateAccount = () => {
           // Update firebaseUser state with verified user
           setFirebaseUser(finalUser);
           
-          // Always show name fields when verified
-          setShowNameFields(true);
-          
           // If verification was just detected, provide haptic feedback and clear any errors
           if (wasPending) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -218,7 +235,6 @@ const CreateAccount = () => {
           if (emailVerificationStatus !== 'pending') {
             setEmailVerificationStatus('pending');
             setEmailVerificationMessage('Waiting for email verification. Please check your inbox and click the verification link.');
-            setShowNameFields(false);
           }
           return false;
         }
@@ -235,16 +251,119 @@ const CreateAccount = () => {
     [email, firebaseUser, isOnline, emailVerificationStatus]
   );
 
-  // Complete account creation after email verification and name entry
+  // Validate student credentials format
+  const validateStudentCredentialsFormat = () => {
+    const newErrors: { studentId: string; fullName: string } = { studentId: '', fullName: '' };
+    let hasErrors = false;
+
+    // Validate Student ID format (e.g., 2022-0987)
+    const studentIdPattern = /^\d{4}-\d{4}$/;
+    if (!studentId.trim()) {
+      newErrors.studentId = 'Student ID is required';
+      hasErrors = true;
+    } else if (!studentIdPattern.test(studentId.trim())) {
+      newErrors.studentId = 'Invalid format. Expected: YYYY-NNNN (e.g., 2022-0987)';
+      hasErrors = true;
+    }
+
+    // Validate Full Name (must have at least 2 words - lastName & firstName)
+    const nameParts = fullName.trim().split(/\s+/);
+    if (!fullName.trim()) {
+      newErrors.fullName = 'Full Name is required';
+      hasErrors = true;
+    } else if (nameParts.length < 2) {
+      newErrors.fullName = 'Please provide your full name (Last Name and First Name)';
+      hasErrors = true;
+    }
+
+    return { hasErrors, errors: newErrors };
+  };
+
+  // Verify student credentials against database
+  const verifyStudentCredentials = async () => {
+    // Validate format first
+    const validation = validateStudentCredentialsFormat();
+    if (validation.hasErrors) {
+      setErrors(prev => ({ ...prev, ...validation.errors }));
+      return;
+    }
+
+    try {
+      setIsVerifyingStudent(true);
+      setErrors(prev => ({ ...prev, studentId: '', fullName: '', general: '' }));
+
+      // Call backend to verify student credentials
+      const response = await fetch(`${API_BASE_URL}/api/auth/verify-student-credentials`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          studentId: studentId.trim(),
+          fullName: fullName.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to verify student credentials');
+      }
+
+      if (data.valid) {
+        setStudentVerified(true);
+        setShowEmailFields(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        setErrors(prev => ({ 
+          ...prev, 
+          general: data.reason || 'Student credentials not found. Please check your Student ID and Name.' 
+        }));
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    } catch (error: any) {
+      setErrors(prev => ({ 
+        ...prev, 
+        general: error.message || 'Failed to verify student credentials. Please try again.' 
+      }));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsVerifyingStudent(false);
+    }
+  };
+
+  // Complete account creation after email verification
   const completeAccountCreation = useCallback(async () => {
     if (!firebaseUser || emailVerificationStatus !== 'verified') return;
+    // For students, require verification; for faculty, skip verification
+    if (userType === 'student' && !studentVerified) return;
     
     try {
       setIsLoading(true);
       
-      // Use provided names or fallback to email username
-      const finalFirstName = firstName.trim() || email.split('@')[0].charAt(0).toUpperCase() + email.split('@')[0].slice(1);
-      const finalLastName = lastName.trim() || '';
+      // Use provided firstName/lastName if available, otherwise parse from fullName or use email username
+      let finalFirstName = firstName.trim();
+      let finalLastName = lastName.trim();
+      
+      // If firstName/lastName not provided, try to parse from fullName (for students)
+      if (!finalFirstName && !finalLastName && fullName.trim()) {
+        const nameParts = fullName.trim().split(/\s+/);
+        if (nameParts.length >= 2) {
+          finalFirstName = nameParts[nameParts.length - 1];
+          finalLastName = nameParts.slice(0, -1).join(' ');
+        } else {
+          finalFirstName = fullName.trim();
+          finalLastName = '';
+        }
+      }
+      
+      // If still no name, use email username as fallback
+      if (!finalFirstName && !finalLastName) {
+        const emailUsername = email.split('@')[0];
+        finalFirstName = emailUsername.charAt(0).toUpperCase() + emailUsername.slice(1);
+        finalLastName = '';
+      }
+      
       const displayName = finalLastName 
         ? `${finalFirstName} ${finalLastName}`.trim()
         : finalFirstName;
@@ -282,17 +401,41 @@ const CreateAccount = () => {
       if (!response.ok) {
         throw new Error(data.error || 'Failed to sync account with server');
       }
+
+      // Submit student verification credentials (only for students)
+      const userId = data.user?.id || firebaseUser.uid;
+      if (userType === 'student') {
+        const verificationResponse = await fetch(`${API_BASE_URL}/api/auth/submit-student-verification`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${data.token || idToken}`,
+          },
+          body: JSON.stringify({
+            studentId: studentId.trim(),
+            fullName: fullName.trim(),
+          }),
+        });
+
+        if (!verificationResponse.ok) {
+          const verificationError = await verificationResponse.json();
+          throw new Error(verificationError.error || 'Failed to submit student verification');
+        }
+      }
       
       // Store user data locally
-      const userRole = data.user?.role || 'user';
+      const userRole = (data.user?.role || 'user') as 'user' | 'moderator' | 'admin' | 'superadmin';
+      const adminFlag = userRole === 'admin' || userRole === 'superadmin';
+      const superAdminFlag = userRole === 'superadmin';
       await AsyncStorage.setItem('userToken', data.token || idToken);
       await AsyncStorage.setItem('userEmail', firebaseUser.email || email);
       await AsyncStorage.setItem('userName', displayName);
       await AsyncStorage.setItem('userFirstName', finalFirstName);
       await AsyncStorage.setItem('userLastName', finalLastName);
-      await AsyncStorage.setItem('userId', data.user?.id || firebaseUser.uid);
+      await AsyncStorage.setItem('userId', userId);
       await AsyncStorage.setItem('userRole', userRole);
-      await AsyncStorage.setItem('isAdmin', userRole === 'admin' ? 'true' : 'false');
+      await AsyncStorage.setItem('isAdmin', adminFlag ? 'true' : 'false');
+      await AsyncStorage.setItem('isSuperAdmin', superAdminFlag ? 'true' : 'false');
       await AsyncStorage.setItem('authProvider', 'email');
       
       setIsLoading(false);
@@ -304,27 +447,16 @@ const CreateAccount = () => {
       setIsLoading(false);
       setErrors(prev => ({ ...prev, general: error.message || 'Failed to complete account creation' }));
     }
-  }, [firebaseUser, email, emailVerificationStatus, firstName, lastName, navigation]);
+  }, [firebaseUser, email, emailVerificationStatus, studentId, fullName, studentVerified, userType, navigation]);
 
-  // When email is verified, show name fields instead of completing immediately
+  // When email is verified, complete account creation
   useEffect(() => {
-    if (emailVerificationStatus === 'verified' && firebaseUser) {
-      if (!showNameFields) {
-        setShowNameFields(true);
-        setEmailVerificationMessage('✅ Email verified successfully! Please enter your name (optional) to complete your account.');
-      }
-    } else if (emailVerificationStatus === 'pending') {
-      // Keep name fields hidden while pending
-      if (showNameFields) {
-        setShowNameFields(false);
-      }
+    if (emailVerificationStatus === 'verified' && firebaseUser && studentVerified) {
+      // Auto-complete account creation when email is verified
+      completeAccountCreation();
     }
-  }, [emailVerificationStatus, firebaseUser, showNameFields]);
+  }, [emailVerificationStatus, firebaseUser, studentVerified, completeAccountCreation]);
 
-  // Handle continue button after name entry
-  const handleContinueAfterVerification = () => {
-    completeAccountCreation();
-  };
 
   // Handle deep link verification when screen is focused
   useFocusEffect(
@@ -491,9 +623,8 @@ const CreateAccount = () => {
             if (currentUser?.emailVerified) {
               // Update state directly
               setEmailVerificationStatus('verified');
-              setEmailVerificationMessage('✅ Email verified successfully! Please enter your name (optional) to complete your account.');
+              setEmailVerificationMessage('✅ Email verified successfully! Your account is being created...');
               setFirebaseUser(currentUser); // Update firebaseUser state
-              setShowNameFields(true);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               setErrors(prev => ({ ...prev, general: '' }));
             } else {
@@ -587,12 +718,12 @@ const CreateAccount = () => {
   // Create account and send verification email
   const handleCreateAccount = async () => {
     if (!isOnline) {
-      setErrors({ email: '', password: '', confirmPassword: '', firstName: '', lastName: '', general: 'No internet connection. Please check your network and try again.' });
+      setErrors({ email: '', password: '', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: 'No internet connection. Please check your network and try again.' });
       return;
     }
 
     // Clear previous errors
-    setErrors({ email: '', password: '', confirmPassword: '', firstName: '', lastName: '', general: '' });
+    setErrors({ email: '', password: '', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: '' });
     
     // Clear any stale verification data from previous attempts
     await AsyncStorage.removeItem('pendingVerificationCode');
@@ -601,7 +732,7 @@ const CreateAccount = () => {
     
     // Validation
     let hasErrors = false;
-    const newErrors = { email: '', password: '', confirmPassword: '', firstName: '', lastName: '', general: '' };
+    const newErrors = { email: '', password: '', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: '' };
     
     const emailValidationMessage = validateEmailField(email);
     if (emailValidationMessage) {
@@ -700,22 +831,24 @@ const CreateAccount = () => {
       let errorMessage = 'Failed to create account';
       
       if (error.message.includes('already registered') || error.message.includes('email-already-in-use')) {
-        setErrors({ email: 'This email is already registered', password: '', confirmPassword: '', firstName: '', lastName: '', general: '' });
+        setErrors({ email: 'This email is already registered', password: '', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: '' });
       } else if (error.message.includes('Invalid') || error.message.includes('invalid-email')) {
-        setErrors({ email: 'Invalid email format', password: '', confirmPassword: '', firstName: '', lastName: '', general: '' });
+        setErrors({ email: 'Invalid email format', password: '', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: '' });
       } else if (error.message.includes('weak-password')) {
-        setErrors({ email: '', password: 'Password is too weak', confirmPassword: '', firstName: '', lastName: '', general: '' });
+        setErrors({ email: '', password: 'Password is too weak', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: '' });
       } else if (error.message.includes('operation-not-allowed') || error.message.includes('Email/Password authentication is not enabled')) {
         setErrors({ 
           email: '', 
           password: '', 
           confirmPassword: '', 
+          studentId: '',
+          fullName: '',
           firstName: '',
           lastName: '',
           general: 'Email/Password authentication is not enabled in Firebase. Please enable it in Firebase Console under Authentication > Sign-in method, then try again.' 
         });
       } else {
-        setErrors({ email: '', password: '', confirmPassword: '', firstName: '', lastName: '', general: error.message || errorMessage });
+        setErrors({ email: '', password: '', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: error.message || errorMessage });
       }
     }
   };
@@ -742,13 +875,27 @@ const CreateAccount = () => {
 
         <Text style={styles.welcomeText}>Create your account</Text>
         
-        {emailVerificationStatus === 'verified' && (
+        {/* Student Verification Success Message */}
+        {studentVerified && !showEmailFields && (
+          <View style={styles.verificationSuccessBox}>
+            <MaterialIcons name="check-circle" size={20} color="#10B981" style={{ marginRight: 8 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.verificationSuccessTitle}>Student Verified!</Text>
+              <Text style={styles.verificationSuccessText}>
+                Your student credentials have been verified. Please enter your email for verification.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Email Verification Status - Only show when Personal Information section is visible */}
+        {emailVerificationStatus === 'verified' && showEmailFields && (
           <View style={styles.verificationSuccessBox}>
             <MaterialIcons name="check-circle" size={20} color="#10B981" style={{ marginRight: 8 }} />
             <View style={{ flex: 1 }}>
               <Text style={styles.verificationSuccessTitle}>Email Verified Successfully!</Text>
-              <Text style={styles.verificationSuccessText}>
-                {emailVerificationMessage || 'Your email has been confirmed. Please enter your name (optional) to complete your account.'}
+              <Text style={styles.verificationSuccessMessage}>
+                Email verified successfully! Please enter your name (optional) to complete your account.
               </Text>
             </View>
           </View>
@@ -787,126 +934,167 @@ const CreateAccount = () => {
         )}
 
         <View style={styles.formSection}>
-          {/* Show name fields after verification, otherwise show email/password fields */}
-          {showNameFields && emailVerificationStatus === 'verified' ? (
+          {/* Step 0: User Type Selection (Faculty or Student) */}
+          {!userType ? (
             <>
-          {/* First Name Input */}
-          <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>First Name (Optional)</Text>
-            <Animated.View style={[
-              styles.inputWrapper,
-              {
-                borderColor: firstNameFocus.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [errors.firstName ? '#EF4444' : '#E5E7EB', errors.firstName ? '#EF4444' : '#2563EB'],
-                }),
-                borderWidth: firstNameFocus.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [1, 2],
-                }),
-              }
-            ]}>
-              <MaterialIcons 
-                name="person" 
-                    size={18} 
-                color={errors.firstName ? '#EF4444' : '#9CA3AF'} 
-                style={styles.inputIcon} 
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Enter your first name"
-                placeholderTextColor="#9CA3AF"
-                autoCapitalize="words"
-                    autoCorrect={false}
-                value={firstName}
-                onChangeText={(text) => {
-                  setFirstName(text);
-                  if (errors.firstName) setErrors(prev => ({ ...prev, firstName: '' }));
-                }}
-                onFocus={() => {
-                  Animated.timing(firstNameFocus, {
-                    toValue: 1,
-                    duration: 200,
-                    useNativeDriver: false,
-                  }).start();
-                }}
-                onBlur={() => {
-                  Animated.timing(firstNameFocus, {
-                    toValue: 0,
-                    duration: 200,
-                    useNativeDriver: false,
-                  }).start();
-                }}
-                accessibilityLabel="First Name"
-              />
-            </Animated.View>
-            <View style={styles.errorContainer}>
-              {errors.firstName ? (
-                <Text style={styles.errorText}>{errors.firstName}</Text>
-              ) : null}
-            </View>
-          </View>
+              <Text style={styles.welcomeText}>Select Your Account Type</Text>
+              <View style={styles.userTypeContainer}>
+                <TouchableOpacity
+                  style={[styles.userTypeButton, styles.facultyButton]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setUserType('faculty');
+                    setShowEmailFields(true); // Skip student verification for faculty
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <MaterialIcons name="school" size={32} color="#2563EB" />
+                  <Text style={styles.userTypeTitle}>Faculty</Text>
+                  <Text style={styles.userTypeDescription}>For university faculty members</Text>
+                </TouchableOpacity>
 
-          {/* Last Name Input */}
-          <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Last Name (Optional)</Text>
-            <Animated.View style={[
-              styles.inputWrapper,
-              {
-                borderColor: lastNameFocus.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [errors.lastName ? '#EF4444' : '#E5E7EB', errors.lastName ? '#EF4444' : '#2563EB'],
-                }),
-                borderWidth: lastNameFocus.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [1, 2],
-                }),
-              }
-            ]}>
-              <MaterialIcons 
-                    name="person-outline" 
-                    size={18} 
-                color={errors.lastName ? '#EF4444' : '#9CA3AF'} 
-                style={styles.inputIcon} 
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Enter your last name"
-                placeholderTextColor="#9CA3AF"
-                autoCapitalize="words"
-                    autoCorrect={false}
-                value={lastName}
-                onChangeText={(text) => {
-                  setLastName(text);
-                  if (errors.lastName) setErrors(prev => ({ ...prev, lastName: '' }));
-                }}
-                onFocus={() => {
-                  Animated.timing(lastNameFocus, {
-                    toValue: 1,
-                    duration: 200,
-                    useNativeDriver: false,
-                  }).start();
-                }}
-                onBlur={() => {
-                  Animated.timing(lastNameFocus, {
-                    toValue: 0,
-                    duration: 200,
-                    useNativeDriver: false,
-                  }).start();
-                }}
-                accessibilityLabel="Last Name"
-              />
-            </Animated.View>
-            <View style={styles.errorContainer}>
-              {errors.lastName ? (
-                <Text style={styles.errorText}>{errors.lastName}</Text>
-              ) : null}
-            </View>
-          </View>
+                <TouchableOpacity
+                  style={[styles.userTypeButton, styles.studentButton]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    setUserType('student');
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <MaterialIcons name="person" size={32} color="#10B981" />
+                  <Text style={styles.userTypeTitle}>Student</Text>
+                  <Text style={styles.userTypeDescription}>For enrolled students</Text>
+                </TouchableOpacity>
+              </View>
             </>
-          ) : (
+          ) : userType === 'student' && !showEmailFields ? (
+            // Step 1: Student ID and Name fields (students only)
             <>
-          {/* Email Input */}
+              {/* Student ID Input */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Student ID <Text style={{ color: '#EF4444' }}>*</Text></Text>
+                <Animated.View style={[
+                  styles.inputWrapper,
+                  {
+                    borderColor: studentIdFocus.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [errors.studentId ? '#EF4444' : '#E5E7EB', errors.studentId ? '#EF4444' : '#2563EB'],
+                    }),
+                    borderWidth: studentIdFocus.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [1, 2],
+                    }),
+                  }
+                ]}>
+                  <MaterialIcons 
+                    name="badge" 
+                    size={18} 
+                    color={errors.studentId ? '#EF4444' : '#9CA3AF'} 
+                    style={styles.inputIcon} 
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter Student ID"
+                    placeholderTextColor="#9CA3AF"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="default"
+                    value={studentId}
+                    onChangeText={(text) => {
+                      // Auto-format: Add dash after 4 digits
+                      let formatted = text.replace(/[^0-9]/g, '');
+                      if (formatted.length > 4) {
+                        formatted = formatted.slice(0, 4) + '-' + formatted.slice(4, 8);
+                      }
+                      setStudentId(formatted);
+                      if (errors.studentId) setErrors(prev => ({ ...prev, studentId: '' }));
+                    }}
+                    maxLength={9}
+                    onFocus={() => {
+                      Animated.timing(studentIdFocus, {
+                        toValue: 1,
+                        duration: 200,
+                        useNativeDriver: false,
+                      }).start();
+                    }}
+                    onBlur={() => {
+                      Animated.timing(studentIdFocus, {
+                        toValue: 0,
+                        duration: 200,
+                        useNativeDriver: false,
+                      }).start();
+                    }}
+                    accessibilityLabel="Student ID"
+                  />
+                </Animated.View>
+                <View style={styles.errorContainer}>
+                  {errors.studentId ? (
+                    <Text style={styles.errorText}>{errors.studentId}</Text>
+                  ) : null}
+                </View>
+              </View>
+
+              {/* Full Name Input */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Full Name <Text style={{ color: '#EF4444' }}>*</Text></Text>
+                <Animated.View style={[
+                  styles.inputWrapper,
+                  {
+                    borderColor: fullNameFocus.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [errors.fullName ? '#EF4444' : '#E5E7EB', errors.fullName ? '#EF4444' : '#2563EB'],
+                    }),
+                    borderWidth: fullNameFocus.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [1, 2],
+                    }),
+                  }
+                ]}>
+                  <MaterialIcons 
+                    name="account-circle" 
+                    size={18} 
+                    color={errors.fullName ? '#EF4444' : '#9CA3AF'} 
+                    style={styles.inputIcon} 
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter Full Name"
+                    placeholderTextColor="#9CA3AF"
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    value={fullName}
+                    onChangeText={(text) => {
+                      setFullName(text);
+                      if (errors.fullName) setErrors(prev => ({ ...prev, fullName: '' }));
+                    }}
+                    onFocus={() => {
+                      Animated.timing(fullNameFocus, {
+                        toValue: 1,
+                        duration: 200,
+                        useNativeDriver: false,
+                      }).start();
+                    }}
+                    onBlur={() => {
+                      Animated.timing(fullNameFocus, {
+                        toValue: 0,
+                        duration: 200,
+                        useNativeDriver: false,
+                      }).start();
+                    }}
+                    accessibilityLabel="Full Name"
+                  />
+                </Animated.View>
+                <View style={styles.errorContainer}>
+                  {errors.fullName ? (
+                    <Text style={styles.errorText}>{errors.fullName}</Text>
+                  ) : null}
+                </View>
+              </View>
+            </>
+          ) : showEmailFields && emailVerificationStatus !== 'verified' ? (
+            // Step 2: Email and Password fields (after student verification, before email verification)
+            <>
+              {/* Email Input */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Email Address</Text>
             <Animated.View style={[
@@ -1102,38 +1290,169 @@ const CreateAccount = () => {
               ) : null}
             </View>
           </View>
-
             </>
+          ) : emailVerificationStatus === 'verified' && showEmailFields ? (
+            // Step 3: Personal Information (Replaces Email/Password after verification)
+            <React.Fragment>
+              {/* First Name Input */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>First Name (Optional)</Text>
+                <Animated.View style={[
+                  styles.inputWrapper,
+                  {
+                    borderColor: firstNameFocus.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [errors.firstName ? '#EF4444' : '#E5E7EB', errors.firstName ? '#EF4444' : '#2563EB'],
+                    }),
+                    borderWidth: firstNameFocus.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [1, 2],
+                    }),
+                  }
+                ]}>
+                  <MaterialIcons 
+                    name="person" 
+                    size={18} 
+                    color={errors.firstName ? '#EF4444' : '#9CA3AF'} 
+                    style={styles.inputIcon} 
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter your first name"
+                    placeholderTextColor="#9CA3AF"
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    value={firstName}
+                    onChangeText={(text) => {
+                      setFirstName(text);
+                      if (errors.firstName) setErrors(prev => ({ ...prev, firstName: '' }));
+                    }}
+                    onFocus={() => {
+                      Animated.timing(firstNameFocus, {
+                        toValue: 1,
+                        duration: 200,
+                        useNativeDriver: false,
+                      }).start();
+                    }}
+                    onBlur={() => {
+                      Animated.timing(firstNameFocus, {
+                        toValue: 0,
+                        duration: 200,
+                        useNativeDriver: false,
+                      }).start();
+                    }}
+                    accessibilityLabel="First Name"
+                  />
+                </Animated.View>
+                <View style={styles.errorContainer}>
+                  {errors.firstName ? (
+                    <Text style={styles.errorText}>{errors.firstName}</Text>
+                  ) : null}
+                </View>
+              </View>
+
+              {/* Last Name Input */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Last Name (Optional)</Text>
+                <Animated.View style={[
+                  styles.inputWrapper,
+                  {
+                    borderColor: lastNameFocus.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [errors.lastName ? '#EF4444' : '#E5E7EB', errors.lastName ? '#EF4444' : '#2563EB'],
+                    }),
+                    borderWidth: lastNameFocus.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [1, 2],
+                    }),
+                  }
+                ]}>
+                  <MaterialIcons 
+                    name="person-outline" 
+                    size={18} 
+                    color={errors.lastName ? '#EF4444' : '#9CA3AF'} 
+                    style={styles.inputIcon} 
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter your last name"
+                    placeholderTextColor="#9CA3AF"
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    value={lastName}
+                    onChangeText={(text) => {
+                      setLastName(text);
+                      if (errors.lastName) setErrors(prev => ({ ...prev, lastName: '' }));
+                    }}
+                    onFocus={() => {
+                      Animated.timing(lastNameFocus, {
+                        toValue: 1,
+                        duration: 200,
+                        useNativeDriver: false,
+                      }).start();
+                    }}
+                    onBlur={() => {
+                      Animated.timing(lastNameFocus, {
+                        toValue: 0,
+                        duration: 200,
+                        useNativeDriver: false,
+                      }).start();
+                    }}
+                    accessibilityLabel="Last Name"
+                  />
+                </Animated.View>
+                <View style={styles.errorContainer}>
+                  {errors.lastName ? (
+                    <Text style={styles.errorText}>{errors.lastName}</Text>
+                  ) : null}
+                </View>
+              </View>
+            </React.Fragment>
+          ) : (
+            null
           )}
 
-          {/* General Error Message */}
-          <View style={[
-            styles.generalErrorContainer,
-            !errors.general && styles.generalErrorContainerHidden
-          ]}>
-            {errors.general ? (
-              <>
-                <MaterialIcons name="error-outline" size={20} color="#EF4444" />
-                <Text style={styles.generalErrorText}>{errors.general}</Text>
-              </>
-            ) : null}
-          </View>
+        </View>
 
-          {/* Create Account / Continue Button */}
+      {/* General Error Message */}
+      <View style={[
+        styles.generalErrorContainer,
+        !errors.general && styles.generalErrorContainerHidden
+      ]}>
+        {errors.general ? (
+          <>
+            <MaterialIcons name="error-outline" size={20} color="#EF4444" />
+            <Text style={styles.generalErrorText}>{errors.general}</Text>
+          </>
+        ) : null}
+      </View>
+
+      {/* Verify Student / Create Account Button */}
           <Animated.View style={{ transform: [{ scale: signUpButtonScale }] }}>
             <TouchableOpacity 
               style={[
                 styles.signUpButton, 
-                (isLoading || !isOnline || (emailVerificationStatus === 'pending' && !showNameFields)) && styles.signUpButtonDisabled
+                (isLoading || !isOnline || emailVerificationStatus === 'pending') && styles.signUpButtonDisabled
               ]}
               onPress={() => {
-                if (showNameFields && emailVerificationStatus === 'verified') {
-                  handleButtonPress(signUpButtonScale, handleContinueAfterVerification);
-                } else {
+                if (!userType) {
+                  // Should not happen - user type selection is handled by buttons
+                  return;
+                } else if (showEmailFields && emailVerificationStatus === 'idle') {
+                  // Create account with email/password
                   handleButtonPress(signUpButtonScale, handleCreateAccount);
+                } else if (emailVerificationStatus === 'verified') {
+                  // Complete account creation after email verification
+                  handleButtonPress(signUpButtonScale, completeAccountCreation);
                 }
               }}
-              disabled={isLoading || !isOnline || (emailVerificationStatus === 'pending' && !showNameFields)}
+              disabled={
+                isLoading || 
+                !isOnline || 
+                (emailVerificationStatus === 'pending') || 
+                !userType || 
+                (emailVerificationStatus === 'idle' && !showEmailFields && !(userType === 'student' && !showEmailFields))
+              }
               accessibilityRole="button"
               activeOpacity={0.8}
             >
@@ -1154,27 +1473,30 @@ const CreateAccount = () => {
                   </Animated.View>
                   <Text style={styles.signUpButtonText}>Creating Account...</Text>
                 </>
-              ) : showNameFields && emailVerificationStatus === 'verified' ? (
+              ) : !userType ? (
+                <Text style={styles.signUpButtonText}>SELECT TYPE</Text>
+              ) : userType === 'student' && !showEmailFields ? (
                 <Text style={styles.signUpButtonText}>CONTINUE</Text>
               ) : emailVerificationStatus === 'pending' ? (
                 <Text style={styles.signUpButtonText}>VERIFY EMAIL TO CONTINUE</Text>
+              ) : emailVerificationStatus === 'verified' ? (
+                <Text style={styles.signUpButtonText}>CONTINUE</Text>
               ) : (
                 <Text style={styles.signUpButtonText}>CREATE ACCOUNT</Text>
               )}
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Links Section */}
-          <View style={styles.linksSection}>
-            <TouchableOpacity 
-              onPress={() => navigation.navigate('SignIn')}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.linkText}>Already have an account? Sign In</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+      {/* Links Section */}
+      <View style={styles.linksSection}>
+        <TouchableOpacity 
+          onPress={() => navigation.navigate('SignIn')}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.linkText}>Already have an account? Sign In</Text>
+        </TouchableOpacity>
+      </View>
       </>
     );
   };
@@ -1430,6 +1752,11 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 16,
   },
+  verificationSuccessMessage: {
+    color: '#047857',
+    fontSize: 12,
+    lineHeight: 16,
+  },
   mobileContainer: {
     flex: 1,
     position: 'relative',
@@ -1455,6 +1782,49 @@ const styles = StyleSheet.create({
     elevation: 8,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  // User Type Selection
+  userTypeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  userTypeButton: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  facultyButton: {
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+  },
+  studentButton: {
+    borderColor: '#10B981',
+    backgroundColor: '#ECFDF5',
+  },
+  userTypeTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  userTypeDescription: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
   },
 });
 

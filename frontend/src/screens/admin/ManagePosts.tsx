@@ -33,6 +33,7 @@ import AdminDataService from '../../services/AdminDataService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
 import { categoryToColors } from '../../utils/calendarUtils';
 import { formatDate } from '../../utils/dateUtils';
+import Sidebar from '../../components/navigation/Sidebar';
 
 // Helper function to convert Post to SchoolUpdates/AdminDashboard format
 const convertPostToUpdateFormat = (post: Post): any => {
@@ -112,6 +113,7 @@ const ManagePosts: React.FC = () => {
   const { posts: sharedPosts, setPosts: setSharedPosts, calendarEvents, setCalendarEvents } = useUpdates();
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const isPendingAuthorization = isAuthorized === null;
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   // Memoize safe area insets to prevent recalculation during navigation
   const safeInsets = useMemo(() => ({
@@ -1246,18 +1248,16 @@ const ManagePosts: React.FC = () => {
         <View style={styles.headerContent}>
         <View style={styles.headerLeft}>
             <TouchableOpacity 
-              onPress={() => {
-            if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
-              navigation.goBack();
-            } else {
-              (navigation as any).navigate('AdminDashboard');
-            }
-              }} 
+              onPress={() => setIsSidebarOpen(true)} 
               style={styles.backButton}
-              accessibilityLabel="Go back"
+              accessibilityLabel="Open sidebar"
               activeOpacity={0.7}
             >
-            <Ionicons name="arrow-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+            <View style={styles.customHamburger} pointerEvents="none">
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineLong, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+            </View>
           </TouchableOpacity>
         </View>
           <View style={styles.headerTitleContainer}>
@@ -2104,6 +2104,12 @@ const ManagePosts: React.FC = () => {
           </View>
         </Modal>
 
+      {/* Sidebar Component */}
+      <Sidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        allowedRoles={['superadmin', 'admin', 'moderator']}
+      />
     </View>
   );
 };
@@ -2166,6 +2172,22 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: 6,
+  },
+  customHamburger: {
+    width: 24,
+    height: 18,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  hamburgerLine: {
+    height: 2.5,
+    borderRadius: 2,
+  },
+  hamburgerLineShort: {
+    width: 18,
+  },
+  hamburgerLineLong: {
+    width: 24,
   },
   headerTitleContainer: {
     flex: 1,

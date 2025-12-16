@@ -72,6 +72,8 @@ type DashboardUpdate = {
   pinned?: boolean; 
   isoDate?: string;
   _id?: string; // For calendar events
+  createdBy?: string; // User ID who created the post
+  creatorRole?: 'admin' | 'moderator'; // Creator role
 };
 
 // Helper function to get Philippines timezone date key (moved outside component for performance)
@@ -133,6 +135,7 @@ const AdminDashboard = () => {
   const { isDarkMode, theme } = useThemeValues();
   const { isLoading: authLoading, userRole, isAdmin, refreshUser, isAuthenticated } = useAuth();
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const isPendingAuthorization = isAuthorized === null;
   const resolvedLegendItems = useMemo<LegendItem[]>(() => legendItemsData, []);
   const legendRows = useMemo<(LegendItem | null)[][]>(() => {
@@ -576,6 +579,95 @@ const AdminDashboard = () => {
     return () => unsubscribe();
   }, []);
 
+  // Load current user ID from AsyncStorage
+  useEffect(() => {
+    const loadUserId = async () => {
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const userId = await AsyncStorage.getItem('userId');
+        if (__DEV__) {
+          console.log('👤 Loaded current user ID:', userId);
+        }
+        setCurrentUserId(userId);
+      } catch (error) {
+        if (__DEV__) console.error('Failed to load user ID:', error);
+      }
+    };
+    loadUserId();
+  }, []);
+
+  // Also refresh user ID on focus to catch updates
+  useFocusEffect(
+    useCallback(() => {
+      const loadUserId = async () => {
+        try {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const userId = await AsyncStorage.getItem('userId');
+          if (__DEV__) {
+            console.log('👤 Refreshed current user ID on focus:', userId);
+          }
+          setCurrentUserId(userId);
+        } catch (error) {
+          // Silent fail on focus refresh
+        }
+      };
+      loadUserId();
+    }, [])
+  );
+
+  // Helper function to check if current user can edit/delete a post
+  const canModifyPost = useCallback((post: DashboardUpdate | any): boolean => {
+    // Admins can edit/delete any post
+    if (isAdmin) {
+      return true;
+    }
+    
+    // Moderators can only edit/delete their own posts
+    if (userRole === 'moderator') {
+      // Check if the post was created by the current user
+      const postCreatorId = post?.createdBy || (post as any)?.createdBy;
+      
+      if (__DEV__) {
+        console.log('🔐 Permission check:', {
+          userRole,
+          currentUserId,
+          postCreatorId,
+          postId: post?.id,
+          postTitle: post?.title,
+          hasCreatedBy: !!postCreatorId,
+          hasCurrentUserId: !!currentUserId,
+        });
+      }
+      
+      if (!currentUserId || !postCreatorId) {
+        // If we can't determine ownership, deny access for safety
+        if (__DEV__) {
+          console.log('❌ Permission denied: Missing user ID or creator ID', {
+            currentUserId,
+            postCreatorId,
+          });
+        }
+        return false;
+      }
+      
+      // Compare user IDs (handle both string and number comparisons)
+      const canModify = String(postCreatorId) === String(currentUserId);
+      
+      if (__DEV__) {
+        console.log(canModify ? '✅ Permission granted' : '❌ Permission denied: Not the post creator', {
+          postCreatorId,
+          currentUserId,
+          match: canModify,
+        });
+      }
+      
+      return canModify;
+    }
+    
+    // Other roles cannot modify posts
+    return false;
+  }, [isAdmin, userRole, currentUserId]);
+
   // Load backend user data immediately on mount for fast display
   useEffect(() => {
     let cancelled = false;
@@ -759,6 +851,35 @@ const AdminDashboard = () => {
     setSelectedDateEvents([]);
   }, []);
 
+  // Compute edit/delete permissions for selected event
+  const canEditSelectedEvent = useMemo(() => {
+    if (!selectedEvent) return false;
+    const event = selectedEvent as any;
+    // Calendar events cannot be edited (for now)
+    if (event._id) return false;
+    // For posts, check permissions
+    if (event.id) {
+      const fullPost = allUpdates.find(u => u.id === event.id) || 
+                     posts.find((p: any) => p.id === event.id);
+      return canModifyPost(fullPost || event);
+    }
+    return false;
+  }, [selectedEvent, allUpdates, posts, canModifyPost]);
+
+  const canDeleteSelectedEvent = useMemo(() => {
+    if (!selectedEvent) return false;
+    const event = selectedEvent as any;
+    // Calendar events can be deleted by admins
+    if (event._id) return isAdmin;
+    // For posts, check permissions
+    if (event.id) {
+      const fullPost = allUpdates.find(u => u.id === event.id) || 
+                     posts.find((p: any) => p.id === event.id);
+      return canModifyPost(fullPost || event);
+    }
+    return false;
+  }, [selectedEvent, allUpdates, posts, canModifyPost, isAdmin]);
+
   // Track last fetch time to prevent unnecessary refetches
   const lastFetchTime = useRef<number>(0);
   const isFetching = useRef<boolean>(false);
@@ -863,6 +984,8 @@ const AdminDashboard = () => {
             pinned: (post as any).pinned || false,
             isoDate: dateValue || '',
             time: (post as any).time || '',
+            createdBy: (post as any).createdBy || undefined, // Preserve creator ID
+            creatorRole: (post as any).creatorRole || undefined, // Preserve creator role
           };
         });
         
@@ -946,6 +1069,8 @@ const AdminDashboard = () => {
           pinned: (post as any).pinned || false,
           isoDate: dateValue || '',
           time: (post as any).time || '',
+          createdBy: (post as any).createdBy || undefined, // Preserve creator ID
+          creatorRole: (post as any).creatorRole || undefined, // Preserve creator role
         };
       });
       
@@ -1203,7 +1328,7 @@ const AdminDashboard = () => {
       <Sidebar
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
-        allowedRoles={['admin', 'moderator']}
+        allowedRoles={['superadmin', 'admin', 'moderator']}
       />
 
       {/* Main Content - Scrollable with Curved Top */}
@@ -1535,6 +1660,7 @@ const AdminDashboard = () => {
                     
                     const event: any = {
                       _id: update.id,
+                      id: update.id, // Include id for permission checks
                       title: update.title,
                       description: update.description,
                       category: updateTag,
@@ -1542,6 +1668,8 @@ const AdminDashboard = () => {
                       isoDate: update.isoDate || update.date,
                       image: update.image,
                       images: update.images,
+                      createdBy: (update as DashboardUpdate).createdBy, // Preserve creator ID for permission checks
+                      creatorRole: (update as DashboardUpdate).creatorRole, // Preserve creator role
                     };
                     
                     setSelectedEvent(event);
@@ -1655,6 +1783,8 @@ const AdminDashboard = () => {
         selectedEvent={selectedEvent}
         selectedDateEvents={selectedDateEvents}
         selectedDate={selectedDateForDrawer}
+        canEdit={canEditSelectedEvent}
+        canDelete={canDeleteSelectedEvent}
         onEdit={() => {
           // Check if it's a calendar event (has _id) or an update/post
           const event = selectedEvent as any;
@@ -1662,6 +1792,20 @@ const AdminDashboard = () => {
             // Calendar event - show alert for now
             Alert.alert('Edit Event', 'Event editing functionality coming soon');
           } else if (event?.id) {
+            // Update/Post - check permissions before allowing edit
+            // Find the full post object to check createdBy
+            const fullPost = allUpdates.find(u => u.id === event.id) || 
+                           posts.find((p: any) => p.id === event.id);
+            
+            if (!canModifyPost(fullPost || event)) {
+              Alert.alert(
+                'Permission Denied',
+                'You can only edit your own posts.',
+                [{ text: 'OK' }]
+              );
+              return;
+            }
+            
             // Update/Post - navigate to PostUpdate screen for editing
             closeEventDrawer();
             navigation.navigate('PostUpdate', { postId: event.id });
@@ -1697,6 +1841,20 @@ const AdminDashboard = () => {
               setIsDeleting(false);
             }
           } else if (event.id) {
+            // Post/Update deletion - check permissions before allowing delete
+            // Find the full post object to check createdBy
+            const fullPost = allUpdates.find(u => u.id === event.id) || 
+                           posts.find((p: any) => p.id === event.id);
+            
+            if (!canModifyPost(fullPost || event)) {
+              Alert.alert(
+                'Permission Denied',
+                'You can only delete your own posts.',
+                [{ text: 'OK' }]
+              );
+              return;
+            }
+            
             // Post/Update deletion - modal handles confirmation, just execute deletion
             try {
               setIsDeleting(true);

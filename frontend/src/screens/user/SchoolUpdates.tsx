@@ -1404,7 +1404,7 @@ const SchoolUpdates = () => {
       <Sidebar
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
-        allowedRoles={['user', 'moderator', 'admin']}
+        allowedRoles={['user', 'moderator', 'admin', 'superadmin']}
       />
 
       {/* Main Content - Scrollable with Curved Top */}

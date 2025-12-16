@@ -10,7 +10,7 @@ import AIService, { ChatHistoryItem } from '../../services/AIService';
 import { getCurrentUser } from '../../services/authService';
 import { useAuth } from '../../contexts/AuthContext';
 
-type Role = 'admin' | 'moderator' | 'user' | null;
+type Role = 'superadmin' | 'admin' | 'moderator' | 'user' | null;
 
 // Union of routes needed for both admin and user flows
 type RootStackParamList = {
@@ -64,7 +64,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onDeleteAllChats,
   selectedUserType = 'student',
   roleOverride = null,
-  allowedRoles = ['user', 'moderator', 'admin'],
+  allowedRoles = ['user', 'moderator', 'admin', 'superadmin'],
   disableIfUnauthorized = true,
 }) => {
   const navigation = useNavigation<Navigation>();
@@ -72,9 +72,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   const { isDarkMode, theme: t, colorTheme } = useThemeValues();
   const insets = useSafeAreaInsets();
   const sidebarAnim = useRef(new Animated.Value(-320)).current;
-  const { userRole, isAdmin, isLoading: authLoading, refreshUser } = useAuth();
+  const { userRole, isAdmin, isSuperAdmin, isLoading: authLoading, refreshUser } = useAuth();
 
-  const effectiveRole: Role = roleOverride ?? (isAdmin ? 'admin' : userRole ?? 'user');
+  const effectiveRole: Role = roleOverride ?? (isSuperAdmin ? 'superadmin' : isAdmin ? 'admin' : userRole ?? 'user');
   const isAuthorized = !allowedRoles || allowedRoles.includes(effectiveRole);
 
   // Determine current active screen
@@ -199,7 +199,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   const isCurrent = (screen: keyof RootStackParamList) => currentScreen === screen;
 
   const menuItems = useMemo(() => {
-    if (effectiveRole === 'admin') {
+    const isAdminLike = effectiveRole === 'admin' || effectiveRole === 'superadmin';
+
+    if (isAdminLike) {
       return [
         {
           key: 'ai',
@@ -459,9 +461,14 @@ const Sidebar: React.FC<SidebarProps> = ({
         </View>
 
         <View style={styles.sidebarMenu}>
-          {menuItems
-            .filter((item) => !item.roleGate || item.roleGate === effectiveRole)
-            .map((item) => (
+        {menuItems
+          .filter(
+            (item) =>
+              !item.roleGate ||
+              item.roleGate === effectiveRole ||
+              (item.roleGate === 'admin' && effectiveRole === 'superadmin')
+          )
+          .map((item) => (
               <TouchableOpacity key={item.key} style={styles.sidebarMenuItem} onPress={item.onPress}>
                 <Ionicons
                   name={item.icon as any}

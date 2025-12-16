@@ -65,6 +65,9 @@ const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
 **Vision:** A university of excellence, innovation and inclusion
 **President:** Dr. Roy G. Ponce`;
 
+const ELEVATED_ROLES = ['admin', 'superadmin'];
+const hasAdminAccess = (role) => ELEVATED_ROLES.includes(role);
+
 async function initializeServices() {
   try {
     mongoService = getMongoDBService();
@@ -913,7 +916,7 @@ const server = http.createServer(async (req, res) => {
     if (!isAdmin) {
       // Check if user has admin role in database
       const user = await mongoService.findUserById(auth.userId);
-      if (!user || user.role !== 'admin') {
+      if (!user || !hasAdminAccess(user.role)) {
         sendJson(res, 403, { error: 'Forbidden: Admin access required' });
         return;
       }
@@ -950,7 +953,7 @@ const server = http.createServer(async (req, res) => {
     if (!isAdmin) {
       // Check if user has admin role in database
       const user = await mongoService.findUserById(auth.userId);
-      if (!user || user.role !== 'admin') {
+      if (!user || !hasAdminAccess(user.role)) {
         sendJson(res, 403, { error: 'Forbidden: Admin access required' });
         return;
       }
@@ -984,7 +987,7 @@ const server = http.createServer(async (req, res) => {
     let isAdmin = auth.isAdmin;
     if (!isAdmin) {
       const user = await mongoService.findUserById(auth.userId);
-      isAdmin = user && user.role === 'admin';
+      isAdmin = user && hasAdminAccess(user.role);
     }
 
     if (!isAdmin) {
@@ -1025,7 +1028,7 @@ const server = http.createServer(async (req, res) => {
           return;
         }
         
-        const validRoles = ['user', 'moderator', 'admin'];
+        const validRoles = ['user', 'moderator', 'admin', 'superadmin'];
         if (!validRoles.includes(role)) {
           sendJson(res, 400, { error: `Invalid role. Must be one of: ${validRoles.join(', ')}` });
           return;
@@ -1033,9 +1036,32 @@ const server = http.createServer(async (req, res) => {
         
         Logger.info(`Attempting to update role for userId: ${userId} to role: ${role}`);
         
-        // Get current user role before update
+        // Get requester and target roles for authorization checks
+        const requesterRole = auth.role || (await mongoService.findUserById(auth.userId))?.role || 'user';
         const targetUser = await mongoService.findUserById(userId);
         const oldRole = targetUser?.role || 'user';
+
+        // Only superadmins can assign or change superadmin roles
+        if (role === 'superadmin' && requesterRole !== 'superadmin') {
+          sendJson(res, 403, { error: 'Forbidden: Superadmin role can only be assigned by a superadmin' });
+          return;
+        }
+        if (targetUser?.role === 'superadmin' && requesterRole !== 'superadmin') {
+          sendJson(res, 403, { error: 'Forbidden: Only a superadmin can modify another superadmin' });
+          return;
+        }
+
+        // Admins can ONLY assign User or Moderator roles (never Admin/Superadmin)
+        if (requesterRole === 'admin' && (role === 'admin' || role === 'superadmin')) {
+          sendJson(res, 403, { error: 'Forbidden: Admins may only assign User or Moderator roles' });
+          return;
+        }
+
+        // Only superadmins can modify existing admins (promote/demote/change)
+        if (targetUser?.role === 'admin' && requesterRole !== 'superadmin') {
+          sendJson(res, 403, { error: 'Forbidden: Only a superadmin can modify an admin account' });
+          return;
+        }
         
         const result = await mongoService.updateUserRole(userId, role);
         
@@ -1147,7 +1173,7 @@ const server = http.createServer(async (req, res) => {
     let isAdmin = auth.isAdmin;
     if (!isAdmin) {
       const user = await mongoService.findUserById(auth.userId);
-      isAdmin = user && user.role === 'admin';
+      isAdmin = user && hasAdminAccess(user.role);
     }
 
     try {
@@ -1211,7 +1237,7 @@ const server = http.createServer(async (req, res) => {
     let isAdmin = auth.isAdmin;
     if (!isAdmin) {
       const user = await mongoService.findUserById(auth.userId);
-      isAdmin = user && user.role === 'admin';
+      isAdmin = user && hasAdminAccess(user.role);
     }
 
     if (!isAdmin) {
@@ -1255,7 +1281,7 @@ const server = http.createServer(async (req, res) => {
     let isAdmin = auth.isAdmin;
     if (!isAdmin) {
       const user = await mongoService.findUserById(auth.userId);
-      isAdmin = user && user.role === 'admin';
+      isAdmin = user && hasAdminAccess(user.role);
     }
 
     if (!isAdmin) {

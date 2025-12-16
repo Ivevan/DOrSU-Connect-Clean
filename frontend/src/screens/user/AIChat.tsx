@@ -1221,7 +1221,7 @@ const AIChat: React.FC<AIChatProps> = ({ mode = 'user' }) => {
           }
         }}
         onDeleteAllChats={handleDeleteAllChats}
-        allowedRoles={mode === 'admin' ? ['admin', 'moderator'] : ['user', 'moderator', 'admin']}
+        allowedRoles={mode === 'admin' ? ['superadmin', 'admin', 'moderator'] : ['user', 'moderator', 'admin', 'superadmin']}
       />
       {/* Info Modal */}
       <Modal visible={isInfoOpen} transparent animationType="fade" onRequestClose={() => setIsInfoOpen(false)}>

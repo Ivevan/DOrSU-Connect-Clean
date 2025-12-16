@@ -244,7 +244,9 @@ export function authMiddleware(authService, mongoService = null) {
         authenticated: true, 
         userId: 'admin', 
         email: 'admin@dorsu.edu.ph',
-        isAdmin: true 
+        role: 'superadmin',
+        isAdmin: true,
+        isSuperAdmin: true
       };
     }
 
@@ -256,11 +258,13 @@ export function authMiddleware(authService, mongoService = null) {
       // Fetch user from database to get role
       let userRole = null;
       let isAdminFromRole = false;
+      let isSuperAdminFromRole = false;
       if (mongoService) {
         try {
           const user = await mongoService.findUserById(verification.userId);
           userRole = user?.role || null;
-          isAdminFromRole = userRole === 'admin';
+          isAdminFromRole = userRole === 'admin' || userRole === 'superadmin';
+          isSuperAdminFromRole = userRole === 'superadmin';
         } catch (error) {
           Logger.warn('Failed to fetch user role:', error);
         }
@@ -271,7 +275,8 @@ export function authMiddleware(authService, mongoService = null) {
         userId: verification.userId, 
         email: verification.email,
         role: userRole,
-        isAdmin: isAdminFromRole
+        isAdmin: isAdminFromRole,
+        isSuperAdmin: isSuperAdminFromRole
       };
     } else {
       Logger.info(`authMiddleware: Backend JWT invalid (${verification.error}), trying Firebase ID token...`);
@@ -393,6 +398,7 @@ export function authMiddleware(authService, mongoService = null) {
       let userId = null;
       let userRole = null;
       let isAdminFromRole = false;
+      let isSuperAdminFromRole = false;
       if (mongoService) {
         let user = await mongoService.findUser(email);
         if (!user) {
@@ -410,7 +416,8 @@ export function authMiddleware(authService, mongoService = null) {
         }
         userId = user._id || user.id;
         userRole = user.role || null;
-        isAdminFromRole = userRole === 'admin';
+        isAdminFromRole = userRole === 'admin' || userRole === 'superadmin';
+        isSuperAdminFromRole = userRole === 'superadmin';
       }
 
       return { 
@@ -418,7 +425,8 @@ export function authMiddleware(authService, mongoService = null) {
         userId, 
         email,
         role: userRole,
-        isAdmin: isAdminFromRole
+        isAdmin: isAdminFromRole,
+        isSuperAdmin: isSuperAdminFromRole
       };
     } catch (error) {
       Logger.error('Firebase token validation error in middleware:', error.message || String(error));

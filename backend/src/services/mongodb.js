@@ -981,7 +981,7 @@ class MongoDBService {
         throw new Error(`Invalid user ID format: ${userId}`);
       }
       
-      const validRoles = ['user', 'moderator', 'admin'];
+      const validRoles = ['user', 'moderator', 'admin', 'superadmin'];
       if (!validRoles.includes(role)) {
         throw new Error(`Invalid role. Must be one of: ${validRoles.join(', ')}`);
       }

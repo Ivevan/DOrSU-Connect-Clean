@@ -33,6 +33,8 @@ interface ViewEventModalProps {
   onEdit?: () => void;
   onDelete?: () => void;
   showImage?: boolean; // Control whether to show images (default: true)
+  canEdit?: boolean; // Control whether edit button should be shown (default: true if onEdit is provided)
+  canDelete?: boolean; // Control whether delete button should be shown (default: true if onDelete is provided)
 }
 
 const ViewEventModal: React.FC<ViewEventModalProps> = ({
@@ -44,6 +46,8 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
   onEdit,
   onDelete,
   showImage = true, // Default to showing images
+  canEdit = true, // Default to true if onEdit is provided
+  canDelete = true, // Default to true if onDelete is provided
 }) => {
   const { theme, isDarkMode } = useThemeValues();
   const insets = useSafeAreaInsets();
@@ -414,7 +418,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
       maxHeight="90%"
       backgroundColor={theme.colors.card}
       autoSize={!hasDescriptionContent}
-      sheetPaddingBottom={hasDescriptionContent ? undefined : (onEdit || onDelete ? Math.max(insets.bottom, 12) : 0)}
+      sheetPaddingBottom={hasDescriptionContent ? undefined : ((canEdit && onEdit) || (canDelete && onDelete) ? Math.max(insets.bottom, 12) : 0)}
     >
       <View style={[
         styles.container, 
@@ -446,7 +450,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[
               styles.scrollContent,
-              (onEdit || onDelete) && { paddingBottom: 12 }
+              ((canEdit && onEdit) || (canDelete && onDelete)) && { paddingBottom: 12 }
             ]}
             removeClippedSubviews={true}
             scrollEventThrottle={16}
@@ -457,7 +461,7 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
           <View style={[
             styles.scrollContent, 
             styles.contentContainer,
-            (onEdit || onDelete) && styles.contentWithActions
+            ((canEdit && onEdit) || (canDelete && onDelete)) && styles.contentWithActions
           ]}>
             {renderEventContent()}
           </View>
@@ -465,10 +469,11 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
 
         {/* Action Buttons - Outside ScrollView */}
         {/* Show only delete for calendar/CSV events, show both edit and delete for posts */}
-        {onDelete && (
+        {/* Respect canEdit and canDelete props for permission-based visibility */}
+        {(onDelete || onEdit) && (canDelete || canEdit) && (
           <View style={styles.actionsContainer}>
-            {/* Show Edit button only for posts (not calendar/CSV events) */}
-            {onEdit && !isCalendarOrCSVEvent && (
+            {/* Show Edit button only for posts (not calendar/CSV events) and if canEdit is true */}
+            {onEdit && !isCalendarOrCSVEvent && canEdit && (
               <TouchableOpacity
                 style={[styles.actionButton, { backgroundColor: theme.colors.primary }]}
                 onPress={onEdit}
@@ -477,21 +482,23 @@ const ViewEventModal: React.FC<ViewEventModalProps> = ({
                 <Text style={styles.actionButtonText}>Edit</Text>
               </TouchableOpacity>
             )}
-            {/* Show Delete button for all event types */}
-            <TouchableOpacity
-              style={[
-                styles.actionButton, 
-                styles.deleteButton, 
-                { backgroundColor: '#DC2626' },
-                // If only delete button, make it full width
-                isCalendarOrCSVEvent && !onEdit && { flex: 1 }
-              ]}
-              onPress={handleDeletePress}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="trash-outline" size={14} color="#fff" />
-              <Text style={styles.actionButtonText}>Delete</Text>
-            </TouchableOpacity>
+            {/* Show Delete button for all event types if canDelete is true */}
+            {onDelete && canDelete && (
+              <TouchableOpacity
+                style={[
+                  styles.actionButton, 
+                  styles.deleteButton, 
+                  { backgroundColor: '#DC2626' },
+                  // If only delete button, make it full width
+                  (isCalendarOrCSVEvent || !canEdit || !onEdit) && { flex: 1 }
+                ]}
+                onPress={handleDeletePress}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="trash-outline" size={14} color="#fff" />
+                <Text style={styles.actionButtonText}>Delete</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </View>

@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export type UserRole = 'user' | 'moderator' | 'admin';
+export type UserRole = 'user' | 'moderator' | 'admin' | 'superadmin';
 
 export interface AuthCheckResult {
   hasAccess: boolean;
@@ -17,16 +17,17 @@ export interface AuthCheckResult {
 export async function checkAdminOrModeratorAccess(requireAdminOnly: boolean = false): Promise<AuthCheckResult> {
   try {
     const isAdmin = await AsyncStorage.getItem('isAdmin');
+    const isSuperAdmin = await AsyncStorage.getItem('isSuperAdmin');
     const userRole = await AsyncStorage.getItem('userRole') as UserRole | null;
 
-    const isAdminRole = isAdmin === 'true' || userRole === 'admin';
+    const isAdminRole = isAdmin === 'true' || userRole === 'admin' || userRole === 'superadmin' || isSuperAdmin === 'true';
     const isModeratorRole = userRole === 'moderator';
 
     // If requireAdminOnly is true, only admin can access
     if (requireAdminOnly) {
       return {
         hasAccess: isAdminRole,
-        role: isAdminRole ? 'admin' : userRole,
+        role: isAdminRole ? (userRole || 'admin') : userRole,
         isAdmin: isAdminRole,
         isModerator: false,
       };
@@ -58,10 +59,11 @@ export async function getUserRole(): Promise<UserRole | null> {
   try {
     const userRole = await AsyncStorage.getItem('userRole') as UserRole | null;
     const isAdmin = await AsyncStorage.getItem('isAdmin');
+    const isSuperAdmin = await AsyncStorage.getItem('isSuperAdmin');
     
     // If isAdmin flag is set, return admin role
-    if (isAdmin === 'true') {
-      return 'admin';
+    if (isAdmin === 'true' || isSuperAdmin === 'true') {
+      return userRole || 'admin';
     }
     
     return userRole || 'user';
@@ -91,9 +93,10 @@ export async function refreshUserRoleFromBackend(): Promise<UserRole | null> {
 
     // Static admin tokens should always be treated as admin
     if (token.startsWith('admin_')) {
-      await AsyncStorage.setItem('userRole', 'admin');
+      await AsyncStorage.setItem('userRole', 'superadmin');
       await AsyncStorage.setItem('isAdmin', 'true');
-      return 'admin';
+      await AsyncStorage.setItem('isSuperAdmin', 'true');
+      return 'superadmin';
     }
 
     // Get current user ID
@@ -123,7 +126,8 @@ export async function refreshUserRoleFromBackend(): Promise<UserRole | null> {
       
       // Update AsyncStorage with the new role
       await AsyncStorage.setItem('userRole', newRole);
-      await AsyncStorage.setItem('isAdmin', newRole === 'admin' ? 'true' : 'false');
+      await AsyncStorage.setItem('isAdmin', (newRole === 'admin' || newRole === 'superadmin') ? 'true' : 'false');
+      await AsyncStorage.setItem('isSuperAdmin', newRole === 'superadmin' ? 'true' : 'false');
       
       console.log('✅ User role refreshed from backend:', newRole);
       return newRole;

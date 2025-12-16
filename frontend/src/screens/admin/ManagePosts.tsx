@@ -1254,10 +1254,14 @@ const ManagePosts: React.FC = () => {
             }
               }} 
               style={styles.backButton}
-              accessibilityLabel="Go back"
+              accessibilityLabel="Open menu"
               activeOpacity={0.7}
             >
-            <Ionicons name="arrow-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+            <View style={styles.customHamburger} pointerEvents="none">
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineLong, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+            </View>
           </TouchableOpacity>
         </View>
           <View style={styles.headerTitleContainer}>
@@ -2166,6 +2170,22 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: 6,
+  },
+  customHamburger: {
+    width: 24,
+    height: 18,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  hamburgerLine: {
+    height: 2.5,
+    borderRadius: 2,
+  },
+  hamburgerLineShort: {
+    width: 18,
+  },
+  hamburgerLineLong: {
+    width: 24,
   },
   headerTitleContainer: {
     flex: 1,

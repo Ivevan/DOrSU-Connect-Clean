@@ -284,7 +284,9 @@ const CreateAccount = () => {
       }
       
       // Store user data locally
-      const userRole = data.user?.role || 'user';
+      const userRole = (data.user?.role || 'user') as 'user' | 'moderator' | 'admin' | 'superadmin';
+      const adminFlag = userRole === 'admin' || userRole === 'superadmin';
+      const superAdminFlag = userRole === 'superadmin';
       await AsyncStorage.setItem('userToken', data.token || idToken);
       await AsyncStorage.setItem('userEmail', firebaseUser.email || email);
       await AsyncStorage.setItem('userName', displayName);
@@ -292,7 +294,8 @@ const CreateAccount = () => {
       await AsyncStorage.setItem('userLastName', finalLastName);
       await AsyncStorage.setItem('userId', data.user?.id || firebaseUser.uid);
       await AsyncStorage.setItem('userRole', userRole);
-      await AsyncStorage.setItem('isAdmin', userRole === 'admin' ? 'true' : 'false');
+      await AsyncStorage.setItem('isAdmin', adminFlag ? 'true' : 'false');
+      await AsyncStorage.setItem('isSuperAdmin', superAdminFlag ? 'true' : 'false');
       await AsyncStorage.setItem('authProvider', 'email');
       
       setIsLoading(false);

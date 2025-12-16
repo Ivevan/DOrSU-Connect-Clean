@@ -883,7 +883,7 @@ const CalendarScreen = () => {
       <Sidebar
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
-        allowedRoles={['user', 'moderator', 'admin']}
+        allowedRoles={['user', 'moderator', 'admin', 'superadmin']}
       />
     </View>
     </GestureHandlerRootView>

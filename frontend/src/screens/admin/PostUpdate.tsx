@@ -908,12 +908,16 @@ const PostUpdate: React.FC = () => {
               }
             }}
             style={styles.backButton}
-            accessibilityLabel="Go back"
+            accessibilityLabel="Open menu"
             accessibilityRole="button"
             activeOpacity={0.7}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="arrow-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+            <View style={styles.customHamburger} pointerEvents="none">
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineLong, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+            </View>
           </TouchableOpacity>
         </View>
         <Text style={[styles.headerTitle, { color: isDarkMode ? '#F9FAFB' : '#1F2937', fontSize: theme.fontSize.scaleSize(17) }]} numberOfLines={1} pointerEvents="none">Post Update</Text>
@@ -1593,6 +1597,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,
+  },
+  customHamburger: {
+    width: 24,
+    height: 18,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  hamburgerLine: {
+    height: 2.5,
+    borderRadius: 2,
+  },
+  hamburgerLineShort: {
+    width: 18,
+  },
+  hamburgerLineLong: {
+    width: 24,
   },
   headerTitle: {
     fontSize: 17,

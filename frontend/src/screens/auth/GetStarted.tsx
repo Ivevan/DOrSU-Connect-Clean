@@ -156,12 +156,15 @@ const GetStarted = () => {
               const data = await resp.json();
               if (resp.ok && data?.token && data?.user?.id) {
                 // Batch save backend token data
-                const userRole = data.user?.role || 'user';
+                const userRole = (data.user?.role || 'user') as 'user' | 'moderator' | 'admin' | 'superadmin';
+                const adminFlag = userRole === 'admin' || userRole === 'superadmin';
+                const superAdminFlag = userRole === 'superadmin';
                 const backendUpdates: Array<[string, string]> = [
                   ['userToken', data.token],
                   ['userId', String(data.user.id)],
                   ['userRole', userRole],
-                  ['isAdmin', userRole === 'admin' ? 'true' : 'false'],
+                  ['isAdmin', adminFlag ? 'true' : 'false'],
+                  ['isSuperAdmin', superAdminFlag ? 'true' : 'false'],
                 ];
                 if (data.user.email) {
                   backendUpdates.push(['userEmail', data.user.email]);

@@ -11,7 +11,7 @@ export interface BackendUser {
   _id: string;
   email: string;
   username: string;
-  role?: 'user' | 'moderator' | 'admin';
+  role?: 'user' | 'moderator' | 'admin' | 'superadmin';
   createdAt?: string;
   lastLogin?: string;
   isActive?: boolean;
@@ -35,10 +35,11 @@ class ManageAccountsService {
   async getToken(): Promise<string | null> {
     try {
       const isAdmin = await AsyncStorage.getItem('isAdmin');
+      const isSuperAdmin = await AsyncStorage.getItem('isSuperAdmin');
       const storedToken = await AsyncStorage.getItem('userToken');
       
       // If admin, return admin token directly
-      if (isAdmin === 'true' && storedToken && storedToken.startsWith('admin_')) {
+      if ((isAdmin === 'true' || isSuperAdmin === 'true') && storedToken && storedToken.startsWith('admin_')) {
         return storedToken;
       }
       
@@ -132,7 +133,7 @@ class ManageAccountsService {
   /**
    * Update user role (admin only)
    */
-  async updateUserRole(userId: string, role: 'user' | 'moderator' | 'admin'): Promise<boolean> {
+  async updateUserRole(userId: string, role: 'user' | 'moderator' | 'admin' | 'superadmin'): Promise<boolean> {
     try {
       const token = await this.getToken();
       if (!token) {

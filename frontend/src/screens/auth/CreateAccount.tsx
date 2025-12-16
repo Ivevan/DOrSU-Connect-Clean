@@ -48,6 +48,8 @@ const CreateAccount = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [studentId, setStudentId] = useState('');
   const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -59,7 +61,7 @@ const CreateAccount = () => {
   const [isVerifyingStudent, setIsVerifyingStudent] = useState(false);
   const [showEmailFields, setShowEmailFields] = useState(false); // Show email/password fields after student verification
   const [firebaseUser, setFirebaseUser] = useState<any>(null);
-  const [errors, setErrors] = useState({ email: '', password: '', confirmPassword: '', studentId: '', fullName: '', general: '' });
+  const [errors, setErrors] = useState({ email: '', password: '', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: '' });
   
   // Input focus states
   const emailFocus = useRef(new Animated.Value(0)).current;
@@ -67,6 +69,10 @@ const CreateAccount = () => {
   const confirmPasswordFocus = useRef(new Animated.Value(0)).current;
   const studentIdFocus = useRef(new Animated.Value(0)).current;
   const fullNameFocus = useRef(new Animated.Value(0)).current;
+  const firstNameFocus = useRef(new Animated.Value(0)).current;
+  const lastNameFocus = useRef(new Animated.Value(0)).current;
+  const nameSectionOpacity = useRef(new Animated.Value(0)).current;
+  const nameSectionTranslateY = useRef(new Animated.Value(20)).current;
 
   // Handle back button/gesture to navigate to GetStarted
   useFocusEffect(
@@ -335,23 +341,32 @@ const CreateAccount = () => {
     try {
       setIsLoading(true);
       
-      // Parse fullName to extract firstName and lastName
-      // Format: "LastName FirstName" or "LastName, FirstName"
-      const nameParts = fullName.trim().split(/\s+/);
-      let finalFirstName = '';
-      let finalLastName = '';
+      // Use provided firstName/lastName if available, otherwise parse from fullName or use email username
+      let finalFirstName = firstName.trim();
+      let finalLastName = lastName.trim();
       
-      if (nameParts.length >= 2) {
-        // Assume last part is first name, rest is last name
-        finalFirstName = nameParts[nameParts.length - 1];
-        finalLastName = nameParts.slice(0, -1).join(' ');
-      } else {
-        // Fallback: use full name as display name
-        finalFirstName = fullName.trim();
+      // If firstName/lastName not provided, try to parse from fullName (for students)
+      if (!finalFirstName && !finalLastName && fullName.trim()) {
+        const nameParts = fullName.trim().split(/\s+/);
+        if (nameParts.length >= 2) {
+          finalFirstName = nameParts[nameParts.length - 1];
+          finalLastName = nameParts.slice(0, -1).join(' ');
+        } else {
+          finalFirstName = fullName.trim();
+          finalLastName = '';
+        }
+      }
+      
+      // If still no name, use email username as fallback
+      if (!finalFirstName && !finalLastName) {
+        const emailUsername = email.split('@')[0];
+        finalFirstName = emailUsername.charAt(0).toUpperCase() + emailUsername.slice(1);
         finalLastName = '';
       }
       
-      const displayName = fullName.trim();
+      const displayName = finalLastName 
+        ? `${finalFirstName} ${finalLastName}`.trim()
+        : finalFirstName;
       
       // Update Firebase user profile
       try {
@@ -441,6 +456,7 @@ const CreateAccount = () => {
       completeAccountCreation();
     }
   }, [emailVerificationStatus, firebaseUser, studentVerified, completeAccountCreation]);
+
 
   // Handle deep link verification when screen is focused
   useFocusEffect(
@@ -702,12 +718,12 @@ const CreateAccount = () => {
   // Create account and send verification email
   const handleCreateAccount = async () => {
     if (!isOnline) {
-      setErrors({ email: '', password: '', confirmPassword: '', studentId: '', fullName: '', general: 'No internet connection. Please check your network and try again.' });
+      setErrors({ email: '', password: '', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: 'No internet connection. Please check your network and try again.' });
       return;
     }
 
     // Clear previous errors
-    setErrors({ email: '', password: '', confirmPassword: '', studentId: '', fullName: '', general: '' });
+    setErrors({ email: '', password: '', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: '' });
     
     // Clear any stale verification data from previous attempts
     await AsyncStorage.removeItem('pendingVerificationCode');
@@ -716,7 +732,7 @@ const CreateAccount = () => {
     
     // Validation
     let hasErrors = false;
-    const newErrors = { email: '', password: '', confirmPassword: '', studentId: '', fullName: '', general: '' };
+    const newErrors = { email: '', password: '', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: '' };
     
     const emailValidationMessage = validateEmailField(email);
     if (emailValidationMessage) {
@@ -815,11 +831,11 @@ const CreateAccount = () => {
       let errorMessage = 'Failed to create account';
       
       if (error.message.includes('already registered') || error.message.includes('email-already-in-use')) {
-        setErrors({ email: 'This email is already registered', password: '', confirmPassword: '', studentId: '', fullName: '', general: '' });
+        setErrors({ email: 'This email is already registered', password: '', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: '' });
       } else if (error.message.includes('Invalid') || error.message.includes('invalid-email')) {
-        setErrors({ email: 'Invalid email format', password: '', confirmPassword: '', studentId: '', fullName: '', general: '' });
+        setErrors({ email: 'Invalid email format', password: '', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: '' });
       } else if (error.message.includes('weak-password')) {
-        setErrors({ email: '', password: 'Password is too weak', confirmPassword: '', studentId: '', fullName: '', general: '' });
+        setErrors({ email: '', password: 'Password is too weak', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: '' });
       } else if (error.message.includes('operation-not-allowed') || error.message.includes('Email/Password authentication is not enabled')) {
         setErrors({ 
           email: '', 
@@ -827,10 +843,12 @@ const CreateAccount = () => {
           confirmPassword: '', 
           studentId: '',
           fullName: '',
+          firstName: '',
+          lastName: '',
           general: 'Email/Password authentication is not enabled in Firebase. Please enable it in Firebase Console under Authentication > Sign-in method, then try again.' 
         });
       } else {
-        setErrors({ email: '', password: '', confirmPassword: '', studentId: '', fullName: '', general: error.message || errorMessage });
+        setErrors({ email: '', password: '', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: error.message || errorMessage });
       }
     }
   };
@@ -870,14 +888,14 @@ const CreateAccount = () => {
           </View>
         )}
 
-        {/* Email Verification Status */}
-        {emailVerificationStatus === 'verified' && (
+        {/* Email Verification Status - Only show when Personal Information section is visible */}
+        {emailVerificationStatus === 'verified' && showEmailFields && (
           <View style={styles.verificationSuccessBox}>
             <MaterialIcons name="check-circle" size={20} color="#10B981" style={{ marginRight: 8 }} />
             <View style={{ flex: 1 }}>
               <Text style={styles.verificationSuccessTitle}>Email Verified Successfully!</Text>
-              <Text style={styles.verificationSuccessText}>
-                Your account is being created...
+              <Text style={styles.verificationSuccessMessage}>
+                Email verified successfully! Please enter your name (optional) to complete your account.
               </Text>
             </View>
           </View>
@@ -1075,10 +1093,10 @@ const CreateAccount = () => {
                 </View>
               </View>
             </>
-          ) : showEmailFields ? (
-            // Step 2: Email and Password fields (after student verification)
+          ) : showEmailFields && emailVerificationStatus !== 'verified' ? (
+            // Step 2: Email and Password fields (after student verification, before email verification)
             <>
-          {/* Email Input */}
+              {/* Email Input */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Email Address</Text>
             <Animated.View style={[
@@ -1275,24 +1293,143 @@ const CreateAccount = () => {
             </View>
           </View>
             </>
+          ) : emailVerificationStatus === 'verified' && showEmailFields ? (
+            // Step 3: Personal Information (Replaces Email/Password after verification)
+            <React.Fragment>
+              {/* First Name Input */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>First Name (Optional)</Text>
+                <Animated.View style={[
+                  styles.inputWrapper,
+                  {
+                    borderColor: firstNameFocus.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [errors.firstName ? '#EF4444' : '#E5E7EB', errors.firstName ? '#EF4444' : '#2563EB'],
+                    }),
+                    borderWidth: firstNameFocus.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [1, 2],
+                    }),
+                  }
+                ]}>
+                  <MaterialIcons 
+                    name="person" 
+                    size={18} 
+                    color={errors.firstName ? '#EF4444' : '#9CA3AF'} 
+                    style={styles.inputIcon} 
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter your first name"
+                    placeholderTextColor="#9CA3AF"
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    value={firstName}
+                    onChangeText={(text) => {
+                      setFirstName(text);
+                      if (errors.firstName) setErrors(prev => ({ ...prev, firstName: '' }));
+                    }}
+                    onFocus={() => {
+                      Animated.timing(firstNameFocus, {
+                        toValue: 1,
+                        duration: 200,
+                        useNativeDriver: false,
+                      }).start();
+                    }}
+                    onBlur={() => {
+                      Animated.timing(firstNameFocus, {
+                        toValue: 0,
+                        duration: 200,
+                        useNativeDriver: false,
+                      }).start();
+                    }}
+                    accessibilityLabel="First Name"
+                  />
+                </Animated.View>
+                <View style={styles.errorContainer}>
+                  {errors.firstName ? (
+                    <Text style={styles.errorText}>{errors.firstName}</Text>
+                  ) : null}
+                </View>
+              </View>
+
+              {/* Last Name Input */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Last Name (Optional)</Text>
+                <Animated.View style={[
+                  styles.inputWrapper,
+                  {
+                    borderColor: lastNameFocus.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [errors.lastName ? '#EF4444' : '#E5E7EB', errors.lastName ? '#EF4444' : '#2563EB'],
+                    }),
+                    borderWidth: lastNameFocus.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [1, 2],
+                    }),
+                  }
+                ]}>
+                  <MaterialIcons 
+                    name="person-outline" 
+                    size={18} 
+                    color={errors.lastName ? '#EF4444' : '#9CA3AF'} 
+                    style={styles.inputIcon} 
+                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter your last name"
+                    placeholderTextColor="#9CA3AF"
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                    value={lastName}
+                    onChangeText={(text) => {
+                      setLastName(text);
+                      if (errors.lastName) setErrors(prev => ({ ...prev, lastName: '' }));
+                    }}
+                    onFocus={() => {
+                      Animated.timing(lastNameFocus, {
+                        toValue: 1,
+                        duration: 200,
+                        useNativeDriver: false,
+                      }).start();
+                    }}
+                    onBlur={() => {
+                      Animated.timing(lastNameFocus, {
+                        toValue: 0,
+                        duration: 200,
+                        useNativeDriver: false,
+                      }).start();
+                    }}
+                    accessibilityLabel="Last Name"
+                  />
+                </Animated.View>
+                <View style={styles.errorContainer}>
+                  {errors.lastName ? (
+                    <Text style={styles.errorText}>{errors.lastName}</Text>
+                  ) : null}
+                </View>
+              </View>
+            </React.Fragment>
           ) : (
             null
           )}
 
-          {/* General Error Message */}
-          <View style={[
-            styles.generalErrorContainer,
-            !errors.general && styles.generalErrorContainerHidden
-          ]}>
-            {errors.general ? (
-              <>
-                <MaterialIcons name="error-outline" size={20} color="#EF4444" />
-                <Text style={styles.generalErrorText}>{errors.general}</Text>
-              </>
-            ) : null}
-          </View>
+        </View>
 
-          {/* Verify Student / Create Account Button */}
+      {/* General Error Message */}
+      <View style={[
+        styles.generalErrorContainer,
+        !errors.general && styles.generalErrorContainerHidden
+      ]}>
+        {errors.general ? (
+          <>
+            <MaterialIcons name="error-outline" size={20} color="#EF4444" />
+            <Text style={styles.generalErrorText}>{errors.general}</Text>
+          </>
+        ) : null}
+      </View>
+
+      {/* Verify Student / Create Account Button */}
           <Animated.View style={{ transform: [{ scale: signUpButtonScale }] }}>
             <TouchableOpacity 
               style={[
@@ -1309,9 +1446,12 @@ const CreateAccount = () => {
                 } else if (showEmailFields && emailVerificationStatus === 'idle') {
                   // Step 2: Create account with email/password
                   handleButtonPress(signUpButtonScale, handleCreateAccount);
+                } else if (emailVerificationStatus === 'verified') {
+                  // Step 3: Complete account creation after email verification
+                  handleButtonPress(signUpButtonScale, completeAccountCreation);
                 }
               }}
-              disabled={isLoading || !isOnline || isVerifyingStudent || (emailVerificationStatus === 'pending' && userType === 'student' && !studentVerified) || !userType}
+              disabled={isLoading || !isOnline || isVerifyingStudent || (emailVerificationStatus === 'pending' && userType === 'student' && !studentVerified) || !userType || (emailVerificationStatus === 'idle' && !showEmailFields)}
               accessibilityRole="button"
               activeOpacity={0.8}
             >
@@ -1340,23 +1480,24 @@ const CreateAccount = () => {
                 <Text style={styles.signUpButtonText}>VERIFY STUDENT</Text>
               ) : emailVerificationStatus === 'pending' ? (
                 <Text style={styles.signUpButtonText}>VERIFY EMAIL TO CONTINUE</Text>
+              ) : emailVerificationStatus === 'verified' ? (
+                <Text style={styles.signUpButtonText}>CONTINUE</Text>
               ) : (
                 <Text style={styles.signUpButtonText}>CREATE ACCOUNT</Text>
               )}
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Links Section */}
-          <View style={styles.linksSection}>
-            <TouchableOpacity 
-              onPress={() => navigation.navigate('SignIn')}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.linkText}>Already have an account? Sign In</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+      {/* Links Section */}
+      <View style={styles.linksSection}>
+        <TouchableOpacity 
+          onPress={() => navigation.navigate('SignIn')}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.linkText}>Already have an account? Sign In</Text>
+        </TouchableOpacity>
+      </View>
       </>
     );
   };
@@ -1610,6 +1751,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     flex: 1,
+    lineHeight: 16,
+  },
+  verificationSuccessMessage: {
+    color: '#047857',
+    fontSize: 12,
     lineHeight: 16,
   },
   mobileContainer: {

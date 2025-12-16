@@ -61,9 +61,16 @@ export async function getUserRole(): Promise<UserRole | null> {
     const isAdmin = await AsyncStorage.getItem('isAdmin');
     const isSuperAdmin = await AsyncStorage.getItem('isSuperAdmin');
     
+    // If isSuperAdmin flag is set, return superadmin role (priority check)
+    // Flag takes absolute priority over potentially stale userRole value
+    if (isSuperAdmin === 'true') {
+      return 'superadmin';
+    }
+    
     // If isAdmin flag is set, return admin role
-    if (isAdmin === 'true' || isSuperAdmin === 'true') {
-      return userRole || 'admin';
+    // Flag takes absolute priority over potentially stale userRole value
+    if (isAdmin === 'true') {
+      return 'admin';
     }
     
     return userRole || 'user';

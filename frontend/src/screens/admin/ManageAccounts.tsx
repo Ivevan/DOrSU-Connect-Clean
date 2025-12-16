@@ -27,6 +27,7 @@ import { Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '../../contexts/AuthContext';
+import Sidebar from '../../components/navigation/Sidebar';
 
 type RootStackParamList = {
   ManageAccounts: undefined;
@@ -52,6 +53,7 @@ const ManageAccounts = () => {
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<'superadmin' | 'admin' | 'moderator' | 'user' | null>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
   const [profileImageError, setProfileImageError] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Animated floating orb
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -184,6 +186,12 @@ const ManageAccounts = () => {
       }
       if (user?.role === 'superadmin' && !isSuperAdmin) {
         Alert.alert('Access Denied', 'Only a superadmin can modify another superadmin.');
+        setUpdatingUserId(null);
+        return;
+      }
+      // Only superadmins can modify existing admin accounts (backend enforces this at line 1061-1063)
+      if (user?.role === 'admin' && !isSuperAdmin) {
+        Alert.alert('Access Denied', 'Only a superadmin can modify an admin account.');
         setUpdatingUserId(null);
         return;
       }
@@ -792,11 +800,11 @@ const ManageAccounts = () => {
       }]}>
         <View style={styles.headerLeft}>
           <TouchableOpacity 
-            onPress={() => navigation.goBack()} 
+            onPress={() => setIsSidebarOpen(true)} 
             style={styles.menuButton}
             activeOpacity={0.7}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            accessibilityLabel="Open menu"
+            accessibilityLabel="Open sidebar"
             accessibilityRole="button"
           >
             <View style={styles.customHamburger} pointerEvents="none">
@@ -1028,6 +1036,13 @@ const ManageAccounts = () => {
           )}
         </ScrollView>
       </View>
+
+      {/* Sidebar Component */}
+      <Sidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        allowedRoles={['superadmin', 'admin', 'moderator']}
+      />
     </View>
   );
 };

@@ -190,7 +190,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const titleText =
-    effectiveRole === 'admin'
+    effectiveRole === 'superadmin'
+      ? 'Superadmin Panel'
+      : effectiveRole === 'admin'
       ? 'Admin Panel'
       : effectiveRole === 'moderator'
       ? 'Moderator Panel'

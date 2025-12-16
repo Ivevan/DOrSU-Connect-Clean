@@ -34,6 +34,7 @@ import PreviewModal from '../../modals/PreviewModal';
 import BottomSheet from '../../components/common/BottomSheet';
 import MonthPickerModal from '../../modals/MonthPickerModal';
 import { useAuth } from '../../contexts/AuthContext';
+import Sidebar from '../../components/navigation/Sidebar';
 
 type RootStackParamList = {
   AdminDashboard: undefined;
@@ -54,6 +55,7 @@ const PostUpdate: React.FC = () => {
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const isPendingAuthorization = isAuthorized === null;
   const isMountedRef = useRef(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   // Memoize safe area insets to prevent recalculation during navigation
   const safeInsets = useMemo(() => ({
@@ -900,15 +902,9 @@ const PostUpdate: React.FC = () => {
       >
         <View style={styles.headerLeft}>
           <TouchableOpacity
-            onPress={() => {
-              if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
-                navigation.goBack();
-              } else {
-                (navigation as any).navigate('AdminDashboard');
-              }
-            }}
+            onPress={() => setIsSidebarOpen(true)}
             style={styles.backButton}
-            accessibilityLabel="Open menu"
+            accessibilityLabel="Open sidebar"
             accessibilityRole="button"
             activeOpacity={0.7}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -1455,6 +1451,13 @@ const PostUpdate: React.FC = () => {
           </View>
         </View>
       </BlurView>
+
+      {/* Sidebar Component */}
+      <Sidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        allowedRoles={['superadmin', 'admin', 'moderator']}
+      />
     </View>
   );
 };

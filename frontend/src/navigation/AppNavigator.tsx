@@ -15,6 +15,7 @@ import TermsOfUseScreen from '../screens/shared/TermsOfUseScreen';
 import AdminAccountSettings from '../screens/admin/AdminAccountSettings';
 import ActivityLog from '../screens/admin/ActivityLog';
 import ManageAccounts from '../screens/admin/ManageAccounts';
+import ManageUserAccount from '../screens/admin/ManageUserAccount';
 import AdminAIChat from '../screens/admin/AdminAIChat';
 import AdminCalendar from '../screens/admin/AdminCalendar';
 import AdminDashboard from '../screens/admin/AdminDashboard';
@@ -544,6 +545,14 @@ const AppNavigator = () => {
         <Stack.Screen 
           name="ManageAccounts" 
           component={ManageAccounts}
+          options={{
+            headerShown: false,
+            animationDuration: 0,
+          }}
+        />
+        <Stack.Screen 
+          name="ManageUserAccount" 
+          component={ManageUserAccount}
           options={{
             headerShown: false,
             animationDuration: 0,

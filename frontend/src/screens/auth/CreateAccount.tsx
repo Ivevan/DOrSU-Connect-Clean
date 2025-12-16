@@ -58,8 +58,10 @@ const CreateAccount = () => {
   const [emailVerificationMessage, setEmailVerificationMessage] = useState('');
   const [userType, setUserType] = useState<'faculty' | 'student' | null>(null); // Track user type selection
   const [studentVerified, setStudentVerified] = useState(false); // Track if student credentials are verified
+  const [facultyVerified, setFacultyVerified] = useState(false); // Track if faculty credentials are verified
   const [isVerifyingStudent, setIsVerifyingStudent] = useState(false);
-  const [showEmailFields, setShowEmailFields] = useState(false); // Show email/password fields after student verification
+  const [isVerifyingFaculty, setIsVerifyingFaculty] = useState(false);
+  const [showEmailFields, setShowEmailFields] = useState(false); // Show email/password fields after verification
   const [firebaseUser, setFirebaseUser] = useState<any>(null);
   const [errors, setErrors] = useState({ email: '', password: '', confirmPassword: '', studentId: '', fullName: '', firstName: '', lastName: '', general: '' });
   
@@ -128,18 +130,10 @@ const CreateAccount = () => {
     }
     const emailDomain = value.toLowerCase().split('@')[1];
     
-    // Faculty accounts must use school email only
-    if (userType === 'faculty') {
-      const schoolDomains = ['dorsu.edu.ph'];
-      if (!emailDomain || !schoolDomains.includes(emailDomain)) {
-        return 'Faculty accounts must use a school email address (@dorsu.edu.ph)';
-      }
-    } else {
-      // Student accounts can use multiple domains
-      const allowedDomains = ['dorsu.edu.ph', 'gmail.com', 'yahoo.com', 'outlook.com', 'ymail.com', 'hotmail.com'];
-      if (!emailDomain || !allowedDomains.includes(emailDomain)) {
-        return 'Only @dorsu.edu.ph, @gmail.com, @yahoo.com, @outlook.com, @ymail.com, and @hotmail.com addresses are supported';
-      }
+    // Both faculty and student accounts can use multiple domains
+    const allowedDomains = ['dorsu.edu.ph', 'gmail.com', 'yahoo.com', 'outlook.com', 'ymail.com', 'hotmail.com'];
+    if (!emailDomain || !allowedDomains.includes(emailDomain)) {
+      return 'Only @dorsu.edu.ph, @gmail.com, @yahoo.com, @outlook.com, @ymail.com, and @hotmail.com addresses are supported';
     }
     
     if (TEMP_EMAIL_DOMAINS.includes(emailDomain)) {
@@ -279,6 +273,76 @@ const CreateAccount = () => {
     return { hasErrors, errors: newErrors };
   };
 
+  // Validate faculty credentials format
+  const validateFacultyCredentialsFormat = () => {
+    const newErrors: { fullName: string } = { fullName: '' };
+    let hasErrors = false;
+
+    // Validate Full Name (must have at least 2 words - lastName & firstName)
+    const nameParts = fullName.trim().split(/\s+/);
+    if (!fullName.trim()) {
+      newErrors.fullName = 'Full Name is required';
+      hasErrors = true;
+    } else if (nameParts.length < 2) {
+      newErrors.fullName = 'Please provide your full name (Last Name and First Name)';
+      hasErrors = true;
+    }
+
+    return { hasErrors, errors: newErrors };
+  };
+
+  // Verify faculty credentials against database
+  const verifyFacultyCredentials = async () => {
+    // Validate format first
+    const validation = validateFacultyCredentialsFormat();
+    if (validation.hasErrors) {
+      setErrors(prev => ({ ...prev, ...validation.errors }));
+      return;
+    }
+
+    try {
+      setIsVerifyingFaculty(true);
+      setErrors(prev => ({ ...prev, fullName: '', general: '' }));
+
+      // Call backend to verify faculty credentials
+      const response = await fetch(`${API_BASE_URL}/api/auth/verify-faculty-credentials`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fullName: fullName.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to verify faculty credentials');
+      }
+
+      if (data.valid) {
+        setFacultyVerified(true);
+        setShowEmailFields(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } else {
+        setErrors(prev => ({ 
+          ...prev, 
+          general: data.reason || 'Faculty credentials not found. Please check your Full Name.' 
+        }));
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    } catch (error: any) {
+      setErrors(prev => ({ 
+        ...prev, 
+        general: error.message || 'Failed to verify faculty credentials. Please try again.' 
+      }));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsVerifyingFaculty(false);
+    }
+  };
+
   // Verify student credentials against database
   const verifyStudentCredentials = async () => {
     // Validate format first
@@ -335,8 +399,9 @@ const CreateAccount = () => {
   // Complete account creation after email verification
   const completeAccountCreation = useCallback(async () => {
     if (!firebaseUser || emailVerificationStatus !== 'verified') return;
-    // For students, require verification; for faculty, skip verification
+    // For students, require verification; for faculty, require verification
     if (userType === 'student' && !studentVerified) return;
+    if (userType === 'faculty' && !facultyVerified) return;
     
     try {
       setIsLoading(true);
@@ -451,11 +516,13 @@ const CreateAccount = () => {
 
   // When email is verified, complete account creation
   useEffect(() => {
-    if (emailVerificationStatus === 'verified' && firebaseUser && studentVerified) {
+    if (emailVerificationStatus === 'verified' && firebaseUser) {
       // Auto-complete account creation when email is verified
-      completeAccountCreation();
+      if ((userType === 'student' && studentVerified) || (userType === 'faculty' && facultyVerified)) {
+        completeAccountCreation();
+      }
     }
-  }, [emailVerificationStatus, firebaseUser, studentVerified, completeAccountCreation]);
+  }, [emailVerificationStatus, firebaseUser, studentVerified, facultyVerified, userType, completeAccountCreation]);
 
 
   // Handle deep link verification when screen is focused
@@ -875,14 +942,16 @@ const CreateAccount = () => {
 
         <Text style={styles.welcomeText}>Create your account</Text>
         
-        {/* Student Verification Success Message */}
-        {studentVerified && !showEmailFields && (
+        {/* Student/Faculty Verification Success Message */}
+        {((studentVerified || facultyVerified) && !showEmailFields) && (
           <View style={styles.verificationSuccessBox}>
             <MaterialIcons name="check-circle" size={20} color="#10B981" style={{ marginRight: 8 }} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.verificationSuccessTitle}>Student Verified!</Text>
+              <Text style={styles.verificationSuccessTitle}>
+                {userType === 'student' ? 'Student Verified!' : 'Faculty Verified!'}
+              </Text>
               <Text style={styles.verificationSuccessText}>
-                Your student credentials have been verified. Please enter your email for verification.
+                Your {userType === 'student' ? 'student' : 'faculty'} credentials have been verified. Please enter your email for verification.
               </Text>
             </View>
           </View>
@@ -944,7 +1013,7 @@ const CreateAccount = () => {
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     setUserType('faculty');
-                    setShowEmailFields(true); // Skip student verification for faculty
+                    // Faculty also needs verification, don't skip
                   }}
                   activeOpacity={0.8}
                 >
@@ -967,72 +1036,74 @@ const CreateAccount = () => {
                 </TouchableOpacity>
               </View>
             </>
-          ) : userType === 'student' && !showEmailFields ? (
-            // Step 1: Student ID and Name fields (students only)
+          ) : (userType === 'student' || userType === 'faculty') && !showEmailFields ? (
+            // Step 1: Student ID and Name fields (students) or Full Name (faculty)
             <>
-              {/* Student ID Input */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Student ID <Text style={{ color: '#EF4444' }}>*</Text></Text>
-                <Animated.View style={[
-                  styles.inputWrapper,
-                  {
-                    borderColor: studentIdFocus.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [errors.studentId ? '#EF4444' : '#E5E7EB', errors.studentId ? '#EF4444' : '#2563EB'],
-                    }),
-                    borderWidth: studentIdFocus.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [1, 2],
-                    }),
-                  }
-                ]}>
-                  <MaterialIcons 
-                    name="badge" 
-                    size={18} 
-                    color={errors.studentId ? '#EF4444' : '#9CA3AF'} 
-                    style={styles.inputIcon} 
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter Student ID"
-                    placeholderTextColor="#9CA3AF"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="default"
-                    value={studentId}
-                    onChangeText={(text) => {
-                      // Auto-format: Add dash after 4 digits
-                      let formatted = text.replace(/[^0-9]/g, '');
-                      if (formatted.length > 4) {
-                        formatted = formatted.slice(0, 4) + '-' + formatted.slice(4, 8);
-                      }
-                      setStudentId(formatted);
-                      if (errors.studentId) setErrors(prev => ({ ...prev, studentId: '' }));
-                    }}
-                    maxLength={9}
-                    onFocus={() => {
-                      Animated.timing(studentIdFocus, {
-                        toValue: 1,
-                        duration: 200,
-                        useNativeDriver: false,
-                      }).start();
-                    }}
-                    onBlur={() => {
-                      Animated.timing(studentIdFocus, {
-                        toValue: 0,
-                        duration: 200,
-                        useNativeDriver: false,
-                      }).start();
-                    }}
-                    accessibilityLabel="Student ID"
-                  />
-                </Animated.View>
-                <View style={styles.errorContainer}>
-                  {errors.studentId ? (
-                    <Text style={styles.errorText}>{errors.studentId}</Text>
-                  ) : null}
+              {/* Student ID Input (only for students) */}
+              {userType === 'student' && (
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Student ID <Text style={{ color: '#EF4444' }}>*</Text></Text>
+                  <Animated.View style={[
+                    styles.inputWrapper,
+                    {
+                      borderColor: studentIdFocus.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [errors.studentId ? '#EF4444' : '#E5E7EB', errors.studentId ? '#EF4444' : '#2563EB'],
+                      }),
+                      borderWidth: studentIdFocus.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [1, 2],
+                      }),
+                    }
+                  ]}>
+                    <MaterialIcons 
+                      name="badge" 
+                      size={18} 
+                      color={errors.studentId ? '#EF4444' : '#9CA3AF'} 
+                      style={styles.inputIcon} 
+                    />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter Student ID"
+                      placeholderTextColor="#9CA3AF"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      keyboardType="default"
+                      value={studentId}
+                      onChangeText={(text) => {
+                        // Auto-format: Add dash after 4 digits
+                        let formatted = text.replace(/[^0-9]/g, '');
+                        if (formatted.length > 4) {
+                          formatted = formatted.slice(0, 4) + '-' + formatted.slice(4, 8);
+                        }
+                        setStudentId(formatted);
+                        if (errors.studentId) setErrors(prev => ({ ...prev, studentId: '' }));
+                      }}
+                      maxLength={9}
+                      onFocus={() => {
+                        Animated.timing(studentIdFocus, {
+                          toValue: 1,
+                          duration: 200,
+                          useNativeDriver: false,
+                        }).start();
+                      }}
+                      onBlur={() => {
+                        Animated.timing(studentIdFocus, {
+                          toValue: 0,
+                          duration: 200,
+                          useNativeDriver: false,
+                        }).start();
+                      }}
+                      accessibilityLabel="Student ID"
+                    />
+                  </Animated.View>
+                  <View style={styles.errorContainer}>
+                    {errors.studentId ? (
+                      <Text style={styles.errorText}>{errors.studentId}</Text>
+                    ) : null}
+                  </View>
                 </View>
-              </View>
+              )}
 
               {/* Full Name Input */}
               <View style={styles.inputGroup}>
@@ -1058,7 +1129,7 @@ const CreateAccount = () => {
                   />
                   <TextInput
                     style={styles.input}
-                    placeholder="Enter Full Name"
+                    placeholder={userType === 'student' ? "Enter Full Name" : "Enter Your Full Name"}
                     placeholderTextColor="#9CA3AF"
                     autoCapitalize="words"
                     autoCorrect={false}
@@ -1438,12 +1509,28 @@ const CreateAccount = () => {
                 if (!userType) {
                   // Should not happen - user type selection is handled by buttons
                   return;
-                } else if (showEmailFields && emailVerificationStatus === 'idle') {
-                  // Create account with email/password
+                }
+
+                // Student/Faculty flow step 1: verify credentials before showing email fields
+                if ((userType === 'student' || userType === 'faculty') && !showEmailFields) {
+                  if (userType === 'student') {
+                    handleButtonPress(signUpButtonScale, verifyStudentCredentials);
+                  } else if (userType === 'faculty') {
+                    handleButtonPress(signUpButtonScale, verifyFacultyCredentials);
+                  }
+                  return;
+                }
+
+                // Step 2: create Firebase account and send verification email
+                if (showEmailFields && emailVerificationStatus === 'idle') {
                   handleButtonPress(signUpButtonScale, handleCreateAccount);
-                } else if (emailVerificationStatus === 'verified') {
-                  // Complete account creation after email verification
+                  return;
+                }
+
+                // Step 3: finalize once email is verified
+                if (emailVerificationStatus === 'verified') {
                   handleButtonPress(signUpButtonScale, completeAccountCreation);
+                  return;
                 }
               }}
               disabled={
@@ -1451,7 +1538,8 @@ const CreateAccount = () => {
                 !isOnline || 
                 (emailVerificationStatus === 'pending') || 
                 !userType || 
-                (emailVerificationStatus === 'idle' && !showEmailFields && !(userType === 'student' && !showEmailFields))
+                (isVerifyingStudent || isVerifyingFaculty) ||
+                (emailVerificationStatus === 'idle' && !showEmailFields && !((userType === 'student' || userType === 'faculty') && !showEmailFields))
               }
               accessibilityRole="button"
               activeOpacity={0.8}
@@ -1475,8 +1563,10 @@ const CreateAccount = () => {
                 </>
               ) : !userType ? (
                 <Text style={styles.signUpButtonText}>SELECT TYPE</Text>
-              ) : userType === 'student' && !showEmailFields ? (
-                <Text style={styles.signUpButtonText}>CONTINUE</Text>
+              ) : (userType === 'student' || userType === 'faculty') && !showEmailFields ? (
+                <Text style={styles.signUpButtonText}>
+                  {(isVerifyingStudent || isVerifyingFaculty) ? 'VERIFYING...' : 'CONTINUE'}
+                </Text>
               ) : emailVerificationStatus === 'pending' ? (
                 <Text style={styles.signUpButtonText}>VERIFY EMAIL TO CONTINUE</Text>
               ) : emailVerificationStatus === 'verified' ? (

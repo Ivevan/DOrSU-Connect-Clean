@@ -5,21 +5,21 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Image, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, Dimensions, Image, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNavBar from '../../components/navigation/BottomNavBar';
 import Sidebar from '../../components/navigation/Sidebar';
+import { useAuth } from '../../contexts/AuthContext';
 import { useThemeValues } from '../../contexts/ThemeContext';
+import { useUpdates } from '../../contexts/UpdatesContext';
+import NotificationModal from '../../modals/NotificationModal';
 import ViewEventModal from '../../modals/ViewEventModal';
 import AdminDataService from '../../services/AdminDataService';
+import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import CalendarService, { CalendarEvent } from '../../services/CalendarService';
 import NotificationService from '../../services/NotificationService';
-import { useUpdates } from '../../contexts/UpdatesContext';
-import { getCurrentUser, onAuthStateChange, User } from '../../services/authService';
 import { categoryToColors } from '../../utils/calendarUtils';
 import { formatDate } from '../../utils/dateUtils';
-import NotificationModal from '../../modals/NotificationModal';
-import { useAuth } from '../../contexts/AuthContext';
 
 // Session-scoped flags to avoid re-loading on every mount (especially on web)
 // Initial data will load once per app session; further loads are manual (pull-to-refresh)
@@ -303,13 +303,33 @@ const SchoolUpdates = () => {
   const [backendUserName, setBackendUserName] = useState<string | null>(null);
   const [backendUserFirstName, setBackendUserFirstName] = useState<string | null>(null);
   const [backendUserLastName, setBackendUserLastName] = useState<string | null>(null);
+  const [backendUserEmail, setBackendUserEmail] = useState<string | null>(null);
   const userName = useMemo(() => {
-    // Priority: Backend firstName + lastName -> Backend userName -> Firebase displayName -> Firebase email username -> Default
-    if (backendUserFirstName && backendUserLastName) {
-      return `${backendUserFirstName} ${backendUserLastName}`.trim();
+    // Priority: Backend username (from account creation) -> Backend firstName + lastName -> Firebase displayName -> Firebase email username -> Backend email username -> Default
+    // The userName stored during account creation should be the primary source
+    if (backendUserName && backendUserName.trim()) {
+      return backendUserName.trim();
     }
-    return backendUserName || currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
-  }, [backendUserName, backendUserFirstName, backendUserLastName, currentUser]);
+    // Fallback to firstName + lastName if userName is not available
+    if (backendUserFirstName && backendUserLastName) {
+      const combinedName = `${backendUserFirstName} ${backendUserLastName}`.trim();
+      if (combinedName) return combinedName;
+    }
+    // If only firstName is available, use it
+    if (backendUserFirstName) {
+      return backendUserFirstName.trim();
+    }
+    // If only lastName is available, use it
+    if (backendUserLastName) {
+      return backendUserLastName.trim();
+    }
+    // Fallback to Firebase displayName
+    if (currentUser?.displayName) return currentUser.displayName;
+    // Fallback to email username
+    if (currentUser?.email) return currentUser.email.split('@')[0];
+    if (backendUserEmail) return backendUserEmail.split('@')[0];
+    return 'User';
+  }, [backendUserName, backendUserFirstName, backendUserLastName, currentUser, backendUserEmail]);
 
   // Animated floating background orb (Copilot-style)
   const floatAnim1 = useRef(new Animated.Value(0)).current;
@@ -354,11 +374,12 @@ const SchoolUpdates = () => {
       try {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
         // Load photo first for immediate display, then other data in parallel
-        const [userPhoto, storedUserName, firstName, lastName] = await Promise.all([
+        const [userPhoto, storedUserName, firstName, lastName, userEmail] = await Promise.all([
           AsyncStorage.getItem('userPhoto'),
           AsyncStorage.getItem('userName'),
           AsyncStorage.getItem('userFirstName'),
           AsyncStorage.getItem('userLastName'),
+          AsyncStorage.getItem('userEmail'),
         ]);
         if (!cancelled) {
           setBackendUserPhoto(userPhoto);
@@ -370,6 +391,9 @@ const SchoolUpdates = () => {
           }
           if (lastName) {
             setBackendUserLastName(lastName);
+          }
+          if (userEmail) {
+            setBackendUserEmail(userEmail);
           }
         }
       } catch (error) {
@@ -395,6 +419,7 @@ const SchoolUpdates = () => {
           const storedUserName = await AsyncStorage.getItem('userName');
           const firstName = await AsyncStorage.getItem('userFirstName');
           const lastName = await AsyncStorage.getItem('userLastName');
+          const userEmail = await AsyncStorage.getItem('userEmail');
           setBackendUserPhoto(userPhoto);
           if (storedUserName) {
             setBackendUserName(storedUserName);
@@ -404,6 +429,9 @@ const SchoolUpdates = () => {
           }
           if (lastName) {
             setBackendUserLastName(lastName);
+          }
+          if (userEmail) {
+            setBackendUserEmail(userEmail);
           }
         } catch (error) {
           // Silent fail on focus refresh
@@ -481,16 +509,31 @@ const SchoolUpdates = () => {
       // Filter to only show approved posts (approved by PIO admin)
       // Admin posts are automatically approved, moderator posts need approval
       const approvedPosts = posts.filter(post => {
-        // Check if post is approved
-        const isApproved = post.isApproved === true || post.status === 'approved';
+        // Check if post is approved (check multiple possible field names and values)
+        const isApproved = post.isApproved === true || 
+                          post.status === 'approved' ||
+                          post.status === 'Approved';
         
         // Admin posts are automatically approved
         const isAdminPost = post.creatorRole === 'admin' || 
+                           (post.creatorRole as any) === 'superadmin' ||
                            post.source === 'Admin' || 
                            (!post.creatorRole && post.source !== 'Moderator' && post.source !== 'moderator');
         
-        // Include if approved OR if it's an admin post (admin posts are auto-approved)
-        return isApproved || isAdminPost;
+        // Check if it's a moderator post
+        const isModeratorPost = post.creatorRole === 'moderator' || 
+                               post.source === 'Moderator' || 
+                               post.source === 'moderator';
+        
+        // Include if:
+        // 1. It's approved (for moderator posts, this means admin has approved them)
+        // 2. It's an admin/superadmin post (auto-approved)
+        // 3. For moderator posts, explicitly check if they're approved
+        if (isModeratorPost) {
+          return isApproved; // Moderator posts must be explicitly approved
+        }
+        
+        return isApproved || isAdminPost; // Admin posts are auto-approved, or if explicitly approved
       });
       
       // Debug logging removed for performance in development (large payloads can cause noticeable lag)

@@ -14,6 +14,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRoute } from '@react-navigation/native';
 import { useAuth } from '../../contexts/AuthContext';
 import ChangePasswordModal from '../../modals/ChangePasswordModal';
+import ProfileService from '../../services/ProfileService';
+import * as Haptics from 'expo-haptics';
 
 type RootStackParamList = {
   AdminSettings: undefined;
@@ -110,17 +112,25 @@ const AdminAccountSettings = () => {
       const firstName = nameParts[0] || '';
       const lastName = nameParts.slice(1).join(' ') || '';
       
-      // Save all three formats for compatibility
-      await AsyncStorage.setItem('userName', trimmedName);
-      await AsyncStorage.setItem('userFirstName', firstName);
-      await AsyncStorage.setItem('userLastName', lastName);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       
-      setBackendUserName(trimmedName);
+      // Update profile via API (ProfileService already updates AsyncStorage)
+      const result = await ProfileService.updateProfile(
+        firstName || undefined,
+        lastName || undefined,
+        trimmedName || undefined // Also update username with full name
+      );
+      
+      // Update local state with returned values
+      setBackendUserName(result.username || trimmedName);
       setIsEditingName(false);
+      
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert('Success', 'Name updated successfully');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save name:', error);
-      Alert.alert('Error', 'Failed to update name. Please try again.');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Error', error.message || 'Failed to update name. Please try again.');
     }
   };
 

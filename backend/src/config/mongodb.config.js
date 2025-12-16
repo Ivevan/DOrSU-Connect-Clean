@@ -19,7 +19,9 @@ export const mongoConfig = {
       feedback: 'user_feedback',
       users: 'users',
       emailVerifications: 'email_verifications',
-      activityLogs: 'activity_logs'
+      activityLogs: 'activity_logs',
+      students: 'students',
+      faculty: 'faculty'
     },
     
     // Connection options

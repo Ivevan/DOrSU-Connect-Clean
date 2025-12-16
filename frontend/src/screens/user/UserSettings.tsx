@@ -3,10 +3,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -95,12 +95,27 @@ const UserSettings = () => {
   
   // Get user display name and email (memoized) - Check backend first, then Firebase
   const userName = useMemo(() => {
-    // Priority: Backend firstName + lastName -> Backend username -> Firebase displayName -> Firebase email username -> Backend email username -> Default
-    if (backendUserFirstName && backendUserLastName) {
-      return `${backendUserFirstName} ${backendUserLastName}`.trim();
+    // Priority: Backend username (from account creation) -> Backend firstName + lastName -> Firebase displayName -> Firebase email username -> Backend email username -> Default
+    // The userName stored during account creation should be the primary source
+    if (backendUserName && backendUserName.trim()) {
+      return backendUserName.trim();
     }
-    if (backendUserName) return backendUserName;
+    // Fallback to firstName + lastName if userName is not available
+    if (backendUserFirstName && backendUserLastName) {
+      const combinedName = `${backendUserFirstName} ${backendUserLastName}`.trim();
+      if (combinedName) return combinedName;
+    }
+    // If only firstName is available, use it
+    if (backendUserFirstName) {
+      return backendUserFirstName.trim();
+    }
+    // If only lastName is available, use it
+    if (backendUserLastName) {
+      return backendUserLastName.trim();
+    }
+    // Fallback to Firebase displayName
     if (currentUser?.displayName) return currentUser.displayName;
+    // Fallback to email username
     if (currentUser?.email) return currentUser.email.split('@')[0];
     if (backendUserEmail) return backendUserEmail.split('@')[0];
     return 'User';

@@ -202,6 +202,78 @@ class ProfileService {
       throw error;
     }
   }
+
+  /**
+   * Update user profile (firstName, lastName, username)
+   */
+  async updateProfile(firstName?: string, lastName?: string, username?: string): Promise<{ firstName: string | null; lastName: string | null; username: string | null }> {
+    try {
+      const token = await this.getToken();
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+
+      const response = await fetch(`${apiConfig.baseUrl}/api/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          firstName: firstName !== undefined ? firstName : undefined,
+          lastName: lastName !== undefined ? lastName : undefined,
+          username: username !== undefined ? username : undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText || 'Failed to update profile' };
+        }
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Update AsyncStorage with new profile data
+      if (data.user) {
+        if (data.user.firstName !== undefined) {
+          if (data.user.firstName) {
+            await AsyncStorage.setItem('userFirstName', data.user.firstName);
+          } else {
+            await AsyncStorage.removeItem('userFirstName');
+          }
+        }
+        if (data.user.lastName !== undefined) {
+          if (data.user.lastName) {
+            await AsyncStorage.setItem('userLastName', data.user.lastName);
+          } else {
+            await AsyncStorage.removeItem('userLastName');
+          }
+        }
+        if (data.user.username !== undefined) {
+          if (data.user.username) {
+            await AsyncStorage.setItem('userName', data.user.username);
+          } else {
+            await AsyncStorage.removeItem('userName');
+          }
+        }
+      }
+
+      return {
+        firstName: data.user?.firstName || null,
+        lastName: data.user?.lastName || null,
+        username: data.user?.username || null,
+      };
+    } catch (error: any) {
+      console.error('Update profile error:', error);
+      throw error;
+    }
+  }
 }
 
 export default new ProfileService();

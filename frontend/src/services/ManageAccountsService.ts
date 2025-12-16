@@ -150,13 +150,27 @@ class ManageAccountsService {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        let errorData: any = {};
+        try {
+          const text = await response.text();
+          if (text) {
+            errorData = JSON.parse(text);
+          }
+        } catch (parseError) {
+          console.warn('Failed to parse error response:', parseError);
+        }
+        
         if (response.status === 401) {
           throw new Error('Unauthorized: Please log in again');
         } else if (response.status === 403) {
-          throw new Error('Forbidden: Admin access required');
+          const errorMessage = errorData.error || 'Forbidden: Admin access required';
+          throw new Error(errorMessage);
+        } else if (response.status === 400) {
+          const errorMessage = errorData.error || 'Invalid request. Please check the user ID and role.';
+          throw new Error(errorMessage);
         }
-        throw new Error(errorData.error || `Failed to update role: ${response.statusText}`);
+        const errorMessage = errorData.error || errorData.message || `Failed to update role: ${response.statusText}`;
+        throw new Error(errorMessage);
       }
 
       return true;

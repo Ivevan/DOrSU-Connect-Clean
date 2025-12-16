@@ -20,6 +20,7 @@ import { getScheduleService } from './services/schedule.js';
 import { getNewsScraperService } from './services/scraper.js';
 import { LlamaService } from './services/service.js';
 import { buildSystemInstructions, getAdmissionRequirementsInstructions, getCalendarEventsInstructions, getHistoryCriticalRules, getHistoryDataSummary, getHistoryInstructions, getHymnCriticalRules, getHymnInstructions, getLeadershipCriticalRules, getLeadershipInstructions, getPresidentInstructions, getProgramCriticalRules, getProgramInstructions } from './services/system.js';
+import { getVerifiedUserService } from './services/verified-user.js';
 import { IntentClassifier } from './utils/intent-classifier.js';
 import { Logger } from './utils/logger.js';
 import { parseMultipartFormData } from './utils/multipart-parser.js';
@@ -58,6 +59,7 @@ let authService = null;
 let chatHistoryService = null;
 let scheduleService = null;
 let activityLogService = null;
+let verifiedUserService = null;
 
 // ===== FALLBACK CONTEXT =====
 const fallbackContext = `## DAVAO ORIENTAL STATE UNIVERSITY (DOrSU)
@@ -100,6 +102,10 @@ async function initializeServices() {
     // Initialize activity log service
     activityLogService = new ActivityLogService(mongoService);
     Logger.success('Activity log service initialized');
+    
+    // Initialize verified user service
+    verifiedUserService = getVerifiedUserService(mongoService, authService);
+    Logger.success('Verified user service initialized');
     
     // Initialize data refresh service
     dataRefreshService = getDataRefreshService();
@@ -379,6 +385,8 @@ const server = http.createServer(async (req, res) => {
             username: user.username,
             email: user.email,
             role: user.role || 'user',
+            firstName: user.firstName || undefined,
+            lastName: user.lastName || undefined,
             createdAt: user.createdAt,
           },
           token,
@@ -697,7 +705,9 @@ const server = http.createServer(async (req, res) => {
             id: user._id || user.id,
             username: user.username,
             email: user.email,
-            role: user.role || 'user'
+            role: user.role || 'user',
+            firstName: user.firstName || undefined,
+            lastName: user.lastName || undefined
           },
           token
         });
@@ -779,6 +789,17 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
+        // Check if user already exists with this student ID or name
+        const existingUserCheck = await mongoService.checkExistingUser(studentId.trim(), fullName.trim(), 'student');
+        if (existingUserCheck.exists) {
+          sendJson(res, 200, { 
+            success: true, 
+            valid: false,
+            reason: existingUserCheck.reason || 'An account with these credentials already exists. Please sign in instead.'
+          });
+          return;
+        }
+
         // Verify against database
         const verification = await mongoService.verifyStudentCredentialsInDB(studentId.trim(), fullName.trim());
         
@@ -798,6 +819,66 @@ const server = http.createServer(async (req, res) => {
       } catch (error) {
         Logger.error('Verify student credentials error:', error.message);
         sendJson(res, 500, { error: error.message || 'Failed to verify student credentials' });
+      }
+    });
+    return;
+  }
+
+  // Verify faculty credentials (public endpoint - before registration)
+  if (method === 'POST' && url === '/api/auth/verify-faculty-credentials') {
+    if (!mongoService) {
+      sendJson(res, 503, { error: 'Database service not available' });
+      return;
+    }
+
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { fullName } = JSON.parse(body || '{}');
+
+        if (!fullName) {
+          sendJson(res, 400, { error: 'Full Name is required' });
+          return;
+        }
+
+        // Validate name has at least 2 words
+        const nameParts = fullName.trim().split(/\s+/);
+        if (nameParts.length < 2) {
+          sendJson(res, 400, { error: 'Please provide your full name (Last Name and First Name)' });
+          return;
+        }
+
+        // Check if user already exists with this name
+        const existingUserCheck = await mongoService.checkExistingUser(null, fullName.trim(), 'faculty');
+        if (existingUserCheck.exists) {
+          sendJson(res, 200, { 
+            success: true, 
+            valid: false,
+            reason: existingUserCheck.reason || 'An account with this name already exists. Please sign in instead.'
+          });
+          return;
+        }
+
+        // Verify against database
+        const verification = await mongoService.verifyFacultyCredentialsInDB(fullName.trim());
+        
+        if (verification.valid) {
+          sendJson(res, 200, { 
+            success: true, 
+            valid: true,
+            requiresManualVerification: verification.requiresManualVerification || false
+          });
+        } else {
+          sendJson(res, 200, { 
+            success: true, 
+            valid: false,
+            reason: verification.reason || 'Faculty credentials not found in database'
+          });
+        }
+      } catch (error) {
+        Logger.error('Verify faculty credentials error:', error.message);
+        sendJson(res, 500, { error: error.message || 'Failed to verify faculty credentials' });
       }
     });
     return;
@@ -928,6 +1009,27 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 500, { error: error.message || 'Failed to get pending verifications' });
     }
     return;
+  }
+
+  // ===== VERIFIED USER MANAGEMENT ENDPOINTS (Superadmin Only) =====
+  // All verified user routes (students and faculty) are handled by VerifiedUserService
+  if (url.startsWith('/api/admin/students') || url.startsWith('/api/admin/faculty')) {
+    // Initialize verified user service if not already initialized (for early requests)
+    if (!verifiedUserService && mongoService && authService) {
+      verifiedUserService = getVerifiedUserService(mongoService, authService);
+      if (verifiedUserService) {
+        Logger.info('✅ Verified user service initialized on-demand');
+      }
+    }
+    
+    if (verifiedUserService) {
+      const handled = await verifiedUserService.handleRoute(req, res, method, url);
+      if (handled) {
+        return;
+      }
+    } else {
+      Logger.warn(`⚠️ Verified user service not initialized. mongoService: ${!!mongoService}, authService: ${!!authService}`);
+    }
   }
 
   // Upload profile picture
@@ -1164,6 +1266,88 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Update user profile (authenticated users can update their own profile)
+  if (method === 'PUT' && url === '/api/auth/profile') {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: auth.error || 'Unauthorized' });
+      return;
+    }
+
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { firstName, lastName, username } = JSON.parse(body || '{}');
+
+        // Validate input
+        if (firstName !== undefined && typeof firstName !== 'string') {
+          sendJson(res, 400, { error: 'First name must be a string' });
+          return;
+        }
+        if (lastName !== undefined && typeof lastName !== 'string') {
+          sendJson(res, 400, { error: 'Last name must be a string' });
+          return;
+        }
+        if (username !== undefined && typeof username !== 'string') {
+          sendJson(res, 400, { error: 'Username must be a string' });
+          return;
+        }
+
+        // Get user email from auth
+        const userEmail = auth.email;
+        if (!userEmail) {
+          sendJson(res, 400, { error: 'User email not found' });
+          return;
+        }
+
+        // Build update data
+        const updateData = {};
+        if (firstName !== undefined) {
+          updateData.firstName = firstName.trim() || null;
+        }
+        if (lastName !== undefined) {
+          updateData.lastName = lastName.trim() || null;
+        }
+        if (username !== undefined) {
+          updateData.username = username.trim() || null;
+        }
+
+        // If username is provided, also update displayName
+        if (username !== undefined) {
+          updateData.username = username.trim();
+        }
+
+        // Update user in database
+        await mongoService.updateUser(userEmail, updateData);
+
+        // Get updated user
+        const updatedUser = await mongoService.findUser(userEmail);
+
+        Logger.success(`✅ User profile updated: ${userEmail}`);
+
+        sendJson(res, 200, {
+          success: true,
+          message: 'Profile updated successfully',
+          user: {
+            firstName: updatedUser?.firstName || null,
+            lastName: updatedUser?.lastName || null,
+            username: updatedUser?.username || null,
+          }
+        });
+      } catch (error) {
+        Logger.error('Update profile error:', error.message);
+        sendJson(res, 400, { error: error.message || 'Failed to update profile' });
+      }
+    });
+    return;
+  }
+
   // Update user role (admin only) - SECURED
   if (method === 'PUT' && url.startsWith('/api/users/') && url.endsWith('/role')) {
     if (!authService || !mongoService) {
@@ -1231,16 +1415,29 @@ const server = http.createServer(async (req, res) => {
         Logger.info(`Attempting to update role for userId: ${userId} to role: ${role}`);
         
         // Get requester and target roles for authorization checks
-        const requesterRole = auth.role || (await mongoService.findUserById(auth.userId))?.role || 'user';
+        // Priority: auth.isSuperAdmin flag -> auth.role -> database lookup
+        let requesterRole = 'user';
+        if (auth.isSuperAdmin) {
+          requesterRole = 'superadmin';
+        } else if (auth.role) {
+          requesterRole = auth.role;
+        } else {
+          // Fallback to database lookup
+          const requesterUser = await mongoService.findUserById(auth.userId);
+          requesterRole = requesterUser?.role || 'user';
+        }
+        
         const targetUser = await mongoService.findUserById(userId);
         const oldRole = targetUser?.role || 'user';
 
+        Logger.info(`Role update authorization check: requesterRole=${requesterRole}, targetRole=${oldRole}, newRole=${role}, auth.isSuperAdmin=${auth.isSuperAdmin}`);
+
         // Only superadmins can assign or change superadmin roles
-        if (role === 'superadmin' && requesterRole !== 'superadmin') {
+        if (role === 'superadmin' && requesterRole !== 'superadmin' && !auth.isSuperAdmin) {
           sendJson(res, 403, { error: 'Forbidden: Superadmin role can only be assigned by a superadmin' });
           return;
         }
-        if (targetUser?.role === 'superadmin' && requesterRole !== 'superadmin') {
+        if (targetUser?.role === 'superadmin' && requesterRole !== 'superadmin' && !auth.isSuperAdmin) {
           sendJson(res, 403, { error: 'Forbidden: Only a superadmin can modify another superadmin' });
           return;
         }
@@ -1251,8 +1448,14 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
+        // Only superadmins can assign admin role OR modify existing admins
+        if (role === 'admin' && requesterRole !== 'superadmin' && !auth.isSuperAdmin) {
+          sendJson(res, 403, { error: 'Forbidden: Only a superadmin can assign the Admin role' });
+          return;
+        }
+        
         // Only superadmins can modify existing admins (promote/demote/change)
-        if (targetUser?.role === 'admin' && requesterRole !== 'superadmin') {
+        if (targetUser?.role === 'admin' && requesterRole !== 'superadmin' && !auth.isSuperAdmin) {
           sendJson(res, 403, { error: 'Forbidden: Only a superadmin can modify an admin account' });
           return;
         }

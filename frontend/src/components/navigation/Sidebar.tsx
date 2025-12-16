@@ -29,6 +29,7 @@ type RootStackParamList = {
   ManagePosts: undefined;
   ModeratorPosts: undefined;
   ManageAccounts: undefined;
+  ManageUserAccount: undefined;
   ActivityLog: undefined;
 };
 
@@ -257,16 +258,34 @@ const Sidebar: React.FC<SidebarProps> = ({
           },
         },
         {
+          key: 'manageUserAccount',
+          label: effectiveRole === 'superadmin' ? 'Verified Users' : 'Manage Accounts',
+          icon: (effectiveRole === 'superadmin' && isCurrent('ManageUserAccount')) || (effectiveRole === 'admin' && isCurrent('ManageAccounts')) 
+            ? 'people' 
+            : 'people-outline',
+          target: (effectiveRole === 'superadmin' ? 'ManageUserAccount' : 'ManageAccounts') as keyof RootStackParamList,
+          onPress: () => {
+            onClose();
+            if (effectiveRole === 'superadmin') {
+              navigation.navigate('ManageUserAccount');
+            } else {
+              navigation.navigate('ManageAccounts');
+            }
+          },
+          roleGate: 'admin',
+        },
+        // Add Manage Accounts for superadmin (for role management)
+        ...(effectiveRole === 'superadmin' ? [{
           key: 'manageAccounts',
           label: 'Manage Accounts',
-          icon: isCurrent('ManageAccounts') ? 'people' : 'people-outline',
+          icon: isCurrent('ManageAccounts') ? 'person-circle' : 'person-circle-outline',
           target: 'ManageAccounts' as keyof RootStackParamList,
           onPress: () => {
             onClose();
             navigation.navigate('ManageAccounts');
           },
-          roleGate: 'admin',
-        },
+          roleGate: 'superadmin' as const,
+        }] : []),
         {
           key: 'settings',
           label: 'Profile Settings',

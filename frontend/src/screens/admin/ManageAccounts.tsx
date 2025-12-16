@@ -1,33 +1,32 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
   ActivityIndicator,
-  RefreshControl,
-  Image,
+  Alert,
   Animated,
-  StatusBar,
+  Image,
   Modal,
-  Dimensions,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
   TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useThemeValues } from '../../contexts/ThemeContext';
-import { useNavigation, useIsFocused } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import ManageAccountsService, { BackendUser } from '../../services/ManageAccountsService';
-import { BlurView } from 'expo-blur';
-import { Platform } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
-import { useAuth } from '../../contexts/AuthContext';
 import Sidebar from '../../components/navigation/Sidebar';
+import { useAuth } from '../../contexts/AuthContext';
+import { useThemeValues } from '../../contexts/ThemeContext';
+import ManageAccountsService, { BackendUser } from '../../services/ManageAccountsService';
 
 type RootStackParamList = {
   ManageAccounts: undefined;
@@ -169,122 +168,76 @@ const ManageAccounts = () => {
 
   const handleRoleChange = async (userId: string, newRole: 'user' | 'moderator' | 'admin' | 'superadmin') => {
     try {
-      setUpdatingUserId(userId);
-      setOpenRoleDropdownUserId(null); // Close dropdown
+      setOpenRoleDropdownUserId(null); // Close dropdown first
       
       // Get user info
       const user = users.find(u => u._id === userId);
       if (newRole === 'superadmin' && !isSuperAdmin) {
         Alert.alert('Access Denied', 'Only a superadmin can assign the Superadmin role.');
-        setUpdatingUserId(null);
         return;
       }
       if (newRole === 'admin' && !isSuperAdmin) {
         Alert.alert('Access Denied', 'Only a superadmin can assign the Admin role.');
-        setUpdatingUserId(null);
         return;
       }
       if (user?.role === 'superadmin' && !isSuperAdmin) {
         Alert.alert('Access Denied', 'Only a superadmin can modify another superadmin.');
-        setUpdatingUserId(null);
         return;
       }
       // Only superadmins can modify existing admin accounts (backend enforces this at line 1061-1063)
       if (user?.role === 'admin' && !isSuperAdmin) {
         Alert.alert('Access Denied', 'Only a superadmin can modify an admin account.');
-        setUpdatingUserId(null);
         return;
       }
       const capabilities = getRoleCapabilities(newRole);
       const capabilitiesText = capabilities.join(', ');
       
-      // For moderator role, skip confirmation and update immediately
-      if (newRole === 'moderator') {
-        try {
-          await ManageAccountsService.updateUserRole(userId, newRole);
-          await loadUsers(true); // Refresh after role change
-          
-          // If the updated user is the current user, refresh their role from backend
-          const currentUserId = await AsyncStorage.getItem('userId');
-          if (currentUserId === userId) {
-            console.log('Current user role changed to moderator, refreshing from backend...');
-            await refreshUser();
-            // Show notification for current user
-            Alert.alert(
-              'Moderator Access Granted',
-              'You have been assigned as a moderator! You now have access to Post Management, Manage Posts, and Admin Dashboard.',
-              [{ text: 'OK' }]
-            );
-          } else {
-            // Show notification for other users
-            Alert.alert(
-              'Moderator Assigned',
-              `${user?.email || 'User'} has been assigned as a moderator!`,
-              [{ text: 'OK' }]
-            );
-          }
-          
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        } catch (error: any) {
-          Alert.alert('Error', error.message || 'Failed to update role');
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        } finally {
-          setUpdatingUserId(null);
+      // For all roles (moderator, user, admin, superadmin), update immediately without confirmation
+      // Ensure Modal is closed
+      setOpenRoleDropdownUserId(null);
+      setUpdatingUserId(userId); // Set loading state only when actually updating
+      try {
+        console.log(`Updating user ${userId} to role ${newRole}...`);
+        await ManageAccountsService.updateUserRole(userId, newRole);
+        console.log(`Successfully updated user ${userId} to role ${newRole}`);
+        await loadUsers(true); // Refresh after role change
+        
+        // Small delay to ensure UI updates and Modal is fully closed before showing Alert
+        await new Promise(resolve => setTimeout(resolve, 400));
+        
+        // If the updated user is the current user, refresh their role from backend
+        const currentUserId = await AsyncStorage.getItem('userId');
+        if (currentUserId === userId) {
+          console.log(`Current user role changed to ${newRole}, refreshing from backend...`);
+          await refreshUser();
+          // Show notification for current user
+          Alert.alert(
+            `${getRoleLabel(newRole)} Access ${newRole === 'user' ? 'Updated' : 'Granted'}`,
+            newRole === 'user' 
+              ? `Your role has been updated to "${getRoleLabel(newRole)}".`
+              : `You have been assigned as a ${getRoleLabel(newRole).toLowerCase()}! You now have access to: ${capabilitiesText}`,
+            [{ text: 'OK' }]
+          );
+        } else {
+          // Show notification for other users
+          Alert.alert(
+            `${getRoleLabel(newRole)} Assigned`,
+            `${user?.email || 'User'} has been assigned the "${getRoleLabel(newRole)}" role.\n\nGranted capabilities:\n${capabilities.map(cap => `• ${cap}`).join('\n')}`,
+            [{ text: 'OK' }]
+          );
         }
-        return;
+        
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (error: any) {
+        console.error(`Failed to update role to ${newRole}:`, error);
+        await new Promise(resolve => setTimeout(resolve, 400));
+        Alert.alert('Error', error.message || 'Failed to update role');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } finally {
+        setUpdatingUserId(null);
       }
-      
-      // For admin (superadmin-only) and user roles, show confirmation with capabilities
-      Alert.alert(
-        'Confirm Role Change',
-        `Assign "${getRoleLabel(newRole)}" role to ${user?.email || 'this user'}?\n\nThis will grant the following capabilities:\n${capabilities.map(cap => `• ${cap}`).join('\n')}\n\nContinue?`,
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => {
-              setUpdatingUserId(null);
-            }
-          },
-          {
-            text: 'Confirm',
-            onPress: async () => {
-              try {
-                await ManageAccountsService.updateUserRole(userId, newRole);
-                await loadUsers(true); // Refresh after role change
-                
-                // If the updated user is the current user, refresh their role from backend
-                const currentUserId = await AsyncStorage.getItem('userId');
-                if (currentUserId === userId) {
-                  console.log('Current user role changed, refreshing from backend...');
-                  await refreshUser();
-                  // Show a message that they may need to restart the app or refresh
-                  Alert.alert(
-                    'Role Updated',
-                    `Your role has been updated to "${getRoleLabel(newRole)}". You now have access to: ${capabilitiesText}\n\nPlease restart the app or navigate away and back to see the changes take effect.`,
-                    [{ text: 'OK' }]
-                  );
-                } else {
-                  // Show success message with capabilities
-                  Alert.alert(
-                    'Role Updated Successfully',
-                    `${user?.email || 'User'} has been assigned the "${getRoleLabel(newRole)}" role.\n\nGranted capabilities:\n${capabilities.map(cap => `• ${cap}`).join('\n')}`,
-                    [{ text: 'OK' }]
-                  );
-                }
-                
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              } catch (error: any) {
-                Alert.alert('Error', error.message || 'Failed to update role');
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-              } finally {
-                setUpdatingUserId(null);
-              }
-            }
-          }
-        ]
-      );
     } catch (error: any) {
+      console.error('Error in handleRoleChange:', error);
       Alert.alert('Error', error.message || 'Failed to update role');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setUpdatingUserId(null);

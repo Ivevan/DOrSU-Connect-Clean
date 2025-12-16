@@ -88,6 +88,8 @@ class MongoDBService {
       const analyticsCollection = this.db.collection(mongoConfig.collections.analytics);
       const usersCollection = this.db.collection(mongoConfig.collections.users || 'users');
       const activityLogsCollection = this.db.collection(mongoConfig.collections.activityLogs);
+      const studentsCollection = this.db.collection(mongoConfig.collections.students || 'students');
+      const facultyCollection = this.db.collection(mongoConfig.collections.faculty || 'faculty');
       
       // Indexes for knowledge chunks
       await chunksCollection.createIndex({ id: 1 }, { unique: true });
@@ -141,6 +143,14 @@ class MongoDBService {
       await activityLogsCollection.createIndex({ userId: 1, 'metadata.timestamp': -1 });
       await activityLogsCollection.createIndex({ action: 1, 'metadata.timestamp': -1 });
       await activityLogsCollection.createIndex({ 'metadata.timestamp': -1 });
+      
+      // Indexes for students
+      await studentsCollection.createIndex({ studentId: 1 }, { unique: true });
+      await studentsCollection.createIndex({ createdAt: -1 });
+      
+      // Indexes for faculty
+      await facultyCollection.createIndex({ fullName: 1 });
+      await facultyCollection.createIndex({ createdAt: -1 });
       await activityLogsCollection.createIndex({ userEmail: 1 });
       
       Logger.success('✅ MongoDB indexes initialized');
@@ -891,8 +901,20 @@ class MongoDBService {
    */
   async findUserById(userId) {
     try {
+      // Handle admin token case
+      if (userId === 'admin') {
+        return { _id: 'admin', role: 'superadmin', email: 'admin@dorsu.edu.ph' };
+      }
+      
       const collection = this.getCollection(mongoConfig.collections.users || 'users');
       const { ObjectId } = await import('mongodb');
+      
+      // Check if userId is a valid ObjectId format
+      if (!ObjectId.isValid(userId)) {
+        Logger.warn(`Invalid userId format: ${userId}`);
+        return null;
+      }
+      
       const user = await collection.findOne({ _id: new ObjectId(userId) });
       // Ensure user has a role field (migration for existing users)
       if (user && !user.role) {
@@ -1700,44 +1722,38 @@ class MongoDBService {
   /**
    * Verify student credentials against database
    * Checks if studentId and fullName match a student record
-   * Currently uses hardcoded student data - replace with actual database lookup when available
    */
   async verifyStudentCredentialsInDB(studentId, fullName) {
     try {
-      // Hardcoded student records for verification
-      // TODO: Replace with actual database lookup when student database is available
-      const validStudents = [
-        {
-          studentId: '2022-0987',
-          fullName: 'Ivan J P. Vasay'
-        }
-        // Add more students here as needed
-      ];
-
+      const collection = this.getCollection(mongoConfig.collections.students || 'students');
+      
       // Normalize inputs for comparison
       const normalizedStudentId = studentId.trim().toUpperCase();
       const normalizedFullName = fullName.trim().toLowerCase().replace(/\s+/g, ' ');
 
-      // Check against hardcoded records
-      const matchedStudent = validStudents.find(student => {
-        const normalizedRecordId = student.studentId.trim().toUpperCase();
-        const normalizedRecordName = student.fullName.trim().toLowerCase().replace(/\s+/g, ' ');
-        
-        // Exact match on student ID
-        const idMatch = normalizedRecordId === normalizedStudentId;
-        
-        // Flexible name matching (handles variations like "Vasay, Ivan J P." or "Ivan J P. Vasay")
-        const nameParts = normalizedFullName.split(/[,\s]+/).filter(p => p.length > 0);
-        const recordNameParts = normalizedRecordName.split(/[,\s]+/).filter(p => p.length > 0);
-        
-        // Check if all name parts from input exist in record (order-independent)
-        const nameMatch = nameParts.length > 0 && 
-          nameParts.every(part => recordNameParts.some(recordPart => recordPart.includes(part) || part.includes(recordPart)));
-
-        return idMatch && nameMatch;
+      // Find student by exact ID match
+      const student = await collection.findOne({ 
+        studentId: normalizedStudentId 
       });
 
-      if (matchedStudent) {
+      if (!student) {
+        Logger.warn(`❌ Student not found: ${studentId}`);
+        return { 
+          valid: false, 
+          reason: 'Student credentials not found in database. Please verify your Student ID and Name.' 
+        };
+      }
+
+      // Flexible name matching (handles variations like "Vasay, Ivan J P." or "Ivan J P. Vasay")
+      const recordName = (student.fullName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const nameParts = normalizedFullName.split(/[,\s]+/).filter(p => p.length > 0);
+      const recordNameParts = recordName.split(/[,\s]+/).filter(p => p.length > 0);
+      
+      // Check if all name parts from input exist in record (order-independent)
+      const nameMatch = nameParts.length > 0 && 
+        nameParts.every(part => recordNameParts.some(recordPart => recordPart.includes(part) || part.includes(recordPart)));
+
+      if (nameMatch) {
         Logger.success(`✅ Student verified: ${studentId} - ${fullName}`);
         return { 
           valid: true, 
@@ -1745,13 +1761,58 @@ class MongoDBService {
         };
       }
 
-      Logger.warn(`❌ Student not found: ${studentId} - ${fullName}`);
+      Logger.warn(`❌ Student name mismatch: ${studentId} - Expected: ${student.fullName}, Got: ${fullName}`);
       return { 
         valid: false, 
-        reason: 'Student credentials not found in database. Please verify your Student ID and Name.' 
+        reason: 'Student name does not match. Please verify your full name.' 
       };
     } catch (error) {
       Logger.error('Failed to verify student credentials:', error);
+      return { valid: false, reason: 'Database error occurred' };
+    }
+  }
+
+  /**
+   * Verify faculty credentials against database
+   * Checks if fullName matches a faculty record
+   */
+  async verifyFacultyCredentialsInDB(fullName) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.faculty || 'faculty');
+      
+      // Normalize input for comparison
+      const normalizedFullName = fullName.trim().toLowerCase().replace(/\s+/g, ' ');
+
+      // Flexible name matching (handles variations like "Vasay, Ivan J P." or "Ivan J P. Vasay")
+      const nameParts = normalizedFullName.split(/[,\s]+/).filter(p => p.length > 0);
+      
+      // Search for faculty with matching name parts
+      const faculty = await collection.find({}).toArray();
+      
+      for (const member of faculty) {
+        const recordName = (member.fullName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        const recordNameParts = recordName.split(/[,\s]+/).filter(p => p.length > 0);
+        
+        // Check if all name parts from input exist in record (order-independent)
+        const nameMatch = nameParts.length > 0 && 
+          nameParts.every(part => recordNameParts.some(recordPart => recordPart.includes(part) || part.includes(recordPart)));
+        
+        if (nameMatch) {
+          Logger.success(`✅ Faculty verified: ${fullName}`);
+          return { 
+            valid: true, 
+            requiresManualVerification: false 
+          };
+        }
+      }
+
+      Logger.warn(`❌ Faculty not found: ${fullName}`);
+      return { 
+        valid: false, 
+        reason: 'Faculty credentials not found in database. Please verify your full name.' 
+      };
+    } catch (error) {
+      Logger.error('Failed to verify faculty credentials:', error);
       return { valid: false, reason: 'Database error occurred' };
     }
   }
@@ -1791,6 +1852,85 @@ class MongoDBService {
     } catch (error) {
       Logger.error('Failed to submit student verification:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Check if a user already exists with the same student ID or name
+   * Returns true if a duplicate exists, false otherwise
+   */
+  async checkExistingUser(studentId, fullName, userType = 'student') {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.users || 'users');
+      
+      if (userType === 'student' && studentId) {
+        // Check for existing user with the same student ID
+        const normalizedStudentId = studentId.trim().toUpperCase();
+        const existingByStudentId = await collection.findOne({
+          'studentVerification.studentId': normalizedStudentId
+        });
+        
+        if (existingByStudentId) {
+          Logger.warn(`❌ User already exists with Student ID: ${studentId}`);
+          return { 
+            exists: true, 
+            reason: `An account with Student ID "${studentId}" already exists. Please sign in instead.` 
+          };
+        }
+      }
+      
+      // Check for existing user with the same full name (for both students and faculty)
+      if (fullName) {
+        const normalizedFullName = fullName.trim().toLowerCase().replace(/\s+/g, ' ');
+        
+        // For students, check studentVerification.fullName
+        if (userType === 'student') {
+          const existingByName = await collection.findOne({
+            'studentVerification.fullName': { 
+              $regex: new RegExp(`^${normalizedFullName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') 
+            }
+          });
+          
+          if (existingByName) {
+            Logger.warn(`❌ User already exists with name: ${fullName}`);
+            return { 
+              exists: true, 
+              reason: `An account with the name "${fullName}" already exists. Please sign in instead.` 
+            };
+          }
+        } else if (userType === 'faculty') {
+          // For faculty, check username or firstName + lastName combination
+          const nameParts = normalizedFullName.split(/\s+/);
+          if (nameParts.length >= 2) {
+            const firstName = nameParts[nameParts.length - 1];
+            const lastName = nameParts.slice(0, -1).join(' ');
+            
+            // Check by username (which might be the full name)
+            const existingByUsername = await collection.findOne({
+              $or: [
+                { username: { $regex: new RegExp(`^${normalizedFullName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } },
+                { 
+                  firstName: { $regex: new RegExp(`^${firstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+                  lastName: { $regex: new RegExp(`^${lastName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
+                }
+              ]
+            });
+            
+            if (existingByUsername) {
+              Logger.warn(`❌ User already exists with name: ${fullName}`);
+              return { 
+                exists: true, 
+                reason: `An account with the name "${fullName}" already exists. Please sign in instead.` 
+              };
+            }
+          }
+        }
+      }
+      
+      return { exists: false };
+    } catch (error) {
+      Logger.error('Failed to check existing user:', error);
+      return { exists: false }; // Don't block registration on error
     }
   }
 
@@ -1847,6 +1987,338 @@ class MongoDBService {
       }));
     } catch (error) {
       Logger.error('Failed to get pending verifications:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add student credential (superadmin only)
+   */
+  async addStudent(studentId, lastName, firstName, middleInitial, extension) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.students || 'students');
+      const normalizedStudentId = studentId.trim().toUpperCase();
+      const normalizedLastName = lastName.trim();
+      const normalizedFirstName = firstName.trim();
+      const normalizedMiddleInitial = middleInitial ? middleInitial.trim().toUpperCase() : '';
+      const normalizedExtension = extension ? extension.trim() : '';
+
+      // Validate required fields
+      if (!normalizedLastName || !normalizedFirstName) {
+        throw new Error('Last Name and First Name are required');
+      }
+
+      // Check if student already exists
+      const existing = await collection.findOne({ studentId: normalizedStudentId });
+      if (existing) {
+        throw new Error('Student ID already exists');
+      }
+
+      // Construct full name for display and verification
+      let fullName = `${normalizedLastName}, ${normalizedFirstName}`;
+      if (normalizedMiddleInitial) {
+        fullName += ` ${normalizedMiddleInitial}.`;
+      }
+      if (normalizedExtension) {
+        fullName += ` ${normalizedExtension}`;
+      }
+
+      const result = await collection.insertOne({
+        studentId: normalizedStudentId,
+        lastName: normalizedLastName,
+        firstName: normalizedFirstName,
+        middleInitial: normalizedMiddleInitial,
+        extension: normalizedExtension,
+        fullName: fullName,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      Logger.success(`✅ Student added: ${normalizedStudentId} - ${fullName}`);
+      return { 
+        ...result, 
+        studentId: normalizedStudentId, 
+        lastName: normalizedLastName,
+        firstName: normalizedFirstName,
+        middleInitial: normalizedMiddleInitial,
+        extension: normalizedExtension,
+        fullName: fullName 
+      };
+    } catch (error) {
+      Logger.error('Failed to add student:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all students
+   */
+  async getAllStudents(limit = 1000, skip = 0) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.students || 'students');
+      
+      const students = await collection
+        .find({})
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .skip(skip)
+        .toArray();
+
+      return students.map(student => ({
+        ...student,
+        _id: student._id ? student._id.toString() : student._id
+      }));
+    } catch (error) {
+      Logger.error('Failed to get students:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete student (superadmin only)
+   */
+  async deleteStudent(studentId) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.students || 'students');
+      const normalizedStudentId = studentId.trim().toUpperCase();
+
+      const result = await collection.deleteOne({ studentId: normalizedStudentId });
+      
+      if (result.deletedCount === 0) {
+        throw new Error('Student not found');
+      }
+
+      Logger.success(`✅ Student deleted: ${normalizedStudentId}`);
+      return true;
+    } catch (error) {
+      Logger.error('Failed to delete student:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete all students (superadmin only)
+   */
+  async deleteAllStudents() {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.students || 'students');
+      const result = await collection.deleteMany({});
+      Logger.success(`✅ Deleted ${result.deletedCount} students`);
+      return { deletedCount: result.deletedCount };
+    } catch (error) {
+      Logger.error('Failed to delete all students:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Bulk add students (superadmin only)
+   */
+  async bulkAddStudents(students) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.students || 'students');
+      const now = new Date();
+
+      // Normalize and prepare students
+      const normalizedStudents = students.map(s => {
+        const studentId = s.studentId.trim().toUpperCase();
+        let lastName = s.lastName ? s.lastName.trim() : '';
+        let firstName = s.firstName ? s.firstName.trim() : '';
+        let middleInitial = s.middleInitial ? s.middleInitial.trim().toUpperCase() : '';
+        
+        // If fullName is provided (for CSV compatibility), parse it
+        if (!lastName && !firstName && s.fullName) {
+          // Parse fullName: "LastName, FirstName MiddleInitial" or "LastName, FirstName"
+          const nameParts = s.fullName.trim().split(',');
+          if (nameParts.length >= 2) {
+            lastName = nameParts[0].trim();
+            const firstPart = nameParts[1].trim();
+            const firstParts = firstPart.split(/\s+/);
+            firstName = firstParts[0] || '';
+            middleInitial = firstParts.length > 1 ? firstParts[1].replace(/\./g, '').toUpperCase() : '';
+          } else {
+            // Try space-separated format: "LastName FirstName MiddleInitial"
+            const parts = s.fullName.trim().split(/\s+/);
+            if (parts.length >= 2) {
+              lastName = parts[0];
+              firstName = parts[parts.length - 1];
+              middleInitial = parts.length > 2 ? parts.slice(1, -1).join(' ').replace(/\./g, '').toUpperCase() : '';
+            }
+          }
+        }
+        
+        // Construct full name
+        const fullName = middleInitial 
+          ? `${lastName}, ${firstName} ${middleInitial}.`
+          : `${lastName}, ${firstName}`;
+
+        return {
+          studentId,
+          lastName,
+          firstName,
+          middleInitial,
+          fullName: fullName,
+          createdAt: now,
+          updatedAt: now
+        };
+      });
+
+      // Validate all students have required fields
+      const invalidStudents = normalizedStudents.filter(s => !s.lastName || !s.firstName);
+      if (invalidStudents.length > 0) {
+        throw new Error(`Invalid student data: Last Name and First Name are required for all students`);
+      }
+
+      // Check for duplicates
+      const studentIds = normalizedStudents.map(s => s.studentId);
+      const existing = await collection.find({ studentId: { $in: studentIds } }).toArray();
+      if (existing.length > 0) {
+        const existingIds = existing.map(e => e.studentId);
+        throw new Error(`Duplicate student IDs found: ${existingIds.join(', ')}`);
+      }
+
+      const result = await collection.insertMany(normalizedStudents);
+      Logger.success(`✅ Bulk added ${result.insertedCount} students`);
+      return result;
+    } catch (error) {
+      Logger.error('Failed to bulk add students:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Add faculty name (superadmin only)
+   */
+  async addFaculty(fullName) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.faculty || 'faculty');
+      const normalizedFullName = fullName.trim();
+
+      // Check if faculty already exists
+      const existing = await collection.findOne({ 
+        fullName: { $regex: new RegExp(`^${normalizedFullName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
+      });
+      if (existing) {
+        throw new Error('Faculty name already exists');
+      }
+
+      const result = await collection.insertOne({
+        fullName: normalizedFullName,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+
+      Logger.success(`✅ Faculty added: ${normalizedFullName}`);
+      return { ...result, fullName: normalizedFullName };
+    } catch (error) {
+      Logger.error('Failed to add faculty:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get all faculty
+   */
+  async getAllFaculty(limit = 1000, skip = 0) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.faculty || 'faculty');
+      
+      const faculty = await collection
+        .find({})
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .skip(skip)
+        .toArray();
+
+      return faculty.map(f => ({
+        ...f,
+        _id: f._id ? f._id.toString() : f._id
+      }));
+    } catch (error) {
+      Logger.error('Failed to get faculty:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete faculty (superadmin only)
+   */
+  async deleteFaculty(facultyId) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.faculty || 'faculty');
+      const { ObjectId } = await import('mongodb');
+
+      const result = await collection.deleteOne({ _id: new ObjectId(facultyId) });
+      
+      if (result.deletedCount === 0) {
+        throw new Error('Faculty not found');
+      }
+
+      Logger.success(`✅ Faculty deleted: ${facultyId}`);
+      return true;
+    } catch (error) {
+      Logger.error('Failed to delete faculty:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete all faculty (superadmin only)
+   */
+  async deleteAllFaculty() {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.faculty || 'faculty');
+      const result = await collection.deleteMany({});
+      Logger.success(`✅ Deleted ${result.deletedCount} faculty`);
+      return { deletedCount: result.deletedCount };
+    } catch (error) {
+      Logger.error('Failed to delete all faculty:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Bulk add faculty (superadmin only)
+   */
+  async bulkAddFaculty(facultyList) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.faculty || 'faculty');
+      const now = new Date();
+
+      // Normalize and prepare faculty
+      const normalizedFaculty = facultyList.map(f => ({
+        fullName: f.fullName.trim(),
+        createdAt: now,
+        updatedAt: now
+      }));
+
+      // Remove duplicates based on name (case-insensitive)
+      const uniqueFaculty = [];
+      const seenNames = new Set();
+      for (const f of normalizedFaculty) {
+        const lowerName = f.fullName.toLowerCase();
+        if (!seenNames.has(lowerName)) {
+          seenNames.add(lowerName);
+          uniqueFaculty.push(f);
+        }
+      }
+
+      // Check for existing faculty (case-insensitive)
+      const existing = await collection.find({}).toArray();
+      const existingNames = new Set(existing.map(e => e.fullName.toLowerCase()));
+      const duplicateNames = uniqueFaculty
+        .filter(f => existingNames.has(f.fullName.toLowerCase()))
+        .map(f => f.fullName);
+      
+      if (duplicateNames.length > 0) {
+        throw new Error(`Duplicate faculty names found: ${duplicateNames.join(', ')}`);
+      }
+
+      const result = await collection.insertMany(uniqueFaculty);
+      Logger.success(`✅ Bulk added ${result.insertedCount} faculty`);
+      return result;
+    } catch (error) {
+      Logger.error('Failed to bulk add faculty:', error);
       throw error;
     }
   }

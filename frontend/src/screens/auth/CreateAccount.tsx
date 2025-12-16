@@ -967,8 +967,8 @@ const CreateAccount = () => {
                 </TouchableOpacity>
               </View>
             </>
-          ) : !studentVerified && userType === 'student' ? (
-            // Step 1: Student ID and Full Name (only for students)
+          ) : userType === 'student' && !showEmailFields ? (
+            // Step 1: Student ID and Name fields (students only)
             <>
               {/* Student ID Input */}
               <View style={styles.inputGroup}>
@@ -1025,7 +1025,6 @@ const CreateAccount = () => {
                       }).start();
                     }}
                     accessibilityLabel="Student ID"
-                    editable={!isVerifyingStudent}
                   />
                 </Animated.View>
                 <View style={styles.errorContainer}>
@@ -1083,7 +1082,6 @@ const CreateAccount = () => {
                       }).start();
                     }}
                     accessibilityLabel="Full Name"
-                    editable={!isVerifyingStudent}
                   />
                 </Animated.View>
                 <View style={styles.errorContainer}>
@@ -1434,28 +1432,31 @@ const CreateAccount = () => {
             <TouchableOpacity 
               style={[
                 styles.signUpButton, 
-                (isLoading || !isOnline || isVerifyingStudent || (emailVerificationStatus === 'pending' && !studentVerified)) && styles.signUpButtonDisabled
+                (isLoading || !isOnline || emailVerificationStatus === 'pending') && styles.signUpButtonDisabled
               ]}
               onPress={() => {
                 if (!userType) {
                   // Should not happen - user type selection is handled by buttons
                   return;
-                } else if (userType === 'student' && !studentVerified) {
-                  // Step 1: Verify student credentials (students only)
-                  handleButtonPress(signUpButtonScale, verifyStudentCredentials);
                 } else if (showEmailFields && emailVerificationStatus === 'idle') {
-                  // Step 2: Create account with email/password
+                  // Create account with email/password
                   handleButtonPress(signUpButtonScale, handleCreateAccount);
                 } else if (emailVerificationStatus === 'verified') {
-                  // Step 3: Complete account creation after email verification
+                  // Complete account creation after email verification
                   handleButtonPress(signUpButtonScale, completeAccountCreation);
                 }
               }}
-              disabled={isLoading || !isOnline || isVerifyingStudent || (emailVerificationStatus === 'pending' && userType === 'student' && !studentVerified) || !userType || (emailVerificationStatus === 'idle' && !showEmailFields)}
+              disabled={
+                isLoading || 
+                !isOnline || 
+                (emailVerificationStatus === 'pending') || 
+                !userType || 
+                (emailVerificationStatus === 'idle' && !showEmailFields && !(userType === 'student' && !showEmailFields))
+              }
               accessibilityRole="button"
               activeOpacity={0.8}
             >
-              {isLoading || isVerifyingStudent ? (
+              {isLoading ? (
                 <>
                   <Animated.View style={[
                     styles.loadingSpinner,
@@ -1470,14 +1471,12 @@ const CreateAccount = () => {
                   ]}>
                     <MaterialIcons name="refresh" size={20} color="#FFFFFF" />
                   </Animated.View>
-                  <Text style={styles.signUpButtonText}>
-                    {isVerifyingStudent ? 'Verifying...' : 'Creating Account...'}
-                  </Text>
+                  <Text style={styles.signUpButtonText}>Creating Account...</Text>
                 </>
               ) : !userType ? (
                 <Text style={styles.signUpButtonText}>SELECT TYPE</Text>
-              ) : userType === 'student' && !studentVerified ? (
-                <Text style={styles.signUpButtonText}>VERIFY STUDENT</Text>
+              ) : userType === 'student' && !showEmailFields ? (
+                <Text style={styles.signUpButtonText}>CONTINUE</Text>
               ) : emailVerificationStatus === 'pending' ? (
                 <Text style={styles.signUpButtonText}>VERIFY EMAIL TO CONTINUE</Text>
               ) : emailVerificationStatus === 'verified' ? (

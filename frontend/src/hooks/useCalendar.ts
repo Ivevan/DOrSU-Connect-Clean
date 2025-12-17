@@ -109,8 +109,8 @@ export const useCalendar = ({ posts, calendarEvents, selectedContentTypesSet }: 
       
       const dateKey = formatDateKey(dateObj);
       
-      // Normalize category to ensure consistent type
-      const normalizedCategory = normalizeCategory(post.category);
+      // Normalize category to ensure consistent type - use same logic as filter
+      const normalizedCategory = normalizeCategory(post.category || post.type);
       const colors = categoryToColors(normalizedCategory);
       
       const payload = {
@@ -147,8 +147,8 @@ export const useCalendar = ({ posts, calendarEvents, selectedContentTypesSet }: 
 
     for (let i = 0; i < calendarEventsForCalendar.length; i++) {
       const event = calendarEventsForCalendar[i];
-      // Normalize category to ensure consistent type
-      const normalizedCategory = normalizeCategory(event.category);
+      // Normalize category to ensure consistent type - use same logic as filter
+      const normalizedCategory = normalizeCategory(event.category || event.type);
       const colors = categoryToColors(normalizedCategory);
       
       const payload = {

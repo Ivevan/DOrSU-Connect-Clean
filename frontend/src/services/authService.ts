@@ -574,4 +574,114 @@ export const confirmPasswordReset = async (actionCode: string, newPassword: stri
   }
 };
 
+/**
+ * Re-authenticate Firebase user with email and password
+ * Required before updating password or sensitive account information
+ */
+export const reauthenticateUser = async (currentPassword: string): Promise<void> => {
+  try {
+    const currentUser = getCurrentUser();
+    if (!currentUser || !currentUser.email) {
+      throw new Error('No user is currently signed in');
+    }
+
+    if (Platform.OS === 'web') {
+      if (!webFirebaseAuth) {
+        throw new Error('Firebase Auth is not initialized for web');
+      }
+      const { reauthenticateWithCredential, EmailAuthProvider } = require('firebase/auth');
+      const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
+      await reauthenticateWithCredential(currentUser, credential);
+    } else {
+      // Native - React Native Firebase
+      const emailCredential = auth.EmailAuthProvider.credential(currentUser.email, currentPassword);
+      await currentUser.reauthenticateWithCredential(emailCredential);
+    }
+  } catch (error: any) {
+    console.error('Re-authentication error:', error);
+    
+    // Handle Firebase Auth errors
+    if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+      throw new Error('Current password is incorrect');
+    } else if (error.code === 'auth/user-mismatch') {
+      throw new Error('User mismatch. Please sign out and sign in again.');
+    } else if (error.code === 'auth/user-not-found') {
+      throw new Error('User not found. Please sign out and sign in again.');
+    } else if (error.code === 'auth/network-request-failed') {
+      throw new Error('Network error. Please check your internet connection.');
+    }
+    
+    throw new Error(error.message || 'Re-authentication failed');
+  }
+};
+
+/**
+ * Update Firebase user password
+ * Requires re-authentication first
+ */
+export const updateFirebasePassword = async (newPassword: string): Promise<void> => {
+  try {
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      throw new Error('No user is currently signed in');
+    }
+
+    if (Platform.OS === 'web') {
+      if (!webFirebaseAuth) {
+        throw new Error('Firebase Auth is not initialized for web');
+      }
+      const { updatePassword } = require('firebase/auth');
+      await updatePassword(currentUser, newPassword);
+    } else {
+      // Native - React Native Firebase
+      await currentUser.updatePassword(newPassword);
+    }
+  } catch (error: any) {
+    console.error('Update Firebase password error:', error);
+    
+    // Handle Firebase Auth errors
+    if (error.code === 'auth/weak-password') {
+      throw new Error('Password is too weak. Please use a stronger password.');
+    } else if (error.code === 'auth/requires-recent-login') {
+      throw new Error('Please re-authenticate before changing your password.');
+    } else if (error.code === 'auth/network-request-failed') {
+      throw new Error('Network error. Please check your internet connection.');
+    }
+    
+    throw new Error(error.message || 'Failed to update password');
+  }
+};
+
+/**
+ * Check if current user is a Firebase email/password user
+ */
+export const isEmailPasswordUser = (): boolean => {
+  try {
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      return false;
+    }
+    
+    // Check if user has email/password provider
+    // For Firebase, email/password users have providerData with providerId 'password'
+    if (currentUser.providerData && currentUser.providerData.length > 0) {
+      return currentUser.providerData.some(
+        (provider: any) => provider.providerId === 'password' || provider.providerId === 'firebase'
+      );
+    }
+    
+    // Fallback: if user has email and no Google provider, assume email/password
+    if (currentUser.email) {
+      const hasGoogleProvider = currentUser.providerData?.some(
+        (provider: any) => provider.providerId === 'google.com'
+      );
+      return !hasGoogleProvider;
+    }
+    
+    return false;
+  } catch {
+    return false;
+  }
+};
+
 

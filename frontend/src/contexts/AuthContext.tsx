@@ -372,25 +372,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         inactivityTimerRef.current = null;
       }
       
-      // Log logout activity to backend BEFORE clearing tokens
-      try {
-        const token = userToken || await AsyncStorage.getItem('userToken');
-        if (token) {
-          const apiConfig = require('../config/api.config').default;
-          await fetch(`${apiConfig.baseUrl}/api/auth/logout`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-          }).catch((error) => {
-            // Don't block logout if logging fails
-            console.warn('Failed to log logout activity:', error);
-          });
-        }
-      } catch (error) {
-        // Don't block logout if logging fails
-        console.warn('Failed to log logout activity:', error);
+      // Log logout activity to backend BEFORE clearing tokens (non-blocking with timeout)
+      // Use fire-and-forget pattern to prevent blocking logout
+      const token = userToken || await AsyncStorage.getItem('userToken');
+      if (token) {
+        // Fire and forget - don't await to prevent blocking logout
+        const apiConfig = require('../config/api.config').default;
+        const logoutPromise = fetch(`${apiConfig.baseUrl}/api/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }).catch((error) => {
+          // Don't block logout if logging fails
+          console.warn('Failed to log logout activity:', error);
+        });
+        
+        // Add timeout to prevent hanging (5 seconds max)
+        Promise.race([
+          logoutPromise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Logout API timeout')), 5000)
+          )
+        ]).catch(() => {
+          // Timeout or error - ignore, don't block logout
+        });
       }
       
       // Clear UpdatesContext data and reset session flags

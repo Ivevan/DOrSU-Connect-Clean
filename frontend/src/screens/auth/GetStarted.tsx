@@ -81,11 +81,6 @@ const GetStarted = () => {
     }, [hasAuthData])
   );
 
-  // Handle logo press
-  const handleLogoPress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    navigation.navigate('AdminAIChat');
-  };
 
   // Handle Google Sign-In
   const handleGoogleSignIn = async () => {
@@ -258,15 +253,9 @@ const GetStarted = () => {
       <>
         {/* Logo Section */}
         <View style={styles.logoSection}>
-          <TouchableOpacity 
-            onPress={handleLogoPress}
-            activeOpacity={1}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          >
-            <View>
-              <Image source={require('../../../../assets/DOrSU.png')} style={styles.logoImage} />
-            </View>
-          </TouchableOpacity>
+          <View>
+            <Image source={require('../../../../assets/DOrSU.png')} style={styles.logoImage} />
+          </View>
           <View style={styles.logoTextContainer}>
             <Text style={styles.logoTitle}>DOrSU CONNECT</Text>
             <Text style={styles.logoSubtitle}>AI-Powered Academic Assistant</Text>

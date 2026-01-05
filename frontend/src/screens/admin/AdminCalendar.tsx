@@ -9,7 +9,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Image, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, AppState, AppStateStatus, Image, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import CalendarGrid from '../../components/common/CalendarGrid';
@@ -770,6 +770,51 @@ const AdminCalendar = () => {
       setRefreshing(false);
     }
   }, [refreshCalendarEvents, loadPosts, currentMonth]);
+
+  // Automatic refresh: Refresh data periodically when screen is focused
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  useEffect(() => {
+    if (!isAuthorized) return; // Don't set up auto-refresh if not authorized
+    
+    const AUTO_REFRESH_INTERVAL = 30000; // 30 seconds
+    let refreshInterval: NodeJS.Timeout | null = null;
+
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
+        // App came to foreground - refresh immediately
+        refreshCalendarEvents(true, undefined, currentMonth).catch(() => {});
+        loadPosts().catch(() => {});
+      }
+      appStateRef.current = nextAppState;
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    // Set up periodic refresh when screen is focused
+    const startAutoRefresh = () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+      refreshInterval = setInterval(() => {
+        // Only refresh if app is active and screen is focused
+        if (AppState.currentState === 'active' && isFocused) {
+          refreshCalendarEvents(false, undefined, currentMonth).catch(() => {}); // Use non-force refresh to respect cooldown
+          loadPosts().catch(() => {});
+        }
+      }, AUTO_REFRESH_INTERVAL);
+    };
+
+    // Start auto refresh
+    startAutoRefresh();
+
+    // Cleanup on unmount
+    return () => {
+      subscription.remove();
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    };
+  }, [refreshCalendarEvents, loadPosts, currentMonth, isAuthorized, isFocused]);
 
   // CSV upload handler
   const handleCSVUpload = useCallback(async () => {

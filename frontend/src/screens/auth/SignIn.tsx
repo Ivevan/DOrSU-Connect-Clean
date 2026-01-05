@@ -177,14 +177,17 @@ const SignIn = () => {
       let hasErrors = false;
       const newErrors = { email: '', password: '', general: '' };
       
+      // Allow "admin" or "admin@dorsu.edu.ph" as valid email for admin login
+      const isAdminEmail = normalizedEmail === 'admin' || normalizedEmail === 'admin@dorsu.edu.ph';
+      
       if (!email.trim()) {
         newErrors.email = 'Try again with a valid email';
         hasErrors = true;
-      } else if (!/\S+@\S+\.\S+/.test(email)) {
+      } else if (!isAdminEmail && !/\S+@\S+\.\S+/.test(email)) {
         newErrors.email = 'Try again with a valid email';
         hasErrors = true;
-      } else {
-        // Block temporary/disposable email services
+      } else if (!isAdminEmail) {
+        // Block temporary/disposable email services (skip check for admin email)
         const tempEmailDomains = [
           'tempmail.com', 'guerrillamail.com', '10minutemail.com', 'throwaway.email',
           'mailinator.com', 'maildrop.cc', 'temp-mail.org', 'yopmail.com',
@@ -195,7 +198,7 @@ const SignIn = () => {
         ];
         
         const emailDomain = email.toLowerCase().split('@')[1];
-        if (tempEmailDomains.includes(emailDomain)) {
+        if (emailDomain && tempEmailDomains.includes(emailDomain)) {
           newErrors.email = 'Temporary emails not allowed';
           hasErrors = true;
         }

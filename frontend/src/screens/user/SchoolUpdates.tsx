@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Dimensions, Image, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, AppState, AppStateStatus, Dimensions, Image, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomNavBar from '../../components/navigation/BottomNavBar';
 import Sidebar from '../../components/navigation/Sidebar';
@@ -1104,6 +1104,49 @@ const SchoolUpdates = () => {
     refreshCalendarEvents();
   }, [fetchUpdates, refreshCalendarEvents]);
 
+  // Automatic refresh: Refresh data periodically when screen is focused
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  useEffect(() => {
+    const AUTO_REFRESH_INTERVAL = 30000; // 30 seconds
+    let refreshInterval: NodeJS.Timeout | null = null;
+
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
+        // App came to foreground - refresh immediately
+        fetchUpdates(true).catch(() => {});
+        refreshCalendarEvents().catch(() => {});
+      }
+      appStateRef.current = nextAppState;
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    // Set up periodic refresh when screen is focused
+    const startAutoRefresh = () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+      refreshInterval = setInterval(() => {
+        // Only refresh if app is active and screen is focused
+        if (AppState.currentState === 'active') {
+          fetchUpdates(false).catch(() => {}); // Use non-force refresh to respect cooldown
+          refreshCalendarEvents(false).catch(() => {});
+        }
+      }, AUTO_REFRESH_INTERVAL);
+    };
+
+    // Start auto refresh
+    startAutoRefresh();
+
+    // Cleanup on unmount
+    return () => {
+      subscription.remove();
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    };
+  }, [fetchUpdates, refreshCalendarEvents]);
+
   // Note: further calendar event sync is handled via pull-to-refresh
 
   // Background prefetch: once we have initial calendar events,
@@ -1423,17 +1466,26 @@ const SchoolUpdates = () => {
         {/* Welcome Section inside Blue Header */}
         <View style={styles.welcomeSectionInHeader}>
           <View style={styles.welcomeContent}>
-            {backendUserPhoto ? (
-              <Image 
-                source={{ uri: backendUserPhoto }} 
-                style={styles.welcomeProfileImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={[styles.welcomeProfileIconCircle, { backgroundColor: '#FFF' }]}>
-                <Text style={[styles.welcomeProfileInitials, { color: theme.colors.accent, fontSize: theme.fontSize.scaleSize(20) }]}>{getUserInitials()}</Text>
-              </View>
-            )}
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                navigation.navigate('UserSettings');
+              }}
+              activeOpacity={0.7}
+              style={styles.profilePictureTouchable}
+            >
+              {backendUserPhoto ? (
+                <Image 
+                  source={{ uri: backendUserPhoto }} 
+                  style={styles.welcomeProfileImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.welcomeProfileIconCircle, { backgroundColor: '#FFF' }]}>
+                  <Text style={[styles.welcomeProfileInitials, { color: theme.colors.accent, fontSize: theme.fontSize.scaleSize(20) }]}>{getUserInitials()}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
             <View style={styles.welcomeText}>
               <Text style={[styles.welcomeGreetingInHeader, { fontSize: theme.fontSize.scaleSize(14) }]}>Hello!</Text>
               <Text style={[styles.welcomeTitleInHeader, { fontSize: theme.fontSize.scaleSize(18) }]}>{userName}</Text>
@@ -2059,6 +2111,12 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  profilePictureTouchable: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    overflow: 'hidden',
   },
   welcomeProfileInitials: {
     fontSize: 20,

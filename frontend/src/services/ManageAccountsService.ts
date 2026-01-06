@@ -131,6 +131,53 @@ class ManageAccountsService {
   }
 
   /**
+   * Update user active status (admin only)
+   */
+  async updateUserStatus(userId: string, isActive: boolean): Promise<boolean> {
+    try {
+      const token = await this.getToken();
+      if (!token) {
+        throw new Error('No authentication token');
+      }
+
+      const response = await fetch(`${apiConfig.baseUrl}/api/users/${userId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ isActive }),
+      });
+
+      if (!response.ok) {
+        let errorData: any = {};
+        try {
+          const text = await response.text();
+          if (text) {
+            errorData = JSON.parse(text);
+          }
+        } catch (parseError) {
+          console.warn('Failed to parse error response:', parseError);
+        }
+        
+        if (response.status === 401) {
+          throw new Error('Unauthorized: Please log in again');
+        } else if (response.status === 403) {
+          throw new Error(errorData.error || 'Forbidden: Admin access required');
+        } else if (response.status === 400) {
+          throw new Error(errorData.error || 'Invalid request');
+        }
+        throw new Error(errorData.error || errorData.message || `Failed to update status: ${response.statusText}`);
+      }
+
+      return true;
+    } catch (error: any) {
+      console.error('Failed to update user status:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Update user role (admin only)
    */
   async updateUserRole(userId: string, role: 'user' | 'moderator' | 'admin' | 'superadmin'): Promise<boolean> {

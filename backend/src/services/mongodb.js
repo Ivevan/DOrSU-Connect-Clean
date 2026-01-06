@@ -1046,6 +1046,60 @@ class MongoDBService {
   }
 
   /**
+   * Update user active status
+   */
+  async updateUserStatus(userId, isActive) {
+    try {
+      const collection = this.getCollection(mongoConfig.collections.users || 'users');
+      const { ObjectId } = await import('mongodb');
+      
+      // Validate userId format
+      if (!userId || typeof userId !== 'string') {
+        throw new Error('Invalid user ID format');
+      }
+      
+      // Validate ObjectId format
+      if (!ObjectId.isValid(userId)) {
+        Logger.error(`Invalid ObjectId format: ${userId}`);
+        throw new Error(`Invalid user ID format: ${userId}`);
+      }
+      
+      if (typeof isActive !== 'boolean') {
+        throw new Error('isActive must be a boolean value');
+      }
+      
+      const objectId = new ObjectId(userId);
+      
+      // First check if user exists
+      const user = await collection.findOne({ _id: objectId });
+      if (!user) {
+        Logger.warn(`User not found with ID: ${userId}`);
+        throw new Error(`User not found with ID: ${userId}`);
+      }
+      
+      const result = await collection.updateOne(
+        { _id: objectId },
+        {
+          $set: {
+            isActive: isActive,
+            updatedAt: new Date()
+          }
+        }
+      );
+      
+      if (result.matchedCount === 0) {
+        throw new Error(`User not found with ID: ${userId}`);
+      }
+      
+      Logger.success(`✅ User status updated: ${userId} -> ${isActive ? 'active' : 'inactive'}`);
+      return { success: true };
+    } catch (error) {
+      Logger.error('Failed to update user status:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Update user's last login timestamp
    */
   async updateUserLastLogin(email) {

@@ -160,38 +160,12 @@ export class PasswordResetService {
       const nodemailerModule = await import('nodemailer');
       const nodemailer = nodemailerModule.default || nodemailerModule;
 
-      // Create transporter with proper TLS configuration for Gmail
-      // Increased timeouts and removed strict TLS for cloud provider compatibility
-      const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: parseInt(smtpPort),
-        secure: smtpPort === '465', // true for 465, false for other ports
-        auth: {
-          user: smtpUser,
-          pass: smtpPassword,
-        },
-        // Add TLS options for Gmail (important for Render)
-        tls: {
-          // Don't reject unauthorized certificates (needed for some cloud providers)
-          rejectUnauthorized: false,
-          // Allow legacy TLS versions for compatibility
-          minVersion: 'TLSv1',
-        },
-        // For port 587, require TLS but don't fail if unavailable
-        requireTLS: false, // Changed to false - let Gmail negotiate
-        // Increased connection timeouts for cloud providers
-        connectionTimeout: 30000, // 30 seconds (increased from 10)
-        greetingTimeout: 30000, // 30 seconds
-        socketTimeout: 30000, // 30 seconds
-        // Additional options for better cloud provider compatibility
-        pool: false, // Disable connection pooling
-        maxConnections: 1,
-        maxMessages: 1,
-      });
-
-      // Skip connection verification - it often times out on cloud providers
-      // We'll verify by attempting to send the email directly
-      Logger.info('📤 Attempting to send email (skipping connection verification for cloud compatibility)...');
+      // For Gmail on cloud providers (like Render), port 465 with SSL is more reliable
+      // Try port 465 first if configured port is 587
+      const configuredPort = parseInt(smtpPort);
+      const portsToTry = configuredPort === 587 ? [465, 587] : [configuredPort];
+      
+      Logger.info(`📧 Will try ports in order: ${portsToTry.join(', ')} (port 465 is more reliable from cloud providers)`);
 
       // Email template for password reset OTP
       const html = `
@@ -209,79 +183,70 @@ export class PasswordResetService {
         </div>
       `;
 
-      // Send email with retry logic
+      // Try sending email with different port configurations
       Logger.info(`📤 Sending OTP email to: ${email}`);
       
-      let info;
       let lastError;
-      const maxRetries = 2;
-      
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      const emailData = {
+        from: `"DOrSU Connect" <${fromEmail}>`,
+        to: email,
+        subject: 'Password Reset OTP - DOrSU Connect',
+        html: html,
+      };
+
+      // Try each port configuration
+      for (const port of portsToTry) {
         try {
-          if (attempt > 1) {
-            Logger.info(`🔄 Retry attempt ${attempt}/${maxRetries}...`);
-            // Wait before retry (exponential backoff)
-            await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
-          }
+          const isSecure = port === 465;
+          Logger.info(`🔌 Attempting connection on port ${port} (${isSecure ? 'SSL' : 'STARTTLS'})...`);
           
-          info = await transporter.sendMail({
-            from: `"DOrSU Connect" <${fromEmail}>`,
-            to: email,
-            subject: 'Password Reset OTP - DOrSU Connect',
-            html: html,
+          // Create transporter for this port
+          const transporter = nodemailer.createTransport({
+            host: smtpHost,
+            port: port,
+            secure: isSecure, // true for 465 (SSL), false for 587 (STARTTLS)
+            auth: {
+              user: smtpUser,
+              pass: smtpPassword,
+            },
+            // TLS/SSL configuration optimized for cloud providers
+            tls: {
+              rejectUnauthorized: false, // Needed for cloud providers
+              minVersion: 'TLSv1',
+            },
+            // Connection settings
+            requireTLS: !isSecure, // Only require TLS for port 587
+            connectionTimeout: 20000, // 20 seconds
+            greetingTimeout: 20000,
+            socketTimeout: 20000,
+            // Disable pooling for better reliability
+            pool: false,
+            maxConnections: 1,
+            maxMessages: 1,
           });
+
+          // Try to send email
+          const info = await transporter.sendMail(emailData);
           
-          Logger.success(`✅ Email sent via Nodemailer to: ${email} (Message ID: ${info.messageId})`);
+          Logger.success(`✅ Email sent via Nodemailer (port ${port}) to: ${email} (Message ID: ${info.messageId})`);
+          if (port === 465 && configuredPort !== 465) {
+            Logger.info('💡 Tip: Port 465 worked! Consider setting SMTP_PORT=465 in Render for better reliability');
+          }
           return; // Success, exit function
-        } catch (sendError) {
-          lastError = sendError;
-          Logger.warn(`⚠️ Send attempt ${attempt} failed: ${sendError.message}`);
           
-          // If it's a connection timeout and we're on port 587, try port 465 as fallback
-          if (attempt === 1 && sendError.code === 'ETIMEDOUT' && parseInt(smtpPort) === 587) {
-            Logger.info('🔄 Connection timeout on port 587, trying port 465 with SSL...');
-            
-            // Create new transporter with port 465
-            const transporter465 = nodemailer.createTransport({
-              host: smtpHost,
-              port: 465,
-              secure: true, // SSL for port 465
-              auth: {
-                user: smtpUser,
-                pass: smtpPassword,
-              },
-              tls: {
-                rejectUnauthorized: false,
-                minVersion: 'TLSv1',
-              },
-              connectionTimeout: 30000,
-              greetingTimeout: 30000,
-              socketTimeout: 30000,
-              pool: false,
-              maxConnections: 1,
-              maxMessages: 1,
-            });
-            
-            try {
-              info = await transporter465.sendMail({
-                from: `"DOrSU Connect" <${fromEmail}>`,
-                to: email,
-                subject: 'Password Reset OTP - DOrSU Connect',
-                html: html,
-              });
-              
-              Logger.success(`✅ Email sent via Nodemailer (port 465) to: ${email} (Message ID: ${info.messageId})`);
-              Logger.info('💡 Tip: Consider setting SMTP_PORT=465 in your environment variables');
-              return; // Success with port 465
-            } catch (port465Error) {
-              Logger.warn(`⚠️ Port 465 also failed: ${port465Error.message}`);
-              // Continue to next retry attempt
-            }
+        } catch (portError) {
+          lastError = portError;
+          Logger.warn(`⚠️ Port ${port} failed: ${portError.message} (${portError.code || 'N/A'})`);
+          
+          // If this is not the last port to try, continue to next port
+          if (port !== portsToTry[portsToTry.length - 1]) {
+            Logger.info(`🔄 Trying next port...`);
+            continue;
           }
         }
       }
       
-      // All attempts failed, throw the last error
+      // All ports failed, throw the last error
       throw lastError;
     } catch (error) {
       // Log detailed error information

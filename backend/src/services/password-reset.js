@@ -162,7 +162,15 @@ export class PasswordResetService {
 
       // For Gmail on cloud providers (like Render), port 465 with SSL is more reliable
       // Try port 465 first if configured port is 587
-      const configuredPort = parseInt(smtpPort);
+      const configuredPort = parseInt(smtpPort, 10);
+      
+      // Validate port number
+      if (isNaN(configuredPort) || configuredPort < 1 || configuredPort > 65535) {
+        throw new Error(`Invalid SMTP_PORT: ${smtpPort}. Must be a number between 1 and 65535.`);
+      }
+      
+      // If port 587 is configured, try 465 first (more reliable from cloud providers)
+      // Otherwise, use the configured port
       const portsToTry = configuredPort === 587 ? [465, 587] : [configuredPort];
       
       Logger.info(`📧 Will try ports in order: ${portsToTry.join(', ')} (port 465 is more reliable from cloud providers)`);

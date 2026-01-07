@@ -72,7 +72,7 @@ export class PasswordResetService {
       // Store OTP in MongoDB
       await this.mongoService.createPasswordResetOTP(normalizedEmail, hashedOTP, expiresAt);
 
-      // Send email with OTP via Nodemailer
+      // Send email with OTP via Resend
       // Catch email errors separately - we still want to return success even if email fails
       // (for security, we don't want to reveal if email sending failed)
       try {
@@ -138,7 +138,7 @@ export class PasswordResetService {
       // If email service is not configured, log OTP for development
       if (!isConfigured) {
         Logger.warn('⚠️ Email service not configured, skipping email send');
-        Logger.info(`📧 OTP for ${email}: ${otp} (Email sending not configured - add RESEND_API_KEY or SMTP settings to .env)`);
+        Logger.info(`📧 OTP for ${email}: ${otp} (Email sending not configured - add RESEND_API_KEY to .env)`);
         
         // Log OTP prominently for testing
         this.emailService.logOTPForTesting(email, otp, this.OTP_EXPIRY_MINUTES);

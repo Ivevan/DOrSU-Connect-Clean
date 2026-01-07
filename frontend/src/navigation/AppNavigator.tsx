@@ -30,6 +30,7 @@ import ForgotPassword from '../screens/auth/ForgotPassword';
 import GetStarted from '../screens/auth/GetStarted';
 import ResetPassword from '../screens/auth/ResetPassword';
 import SignIn from '../screens/auth/SignIn';
+import VerifyOTP from '../screens/auth/VerifyOTP';
 import SplashScreen from '../screens/auth/SplashScreen';
 import About from '../screens/shared/About';
 import EmailSettings from '../screens/shared/EmailSettings';
@@ -412,6 +413,10 @@ const AppNavigator = () => {
           component={ForgotPassword}
         />
         <Stack.Screen 
+          name="VerifyOTP" 
+          component={VerifyOTP}
+        />
+        <Stack.Screen 
           name="ResetPassword" 
           component={ResetPassword}
         />
@@ -510,9 +515,6 @@ const AppNavigator = () => {
             animation: 'none' as const, // Disabled for debugging
             animationDuration: 0,
             freezeOnBlur: false,
-            contentStyle: {
-              backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3',
-            },
             contentStyle: {
               backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3',
             },

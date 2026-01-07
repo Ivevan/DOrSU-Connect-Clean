@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ActivityLogService } from './services/activity-log.js';
 import { AuthService, authMiddleware } from './services/auth.js';
+import { PasswordResetService } from './services/password-reset.js';
 import { buildClarificationMessage, isConversationResetRequest } from './services/chat-guardrails.js';
 import { getChatHistoryService } from './services/chat-history.js';
 import conversationService from './services/conversation.js';
@@ -56,6 +57,7 @@ let mongoService = null;
 let dataRefreshService = null;
 let newsScraperService = null;
 let authService = null;
+let passwordResetService = null;
 let chatHistoryService = null;
 let scheduleService = null;
 let activityLogService = null;
@@ -94,6 +96,10 @@ async function initializeServices() {
     // Initialize authentication service
     authService = new AuthService(mongoService);
     Logger.success('Auth service initialized');
+    
+    // Initialize password reset service
+    passwordResetService = new PasswordResetService(mongoService);
+    Logger.success('Password reset service initialized');
     
     // Initialize chat history service
     chatHistoryService = getChatHistoryService(mongoService, authService);
@@ -1157,6 +1163,84 @@ const server = http.createServer(async (req, res) => {
       // Still return success even if logging fails (don't block logout)
       sendJson(res, 200, { success: true, message: 'Logged out successfully' });
     }
+    return;
+  }
+
+  // Request password reset OTP
+  if (method === 'POST' && url === '/api/auth/forgot-password') {
+    if (!passwordResetService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { email } = JSON.parse(body || '{}');
+        if (!email) {
+          sendJson(res, 400, { error: 'Email is required' });
+          return;
+        }
+        const result = await passwordResetService.requestPasswordResetOTP(email);
+        sendJson(res, 200, result);
+      } catch (error) {
+        Logger.error('Request password reset OTP error:', error.message);
+        sendJson(res, 400, { error: error.message || 'Failed to send OTP' });
+      }
+    });
+    return;
+  }
+
+  // Verify password reset OTP
+  if (method === 'POST' && url === '/api/auth/verify-reset-otp') {
+    if (!passwordResetService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { email, otp } = JSON.parse(body || '{}');
+        if (!email || !otp) {
+          sendJson(res, 400, { error: 'Email and OTP are required' });
+          return;
+        }
+        const result = await passwordResetService.verifyOTP(email, otp);
+        sendJson(res, 200, result);
+      } catch (error) {
+        Logger.error('Verify OTP error:', error.message);
+        sendJson(res, 400, { error: error.message || 'Failed to verify OTP' });
+      }
+    });
+    return;
+  }
+
+  // Reset password with token
+  if (method === 'POST' && url === '/api/auth/reset-password') {
+    if (!passwordResetService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { resetToken, newPassword } = JSON.parse(body || '{}');
+        if (!resetToken || !newPassword) {
+          sendJson(res, 400, { error: 'Reset token and new password are required' });
+          return;
+        }
+        const result = await passwordResetService.resetPassword(resetToken, newPassword);
+        sendJson(res, 200, result);
+      } catch (error) {
+        Logger.error('Reset password error:', error.message);
+        sendJson(res, 400, { error: error.message || 'Failed to reset password' });
+      }
+    });
     return;
   }
 

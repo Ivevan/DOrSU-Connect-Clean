@@ -1316,6 +1316,121 @@ class MongoDBService {
     }
   }
 
+  // ===== PASSWORD RESET OTP METHODS =====
+
+  /**
+   * Create password reset OTP record
+   */
+  async createPasswordResetOTP(email, hashedOTP, expiresAt) {
+    try {
+      const collection = this.getCollection(
+        mongoConfig.collections.passwordResetOTPs || 'password_reset_otps'
+      );
+      await collection.insertOne({
+        email: email.toLowerCase(),
+        hashedOTP,
+        expiresAt,
+        used: false,
+        attempts: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      Logger.success(`✅ Created password reset OTP for: ${email}`);
+    } catch (error) {
+      Logger.error('Failed to create password reset OTP:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get latest password reset OTP for email
+   */
+  async getLatestPasswordResetOTP(email) {
+    try {
+      const collection = this.getCollection(
+        mongoConfig.collections.passwordResetOTPs || 'password_reset_otps'
+      );
+      return await collection
+        .find({ email: email.toLowerCase() })
+        .sort({ createdAt: -1 })
+        .limit(1)
+        .next();
+    } catch (error) {
+      Logger.error('Failed to get password reset OTP:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Increment OTP verification attempts
+   */
+  async incrementOTPAttempts(otpId) {
+    try {
+      const collection = this.getCollection(
+        mongoConfig.collections.passwordResetOTPs || 'password_reset_otps'
+      );
+      const { ObjectId } = await import('mongodb');
+      await collection.updateOne(
+        { _id: new ObjectId(otpId) },
+        { 
+          $inc: { attempts: 1 },
+          $set: { updatedAt: new Date() }
+        }
+      );
+    } catch (error) {
+      Logger.error('Failed to increment OTP attempts:', error);
+    }
+  }
+
+  /**
+   * Mark OTP as used
+   */
+  async markOTPAsUsed(otpId) {
+    try {
+      const collection = this.getCollection(
+        mongoConfig.collections.passwordResetOTPs || 'password_reset_otps'
+      );
+      const { ObjectId } = await import('mongodb');
+      await collection.updateOne(
+        { _id: new ObjectId(otpId) },
+        { 
+          $set: { 
+            used: true,
+            updatedAt: new Date()
+          }
+        }
+      );
+      Logger.success(`✅ Marked OTP as used: ${otpId}`);
+    } catch (error) {
+      Logger.error('Failed to mark OTP as used:', error);
+    }
+  }
+
+  /**
+   * Invalidate all OTPs for an email
+   */
+  async invalidateAllOTPsForEmail(email) {
+    try {
+      const collection = this.getCollection(
+        mongoConfig.collections.passwordResetOTPs || 'password_reset_otps'
+      );
+      const result = await collection.updateMany(
+        { email: email.toLowerCase(), used: false },
+        { 
+          $set: { 
+            used: true,
+            updatedAt: new Date()
+          }
+        }
+      );
+      if (result.modifiedCount > 0) {
+        Logger.info(`✅ Invalidated ${result.modifiedCount} OTP(s) for: ${email}`);
+      }
+    } catch (error) {
+      Logger.error('Failed to invalidate OTPs:', error);
+    }
+  }
+
   /**
    * Mark verification token as used/verified
    */

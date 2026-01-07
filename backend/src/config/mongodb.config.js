@@ -19,6 +19,7 @@ export const mongoConfig = {
       feedback: 'user_feedback',
       users: 'users',
       emailVerifications: 'email_verifications',
+      passwordResetOTPs: 'password_reset_otps',
       activityLogs: 'activity_logs',
       students: 'students',
       faculty: 'faculty'

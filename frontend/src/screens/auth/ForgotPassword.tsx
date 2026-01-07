@@ -8,13 +8,14 @@ import { Animated, BackHandler, Dimensions, Image, KeyboardAvoidingView, Platfor
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { sendPasswordResetEmail } from '../../services/authService';
+import { requestPasswordResetOTP } from '../../services/authService';
 
 type RootStackParamList = {
   GetStarted: undefined;
   SignIn: undefined;
   CreateAccount: undefined;
   ForgotPassword: undefined;
+  VerifyOTP: { email: string };
   AdminAIChat: undefined;
   AIChat: undefined;
 };
@@ -133,11 +134,13 @@ const ForgotPassword = () => {
     ).start();
     
     try {
-      await sendPasswordResetEmail(email.trim().toLowerCase());
+      await requestPasswordResetOTP(email.trim().toLowerCase());
       
       setIsLoading(false);
       loadingRotation.stopAnimation();
-      setIsSuccess(true);
+      
+      // Navigate to VerifyOTP screen instead of showing success
+      navigation.navigate('VerifyOTP', { email: email.trim().toLowerCase() });
       
       // Success feedback
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -148,13 +151,26 @@ const ForgotPassword = () => {
       // Handle errors
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       
-      let errorMessage = error.message || 'Failed to send password reset email. Please try again.';
+      console.error('Request password reset OTP error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      
+      const errorMsg = error?.message || String(error) || 'Failed to send OTP. Please try again.';
+      let errorMessage = errorMsg;
       let emailError = '';
       
-      if (error.message.includes('No account found')) {
+      // Handle specific error cases
+      if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('timeout')) {
+        errorMessage = 'Network error. Please check your internet connection and ensure the backend server is running.';
+      } else if (errorMsg.includes('404') || errorMsg.includes('not found')) {
+        errorMessage = 'Backend endpoint not found. The password reset API is not yet implemented.';
+      } else if (errorMsg.includes('No account found')) {
         emailError = 'No account found with this email address.';
         errorMessage = '';
-      } else if (error.message.includes('Invalid email')) {
+      } else if (errorMsg.includes('Invalid email')) {
         emailError = 'Invalid email address format.';
         errorMessage = '';
       }
@@ -163,8 +179,6 @@ const ForgotPassword = () => {
         email: emailError,
         general: errorMessage,
       });
-      
-      console.error('Send password reset email error:', error);
     }
   };
 

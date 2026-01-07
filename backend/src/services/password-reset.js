@@ -131,14 +131,14 @@ export class PasswordResetService {
    */
   async sendOTPEmail(email, otp) {
     try {
-      // Log SMTP configuration status (for debugging)
+      // Log email service configuration status (for debugging)
       const isConfigured = this.emailService.isEmailConfigured();
-      Logger.info(`📧 SMTP Config Check: ${isConfigured ? '✅ Configured' : '❌ Not configured'}`);
+      Logger.info(`📧 Email Service Config Check: ${isConfigured ? '✅ Configured' : '❌ Not configured'}`);
       
-      // If SMTP is not configured, log OTP for development
+      // If email service is not configured, log OTP for development
       if (!isConfigured) {
-        Logger.warn('⚠️ SMTP not configured, skipping email send');
-        Logger.info(`📧 OTP for ${email}: ${otp} (Email sending not configured - add SMTP settings to .env)`);
+        Logger.warn('⚠️ Email service not configured, skipping email send');
+        Logger.info(`📧 OTP for ${email}: ${otp} (Email sending not configured - add RESEND_API_KEY or SMTP settings to .env)`);
         
         // Log OTP prominently for testing
         this.emailService.logOTPForTesting(email, otp, this.OTP_EXPIRY_MINUTES);

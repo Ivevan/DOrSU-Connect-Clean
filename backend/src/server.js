@@ -1168,6 +1168,9 @@ const server = http.createServer(async (req, res) => {
 
   // Request password reset OTP
   if (method === 'POST' && url === '/api/auth/forgot-password') {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.js:1170',message:'forgot-password endpoint entry',data:{method,url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     if (!passwordResetService || !mongoService) {
       sendJson(res, 503, { error: 'Services not available' });
       return;
@@ -1176,15 +1179,28 @@ const server = http.createServer(async (req, res) => {
     let body = '';
     req.on('data', chunk => { body += chunk; });
     req.on('end', async () => {
+      const requestStartTime = Date.now();
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.js:1178',message:'request body received',data:{bodyLength:body.length,requestStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       try {
         const { email } = JSON.parse(body || '{}');
         if (!email) {
           sendJson(res, 400, { error: 'Email is required' });
           return;
         }
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.js:1185',message:'calling requestPasswordResetOTP',data:{email,timeBeforeCall:Date.now()-requestStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         const result = await passwordResetService.requestPasswordResetOTP(email);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.js:1186',message:'requestPasswordResetOTP completed, sending response',data:{result,timeElapsed:Date.now()-requestStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         sendJson(res, 200, result);
       } catch (error) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'server.js:1188',message:'error in forgot-password handler',data:{error:error.message,timeElapsed:Date.now()-requestStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         Logger.error('Request password reset OTP error:', error.message);
         sendJson(res, 400, { error: error.message || 'Failed to send OTP' });
       }

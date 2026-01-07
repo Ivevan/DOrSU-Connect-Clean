@@ -191,7 +191,7 @@ const ResetPassword = () => {
       let passwordError = '';
       
       if (error.message.includes('Invalid or expired')) {
-        errorMessage = 'Invalid or expired reset link. Please request a new password reset email.';
+        errorMessage = 'Invalid or expired reset token. Please request a new OTP.';
       } else if (error.message.includes('weak-password') || error.message.includes('too weak')) {
         passwordError = 'Password is too weak. Please use a stronger password.';
         errorMessage = '';

@@ -591,26 +591,16 @@ export const requestPasswordResetOTP = async (email: string): Promise<void> => {
   
   try {
     const { API_BASE_URL } = require('../config/api.config');
-    const requestStartTime = Date.now();
     console.log('📧 Requesting password reset OTP for:', email);
     console.log('📧 API URL:', `${API_BASE_URL}/api/auth/forgot-password`);
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'authService.ts:593',message:'frontend request start',data:{email,apiUrl:`${API_BASE_URL}/api/auth/forgot-password`},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
     
     // Add timeout to prevent hanging
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'authService.ts:599',message:'frontend timeout triggered',data:{timeElapsed:Date.now()-requestStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
       controller.abort();
     }, 10000); // 10 second timeout
     
     try {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'authService.ts:602',message:'frontend fetch starting',data:{timeElapsed:Date.now()-requestStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
       const response = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
         method: 'POST',
         headers: {
@@ -619,9 +609,6 @@ export const requestPasswordResetOTP = async (email: string): Promise<void> => {
         body: JSON.stringify({ email: email.trim().toLowerCase() }),
         signal: controller.signal,
       });
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'authService.ts:611',message:'frontend fetch completed',data:{status:response.status,timeElapsed:Date.now()-requestStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
       
       clearTimeout(timeoutId);
 
@@ -644,15 +631,9 @@ export const requestPasswordResetOTP = async (email: string): Promise<void> => {
       throw new Error(data.error || `Failed to send OTP (${response.status})`);
     }
     
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'authService.ts:632',message:'frontend request success',data:{timeElapsed:Date.now()-requestStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
       console.log('✅ OTP request successful:', data);
     } catch (fetchError: any) {
       clearTimeout(timeoutId);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'authService.ts:634',message:'frontend fetch error',data:{error:fetchError.name,message:fetchError.message,timeElapsed:Date.now()-requestStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-      // #endregion
       
       // Check if it was aborted (timeout)
       if (fetchError.name === 'AbortError') {

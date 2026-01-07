@@ -139,7 +139,7 @@ const ForgotPassword = () => {
       setIsLoading(false);
       loadingRotation.stopAnimation();
       
-      // Navigate to VerifyOTP screen instead of showing success
+      // Navigate to VerifyOTP screen
       navigation.navigate('VerifyOTP', { email: email.trim().toLowerCase() });
       
       // Success feedback
@@ -166,7 +166,7 @@ const ForgotPassword = () => {
       if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError') || errorMsg.includes('timeout')) {
         errorMessage = 'Network error. Please check your internet connection and ensure the backend server is running.';
       } else if (errorMsg.includes('404') || errorMsg.includes('not found')) {
-        errorMessage = 'Backend endpoint not found. The password reset API is not yet implemented.';
+        errorMessage = 'Backend endpoint not found. The password reset API endpoint is not yet implemented.';
       } else if (errorMsg.includes('No account found')) {
         emailError = 'No account found with this email address.';
         errorMessage = '';

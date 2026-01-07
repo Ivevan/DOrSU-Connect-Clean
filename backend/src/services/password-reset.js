@@ -6,10 +6,12 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { Logger } from '../utils/logger.js';
+import { getEmailService } from './email-service.js';
 
 export class PasswordResetService {
   constructor(mongoService) {
     this.mongoService = mongoService;
+    this.emailService = getEmailService();
     this.JWT_SECRET = process.env.JWT_SECRET || 'dorsu-connect-secret-key-change-in-production';
     this.OTP_EXPIRY_MINUTES = 10; // OTP valid for 10 minutes
     this.MAX_OTP_ATTEMPTS = 5; // Max verification attempts
@@ -27,22 +29,12 @@ export class PasswordResetService {
    * Request password reset OTP
    */
   async requestPasswordResetOTP(email) {
-    const functionStartTime = Date.now();
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'password-reset.js:29',message:'requestPasswordResetOTP entry',data:{email},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     try {
       const normalizedEmail = email.toLowerCase().trim();
       const isDevMode = process.env.NODE_ENV !== 'production' || process.env.DEV_MODE === 'true';
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'password-reset.js:35',message:'before findUser',data:{normalizedEmail,timeElapsed:Date.now()-functionStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       // Check if user exists in MongoDB
       const user = await this.mongoService.findUser(normalizedEmail);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'password-reset.js:36',message:'after findUser',data:{userFound:!!user,timeElapsed:Date.now()-functionStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       if (!user) {
         // In dev mode, still generate OTP for testing
         if (isDevMode) {
@@ -77,31 +69,15 @@ export class PasswordResetService {
       const hashedOTP = await bcrypt.hash(otp, 10);
       const expiresAt = new Date(Date.now() + this.OTP_EXPIRY_MINUTES * 60 * 1000);
 
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'password-reset.js:71',message:'before createPasswordResetOTP',data:{timeElapsed:Date.now()-functionStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       // Store OTP in MongoDB
       await this.mongoService.createPasswordResetOTP(normalizedEmail, hashedOTP, expiresAt);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'password-reset.js:72',message:'after createPasswordResetOTP, before sendOTPEmail',data:{timeElapsed:Date.now()-functionStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
 
       // Send email with OTP via Nodemailer
       // Catch email errors separately - we still want to return success even if email fails
       // (for security, we don't want to reveal if email sending failed)
-      const emailStartTime = Date.now();
       try {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'password-reset.js:77',message:'calling sendOTPEmail',data:{email:normalizedEmail,timeElapsed:Date.now()-functionStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         await this.sendOTPEmail(normalizedEmail, otp);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'password-reset.js:78',message:'sendOTPEmail completed',data:{emailTime:Date.now()-emailStartTime,totalTime:Date.now()-functionStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
       } catch (emailError) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'password-reset.js:79',message:'sendOTPEmail error caught',data:{error:emailError.message,emailTime:Date.now()-emailStartTime,totalTime:Date.now()-functionStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         // Log email error but don't fail the request
         // The OTP is still stored in DB and can be verified
         Logger.error('Email sending failed, but OTP was generated:', emailError.message);
@@ -140,167 +116,38 @@ export class PasswordResetService {
 
       Logger.success(`✅ Password reset OTP sent to: ${normalizedEmail}`);
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'password-reset.js:115',message:'requestPasswordResetOTP returning success',data:{totalTime:Date.now()-functionStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       return { 
         success: true, 
         message: 'OTP has been sent to your email. It will expire in 10 minutes.' 
       };
     } catch (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'password-reset.js:122',message:'requestPasswordResetOTP error',data:{error:error.message,totalTime:Date.now()-functionStartTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       Logger.error('Request password reset OTP error:', error.message);
       throw error;
     }
   }
 
   /**
-   * Send OTP email via Nodemailer (SMTP)
+   * Send OTP email via EmailService
    */
   async sendOTPEmail(email, otp) {
     try {
-      const smtpHost = process.env.SMTP_HOST;
-      const smtpPort = process.env.SMTP_PORT || 587;
-      const smtpUser = process.env.SMTP_USER;
-      const smtpPassword = process.env.SMTP_PASSWORD;
-      const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'noreply@dorsu.edu.ph';
-      
       // Log SMTP configuration status (for debugging)
-      Logger.info(`📧 SMTP Config Check - Host: ${smtpHost ? '✅' : '❌'}, User: ${smtpUser ? '✅' : '❌'}, Password: ${smtpPassword ? '✅' : '❌'}`);
+      const isConfigured = this.emailService.isEmailConfigured();
+      Logger.info(`📧 SMTP Config Check: ${isConfigured ? '✅ Configured' : '❌ Not configured'}`);
       
       // If SMTP is not configured, log OTP for development
-      if (!smtpHost || !smtpUser || !smtpPassword) {
+      if (!isConfigured) {
         Logger.warn('⚠️ SMTP not configured, skipping email send');
         Logger.info(`📧 OTP for ${email}: ${otp} (Email sending not configured - add SMTP settings to .env)`);
         
         // Log OTP prominently for testing
-        console.log('');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('📧 PASSWORD RESET OTP (FOR TESTING)');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log(`Email: ${email}`);
-        console.log(`OTP Code: ${otp}`);
-        console.log(`Expires in: ${this.OTP_EXPIRY_MINUTES} minutes`);
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('');
+        this.emailService.logOTPForTesting(email, otp, this.OTP_EXPIRY_MINUTES);
         return;
       }
 
-      // Import nodemailer
-      const nodemailerModule = await import('nodemailer');
-      const nodemailer = nodemailerModule.default || nodemailerModule;
-
-      // For Gmail on cloud providers (like Render), port 465 with SSL is more reliable
-      // Try port 465 first if configured port is 587
-      const configuredPort = parseInt(smtpPort, 10);
+      // Use EmailService to send the OTP email
+      await this.emailService.sendPasswordResetOTP(email, otp);
       
-      // Validate port number
-      if (isNaN(configuredPort) || configuredPort < 1 || configuredPort > 65535) {
-        throw new Error(`Invalid SMTP_PORT: ${smtpPort}. Must be a number between 1 and 65535.`);
-      }
-      
-      // If port 587 is configured, try 465 first (more reliable from cloud providers)
-      // Otherwise, use the configured port
-      const portsToTry = configuredPort === 587 ? [465, 587] : [configuredPort];
-      
-      Logger.info(`📧 Will try ports in order: ${portsToTry.join(', ')} (port 465 is more reliable from cloud providers)`);
-
-      // Email template for password reset OTP
-      const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #2563EB;">Password Reset Request</h2>
-          <p>You have requested to reset your password for DOrSU Connect.</p>
-          <p>Your OTP code is:</p>
-          <div style="background-color: #F3F4F6; padding: 20px; text-align: center; border-radius: 8px; margin: 20px 0;">
-            <h1 style="color: #2563EB; font-size: 32px; letter-spacing: 8px; margin: 0;">${otp}</h1>
-          </div>
-          <p>This code will expire in 10 minutes.</p>
-          <p>If you didn't request this, please ignore this email.</p>
-          <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 20px 0;">
-          <p style="color: #6B7280; font-size: 12px;">DOrSU Connect - AI-Powered Academic Assistant</p>
-        </div>
-      `;
-
-      // Try sending email with different port configurations
-      Logger.info(`📤 Sending OTP email to: ${email}`);
-      
-      let lastError;
-      const emailData = {
-        from: `"DOrSU Connect" <${fromEmail}>`,
-        to: email,
-        subject: 'Password Reset OTP - DOrSU Connect',
-        html: html,
-      };
-
-      // Try each port configuration
-      for (const port of portsToTry) {
-        try {
-          const isSecure = port === 465;
-          const portAttemptStart = Date.now();
-          Logger.info(`🔌 Attempting connection on port ${port} (${isSecure ? 'SSL' : 'STARTTLS'})...`);
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'password-reset.js:198',message:'attempting SMTP port',data:{port,isSecure},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
-          
-          // Create transporter for this port
-          const transporter = nodemailer.createTransport({
-            host: smtpHost,
-            port: port,
-            secure: isSecure, // true for 465 (SSL), false for 587 (STARTTLS)
-            auth: {
-              user: smtpUser,
-              pass: smtpPassword,
-            },
-            // TLS/SSL configuration optimized for cloud providers
-            tls: {
-              rejectUnauthorized: false, // Needed for cloud providers
-              minVersion: 'TLSv1',
-            },
-            // Connection settings
-            requireTLS: !isSecure, // Only require TLS for port 587
-            connectionTimeout: 20000, // 20 seconds
-            greetingTimeout: 20000,
-            socketTimeout: 20000,
-            // Disable pooling for better reliability
-            pool: false,
-            maxConnections: 1,
-            maxMessages: 1,
-          });
-
-          // Try to send email
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'password-reset.js:229',message:'before sendMail',data:{port,timeSincePortStart:Date.now()-portAttemptStart},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
-          const info = await transporter.sendMail(emailData);
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'password-reset.js:230',message:'sendMail completed',data:{port,portTime:Date.now()-portAttemptStart,messageId:info.messageId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
-          
-          Logger.success(`✅ Email sent via Nodemailer (port ${port}) to: ${email} (Message ID: ${info.messageId})`);
-          if (port === 465 && configuredPort !== 465) {
-            Logger.info('💡 Tip: Port 465 worked! Consider setting SMTP_PORT=465 in Render for better reliability');
-          }
-          return; // Success, exit function
-          
-        } catch (portError) {
-          lastError = portError;
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/380b6d5b-f9a7-4af4-bbc0-60b8657f2a52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'password-reset.js:237',message:'port sendMail failed',data:{port,error:portError.message,code:portError.code,portTime:Date.now()-portAttemptStart},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
-          Logger.warn(`⚠️ Port ${port} failed: ${portError.message} (${portError.code || 'N/A'})`);
-          
-          // If this is not the last port to try, continue to next port
-          if (port !== portsToTry[portsToTry.length - 1]) {
-            Logger.info(`🔄 Trying next port...`);
-            continue;
-          }
-        }
-      }
-      
-      // All ports failed, throw the last error
-      throw lastError;
     } catch (error) {
       // Log detailed error information
       Logger.error('❌ Failed to send OTP email');

@@ -71,7 +71,17 @@ export class PasswordResetService {
       await this.mongoService.createPasswordResetOTP(normalizedEmail, hashedOTP, expiresAt);
 
       // Send email with OTP via Nodemailer
-      await this.sendOTPEmail(normalizedEmail, otp);
+      // Catch email errors separately - we still want to return success even if email fails
+      // (for security, we don't want to reveal if email sending failed)
+      try {
+        await this.sendOTPEmail(normalizedEmail, otp);
+      } catch (emailError) {
+        // Log email error but don't fail the request
+        // The OTP is still stored in DB and can be verified
+        Logger.error('Email sending failed, but OTP was generated:', emailError.message);
+        // Still log OTP for debugging in case email fails
+        Logger.warn(`⚠️ OTP generated but email failed: ${otp} (for ${normalizedEmail})`);
+      }
 
       // Log OTP prominently in console for testing (always log when email not configured)
       const smtpHost = process.env.SMTP_HOST;
@@ -125,6 +135,9 @@ export class PasswordResetService {
       const smtpPassword = process.env.SMTP_PASSWORD;
       const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || 'noreply@dorsu.edu.ph';
       
+      // Log SMTP configuration status (for debugging)
+      Logger.info(`📧 SMTP Config Check - Host: ${smtpHost ? '✅' : '❌'}, User: ${smtpUser ? '✅' : '❌'}, Password: ${smtpPassword ? '✅' : '❌'}`);
+      
       // If SMTP is not configured, log OTP for development
       if (!smtpHost || !smtpUser || !smtpPassword) {
         Logger.warn('⚠️ SMTP not configured, skipping email send');
@@ -147,7 +160,7 @@ export class PasswordResetService {
       const nodemailerModule = await import('nodemailer');
       const nodemailer = nodemailerModule.default || nodemailerModule;
 
-      // Create transporter
+      // Create transporter with proper TLS configuration for Gmail
       const transporter = nodemailer.createTransport({
         host: smtpHost,
         port: parseInt(smtpPort),
@@ -156,7 +169,23 @@ export class PasswordResetService {
           user: smtpUser,
           pass: smtpPassword,
         },
+        // Add TLS options for Gmail (important for Render)
+        tls: {
+          // Don't reject unauthorized certificates (needed for some cloud providers)
+          rejectUnauthorized: false,
+        },
+        // For port 587, require TLS
+        requireTLS: smtpPort === '587',
+        // Connection timeout
+        connectionTimeout: 10000, // 10 seconds
+        greetingTimeout: 10000,
+        socketTimeout: 10000,
       });
+
+      // Verify connection before sending
+      Logger.info('🔍 Verifying SMTP connection...');
+      await transporter.verify();
+      Logger.success('✅ SMTP connection verified');
 
       // Email template for password reset OTP
       const html = `
@@ -175,6 +204,7 @@ export class PasswordResetService {
       `;
 
       // Send email
+      Logger.info(`📤 Sending OTP email to: ${email}`);
       const info = await transporter.sendMail({
         from: `"DOrSU Connect" <${fromEmail}>`,
         to: email,
@@ -184,9 +214,20 @@ export class PasswordResetService {
 
       Logger.success(`✅ Email sent via Nodemailer to: ${email} (Message ID: ${info.messageId})`);
     } catch (error) {
-      Logger.error('Failed to send OTP email:', error.message);
-      // Don't throw - we still want to return success even if email fails
-      // (for security, we don't want to reveal if email sending failed)
+      // Log detailed error information
+      Logger.error('❌ Failed to send OTP email');
+      Logger.error(`   Error: ${error.message}`);
+      Logger.error(`   Code: ${error.code || 'N/A'}`);
+      Logger.error(`   Command: ${error.command || 'N/A'}`);
+      Logger.error(`   Response: ${error.response || 'N/A'}`);
+      Logger.error(`   Stack: ${error.stack || 'N/A'}`);
+      
+      // Log full error object for debugging
+      console.error('Full error object:', error);
+      
+      // Re-throw error so it can be caught and logged by the calling function
+      // This ensures errors appear in Render logs
+      throw new Error(`Failed to send OTP email: ${error.message}`);
     }
   }
 

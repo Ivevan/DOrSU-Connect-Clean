@@ -1077,14 +1077,38 @@ class MongoDBService {
         throw new Error(`User not found with ID: ${userId}`);
       }
       
+      const updateData = {
+        isActive: isActive,
+        updatedAt: new Date()
+      };
+      
+      // When deactivating: save current role to previousRole and set role to 'user'
+      if (!isActive) {
+        // Only change role if user is not already a 'user'
+        if (user.role && user.role !== 'user') {
+          updateData.previousRole = user.role;
+          updateData.role = 'user';
+          Logger.info(`📝 Saving previous role "${user.role}" and setting role to "user" for deactivated user: ${userId}`);
+        }
+      } else {
+        // When reactivating: restore previous role if it exists
+        if (user.previousRole && user.previousRole !== 'user') {
+          updateData.role = user.previousRole;
+          Logger.info(`📝 Restoring previous role "${user.previousRole}" for reactivated user: ${userId}`);
+        }
+      }
+      
+      // Build update operation
+      const updateOperation = { $set: updateData };
+      
+      // If reactivating and previousRole was restored, unset previousRole field
+      if (isActive && user.previousRole && user.previousRole !== 'user') {
+        updateOperation.$unset = { previousRole: '' };
+      }
+      
       const result = await collection.updateOne(
         { _id: objectId },
-        {
-          $set: {
-            isActive: isActive,
-            updatedAt: new Date()
-          }
-        }
+        updateOperation
       );
       
       if (result.matchedCount === 0) {

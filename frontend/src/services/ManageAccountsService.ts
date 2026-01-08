@@ -12,6 +12,7 @@ export interface BackendUser {
   email: string;
   username: string;
   role?: 'user' | 'moderator' | 'admin' | 'superadmin';
+  previousRole?: 'user' | 'moderator' | 'admin' | 'superadmin';
   createdAt?: string;
   lastLogin?: string;
   isActive?: boolean;

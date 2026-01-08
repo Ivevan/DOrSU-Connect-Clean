@@ -10,8 +10,15 @@ export class EmailService {
   constructor() {
     // Resend configuration
     this.resendApiKey = process.env.RESEND_API_KEY;
-    this.fromEmail = 'onboarding@resend.dev'; // Default Resend email (no domain setup required)
+    // Use custom from email if provided (requires domain verification), otherwise use default
+    this.fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
     this.isConfigured = !!this.resendApiKey;
+    
+    // Warn if using testing domain (has limitations)
+    if (this.fromEmail.includes('@resend.dev')) {
+      Logger.warn('⚠️ Using Resend testing domain (onboarding@resend.dev) - can only send to account owner email');
+      Logger.info('💡 To send to any email, verify a domain in Resend and set RESEND_FROM_EMAIL to your verified domain email');
+    }
   }
 
   /**
@@ -48,6 +55,21 @@ export class EmailService {
 
       if (error) {
         Logger.error(`❌ Resend API error: ${error.message}`);
+        
+        // Check for 403 Forbidden (testing domain restriction)
+        const is403Error = error.message?.includes('403') || 
+                          error.message?.includes('Forbidden') ||
+                          error.message?.includes('Testing domain restriction') ||
+                          (error.statusCode && error.statusCode === 403);
+        
+        if (is403Error) {
+          const helpfulMessage = '❌ Resend 403 Error: The testing domain (onboarding@resend.dev) can ONLY send to your Resend account owner email. ' +
+            'To send to ANY email address, you MUST verify a domain in Resend. ' +
+            'Steps: 1) Go to https://resend.com/domains 2) Click "Add Domain" 3) Add DNS records (SPF/DKIM) 4) Wait for verification 5) Set RESEND_FROM_EMAIL=noreply@yourdomain.com in Render';
+          Logger.error(`   ${helpfulMessage}`);
+          throw new Error(`Resend 403 Forbidden: ${error.message}. ${helpfulMessage}`);
+        }
+        
         throw new Error(`Resend API error: ${error.message}`);
       }
 

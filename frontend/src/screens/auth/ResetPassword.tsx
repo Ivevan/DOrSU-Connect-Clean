@@ -59,7 +59,7 @@ const ResetPassword = () => {
   useEffect(() => {
     if (route.params?.resetToken) {
       setResetToken(route.params.resetToken);
-    }
+          }
   }, [route.params]);
 
   // Handle back button/gesture to navigate to SignIn

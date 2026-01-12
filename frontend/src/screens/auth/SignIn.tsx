@@ -17,6 +17,7 @@ type RootStackParamList = {
   SignIn: undefined;
   CreateAccount: undefined;
   ForgotPassword: undefined;
+  DataPrivacyConsent: { isAdmin?: boolean; userRole?: string };
   AdminAIChat: undefined;
   AIChat: undefined;
 };
@@ -167,9 +168,9 @@ const SignIn = () => {
         setIsLoading(false);
         loadingRotation.stopAnimation();
         
-        // Success - navigate to admin AI chat
+        // Navigate to data privacy consent screen (required on every login)
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        navigation.navigate('AdminAIChat');
+        navigation.navigate('DataPrivacyConsent', { isAdmin: true, userRole: 'admin' });
         return;
       }
       
@@ -272,9 +273,12 @@ const SignIn = () => {
       setIsLoading(false);
       loadingRotation.stopAnimation();
       
-      // Success - navigate to AI Chat for regular users
+      // Navigate to data privacy consent screen (required on every login)
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      navigation.navigate('AIChat');
+      navigation.navigate('DataPrivacyConsent', { 
+        isAdmin: adminFlag, 
+        userRole: userRole 
+      });
     } catch (error: any) {
       setIsLoading(false);
       loadingRotation.stopAnimation();

@@ -16,6 +16,7 @@ type RootStackParamList = {
   GetStarted: undefined;
   SignIn: undefined;
   CreateAccount: undefined;
+  DataPrivacyConsent: { isAdmin?: boolean; userRole?: string };
   AdminAIChat: undefined;
   AIChat: undefined;
 };
@@ -199,16 +200,18 @@ const GetStarted = () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       googleLoadingRotation.stopAnimation();
       
-      // Navigate based on user role
+      // Navigate based on user role - always show consent screen on every login
       const userEmail = user.email?.toLowerCase().trim();
       const isAdminEmail = userEmail === 'admin@dorsu.edu.ph' || userEmail === 'admin';
       const adminStatus = storedIsAdmin.status === 'fulfilled' ? storedIsAdmin.value : null;
+      const userRole = await AsyncStorage.getItem('userRole');
+      const isAdmin = isAdminEmail || adminStatus === 'true' || userRole === 'admin' || userRole === 'superadmin' || userRole === 'moderator';
       
-      if (isAdminEmail || adminStatus === 'true') {
-        navigation.navigate('AdminAIChat');
-      } else {
-        navigation.navigate('AIChat');
-      }
+      // Navigate to data privacy consent screen (required on every login)
+      navigation.navigate('DataPrivacyConsent', { 
+        isAdmin: isAdmin, 
+        userRole: userRole || 'user' 
+      });
     } catch (error: any) {
       console.error('Google Sign-In Error:', error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);

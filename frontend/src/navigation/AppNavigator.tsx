@@ -26,6 +26,7 @@ import ManagePosts from '../screens/admin/ManagePosts';
 import ModeratorPosts from '../screens/admin/ModeratorPosts';
 import PostUpdate from '../screens/admin/PostUpdate';
 import CreateAccount from '../screens/auth/CreateAccount';
+import DataPrivacyConsent from '../screens/auth/DataPrivacyConsent';
 import ForgotPassword from '../screens/auth/ForgotPassword';
 import GetStarted from '../screens/auth/GetStarted';
 import ResetPassword from '../screens/auth/ResetPassword';
@@ -407,6 +408,10 @@ const AppNavigator = () => {
         <Stack.Screen 
           name="CreateAccount" 
           component={CreateAccount}
+        />
+        <Stack.Screen 
+          name="DataPrivacyConsent" 
+          component={DataPrivacyConsent}
         />
         <Stack.Screen 
           name="ForgotPassword" 

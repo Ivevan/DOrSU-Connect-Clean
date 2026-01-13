@@ -6,9 +6,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, BackHandler, Dimensions, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { resetPasswordWithToken } from '../../services/authService';
+import { confirmPasswordReset } from '../../services/authService';
 
 type RootStackParamList = {
   GetStarted: undefined;
@@ -48,18 +49,31 @@ const ResetPassword = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [resetToken, setResetToken] = useState<string | null>(null);
+  const [actionCode, setActionCode] = useState<string | null>(null);
   const [errors, setErrors] = useState({ password: '', confirmPassword: '', general: '' });
   
   // Input focus states
   const passwordFocus = useRef(new Animated.Value(0)).current;
   const confirmPasswordFocus = useRef(new Animated.Value(0)).current;
 
-  // Extract reset token from route params
+  // Extract action code from AsyncStorage (set by AppNavigator when deep link is opened)
   useEffect(() => {
-    if (route.params?.resetToken) {
-      setResetToken(route.params.resetToken);
-          }
+    const loadActionCode = async () => {
+      try {
+        const storedCode = await AsyncStorage.getItem('pendingResetCode');
+        if (storedCode) {
+          setActionCode(storedCode);
+          // Clear the stored code after reading it
+          await AsyncStorage.removeItem('pendingResetCode');
+        } else if (route.params?.resetToken) {
+          // Fallback: check route params (for OTP flow, but should not be used)
+          setActionCode(route.params.resetToken);
+        }
+      } catch (error) {
+        console.error('Error loading action code:', error);
+      }
+    };
+    loadActionCode();
   }, [route.params]);
 
   // Handle back button/gesture to navigate to SignIn
@@ -109,13 +123,13 @@ const ResetPassword = () => {
 
   // Function to handle reset password button press
   const handleResetPassword = async () => {
-    // Check if reset token is available
-    if (!resetToken) {
+    // Check if action code is available
+    if (!actionCode) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       setErrors({ 
         password: '', 
         confirmPassword: '',
-        general: 'Invalid reset token. Please request a new OTP.' 
+        general: 'Invalid or expired reset link. Please request a new password reset email.' 
       });
       return;
     }
@@ -172,7 +186,7 @@ const ResetPassword = () => {
     ).start();
     
     try {
-      await resetPasswordWithToken(resetToken, password.trim());
+      await confirmPasswordReset(actionCode, password.trim());
       
       setIsLoading(false);
       loadingRotation.stopAnimation();
@@ -190,11 +204,13 @@ const ResetPassword = () => {
       let errorMessage = error.message || 'Failed to reset password. Please try again.';
       let passwordError = '';
       
-      if (error.message.includes('Invalid or expired')) {
-        errorMessage = 'Invalid or expired reset token. Please request a new OTP.';
+      if (error.message.includes('Invalid or expired') || error.message.includes('invalid-action-code') || error.message.includes('expired-action-code')) {
+        errorMessage = 'Invalid or expired reset link. Please request a new password reset email.';
       } else if (error.message.includes('weak-password') || error.message.includes('too weak')) {
         passwordError = 'Password is too weak. Please use a stronger password.';
         errorMessage = '';
+      } else if (error.message.includes('network')) {
+        errorMessage = 'Network error. Please check your internet connection.';
       }
       
       setErrors({
@@ -249,7 +265,7 @@ const ResetPassword = () => {
       );
     }
 
-    if (!resetToken) {
+    if (!actionCode) {
       return (
         <>
           <View style={styles.logoSection}>
@@ -266,10 +282,10 @@ const ResetPassword = () => {
 
           <View style={styles.errorContainer}>
             <MaterialIcons name="error-outline" size={48} color="#EF4444" />
-            <Text style={styles.errorTitle}>Invalid Reset Token</Text>
+            <Text style={styles.errorTitle}>Invalid Reset Link</Text>
             <Text style={styles.errorMessage}>
-              This password reset token is invalid or has expired.{'\n'}
-              Please request a new OTP code.
+              This password reset link is invalid or has expired.{'\n'}
+              Please request a new password reset email.
             </Text>
           </View>
 
@@ -278,7 +294,7 @@ const ResetPassword = () => {
             onPress={() => navigation.navigate('ForgotPassword')}
             activeOpacity={0.8}
           >
-            <Text style={styles.backButtonText}>Request New OTP</Text>
+            <Text style={styles.backButtonText}>Request New Reset Link</Text>
           </TouchableOpacity>
         </>
       );

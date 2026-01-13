@@ -1166,81 +1166,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Request password reset OTP
+  // OTP endpoints disabled - Using Firebase email link verification instead
+  // Request password reset OTP (DISABLED)
   if (method === 'POST' && url === '/api/auth/forgot-password') {
-    if (!passwordResetService || !mongoService) {
-      sendJson(res, 503, { error: 'Services not available' });
-      return;
-    }
-
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', async () => {
-      try {
-        const { email } = JSON.parse(body || '{}');
-        if (!email) {
-          sendJson(res, 400, { error: 'Email is required' });
-          return;
-        }
-        const result = await passwordResetService.requestPasswordResetOTP(email);
-        sendJson(res, 200, result);
-      } catch (error) {
-        Logger.error('Request password reset OTP error:', error.message);
-        sendJson(res, 400, { error: error.message || 'Failed to send OTP' });
-      }
-    });
+    sendJson(res, 503, { error: 'OTP password reset is disabled. Please use Firebase email link verification.' });
     return;
   }
 
-  // Verify password reset OTP
+  // Verify password reset OTP (DISABLED)
   if (method === 'POST' && url === '/api/auth/verify-reset-otp') {
-    if (!passwordResetService || !mongoService) {
-      sendJson(res, 503, { error: 'Services not available' });
-      return;
-    }
-
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', async () => {
-      try {
-        const { email, otp } = JSON.parse(body || '{}');
-        if (!email || !otp) {
-          sendJson(res, 400, { error: 'Email and OTP are required' });
-          return;
-        }
-        const result = await passwordResetService.verifyOTP(email, otp);
-        sendJson(res, 200, result);
-      } catch (error) {
-        Logger.error('Verify OTP error:', error.message);
-        sendJson(res, 400, { error: error.message || 'Failed to verify OTP' });
-      }
-    });
+    sendJson(res, 503, { error: 'OTP verification is disabled. Please use Firebase email link verification.' });
     return;
   }
 
-  // Reset password with token
+  // Reset password with token (DISABLED)
   if (method === 'POST' && url === '/api/auth/reset-password') {
-    if (!passwordResetService || !mongoService) {
-      sendJson(res, 503, { error: 'Services not available' });
-      return;
-    }
-
-    let body = '';
-    req.on('data', chunk => { body += chunk; });
-    req.on('end', async () => {
-      try {
-        const { resetToken, newPassword } = JSON.parse(body || '{}');
-        if (!resetToken || !newPassword) {
-          sendJson(res, 400, { error: 'Reset token and new password are required' });
-          return;
-        }
-        const result = await passwordResetService.resetPassword(resetToken, newPassword);
-        sendJson(res, 200, result);
-      } catch (error) {
-        Logger.error('Reset password error:', error.message);
-        sendJson(res, 400, { error: error.message || 'Failed to reset password' });
-      }
-    });
+    sendJson(res, 503, { error: 'OTP password reset is disabled. Please use Firebase email link verification.' });
     return;
   }
 

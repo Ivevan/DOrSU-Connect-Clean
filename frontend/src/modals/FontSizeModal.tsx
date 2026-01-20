@@ -1,10 +1,10 @@
-import React from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeValues, useThemeActions } from '../contexts/ThemeContext';
-import { FontSizeScale } from '../config/theme';
+import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
+import React from 'react';
+import { Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { FontSizeScale } from '../config/theme';
+import { useThemeActions, useThemeValues } from '../contexts/ThemeContext';
 
 interface FontSizeModalProps {
   visible: boolean;

@@ -34,7 +34,6 @@ type RootStackParamList = {
   AccountSettings: undefined;
   GeneralSettings: undefined;
   EmailSettings: undefined;
-  ActivityLog: undefined;
 };
 
 const UserSettings = () => {
@@ -394,34 +393,31 @@ const UserSettings = () => {
       // Close modal immediately (synchronously) to prevent state updates during navigation
       setIsLogoutOpen(false);
       
-      // Clear conversation data from AsyncStorage
-      await AsyncStorage.multiRemove(['currentConversation', 'conversationLastSaveTime']);
+      // Navigate immediately to provide instant feedback
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'GetStarted' }],
+      });
       
-      // Use AuthContext logout function which handles:
-      // - Clearing UpdatesContext data
-      // - Resetting session flags
-      // - Clearing AsyncStorage (including userToken, userEmail, userName, userId, isAdmin, adminToken, adminEmail)
-      // - Signing out from Firebase
-      await authLogout();
-      
-      // Use setTimeout to ensure state updates complete before navigation
-      setTimeout(() => {
-        // Reset navigation stack to prevent back navigation to authenticated screens
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'GetStarted' }],
-        });
-      }, 0);
+      // Clear conversation data and logout in background (non-blocking)
+      // Use fire-and-forget pattern to prevent blocking navigation
+      Promise.all([
+        AsyncStorage.multiRemove(['currentConversation', 'conversationLastSaveTime']),
+        authLogout().catch((error) => {
+          // Log error but don't block - user is already logged out locally
+          console.error('Background logout error:', error);
+        })
+      ]).catch((error) => {
+        console.error('Background cleanup error:', error);
+      });
     } catch (error) {
       console.error('Logout error:', error);
       // Still reset navigation even if there's an error
       setIsLogoutOpen(false);
-      setTimeout(() => {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'GetStarted' }],
-        });
-      }, 0);
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'GetStarted' }],
+      });
     }
   }, [navigation, authLogout]);
   
@@ -649,14 +645,6 @@ const UserSettings = () => {
               onPress={() => navigation.navigate('EmailSettings')}
             >
               <Text style={[styles.sectionTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>Email</Text>
-              <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.sectionTitleButton}
-              onPress={() => navigation.navigate('ActivityLog' as any)}
-            >
-              <Text style={[styles.sectionTitle, { color: t.colors.text, fontSize: t.fontSize.scaleSize(16) }]}>Activity Log</Text>
               <Ionicons name="chevron-forward" size={20} color={t.colors.textMuted} />
             </TouchableOpacity>
 

@@ -23,6 +23,7 @@ import {
     View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Sidebar from '../../components/navigation/Sidebar';
 import { useAuth } from '../../contexts/AuthContext';
 import { useThemeValues } from '../../contexts/ThemeContext';
 import { useUpdates } from '../../contexts/UpdatesContext';
@@ -114,6 +115,7 @@ const ModeratorPosts: React.FC = () => {
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const isPendingAuthorization = isAuthorized === null;
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   // Memoize safe area insets to prevent recalculation during navigation
   const safeInsets = useMemo(() => ({
@@ -1003,18 +1005,16 @@ const ModeratorPosts: React.FC = () => {
         <View style={styles.headerContent}>
         <View style={styles.headerLeft}>
             <TouchableOpacity 
-              onPress={() => {
-            if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
-              navigation.goBack();
-            } else {
-              (navigation as any).navigate('AdminDashboard');
-            }
-              }} 
-              style={styles.backButton}
-              accessibilityLabel="Go back"
+              onPress={() => setIsSidebarOpen(true)} 
+              style={styles.menuButton}
+              accessibilityLabel="Open sidebar"
               activeOpacity={0.7}
             >
-            <Ionicons name="arrow-back" size={24} color={isDarkMode ? '#F9FAFB' : '#1F2937'} />
+            <View style={styles.customHamburger} pointerEvents="none">
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineLong, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+              <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: isDarkMode ? '#F9FAFB' : '#1F2937' }]} />
+            </View>
           </TouchableOpacity>
         </View>
           <View style={styles.headerTitleContainer}>
@@ -1749,6 +1749,13 @@ const ModeratorPosts: React.FC = () => {
           </View>
         </Modal>
 
+      {/* Sidebar Component */}
+      <Sidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        allowedRoles={['superadmin', 'admin', 'moderator']}
+      />
+
     </View>
   );
 };
@@ -1809,8 +1816,28 @@ const styles = StyleSheet.create({
   headerLeft: {
     width: 40,
   },
-  backButton: {
-    padding: 6,
+  menuButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customHamburger: {
+    width: 24,
+    height: 18,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  hamburgerLine: {
+    height: 2.5,
+    borderRadius: 2,
+  },
+  hamburgerLineShort: {
+    width: 18,
+  },
+  hamburgerLineLong: {
+    width: 24,
   },
   headerTitleContainer: {
     flex: 1,

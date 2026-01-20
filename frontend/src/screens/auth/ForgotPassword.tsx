@@ -15,6 +15,7 @@ type RootStackParamList = {
   SignIn: undefined;
   CreateAccount: undefined;
   ForgotPassword: undefined;
+  VerifyOTP: { email: string };
   AdminAIChat: undefined;
   AIChat: undefined;
 };
@@ -148,23 +149,34 @@ const ForgotPassword = () => {
       // Handle errors
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       
-      let errorMessage = error.message || 'Failed to send password reset email. Please try again.';
+      console.error('Send password reset email error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      
+      const errorMsg = error?.message || String(error) || 'Failed to send password reset email. Please try again.';
+      let errorMessage = errorMsg;
       let emailError = '';
       
-      if (error.message.includes('No account found')) {
+      // Handle specific error cases
+      if (errorMsg.includes('No account found') || errorMsg.includes('user-not-found')) {
         emailError = 'No account found with this email address.';
         errorMessage = '';
-      } else if (error.message.includes('Invalid email')) {
+      } else if (errorMsg.includes('Invalid email') || errorMsg.includes('invalid-email')) {
         emailError = 'Invalid email address format.';
         errorMessage = '';
+      } else if (errorMsg.includes('too-many-requests')) {
+        errorMessage = 'Too many password reset requests. Please try again later.';
+      } else if (errorMsg.includes('network') || errorMsg.includes('NetworkError')) {
+        errorMessage = 'Network error. Please check your internet connection.';
       }
       
       setErrors({
         email: emailError,
         general: errorMessage,
       });
-      
-      console.error('Send password reset email error:', error);
     }
   };
 

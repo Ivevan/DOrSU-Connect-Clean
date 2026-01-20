@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ActivityLogService } from './services/activity-log.js';
 import { AuthService, authMiddleware } from './services/auth.js';
+import { PasswordResetService } from './services/password-reset.js';
 import { buildClarificationMessage, isConversationResetRequest } from './services/chat-guardrails.js';
 import { getChatHistoryService } from './services/chat-history.js';
 import conversationService from './services/conversation.js';
@@ -56,6 +57,7 @@ let mongoService = null;
 let dataRefreshService = null;
 let newsScraperService = null;
 let authService = null;
+let passwordResetService = null;
 let chatHistoryService = null;
 let scheduleService = null;
 let activityLogService = null;
@@ -94,6 +96,10 @@ async function initializeServices() {
     // Initialize authentication service
     authService = new AuthService(mongoService);
     Logger.success('Auth service initialized');
+    
+    // Initialize password reset service
+    passwordResetService = new PasswordResetService(mongoService);
+    Logger.success('Password reset service initialized');
     
     // Initialize chat history service
     chatHistoryService = getChatHistoryService(mongoService, authService);
@@ -1160,6 +1166,25 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // OTP endpoints disabled - Using Firebase email link verification instead
+  // Request password reset OTP (DISABLED)
+  if (method === 'POST' && url === '/api/auth/forgot-password') {
+    sendJson(res, 503, { error: 'OTP password reset is disabled. Please use Firebase email link verification.' });
+    return;
+  }
+
+  // Verify password reset OTP (DISABLED)
+  if (method === 'POST' && url === '/api/auth/verify-reset-otp') {
+    sendJson(res, 503, { error: 'OTP verification is disabled. Please use Firebase email link verification.' });
+    return;
+  }
+
+  // Reset password with token (DISABLED)
+  if (method === 'POST' && url === '/api/auth/reset-password') {
+    sendJson(res, 503, { error: 'OTP password reset is disabled. Please use Firebase email link verification.' });
+    return;
+  }
+
   // Change password
   if (method === 'POST' && url === '/api/auth/change-password') {
     if (!authService || !mongoService) {
@@ -1488,6 +1513,123 @@ const server = http.createServer(async (req, res) => {
         Logger.error('Update user role error:', error.message);
         Logger.error('Error details:', error);
         sendJson(res, 400, { error: error.message || 'Failed to update user role' });
+      }
+    });
+    return;
+  }
+
+  // Update user active status (admin only) - SECURED
+  if (method === 'PUT' && url.startsWith('/api/users/') && url.endsWith('/status')) {
+    if (!authService || !mongoService) {
+      sendJson(res, 503, { error: 'Services not available' });
+      return;
+    }
+
+    const auth = await authMiddleware(authService, mongoService)(req);
+    if (!auth.authenticated) {
+      sendJson(res, 401, { error: 'Unauthorized' });
+      return;
+    }
+
+    // Check admin access - both token-based and database role
+    let isAdmin = auth.isAdmin;
+    if (!isAdmin) {
+      const user = await mongoService.findUserById(auth.userId);
+      isAdmin = user && hasAdminAccess(user.role);
+    }
+
+    if (!isAdmin) {
+      sendJson(res, 403, { error: 'Forbidden: Admin access required' });
+      return;
+    }
+
+    // Extract userId from URL: /api/users/{userId}/status
+    const urlParts = url.split('/api/users/')[1];
+    if (!urlParts) {
+      sendJson(res, 400, { error: 'Invalid URL format' });
+      return;
+    }
+    
+    const userId = urlParts.replace('/status', '').trim();
+    
+    // Validate userId
+    if (!userId || userId.length === 0) {
+      sendJson(res, 400, { error: 'User ID is required' });
+      return;
+    }
+    
+    Logger.info(`Update status request for userId: ${userId}`);
+    
+    // Prevent self-deactivation (optional security measure)
+    if (userId === auth.userId) {
+      sendJson(res, 400, { error: 'Cannot change your own status' });
+      return;
+    }
+    
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const { isActive } = JSON.parse(body || '{}');
+        if (typeof isActive !== 'boolean') {
+          sendJson(res, 400, { error: 'isActive must be a boolean value' });
+          return;
+        }
+
+        // Get target user to check role restrictions
+        const targetUser = await mongoService.findUserById(userId);
+        if (!targetUser) {
+          sendJson(res, 404, { error: 'User not found' });
+          return;
+        }
+
+        // Get requester role for authorization checks
+        let requesterRole = 'user';
+        if (auth.isSuperAdmin) {
+          requesterRole = 'superadmin';
+        } else if (auth.role) {
+          requesterRole = auth.role;
+        } else {
+          // Fallback to database lookup
+          const requesterUser = await mongoService.findUserById(auth.userId);
+          requesterRole = requesterUser?.role || 'user';
+        }
+
+        // Only superadmins can deactivate admins/superadmins
+        if ((targetUser.role === 'admin' || targetUser.role === 'superadmin') && requesterRole !== 'superadmin') {
+          sendJson(res, 403, { error: 'Forbidden: Only a superadmin can change the status of an Admin or Superadmin' });
+          return;
+        }
+
+        // Update user status
+        await mongoService.updateUserStatus(userId, isActive);
+
+        // Log activity
+        if (activityLogService) {
+          const ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.socket.remoteAddress;
+          const userAgent = req.headers['user-agent'] || 'unknown';
+          await activityLogService.logActivity(
+            auth.userId,
+            'admin.status_change',
+            {
+              targetUserId: userId,
+              targetUserEmail: targetUser?.email || null,
+              oldStatus: targetUser.isActive !== false,
+              newStatus: isActive
+            },
+            {
+              ipAddress: Array.isArray(ipAddress) ? ipAddress[0] : ipAddress,
+              userAgent: userAgent,
+              timestamp: new Date()
+            }
+          );
+        }
+
+        Logger.success(`✅ User status updated: ${userId} -> ${isActive ? 'active' : 'inactive'}`);
+        sendJson(res, 200, { success: true, message: `User ${isActive ? 'activated' : 'deactivated'} successfully` });
+      } catch (error) {
+        Logger.error('Update user status error:', error.message);
+        sendJson(res, 500, { error: error.message || 'Failed to update user status' });
       }
     });
     return;

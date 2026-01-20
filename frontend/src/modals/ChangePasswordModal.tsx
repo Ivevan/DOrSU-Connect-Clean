@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../contexts/ThemeContext';
 import ProfileService from '../services/ProfileService';
+import { reauthenticateUser, updateFirebasePassword, isEmailPasswordUser, getCurrentUser } from '../services/authService';
 
 interface ChangePasswordModalProps {
   visible: boolean;
@@ -118,17 +119,80 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
         return;
       }
 
-      // Regular users: delegate to backend profile service
-      await ProfileService.changePassword(currentPassword, newPassword);
-      setSuccess('Password updated successfully');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onSuccess?.();
-      setTimeout(() => {
-        onClose();
-      }, 600);
+      // Check if user is a Firebase email/password user
+      const currentUser = getCurrentUser();
+      const isFirebaseEmailPasswordUser = currentUser && isEmailPasswordUser();
+
+      if (isFirebaseEmailPasswordUser) {
+        // For Firebase email/password users:
+        // 1. Re-authenticate with current password
+        // 2. Update Firebase password
+        // 3. Try to update backend password (if it exists)
+        try {
+          // Step 1: Re-authenticate
+          await reauthenticateUser(currentPassword);
+          
+          // Step 2: Update Firebase password
+          await updateFirebasePassword(newPassword);
+          
+          // Step 3: Try to update backend password (if it exists)
+          // This might fail if user doesn't have a backend password, which is OK
+          try {
+            await ProfileService.changePassword(currentPassword, newPassword);
+          } catch (backendError: any) {
+            // If backend password update fails because user doesn't have a password,
+            // that's OK - Firebase password was already updated
+            if (backendError?.message?.includes('not supported for this account') ||
+                backendError?.message?.includes('Password changes are not supported')) {
+              console.log('⚠️ Backend password update skipped (user may not have backend password)');
+            } else {
+              // For other errors, log but don't fail the whole operation
+              // since Firebase password was already updated successfully
+              console.warn('⚠️ Backend password update failed:', backendError?.message);
+            }
+          }
+          
+          setSuccess('Password updated successfully');
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          onSuccess?.();
+          setTimeout(() => {
+            onClose();
+          }, 600);
+        } catch (firebaseError: any) {
+          // Firebase password update failed
+          throw firebaseError;
+        }
+      } else {
+        // For non-Firebase email/password users (e.g., Google sign-in, backend-only):
+        // Just update backend password
+        await ProfileService.changePassword(currentPassword, newPassword);
+        setSuccess('Password updated successfully');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        onSuccess?.();
+        setTimeout(() => {
+          onClose();
+        }, 600);
+      }
     } catch (submitError: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setError(submitError?.message || 'Failed to change password');
+      
+      // Provide more specific error messages
+      let errorMessage = submitError?.message || 'Failed to change password';
+      
+      // Handle specific error cases
+      if (errorMessage.includes('Current password is incorrect') || 
+          errorMessage.includes('wrong-password') ||
+          errorMessage.includes('invalid-credential')) {
+        errorMessage = 'Current password is incorrect';
+      } else if (errorMessage.includes('not supported for this account')) {
+        errorMessage = 'Password changes are not supported for this account type. Please use the password reset feature instead.';
+      } else if (errorMessage.includes('requires-recent-login')) {
+        errorMessage = 'Please sign out and sign in again, then try changing your password.';
+      } else if (errorMessage.includes('weak-password')) {
+        errorMessage = 'Password is too weak. Please use a stronger password.';
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsSubmitting(false);
     }

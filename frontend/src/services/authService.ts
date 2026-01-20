@@ -574,4 +574,271 @@ export const confirmPasswordReset = async (actionCode: string, newPassword: stri
   }
 };
 
+/**
+ * Request password reset OTP
+ */
+export const requestPasswordResetOTP = async (email: string): Promise<void> => {
+  // Temporary development bypass - remove this when backend is ready
+  const DEV_BYPASS = __DEV__ && process.env.EXPO_PUBLIC_DEV_BYPASS_OTP === 'true';
+  
+  if (DEV_BYPASS) {
+    console.log('⚠️ DEV MODE: Bypassing OTP API call for testing');
+    console.log('📧 Would send OTP to:', email);
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    return;
+  }
+  
+  try {
+    const { API_BASE_URL } = require('../config/api.config');
+    console.log('📧 Requesting password reset OTP for:', email);
+    console.log('📧 API URL:', `${API_BASE_URL}/api/auth/forgot-password`);
+    
+    // Add timeout to prevent hanging
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 10000); // 10 second timeout
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+
+    console.log('📧 Response status:', response.status);
+    
+    // Check if response has JSON content
+    const contentType = response.headers.get('content-type');
+    let data;
+    
+    if (contentType && contentType.includes('application/json')) {
+      data = await response.json();
+    } else {
+      const text = await response.text();
+      console.error('📧 Non-JSON response:', text);
+      throw new Error(`Server returned non-JSON response: ${response.status} ${response.statusText}`);
+    }
+
+    if (!response.ok) {
+      console.error('📧 API error response:', data);
+      throw new Error(data.error || `Failed to send OTP (${response.status})`);
+    }
+    
+      console.log('✅ OTP request successful:', data);
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      
+      // Check if it was aborted (timeout)
+      if (fetchError.name === 'AbortError') {
+        throw new Error('Request timeout. The server is taking too long to respond. Please check your connection and try again.');
+      }
+      
+      throw fetchError;
+    }
+  } catch (error: any) {
+    console.error('❌ Request password reset OTP error:', error);
+    console.error('❌ Error type:', error.constructor.name);
+    console.error('❌ Error message:', error.message);
+    
+    // Handle network errors
+    if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError') || error.message?.includes('timeout')) {
+      throw new Error('Network error. Please check your internet connection and ensure the backend server is running.');
+    }
+    
+    // Handle 404 specifically
+    if (error.message?.includes('404') || error.message?.includes('not found')) {
+      throw new Error('Backend endpoint not found. The password reset API endpoint is not yet implemented.');
+    }
+    
+    throw error;
+  }
+};
+
+/**
+ * Verify password reset OTP
+ */
+export const verifyResetOTP = async (email: string, otp: string): Promise<{ resetToken: string }> => {
+  try {
+    const { API_BASE_URL } = require('../config/api.config');
+    const response = await fetch(`${API_BASE_URL}/api/auth/verify-reset-otp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        email: email.trim().toLowerCase(),
+        otp: otp.trim()
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to verify OTP');
+    }
+
+    return data;
+  } catch (error: any) {
+    console.error('Verify OTP error:', error);
+    
+    // Handle network errors
+    if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+      throw new Error('Network error. Please check your internet connection.');
+    }
+    
+    throw error;
+  }
+};
+
+/**
+ * Reset password with reset token
+ */
+export const resetPasswordWithToken = async (resetToken: string, newPassword: string): Promise<void> => {
+  try {
+    const { API_BASE_URL } = require('../config/api.config');
+    const response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        resetToken,
+        newPassword: newPassword.trim()
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to reset password');
+    }
+  } catch (error: any) {
+    console.error('Reset password error:', error);
+    
+    // Handle network errors
+    if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+      throw new Error('Network error. Please check your internet connection.');
+    }
+    
+    throw error;
+  }
+};
+
+/**
+ * Re-authenticate Firebase user with email and password
+ * Required before updating password or sensitive account information
+ */
+export const reauthenticateUser = async (currentPassword: string): Promise<void> => {
+  try {
+    const currentUser = getCurrentUser();
+    if (!currentUser || !currentUser.email) {
+      throw new Error('No user is currently signed in');
+    }
+
+    if (Platform.OS === 'web') {
+      if (!webFirebaseAuth) {
+        throw new Error('Firebase Auth is not initialized for web');
+      }
+      const { reauthenticateWithCredential, EmailAuthProvider } = require('firebase/auth');
+      const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
+      await reauthenticateWithCredential(currentUser, credential);
+    } else {
+      // Native - React Native Firebase
+      const emailCredential = auth.EmailAuthProvider.credential(currentUser.email, currentPassword);
+      await currentUser.reauthenticateWithCredential(emailCredential);
+    }
+  } catch (error: any) {
+    console.error('Re-authentication error:', error);
+    
+    // Handle Firebase Auth errors
+    if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+      throw new Error('Current password is incorrect');
+    } else if (error.code === 'auth/user-mismatch') {
+      throw new Error('User mismatch. Please sign out and sign in again.');
+    } else if (error.code === 'auth/user-not-found') {
+      throw new Error('User not found. Please sign out and sign in again.');
+    } else if (error.code === 'auth/network-request-failed') {
+      throw new Error('Network error. Please check your internet connection.');
+    }
+    
+    throw new Error(error.message || 'Re-authentication failed');
+  }
+};
+
+/**
+ * Update Firebase user password
+ * Requires re-authentication first
+ */
+export const updateFirebasePassword = async (newPassword: string): Promise<void> => {
+  try {
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      throw new Error('No user is currently signed in');
+    }
+
+    if (Platform.OS === 'web') {
+      if (!webFirebaseAuth) {
+        throw new Error('Firebase Auth is not initialized for web');
+      }
+      const { updatePassword } = require('firebase/auth');
+      await updatePassword(currentUser, newPassword);
+    } else {
+      // Native - React Native Firebase
+      await currentUser.updatePassword(newPassword);
+    }
+  } catch (error: any) {
+    console.error('Update Firebase password error:', error);
+    
+    // Handle Firebase Auth errors
+    if (error.code === 'auth/weak-password') {
+      throw new Error('Password is too weak. Please use a stronger password.');
+    } else if (error.code === 'auth/requires-recent-login') {
+      throw new Error('Please re-authenticate before changing your password.');
+    } else if (error.code === 'auth/network-request-failed') {
+      throw new Error('Network error. Please check your internet connection.');
+    }
+    
+    throw new Error(error.message || 'Failed to update password');
+  }
+};
+
+/**
+ * Check if current user is a Firebase email/password user
+ */
+export const isEmailPasswordUser = (): boolean => {
+  try {
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+      return false;
+    }
+    
+    // Check if user has email/password provider
+    // For Firebase, email/password users have providerData with providerId 'password'
+    if (currentUser.providerData && currentUser.providerData.length > 0) {
+      return currentUser.providerData.some(
+        (provider: any) => provider.providerId === 'password' || provider.providerId === 'firebase'
+      );
+    }
+    
+    // Fallback: if user has email and no Google provider, assume email/password
+    if (currentUser.email) {
+      const hasGoogleProvider = currentUser.providerData?.some(
+        (provider: any) => provider.providerId === 'google.com'
+      );
+      return !hasGoogleProvider;
+    }
+    
+    return false;
+  } catch {
+    return false;
+  }
+};
+
 

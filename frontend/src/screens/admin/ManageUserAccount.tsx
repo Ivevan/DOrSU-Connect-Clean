@@ -1180,7 +1180,11 @@ const ManageUserAccount = () => {
                     </TouchableOpacity>
               </View>
 
-          <ScrollView style={styles.modalScrollView} showsVerticalScrollIndicator={false}>
+          <ScrollView 
+            style={styles.modalScrollView} 
+            contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+            showsVerticalScrollIndicator={false}
+          >
               {/* User Type Selection */}
               <View style={styles.typeSelection}>
                   <TouchableOpacity

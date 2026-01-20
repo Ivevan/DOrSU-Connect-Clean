@@ -50,6 +50,8 @@ const ManageAccounts = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<'superadmin' | 'admin' | 'moderator' | 'user' | null>(null);
+  const [selectedStatusFilter, setSelectedStatusFilter] = useState<'active' | 'inactive' | null>(null);
+  const [updatingStatusUserId, setUpdatingStatusUserId] = useState<string | null>(null);
   const [backendUserPhoto, setBackendUserPhoto] = useState<string | null>(null);
   const [profileImageError, setProfileImageError] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -166,6 +168,67 @@ const ManageAccounts = () => {
     loadUsers(true);
   }, [loadUsers]);
 
+  const handleStatusToggle = async (userId: string, currentStatus: boolean) => {
+    try {
+      const user = users.find(u => u._id === userId);
+      const newStatus = !currentStatus;
+      
+      // Prevent self-deactivation
+      const currentUserId = await AsyncStorage.getItem('userId');
+      if (currentUserId === userId) {
+        Alert.alert('Cannot Change Status', 'You cannot change your own account status.');
+        return;
+      }
+      
+      // Check permissions for admin/superadmin
+      // When deactivating: check current role
+      // When reactivating: check previousRole (if user was deactivated, role is now 'user' but previousRole might be admin/superadmin)
+      const roleToCheck = !currentStatus && user?.previousRole ? user.previousRole : user?.role;
+      if ((roleToCheck === 'admin' || roleToCheck === 'superadmin') && !isSuperAdmin) {
+        Alert.alert('Access Denied', 'Only a superadmin can change the status of an Admin or Superadmin.');
+        return;
+      }
+      
+      setUpdatingStatusUserId(userId);
+      
+      // Update status (backend will handle role changes automatically)
+      await ManageAccountsService.updateUserStatus(userId, newStatus);
+      await loadUsers(true);
+      
+      // Small delay to ensure UI updates
+      await new Promise(resolve => setTimeout(resolve, 400));
+      
+      // Get updated user to show role change message
+      const updatedUsers = await ManageAccountsService.getAllUsers();
+      const updatedUser = updatedUsers.find(u => u._id === userId);
+      
+      let message = `${user?.email || 'User'} has been ${newStatus ? 'activated' : 'deactivated'}.`;
+      
+      if (!newStatus && user?.role && user.role !== 'user') {
+        // User was deactivated, role changed to 'user'
+        message += `\n\nRole changed to "User" (previous role: ${getRoleLabel(user.role)}).`;
+      } else if (newStatus && updatedUser?.role && user?.role !== updatedUser.role) {
+        // User was reactivated, role was restored
+        message += `\n\nRole restored to "${getRoleLabel(updatedUser.role)}".`;
+      }
+      
+      Alert.alert(
+        newStatus ? 'User Activated' : 'User Deactivated',
+        message,
+        [{ text: 'OK' }]
+      );
+      
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error: any) {
+      console.error('Error in handleStatusToggle:', error);
+      await new Promise(resolve => setTimeout(resolve, 400));
+      Alert.alert('Error', error.message || 'Failed to update user status');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setUpdatingStatusUserId(null);
+    }
+  };
+
   const handleRoleChange = async (userId: string, newRole: 'user' | 'moderator' | 'admin' | 'superadmin') => {
     try {
       setOpenRoleDropdownUserId(null); // Close dropdown first
@@ -257,6 +320,20 @@ const ManageAccounts = () => {
     }
   };
 
+  // Get single letter for role (for action button)
+  const getRoleLetter = (role: string) => {
+    switch (role) {
+      case 'superadmin':
+        return 'S';
+      case 'admin':
+        return 'A';
+      case 'moderator':
+        return 'M';
+      default:
+        return 'U';
+    }
+  };
+
   // Role capabilities definition
   const getRoleCapabilities = (role: 'user' | 'moderator' | 'admin' | 'superadmin'): string[] => {
     switch (role) {
@@ -336,13 +413,59 @@ const ManageAccounts = () => {
     return 'U';
   };
 
-  // Filter users based on search query and role filter
+  // Calculate inactive days for a user based on lastLogin
+  const getInactiveDays = (user: BackendUser): number | null => {
+    // Use lastLogin to determine inactivity, fallback to createdAt if no lastLogin
+    const referenceDate = user.lastLogin || user.createdAt;
+    if (!referenceDate) {
+      return null; // No date available
+    }
+
+    const lastDate = new Date(referenceDate);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - lastDate.getTime());
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    return diffDays;
+  };
+
+  // Determine if user should be considered "active" based on lastLogin (within 14 days) or isActive flag
+  const isUserActive = (user: BackendUser): boolean => {
+    // If isActive is explicitly false, user is inactive
+    if (user.isActive === false) {
+      return false;
+    }
+    
+    // If isActive is explicitly true, user is active
+    if (user.isActive === true) {
+      return true;
+    }
+    
+    // If isActive is undefined, check lastLogin
+    // Consider user active if they logged in within the last 14 days
+    const inactiveDays = getInactiveDays(user);
+    if (inactiveDays === null) {
+      return true; // Default to active if no date info
+    }
+    
+    return inactiveDays <= 14; // Active if logged in within last 14 days
+  };
+
+  // Filter users based on search query, role filter, and status filter
   const filteredUsers = useMemo(() => {
     let filtered = users;
     
     // Apply role filter
     if (selectedRoleFilter) {
       filtered = filtered.filter(user => (user.role || 'user') === selectedRoleFilter);
+    }
+    
+    // Apply status filter
+    if (selectedStatusFilter) {
+      filtered = filtered.filter(user => {
+        const isActive = isUserActive(user);
+        return selectedStatusFilter === 'active' ? isActive : !isActive;
+      });
     }
     
     // Apply search query filter
@@ -356,7 +479,7 @@ const ManageAccounts = () => {
     }
     
     return filtered;
-  }, [users, searchQuery, selectedRoleFilter]);
+  }, [users, searchQuery, selectedRoleFilter, selectedStatusFilter]);
 
   // Group filtered users by role
   const groupedUsers = useMemo(() => ({
@@ -433,20 +556,104 @@ const ManageAccounts = () => {
         </View>
         <View style={styles.emailCell}>
           <Text
-            style={[styles.tableCellText, { color: theme.colors.text, fontWeight: '600', textAlign: 'center' }]}
-            numberOfLines={1}
+            style={[styles.tableCellText, { color: theme.colors.text, fontWeight: '600', textAlign: 'left' }]}
+            numberOfLines={2}
             ellipsizeMode="tail"
           >
             {user.email}
           </Text>
           {user.username && (
             <Text
-              style={[styles.tableCellSubtext, { color: theme.colors.textMuted, textAlign: 'center' }]}
+              style={[styles.tableCellSubtext, { color: theme.colors.textMuted, textAlign: 'left' }]}
               numberOfLines={1}
+              ellipsizeMode="tail"
             >
               @{user.username}
             </Text>
           )}
+        </View>
+        <View style={styles.roleCell}>
+          <View style={[styles.roleBadge, { 
+            backgroundColor: getSectionColor(user.role || 'user') + '20',
+            borderColor: getSectionColor(user.role || 'user'),
+          }]}>
+            <View style={[styles.roleBadgeDot, { backgroundColor: getSectionColor(user.role || 'user') }]} />
+            <Text 
+              style={[styles.roleBadgeText, { 
+                color: getSectionColor(user.role || 'user'),
+                fontSize: theme.fontSize.scaleSize(9),
+              }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {getRoleLabel(user.role || 'user')}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.statusCell}>
+          <TouchableOpacity
+            style={[
+              styles.statusBadge,
+              {
+                backgroundColor: isUserActive(user)
+                  ? '#10B981' + '20' 
+                  : '#EF4444' + '20',
+                borderColor: isUserActive(user)
+                  ? '#10B981' 
+                  : '#EF4444',
+                opacity: updatingStatusUserId === user._id ? 0.5 : 1,
+              }
+            ]}
+            onPress={() => {
+              const isImmutableForAdmin = !isSuperAdmin && (user.role === 'admin' || user.role === 'superadmin');
+              if (isImmutableForAdmin) {
+                Alert.alert('Access Denied', 'Only a superadmin can change the status of an Admin or Superadmin.');
+                return;
+              }
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              handleStatusToggle(user._id, isUserActive(user));
+            }}
+            disabled={updatingStatusUserId === user._id || (!isSuperAdmin && (user.role === 'admin' || user.role === 'superadmin'))}
+            activeOpacity={0.7}
+          >
+            {updatingStatusUserId === user._id ? (
+              <ActivityIndicator size="small" color={isUserActive(user) ? '#10B981' : '#EF4444'} />
+            ) : (
+              <>
+                <View style={[
+                  styles.statusDot,
+                  { backgroundColor: isUserActive(user) ? '#10B981' : '#EF4444' }
+                ]} />
+                {isUserActive(user) ? (
+                  <Text style={[
+                    styles.statusBadgeText,
+                    {
+                      color: '#10B981',
+                      fontSize: theme.fontSize.scaleSize(9),
+                    }
+                  ]}>
+                    Active
+                  </Text>
+                ) : (
+                  <Text style={[
+                    styles.statusBadgeText,
+                    {
+                      color: '#EF4444',
+                      fontSize: theme.fontSize.scaleSize(9),
+                    }
+                  ]}>
+                    {(() => {
+                      const inactiveDays = getInactiveDays(user);
+                      if (inactiveDays === null) {
+                        return 'Inactive';
+                      }
+                      return inactiveDays === 0 ? '<1d' : `${inactiveDays}d`;
+                    })()}
+                  </Text>
+                )}
+              </>
+            )}
+          </TouchableOpacity>
         </View>
         <View style={styles.actionsCell}>
           <View 
@@ -491,19 +698,19 @@ const ManageAccounts = () => {
                   <Text 
                     style={[styles.roleDropdownButtonText, { 
                       color: '#FFF', 
-                      fontSize: theme.fontSize.scaleSize(9),
-                      flexShrink: 1,
+                      fontSize: theme.fontSize.scaleSize(11),
+                      flexShrink: 0,
                       fontWeight: '700',
                     }]}
                     numberOfLines={1}
                   >
-                    {getRoleLabel(user.role || 'user')}
+                    {getRoleLetter(user.role || 'user')}
                   </Text>
                   <Ionicons 
                     name={openRoleDropdownUserId === user._id ? 'chevron-up' : 'chevron-down'} 
-                    size={12} 
+                    size={9} 
                     color="#FFF" 
-                    style={{ flexShrink: 0, opacity: 0.9 }}
+                    style={{ flexShrink: 0, opacity: 0.9, marginLeft: 2 }}
                   />
                 </>
               )}
@@ -612,8 +819,18 @@ const ManageAccounts = () => {
           </Text>
         </View>
         <View style={styles.emailHeaderCell}>
-          <Text style={[styles.tableHeaderText, { color: theme.colors.text }]}>
+          <Text style={[styles.tableHeaderText, { color: theme.colors.text, textAlign: 'left' }]}>
             Email
+          </Text>
+        </View>
+        <View style={styles.roleHeaderCell}>
+          <Text style={[styles.tableHeaderText, { color: theme.colors.text }]}>
+            Role
+          </Text>
+        </View>
+        <View style={styles.statusHeaderCell}>
+          <Text style={[styles.tableHeaderText, { color: theme.colors.text }]}>
+            Status
           </Text>
         </View>
         <View style={styles.actionsHeaderCell}>
@@ -873,37 +1090,6 @@ const ManageAccounts = () => {
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.legendContainer}
                 >
-                  <TouchableOpacity
-                    style={[
-                      styles.legendButton,
-                      {
-                        backgroundColor: selectedRoleFilter === null 
-                          ? (isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)')
-                          : 'transparent',
-                        borderColor: selectedRoleFilter === null 
-                          ? (isDarkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)')
-                          : (isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'),
-                      }
-                    ]}
-                    onPress={() => {
-                      setSelectedRoleFilter(null);
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[
-                      styles.legendButtonText,
-                      { 
-                        color: selectedRoleFilter === null 
-                          ? theme.colors.text 
-                          : theme.colors.textMuted,
-                        fontSize: theme.fontSize.scaleSize(11)
-                      }
-                    ]}>
-                      All
-                    </Text>
-                  </TouchableOpacity>
-
                   {roleOptions.map((option) => {
                     const isSelected = selectedRoleFilter === option.key;
                     const roleColor = getSectionColor(option.key);
@@ -946,8 +1132,81 @@ const ManageAccounts = () => {
                 </ScrollView>
               </View>
 
+              {/* Status Filter Buttons */}
+              <View style={styles.legendSection}>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.legendContainer}
+                >
+                  <TouchableOpacity
+                    style={[
+                      styles.legendButton,
+                      {
+                        backgroundColor: selectedStatusFilter === 'active' 
+                          ? '#10B981' + '20'
+                          : 'transparent',
+                        borderColor: selectedStatusFilter === 'active' 
+                          ? '#10B981' 
+                          : (isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'),
+                        borderWidth: selectedStatusFilter === 'active' ? 1.5 : 1,
+                      }
+                    ]}
+                    onPress={() => {
+                      setSelectedStatusFilter(selectedStatusFilter === 'active' ? null : 'active');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.legendColorDot, { backgroundColor: '#10B981' }]} />
+                    <Text style={[
+                      styles.legendButtonText,
+                      { 
+                        color: selectedStatusFilter === 'active' ? '#10B981' : theme.colors.textMuted,
+                        fontSize: theme.fontSize.scaleSize(11),
+                        fontWeight: selectedStatusFilter === 'active' ? '700' : '500',
+                      }
+                    ]}>
+                      Active
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.legendButton,
+                      {
+                        backgroundColor: selectedStatusFilter === 'inactive' 
+                          ? '#EF4444' + '20'
+                          : 'transparent',
+                        borderColor: selectedStatusFilter === 'inactive' 
+                          ? '#EF4444' 
+                          : (isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'),
+                        borderWidth: selectedStatusFilter === 'inactive' ? 1.5 : 1,
+                      }
+                    ]}
+                    onPress={() => {
+                      setSelectedStatusFilter(selectedStatusFilter === 'inactive' ? null : 'inactive');
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.legendColorDot, { backgroundColor: '#EF4444' }]} />
+                    <Text style={[
+                      styles.legendButtonText,
+                      { 
+                        color: selectedStatusFilter === 'inactive' ? '#EF4444' : theme.colors.textMuted,
+                        fontSize: theme.fontSize.scaleSize(11),
+                        fontWeight: selectedStatusFilter === 'inactive' ? '700' : '500',
+                      }
+                    ]}>
+                      Inactive
+                    </Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+
               {/* Search Results Count - Show when searching or filtering */}
-              {(searchQuery.trim().length > 0 || selectedRoleFilter) && (
+              {(searchQuery.trim().length > 0 || selectedRoleFilter || selectedStatusFilter) && (
                 <View style={styles.searchResultsHeader}>
                   <Text style={[styles.searchResultsCount, { 
                     color: theme.colors.textMuted, 
@@ -956,6 +1215,7 @@ const ManageAccounts = () => {
                     {filteredUsers.length} {filteredUsers.length === 1 ? 'result' : 'results'} found
                     {searchQuery.trim().length > 0 && ` for "${searchQuery}"`}
                     {selectedRoleFilter && ` (${getRoleLabel(selectedRoleFilter)} only)`}
+                    {selectedStatusFilter && ` (${selectedStatusFilter === 'active' ? 'Active' : 'Inactive'} only)`}
                   </Text>
                 </View>
               )}
@@ -1176,7 +1436,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 8,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     minWidth: 0,
   },
   emailCell: {
@@ -1184,21 +1444,99 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 8,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     minHeight: 56,
     minWidth: 0,
   },
-  actionsHeaderCell: {
+  roleHeaderCell: {
     width: 70,
     paddingVertical: 10,
+    paddingHorizontal: 3,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  roleCell: {
+    width: 70,
+    paddingVertical: 12,
+    paddingHorizontal: 3,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 56,
+  },
+  roleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 4,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 3,
+    minWidth: 45,
+    maxWidth: 65,
+  },
+  roleBadgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    flexShrink: 0,
+  },
+  roleBadgeText: {
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.2,
+    fontSize: 9,
+    flexShrink: 1,
+  },
+  statusHeaderCell: {
+    width: 60,
+    paddingVertical: 10,
+    paddingHorizontal: 3,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusCell: {
+    width: 60,
+    paddingVertical: 12,
+    paddingHorizontal: 3,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 56,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 4,
+    minWidth: 50,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    flexShrink: 0,
+  },
+  statusBadgeText: {
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    fontSize: 9,
+  },
+  actionsHeaderCell: {
+    width: 40,
+    paddingVertical: 10,
+    paddingHorizontal: 2,
     justifyContent: 'center',
     alignItems: 'center',
   },
   actionsCell: {
-    width: 70,
+    width: 40,
     paddingVertical: 12,
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
     justifyContent: 'center',
     alignItems: 'center',
     minHeight: 56,
@@ -1220,16 +1558,16 @@ const styles = StyleSheet.create({
   roleDropdownButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 10,
+    justifyContent: 'center',
+    borderRadius: 8,
     borderWidth: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 5,
-    minHeight: 28,
-    width: '100%',
-    maxWidth: 65,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    minHeight: 24,
+    minWidth: 32,
+    width: 32,
     overflow: 'hidden',
-    gap: 3,
+    gap: 2,
   },
   roleDropdownButtonText: {
     fontWeight: '600',

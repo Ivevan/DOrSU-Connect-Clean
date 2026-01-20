@@ -1,13 +1,12 @@
 import { MaterialIcons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Linking from 'expo-linking';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, BackHandler, Dimensions, Image, KeyboardAvoidingView, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNetworkStatus } from '../../contexts/NetworkStatusContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { confirmPasswordReset } from '../../services/authService';
@@ -17,7 +16,7 @@ type RootStackParamList = {
   SignIn: undefined;
   CreateAccount: undefined;
   ForgotPassword: undefined;
-  ResetPassword: { actionCode?: string };
+  ResetPassword: { resetToken?: string };
   AdminAIChat: undefined;
   AIChat: undefined;
 };
@@ -26,7 +25,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ResetPasswo
 type RouteProp = {
   key: string;
   name: 'ResetPassword';
-  params?: { actionCode?: string };
+  params?: { resetToken?: string };
 };
 
 const { width } = Dimensions.get('window');
@@ -57,90 +56,24 @@ const ResetPassword = () => {
   const passwordFocus = useRef(new Animated.Value(0)).current;
   const confirmPasswordFocus = useRef(new Animated.Value(0)).current;
 
-  // Extract action code from route params or deep link
+  // Extract action code from AsyncStorage (set by AppNavigator when deep link is opened)
   useEffect(() => {
-    const extractActionCode = async () => {
-      // First check route params
-      if (route.params?.actionCode) {
-        setActionCode(route.params.actionCode);
-        return;
-      }
-
-      // Check AsyncStorage for stored action code
-      const storedCode = await AsyncStorage.getItem('pendingResetCode');
-      if (storedCode) {
-        setActionCode(storedCode);
-        await AsyncStorage.removeItem('pendingResetCode');
-        return;
-      }
-
-      // On web, check URL parameters
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        const urlParams = new URLSearchParams(window.location.search);
-        const oobCode = urlParams.get('oobCode') || urlParams.get('actionCode');
-        const mode = urlParams.get('mode');
-        
-        if (mode === 'resetPassword' && oobCode) {
-          setActionCode(oobCode);
-          // Clean up URL
-          setTimeout(() => {
-            if (window.history && window.history.replaceState) {
-              const cleanUrl = window.location.origin + window.location.pathname;
-              window.history.replaceState({}, document.title, cleanUrl);
-            }
-          }, 1000);
+    const loadActionCode = async () => {
+      try {
+        const storedCode = await AsyncStorage.getItem('pendingResetCode');
+        if (storedCode) {
+          setActionCode(storedCode);
+          // Clear the stored code after reading it
+          await AsyncStorage.removeItem('pendingResetCode');
+        } else if (route.params?.resetToken) {
+          // Fallback: check route params (for OTP flow, but should not be used)
+          setActionCode(route.params.resetToken);
         }
+      } catch (error) {
+        console.error('Error loading action code:', error);
       }
-
-      // Check initial deep link
-      const initialUrl = await Linking.getInitialURL();
-      if (initialUrl) {
-        try {
-          const urlObj = new URL(initialUrl);
-          const oobCode = urlObj.searchParams.get('oobCode') || urlObj.searchParams.get('actionCode');
-          const mode = urlObj.searchParams.get('mode');
-          
-          if (mode === 'resetPassword' && oobCode) {
-            setActionCode(oobCode);
-          }
-        } catch {
-          // Try regex parsing for custom schemes
-          const oobCodeMatch = initialUrl.match(/[?&](?:oobCode|actionCode|oobcode|actioncode)=([^&]+)/i);
-          const modeMatch = initialUrl.match(/[?&]mode=([^&]+)/i);
-          
-          if (modeMatch && modeMatch[1] === 'resetPassword' && oobCodeMatch && oobCodeMatch[1]) {
-            setActionCode(decodeURIComponent(oobCodeMatch[1]));
-          }
-        }
-      }
-
-      // Listen for deep links
-      const subscription = Linking.addEventListener('url', (event) => {
-        try {
-          const urlObj = new URL(event.url);
-          const oobCode = urlObj.searchParams.get('oobCode') || urlObj.searchParams.get('actionCode');
-          const mode = urlObj.searchParams.get('mode');
-          
-          if (mode === 'resetPassword' && oobCode) {
-            setActionCode(oobCode);
-          }
-        } catch {
-          // Try regex parsing for custom schemes
-          const oobCodeMatch = event.url.match(/[?&](?:oobCode|actionCode|oobcode|actioncode)=([^&]+)/i);
-          const modeMatch = event.url.match(/[?&]mode=([^&]+)/i);
-          
-          if (modeMatch && modeMatch[1] === 'resetPassword' && oobCodeMatch && oobCodeMatch[1]) {
-            setActionCode(decodeURIComponent(oobCodeMatch[1]));
-          }
-        }
-      });
-
-      return () => {
-        subscription.remove();
-      };
     };
-
-    extractActionCode();
+    loadActionCode();
   }, [route.params]);
 
   // Handle back button/gesture to navigate to SignIn
@@ -196,7 +129,7 @@ const ResetPassword = () => {
       setErrors({ 
         password: '', 
         confirmPassword: '',
-        general: 'Invalid reset link. Please request a new password reset email.' 
+        general: 'Invalid or expired reset link. Please request a new password reset email.' 
       });
       return;
     }
@@ -271,11 +204,13 @@ const ResetPassword = () => {
       let errorMessage = error.message || 'Failed to reset password. Please try again.';
       let passwordError = '';
       
-      if (error.message.includes('Invalid or expired')) {
+      if (error.message.includes('Invalid or expired') || error.message.includes('invalid-action-code') || error.message.includes('expired-action-code')) {
         errorMessage = 'Invalid or expired reset link. Please request a new password reset email.';
       } else if (error.message.includes('weak-password') || error.message.includes('too weak')) {
         passwordError = 'Password is too weak. Please use a stronger password.';
         errorMessage = '';
+      } else if (error.message.includes('network')) {
+        errorMessage = 'Network error. Please check your internet connection.';
       }
       
       setErrors({

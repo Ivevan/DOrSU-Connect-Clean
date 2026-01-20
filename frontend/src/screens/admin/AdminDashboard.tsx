@@ -5,7 +5,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Image, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, AppState, AppStateStatus, Image, Modal, Platform, RefreshControl, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // import AddPostDrawer from '../../components/dashboard/AddPostDrawer'; // Replaced with PostUpdate screen navigation
 import BottomNavBar from '../../components/navigation/BottomNavBar';
@@ -1233,6 +1233,51 @@ const AdminDashboard = () => {
     }
   }, [fetchDashboardData, refreshCalendarEvents]);
 
+  // Automatic refresh: Refresh data periodically when screen is focused
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  useEffect(() => {
+    if (!isAuthorized) return; // Don't set up auto-refresh if not authorized
+    
+    const AUTO_REFRESH_INTERVAL = 30000; // 30 seconds
+    let refreshInterval: NodeJS.Timeout | null = null;
+
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
+        // App came to foreground - refresh immediately
+        fetchDashboardData(true).catch(() => {});
+        refreshCalendarEvents(true).catch(() => {});
+      }
+      appStateRef.current = nextAppState;
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    // Set up periodic refresh when screen is focused
+    const startAutoRefresh = () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+      refreshInterval = setInterval(() => {
+        // Only refresh if app is active and screen is focused
+        if (AppState.currentState === 'active' && isFocused) {
+          fetchDashboardData(false).catch(() => {}); // Use non-force refresh to respect cooldown
+          refreshCalendarEvents(false).catch(() => {});
+        }
+      }, AUTO_REFRESH_INTERVAL);
+    };
+
+    // Start auto refresh
+    startAutoRefresh();
+
+    // Cleanup on unmount
+    return () => {
+      subscription.remove();
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    };
+  }, [fetchDashboardData, refreshCalendarEvents, isAuthorized, isFocused]);
+
   if (isAuthorized === false) {
     return (
       <View style={{ flex: 1, backgroundColor: isDarkMode ? '#0B1220' : '#FBF8F3' }} />
@@ -1374,17 +1419,26 @@ const AdminDashboard = () => {
         {/* Welcome Section inside Blue Header */}
         <View style={styles.welcomeSectionInHeader}>
           <View style={styles.welcomeContent}>
-            {backendUserPhoto ? (
-              <Image 
-                source={{ uri: backendUserPhoto }} 
-                style={styles.welcomeProfileImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={[styles.welcomeProfileIconCircle, { backgroundColor: '#FFF' }]}>
-                <Text style={[styles.welcomeProfileInitials, { color: theme.colors.accent, fontSize: theme.fontSize.scaleSize(20) }]}>{getUserInitials()}</Text>
-              </View>
-            )}
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                navigation.navigate('AdminSettings');
+              }}
+              activeOpacity={0.7}
+              style={styles.profilePictureTouchable}
+            >
+              {backendUserPhoto ? (
+                <Image 
+                  source={{ uri: backendUserPhoto }} 
+                  style={styles.welcomeProfileImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.welcomeProfileIconCircle, { backgroundColor: '#FFF' }]}>
+                  <Text style={[styles.welcomeProfileInitials, { color: theme.colors.accent, fontSize: theme.fontSize.scaleSize(20) }]}>{getUserInitials()}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
             <View style={styles.welcomeText}>
               <Text style={[styles.welcomeGreetingInHeader, { fontSize: theme.fontSize.scaleSize(14) }]}>Hello!</Text>
               <Text style={[styles.welcomeTitleInHeader, { fontSize: theme.fontSize.scaleSize(18) }]}>{userName}</Text>
@@ -2263,6 +2317,12 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  profilePictureTouchable: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    overflow: 'hidden',
   },
   welcomeProfileInitials: {
     fontSize: 20,

@@ -16,6 +16,7 @@ type RootStackParamList = {
   GetStarted: undefined;
   SignIn: undefined;
   CreateAccount: undefined;
+  DataPrivacyConsent: { isAdmin?: boolean; userRole?: string };
   AdminAIChat: undefined;
   AIChat: undefined;
 };
@@ -81,11 +82,6 @@ const GetStarted = () => {
     }, [hasAuthData])
   );
 
-  // Handle logo press
-  const handleLogoPress = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    navigation.navigate('AdminAIChat');
-  };
 
   // Handle Google Sign-In
   const handleGoogleSignIn = async () => {
@@ -204,16 +200,18 @@ const GetStarted = () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       googleLoadingRotation.stopAnimation();
       
-      // Navigate based on user role
+      // Navigate based on user role - always show consent screen on every login
       const userEmail = user.email?.toLowerCase().trim();
       const isAdminEmail = userEmail === 'admin@dorsu.edu.ph' || userEmail === 'admin';
       const adminStatus = storedIsAdmin.status === 'fulfilled' ? storedIsAdmin.value : null;
+      const userRole = await AsyncStorage.getItem('userRole');
+      const isAdmin = isAdminEmail || adminStatus === 'true' || userRole === 'admin' || userRole === 'superadmin' || userRole === 'moderator';
       
-      if (isAdminEmail || adminStatus === 'true') {
-        navigation.navigate('AdminAIChat');
-      } else {
-        navigation.navigate('AIChat');
-      }
+      // Navigate to data privacy consent screen (required on every login)
+      navigation.navigate('DataPrivacyConsent', { 
+        isAdmin: isAdmin, 
+        userRole: userRole || 'user' 
+      });
     } catch (error: any) {
       console.error('Google Sign-In Error:', error);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -258,15 +256,9 @@ const GetStarted = () => {
       <>
         {/* Logo Section */}
         <View style={styles.logoSection}>
-          <TouchableOpacity 
-            onPress={handleLogoPress}
-            activeOpacity={1}
-            hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-          >
-            <View>
-              <Image source={require('../../../../assets/DOrSU.png')} style={styles.logoImage} />
-            </View>
-          </TouchableOpacity>
+          <View>
+            <Image source={require('../../../../assets/DOrSU.png')} style={styles.logoImage} />
+          </View>
           <View style={styles.logoTextContainer}>
             <Text style={styles.logoTitle}>DOrSU CONNECT</Text>
             <Text style={styles.logoSubtitle}>AI-Powered Academic Assistant</Text>
